@@ -1,31 +1,34 @@
 use std::{
-    collections::BTreeSet,
     fmt::Display,
     ops::{Index, IndexMut},
 };
 
+#[repr(C)]
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
-struct Mark {
+pub struct Mark {
     depth: u8,
-    pos: usize,
+    pos: u64,
 }
 
 #[derive(Default, Debug, PartialEq, Eq)]
-pub struct Deck<T> {
+pub struct Deck<T>
+where
+    T: Default,
+{
     items: Vec<T>,
     marks: Vec<Mark>,
-    stride_offset: Vec<usize>,
-    strides: Vec<usize>,
-    pegs: Vec<usize>,
+    stride_offset: Vec<u64>, // Explicit 64 bit int for FFI
+    strides: Vec<u64>,       // Explicit 64 bit int for FFI
+    pegs: Vec<usize>,        // This is not used in FFI.
 }
 
 /**
 This macro creates a `Deck` from a nested parenthesized literal.
 
 ``` rust
-let d = orc::deck![1, 2, 3];                                // depth-1: a flat list
-let d = orc::deck![[1, 2], [3, 4]];                         // depth-2: list of lists
-let d = orc::deck![[[1, 2], [3, 4]], [[5, 6], [7, 8]]]; // depth-3
+let d = orc_sdk::deck![1, 2, 3];                                // depth-1: a flat list
+let d = orc_sdk::deck![[1, 2], [3, 4]];                         // depth-2: list of lists
+let d = orc_sdk::deck![[[1, 2], [3, 4]], [[5, 6], [7, 8]]]; // depth-3
 ```
 */
 #[macro_export]
@@ -61,11 +64,21 @@ macro_rules! deck {
     }};
 }
 
-impl<T> Deck<T> {
+impl<T> Deck<T>
+where
+    T: Default,
+{
+    /**
+    Get the maximum depth of this deck. By definition, this is the depth of the
+    first mark.
+    */
     pub fn max_depth(&self) -> u8 {
         self.marks.first().map(|m| m.depth + 1).unwrap_or(0u8)
     }
 
+    /**
+    Number of items in this deck.
+    */
     pub fn len(&self) -> usize {
         self.items.len()
     }
@@ -74,21 +87,25 @@ impl<T> Deck<T> {
         self.items.is_empty()
     }
 
-    /// Push an item. `depth` uses external numbering: 0 = continuation (no mark),
-    /// 1+ = starts a new group at that level.
+    /**
+    Push an item. `depth` uses external numbering: 0 = continuation (no mark),
+    1+ = starts a new group at that level.
+    */
     pub fn push(&mut self, item: T, depth: u8) {
         self.start_new_arr(depth);
         self.items.push(item);
     }
 
-    /// Push an empty group at the given external depth (must be >= 1).
-    /// No item is added; this creates a mark at the current item position.
+    /**
+    Push an empty group at the given external depth (must be >= 1).  No item is
+    added; this creates a mark at the current item position.
+    */
     pub fn start_new_arr(&mut self, depth: u8) {
         if depth > 0 {
             let pos = self.items.len();
             self.push_mark(Mark {
                 depth: depth - 1,
-                pos,
+                pos: pos as u64,
             });
         }
     }
@@ -110,31 +127,24 @@ impl<T> Deck<T> {
         // Update the scan then push the actual marker.
         self.stride_offset.push(
             self.stride_offset.last().copied().unwrap_or(0)
-                + self.marks.last().map(|m| m.depth as usize + 1).unwrap_or(0),
+                + self.marks.last().map(|m| m.depth as u64 + 1).unwrap_or(0),
         );
         // Update strides.
-        self.strides.resize(self.strides.len() + d, usize::MAX);
+        self.strides.resize(self.strides.len() + d, u64::MAX);
         for i in 0..d {
-            let peg = self.pegs[i];
+            let peg = self.pegs[i] as usize;
             if peg < self.marks.len() {
-                let dst = &mut self.strides[self.stride_offset[peg] + i];
-                *dst = (*dst).min(self.marks.len() - peg);
+                let dst = &mut self.strides[self.stride_offset[peg] as usize + i];
+                *dst = (*dst).min((self.marks.len() - peg) as u64);
             }
             self.pegs[i] = self.marks.len();
         }
         self.marks.push(mark);
     }
 
-    /// Returns how many marks to skip from `mark_idx` at internal depth `depth`.
-    fn stride(&self, mark_idx: usize, depth: u8) -> usize {
-        match self.marks.get(mark_idx) {
-            Some(m) if depth > m.depth => self.marks.len() - mark_idx,
-            None => 0usize,
-            _ => self.strides[self.stride_offset[mark_idx] + depth as usize]
-                .min(self.marks.len() - mark_idx),
-        }
-    }
-
+    /**
+    Clear the contents of this deck.
+    */
     pub fn clear(&mut self) {
         self.items.clear();
         self.marks.clear();
@@ -143,6 +153,9 @@ impl<T> Deck<T> {
         self.pegs.clear();
     }
 
+    /**
+    Reserve memory for `additional` number of elements.
+    */
     pub fn reserve(&mut self, additional: usize) {
         self.items.reserve(additional);
         self.marks.reserve(additional);
@@ -153,9 +166,9 @@ impl<T> Deck<T> {
     Flattens all items into one list.
 
     ```rust
-    let mut d = orc::deck![[1, 2, 3], [4, 5, 6], [7, 8, 9]];
+    let mut d = orc_sdk::deck![[1, 2, 3], [4, 5, 6], [7, 8, 9]];
     d.flatten();
-    assert_eq!(d, orc::deck![1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    assert_eq!(d, orc_sdk::deck![1, 2, 3, 4, 5, 6, 7, 8, 9]);
     ```
     */
     pub fn flatten(&mut self) {
@@ -172,9 +185,9 @@ impl<T> Deck<T> {
     Increases the depth of the tree by 1, by wrapping each item in it's own list.
 
     ```rust
-    let mut d = orc::deck![[1, 2, 3], [4, 5, 6], [7, 8, 9]];
+    let mut d = orc_sdk::deck![[1, 2, 3], [4, 5, 6], [7, 8, 9]];
     d.graft();
-    assert_eq!(d, orc::deck![[[1], [2], [3]], [[4], [5], [6]], [[7], [8], [9]]]);
+    assert_eq!(d, orc_sdk::deck![[[1], [2], [3]], [[4], [5], [6]], [[7], [8], [9]]]);
     ```
     */
     pub fn graft(&mut self) {
@@ -183,7 +196,7 @@ impl<T> Deck<T> {
             &mut self.marks,
             Vec::with_capacity(count + self.items.len()),
         );
-        let mut prev = 0usize;
+        let mut prev = 0u64;
         for mut m in old_marks.into_iter() {
             m.depth = m.depth.checked_add(1).expect("Depth overflow");
             self.marks
@@ -192,7 +205,7 @@ impl<T> Deck<T> {
             prev = m.pos + 1;
         }
         self.marks
-            .extend((prev..self.items.len()).map(|pos| Mark { depth: 0, pos }));
+            .extend((prev..(self.items.len() as u64)).map(|pos| Mark { depth: 0, pos }));
         calc_strides(
             &self.marks,
             &mut self.pegs,
@@ -209,24 +222,31 @@ impl<T> Deck<T> {
     branches/sub-lists. It only eliminates redundant hierarchy.
 
     ```rust
-    let mut d = orc::deck![[[1, 2, 3]], [[4, 5, 6]], [[7, 8, 9]]];
+    let mut d = orc_sdk::deck![[[1, 2, 3]], [[4, 5, 6]], [[7, 8, 9]]];
     d.simplify(); // This eliminates 1 level of redundant hierarchy.
-    assert_eq!(d, orc::deck![[1, 2, 3], [4, 5, 6], [7, 8, 9]]);
+    assert_eq!(d, orc_sdk::deck![[1, 2, 3], [4, 5, 6], [7, 8, 9]]);
 
-    d = orc::deck![[[[1, 2, 3]]], [[[4, 5, 6]]], [[[7, 8, 9]]]];
+    d = orc_sdk::deck![[[[1, 2, 3]]], [[[4, 5, 6]]], [[[7, 8, 9]]]];
     d.simplify(); // This eliminates 2 levels of redundant hierarchy.
-    assert_eq!(d, orc::deck![[1, 2, 3], [4, 5, 6], [7, 8, 9]]);
+    assert_eq!(d, orc_sdk::deck![[1, 2, 3], [4, 5, 6], [7, 8, 9]]);
     ```
      */
     pub fn simplify(&mut self) {
-        let set: BTreeSet<u8> = self.marks.iter().map(|m| m.depth).collect();
-        let max = self.marks.first().map(|m| m.depth).unwrap_or(0);
-        let mut replace = vec![0u8; max as usize + 1];
-        for (i, d) in set.into_iter().enumerate() {
-            replace[d as usize] = i as u8;
+        let dmax = self.marks.first().map(|m| m.depth).unwrap_or(0) as usize;
+        let mut remap = [0u8; u8::MAX as usize + 1];
+        let remap = &mut remap[..=dmax];
+        for m in self.marks.iter() {
+            // Mark depths that are seen.
+            remap[m.depth as usize] = 1;
+        }
+        let mut acc = 0u8;
+        for r in remap.iter_mut() {
+            let prev = acc;
+            acc += *r;
+            *r = prev;
         }
         for m in self.marks.iter_mut() {
-            m.depth = replace[m.depth as usize];
+            m.depth = remap[m.depth as usize];
         }
         calc_strides(
             &self.marks,
@@ -236,24 +256,23 @@ impl<T> Deck<T> {
         );
     }
 
-    fn mark_pos(&self, idx: usize) -> usize {
-        self.marks
-            .get(idx)
-            .map(|m| m.pos)
-            .unwrap_or(self.items.len())
-    }
-
     pub fn view(&self, depth: u8) -> View<'_, T> {
         if depth == 0 {
             View {
-                deck: self,
+                marks: &self.marks,
+                items: &self.items,
+                strides: &self.strides,
+                stride_offsets: &self.stride_offset,
                 depth: 0,
                 start: 0,
                 end: self.items.len(),
             }
         } else {
             View {
-                deck: self,
+                marks: &self.marks,
+                items: &self.items,
+                strides: &self.strides,
+                stride_offsets: &self.stride_offset,
                 depth,
                 start: 0,
                 end: self.marks.len(),
@@ -270,12 +289,24 @@ impl<T> Deck<T> {
             start,
         }
     }
+
+    pub fn items(&self) -> &[T] {
+        &self.items
+    }
+
+    pub fn marks(&self) -> &[Mark] {
+        &self.marks
+    }
+
+    pub fn stride_info(&self) -> (&[u64], &[u64]) {
+        (&self.stride_offset, &self.strides)
+    }
 }
 
-fn fmt_mark_line<T: Display>(
+fn fmt_mark_line<T: Default + Display>(
     m: &Mark,
     dmax: u8,
-    next_pos: usize,
+    next_pos: u64,
     items: &[T],
     f: &mut std::fmt::Formatter<'_>,
 ) -> std::fmt::Result {
@@ -295,16 +326,16 @@ fn fmt_mark_line<T: Display>(
         rw = (d_current as usize) * TAB_WIDTH
     )?;
     if m.pos < next_pos {
-        let end = next_pos.min(items.len());
+        let end = next_pos.min(items.len() as u64);
         let mut iter = m.pos..end;
         if let Some(i) = iter.next() {
-            writeln!(f, " {}", items[i])?;
+            writeln!(f, " {}", items[i as usize])?;
         }
         for i in iter {
             writeln!(
                 f,
                 "{lp:>width$}   ┤ {}",
-                items[i],
+                items[i as usize],
                 lp = "",
                 width = (dmax as usize + 1) * TAB_WIDTH
             )?;
@@ -317,7 +348,7 @@ fn fmt_mark_line<T: Display>(
 
 impl<T> Display for Deck<T>
 where
-    T: Display,
+    T: Default + Display,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if self.marks.is_empty() {
@@ -328,22 +359,50 @@ where
             fmt_mark_line(m, dmax, next.pos, &self.items, f)?;
         }
         if let Some(m) = self.marks.last() {
-            fmt_mark_line(m, dmax, self.items.len(), &self.items, f)?;
+            fmt_mark_line(m, dmax, self.items.len() as u64, &self.items, f)?;
         }
         Ok(())
     }
 }
 
+fn stride(
+    marks: &[Mark],
+    strides: &[u64],
+    stride_offset: &[u64],
+    mark_idx: usize,
+    depth: u8,
+) -> usize {
+    match marks.get(mark_idx) {
+        Some(m) if depth > m.depth => marks.len() - mark_idx,
+        None => 0usize,
+        _ => strides[(stride_offset[mark_idx] + depth as u64) as usize]
+            .min((marks.len() - mark_idx) as u64) as usize,
+    }
+}
+
+fn mark_pos(marks: &[Mark], n_items: usize, idx: usize) -> usize {
+    marks.get(idx).map(|m| m.pos as usize).unwrap_or(n_items)
+}
+
 /// A view into a `Deck`. At depth >= 1, `start`/`end` are mark indices.
 /// At depth 0, they are item indices.
-pub struct View<'a, T> {
-    deck: &'a Deck<T>,
+pub struct View<'a, T>
+where
+    T: Default,
+{
+    items: &'a [T],
+    marks: &'a [Mark],
+    strides: &'a [u64],
+    stride_offsets: &'a [u64],
     depth: u8,
     start: usize,
     end: usize,
 }
 
-impl<'a, T> View<'a, T> {
+impl<'a, T> View<'a, T>
+where
+    T: Default,
+{
     pub fn depth(&self) -> u8 {
         self.depth
     }
@@ -352,7 +411,8 @@ impl<'a, T> View<'a, T> {
         if self.depth == 0 {
             self.end - self.start
         } else {
-            self.deck.mark_pos(self.end) - self.deck.mark_pos(self.start)
+            mark_pos(self.marks, self.items.len(), self.end)
+                - mark_pos(self.marks, self.items.len(), self.start)
         }
     }
 
@@ -360,14 +420,20 @@ impl<'a, T> View<'a, T> {
         if self.depth == 1 {
             // Convert from mark indices to item indices.
             View {
-                deck: self.deck,
+                items: self.items,
+                marks: self.marks,
+                strides: self.strides,
+                stride_offsets: self.stride_offsets,
                 depth: 0,
-                start: self.deck.mark_pos(self.start),
-                end: self.deck.mark_pos(self.end),
+                start: mark_pos(self.marks, self.items.len(), self.start),
+                end: mark_pos(self.marks, self.items.len(), self.end),
             }
         } else {
             View {
-                deck: self.deck,
+                items: self.items,
+                marks: self.marks,
+                strides: self.strides,
+                stride_offsets: self.stride_offsets,
                 depth: self.depth - 1,
                 start: self.start,
                 end: self.end,
@@ -377,24 +443,27 @@ impl<'a, T> View<'a, T> {
 
     pub fn as_slice(&self) -> &[T] {
         if self.depth == 0 {
-            &self.deck.items[self.start..self.end]
+            &self.items[self.start..self.end]
         } else {
-            let i_start = self.deck.mark_pos(self.start);
-            let i_end = self.deck.mark_pos(self.end);
-            &self.deck.items[i_start..i_end]
+            let i_start = mark_pos(self.marks, self.items.len(), self.start);
+            let i_end = mark_pos(self.marks, self.items.len(), self.end);
+            &self.items[i_start..i_end]
         }
     }
 
     pub fn as_ref(&self) -> &T {
         if self.depth == 0 {
-            &self.deck.items[self.start]
+            &self.items[self.start]
         } else {
-            &self.deck.items[self.deck.marks[self.start].pos]
+            &self.items[self.marks[self.start].pos as usize]
         }
     }
 }
 
-impl<'a, T> Iterator for View<'a, T> {
+impl<'a, T> Iterator for View<'a, T>
+where
+    T: Default,
+{
     type Item = View<'a, T>;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -403,7 +472,10 @@ impl<'a, T> Iterator for View<'a, T> {
                 let pos = self.start;
                 self.start = pos + 1;
                 Some(View {
-                    deck: self.deck,
+                    items: self.items,
+                    marks: self.marks,
+                    strides: self.strides,
+                    stride_offsets: self.stride_offsets,
                     depth: 0,
                     start: pos,
                     end: pos + 1,
@@ -414,11 +486,20 @@ impl<'a, T> Iterator for View<'a, T> {
         } else {
             if self.start < self.end {
                 let mi = self.start;
-                let s = self.deck.stride(mi, self.depth - 1);
+                let s = stride(
+                    self.marks,
+                    self.strides,
+                    self.stride_offsets,
+                    mi,
+                    self.depth - 1,
+                );
                 let next_mi = (mi + s).min(self.end);
                 self.start = next_mi;
                 Some(View {
-                    deck: self.deck,
+                    items: self.items,
+                    marks: self.marks,
+                    strides: self.strides,
+                    stride_offsets: self.stride_offsets,
                     depth: self.depth,
                     start: mi,
                     end: next_mi,
@@ -430,7 +511,10 @@ impl<'a, T> Iterator for View<'a, T> {
     }
 }
 
-impl<'a, T> Index<usize> for View<'a, T> {
+impl<'a, T> Index<usize> for View<'a, T>
+where
+    T: Default,
+{
     type Output = T;
 
     fn index(&self, index: usize) -> &Self::Output {
@@ -441,14 +525,20 @@ impl<'a, T> Index<usize> for View<'a, T> {
 
 /// A view into a `Deck`. At depth >= 1, `start`/`end` are mark indices.
 /// At depth 0, they are item indices.
-pub struct ViewMut<'a, T> {
+pub struct ViewMut<'a, T>
+where
+    T: Default,
+{
     deck: &'a mut Deck<T>,
     depth: u8,
     next_depth: Option<u8>,
     start: usize,
 }
 
-impl<'a, T> ViewMut<'a, T> {
+impl<'a, T> ViewMut<'a, T>
+where
+    T: Default,
+{
     pub fn push_child(&mut self) -> ViewMut<'_, T> {
         let start = self.deck.len();
         ViewMut {
@@ -483,13 +573,23 @@ impl<'a, T> ViewMut<'a, T> {
     pub fn as_slice_mut(&mut self) -> &mut [T] {
         &mut self.deck.items[self.start..]
     }
+
+    pub fn push_default_mut(&mut self) -> &mut T {
+        let i = self.deck.items.len();
+        self.push(T::default());
+        // SAFETY: We just pushed an element to his index.
+        unsafe { self.deck.items.get_unchecked_mut(i) }
+    }
 }
 
 /**
 If a view is created, and dropped with no items inserted, it should still insert
 it's mark to indicate an empty array.
  */
-impl<'a, T> Drop for ViewMut<'a, T> {
+impl<'a, T> Drop for ViewMut<'a, T>
+where
+    T: Default,
+{
     fn drop(&mut self) {
         if let Some(d) = self.next_depth.take() {
             self.deck.start_new_arr(d);
@@ -497,7 +597,10 @@ impl<'a, T> Drop for ViewMut<'a, T> {
     }
 }
 
-impl<'a, T> Extend<T> for ViewMut<'a, T> {
+impl<'a, T> Extend<T> for ViewMut<'a, T>
+where
+    T: Default,
+{
     fn extend<I: IntoIterator<Item = T>>(&mut self, iter: I) {
         let depth = self.next_depth.take().unwrap_or(0);
         self.deck.start_new_arr(depth);
@@ -505,14 +608,20 @@ impl<'a, T> Extend<T> for ViewMut<'a, T> {
     }
 }
 
-impl<'a, T> IndexMut<usize> for ViewMut<'a, T> {
+impl<'a, T> IndexMut<usize> for ViewMut<'a, T>
+where
+    T: Default,
+{
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
         let arr = self.as_slice_mut();
         &mut arr[index]
     }
 }
 
-impl<'a, T> Index<usize> for ViewMut<'a, T> {
+impl<'a, T> Index<usize> for ViewMut<'a, T>
+where
+    T: Default,
+{
     type Output = T;
 
     fn index(&self, index: usize) -> &Self::Output {
@@ -524,22 +633,22 @@ impl<'a, T> Index<usize> for ViewMut<'a, T> {
 fn calc_strides(
     marks: &[Mark],
     pegs: &mut Vec<usize>,
-    stride_offset: &mut Vec<usize>,
-    strides: &mut Vec<usize>,
+    stride_offset: &mut Vec<u64>,
+    strides: &mut Vec<u64>,
 ) {
     pegs.clear();
     stride_offset.clear();
     strides.clear();
     // Exclusive prefix sum of (depth + 1).
-    stride_offset.extend(marks.iter().scan(0usize, |acc, m| {
+    stride_offset.extend(marks.iter().scan(0u64, |acc, m| {
         let prev = *acc;
-        *acc += m.depth as usize + 1;
+        *acc += m.depth as u64 + 1;
         Some(prev)
     }));
     // One stride entry per depth level per mark.
-    let total: usize = stride_offset.last().copied().unwrap_or(0)
-        + marks.last().map(|m| m.depth as usize + 1).unwrap_or(0);
-    strides.resize(total, usize::MAX);
+    let total = stride_offset.last().copied().unwrap_or(0)
+        + marks.last().map(|m| m.depth as u64 + 1).unwrap_or(0);
+    strides.resize(total as usize, u64::MAX);
     // Fill strides using pegs.
     for (i, m) in marks.iter().enumerate() {
         let d = m.depth as usize + 1;
@@ -547,10 +656,10 @@ fn calc_strides(
             pegs.resize(d, 0);
         }
         for j in 0..d {
-            let peg = pegs[j];
+            let peg = pegs[j] as usize;
             if peg < i {
-                let dst = &mut strides[stride_offset[peg] + j];
-                *dst = (*dst).min(i - peg);
+                let dst = &mut strides[stride_offset[peg] as usize + j];
+                *dst = (*dst).min((i - peg) as u64);
             }
             pegs[j] = i;
         }
@@ -569,12 +678,18 @@ mod test {
         deck
     }
 
-    fn mark_depths<T>(deck: &Deck<T>) -> Vec<u8> {
+    fn mark_depths<T>(deck: &Deck<T>) -> Vec<u8>
+    where
+        T: Default,
+    {
         deck.marks.iter().map(|m| m.depth).collect()
     }
 
-    fn mark_positions<T>(deck: &Deck<T>) -> Vec<usize> {
-        deck.marks.iter().map(|m| m.pos).collect()
+    fn mark_positions<T>(deck: &Deck<T>) -> Vec<usize>
+    where
+        T: Default,
+    {
+        deck.marks.iter().map(|m| m.pos as usize).collect()
     }
 
     /// Collect depth-3 tree: all depth-2 groups, each with their depth-1 children.
@@ -797,10 +912,10 @@ mod test {
         let mut d = binary_deck(3);
         d.flatten();
         let marks_after_first: Vec<(u8, usize)> =
-            d.marks.iter().map(|m| (m.depth, m.pos)).collect();
+            d.marks.iter().map(|m| (m.depth, m.pos as usize)).collect();
         d.flatten();
         let marks_after_second: Vec<(u8, usize)> =
-            d.marks.iter().map(|m| (m.depth, m.pos)).collect();
+            d.marks.iter().map(|m| (m.depth, m.pos as usize)).collect();
         assert_eq!(marks_after_first, marks_after_second);
     }
 
@@ -1545,6 +1660,7 @@ mod test {
      3 ────────┤ 1
                ┤ 2
            1 ──┤
+        2 ─────┤
         2 ─────┤ 3
 "
             .trim()

@@ -26,4 +26,16 @@ target
 /target
 
 Cargo.lock
+
 /.agent-shell/
+/.claude
+/.projectile-cache.eld
+/.DS_Store
+
+# C SDK stuff
+
+/sdk/c/build/
+/sdk/c/nob
+/sdk/c/nob.old
+/sdk/c/nob.exe
+/sdk/c/nob.exe.old
