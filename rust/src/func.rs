@@ -5,9 +5,9 @@ pub enum Arity {
     Deck,
 }
 
-pub trait TFunc<const NIn: usize, const NOut: usize> {
-    fn input_arities() -> [Arity; NIn];
-    fn output_arities() -> [Arity; NOut];
+pub trait TFunc<const NIN: usize, const NOUT: usize> {
+    fn input_arities() -> [Arity; NIN];
+    fn output_arities() -> [Arity; NOUT];
 }
 
 #[unsafe(no_mangle)]

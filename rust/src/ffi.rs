@@ -30,8 +30,8 @@ pub trait TOrcData: Default {
 }
 
 #[repr(C)]
-pub struct DeckRef {
-    handle: *const std::ffi::c_void,
+pub struct DeckHandle {
+    handle: u64,
     items: *const std::ffi::c_void,
     n_items: u64,
     marks: *const Mark,
@@ -41,7 +41,7 @@ pub struct DeckRef {
     type_info: OrcTypeInfo,
 }
 
-impl<T: TOrcData> From<&Deck<T>> for DeckRef {
+impl<T: TOrcData> From<&Deck<T>> for DeckHandle {
     fn from(deck: &Deck<T>) -> Self {
         let type_info = T::type_info();
         let (items, marks, (stride_offset, strides)) =
@@ -51,8 +51,8 @@ impl<T: TOrcData> From<&Deck<T>> for DeckRef {
             stride_offset.len(),
             "Malformed deck datastructure"
         );
-        DeckRef {
-            handle: std::ptr::from_ref(deck).cast(),
+        DeckHandle {
+            handle: std::ptr::from_ref(deck) as u64,
             items: items.as_ptr().cast(),
             n_items: items.len() as u64,
             marks: marks.as_ptr(),

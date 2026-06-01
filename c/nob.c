@@ -35,7 +35,8 @@ void cc_append_flags(Nob_Cmd* cmd)
 void discover_tests(char const*         src,
                     size_t const        size,
                     Nob_String_Builder* dst,
-                    size_t*             counter)
+                    size_t*             counter,
+                    char* const         test_filter)
 {
   stb_lexer lex;
   char      string_storage[4096];
@@ -68,10 +69,12 @@ void discover_tests(char const*         src,
             // Get next token - must be '{' for function definition
             if (stb_c_lexer_get_token(&lex) && lex.token == '{') {
               // Confirmed: void test_something(...) {
-              nob_log(NOB_INFO, "\t\tFound %s", func_name);
-              nob_sb_append_cstr(dst, func_name);
-              nob_sb_append_cstr(dst, "\n");
-              ++(*counter);
+              if (test_filter == NULL || strstr(func_name, test_filter) != NULL) {
+                nob_log(NOB_INFO, "\t\tFound %s", func_name);
+                nob_sb_append_cstr(dst, func_name);
+                nob_sb_append_cstr(dst, "\n");
+                ++(*counter);
+              }
             }
           }
         }
@@ -99,7 +102,7 @@ bool list_src_files(Nob_File_Paths* dst)
   return true;
 }
 
-bool run_tests(Nob_File_Paths const files)
+bool run_tests(Nob_File_Paths const files, char* const test_filter)
 {
   Nob_String_Builder contents    = {0};
   Nob_String_Builder sbtestnames = {0};
@@ -108,25 +111,6 @@ bool run_tests(Nob_File_Paths const files)
   size_t             counter     = 0;
   bool               success     = true;
   // Scan all test files and discover tests.
-  bool needs_regen = nob_needs_rebuild1(TEST_RUNNER_SRC_PATH, "nob.c") ||
-                     nob_needs_rebuild1(TEST_RUNNER_SRC_PATH, "nob.h");
-  if (!needs_regen) {
-    nob_da_foreach(char const*, fpathptr, &files)
-    {
-      char const* fpath = *fpathptr;
-      if ((nob_sv_end_with(nob_sv_from_cstr(fpath), ".c") ||
-           nob_sv_end_with(nob_sv_from_cstr(fpath), ".h")) &&
-          nob_needs_rebuild1(TEST_RUNNER_SRC_PATH, fpath)) {
-        nob_log(NOB_INFO, "Yes..");
-        needs_regen = true;
-        break;
-      }
-    }
-  }
-  if (!needs_regen) {
-    nob_log(NOB_INFO, "Test runner is already up to date. Skipping regen.");
-    goto build;
-  }
   {
     char const** begin = files.items;
     char const** end   = begin + files.count;
@@ -146,7 +130,7 @@ bool run_tests(Nob_File_Paths const files)
         goto cleanup;
       }
       nob_sb_append_null(&contents);
-      discover_tests(contents.items, contents.count, &sbtestnames, &counter);
+      discover_tests(contents.items, contents.count, &sbtestnames, &counter, test_filter);
     }
     nob_log(NOB_INFO, "Found %zu tests in total.", counter);
   }
@@ -229,6 +213,10 @@ cleanup:
 int main(int argc, char** argv)
 {
   NOB_GO_REBUILD_URSELF(argc, argv);
+  char* test_filter = NULL;
+  if (argc > 1) {
+    test_filter = argv[1];
+  }
   int ret = 0;
   if (!nob_mkdir_if_not_exists(BUILD_DIR)) {
     ret = 1;
@@ -239,7 +227,7 @@ int main(int argc, char** argv)
     ret = 1;
     goto cleanup;
   }
-  if (!run_tests(srcfiles)) {
+  if (!run_tests(srcfiles, test_filter)) {
     ret = 1;
     goto cleanup;
   }

@@ -256,33 +256,25 @@ where
         );
     }
 
-    pub fn view(&self, depth: u8) -> View<'_, T> {
-        if depth == 0 {
-            View {
-                marks: &self.marks,
-                items: &self.items,
-                strides: &self.strides,
-                stride_offsets: &self.stride_offset,
-                depth: 0,
-                start: 0,
-                end: self.items.len(),
-            }
-        } else {
-            View {
-                marks: &self.marks,
-                items: &self.items,
-                strides: &self.strides,
-                stride_offsets: &self.stride_offset,
-                depth,
-                start: 0,
-                end: self.marks.len(),
-            }
+    pub fn view(&self, depth: u8) -> DeckView<'_, T> {
+        DeckView {
+            marks: &self.marks,
+            items: &self.items,
+            strides: &self.strides,
+            stride_offsets: &self.stride_offset,
+            depth: depth,
+            start: 0,
+            end: if depth == 0 {
+                self.items.len()
+            } else {
+                self.marks.len()
+            },
         }
     }
 
-    pub fn view_mut(&mut self, depth: u8) -> ViewMut<'_, T> {
+    pub fn writer(&mut self, depth: u8) -> DeckWriter<'_, T> {
         let start = self.len();
-        ViewMut {
+        DeckWriter {
             deck: self,
             depth,
             next_depth: Some(depth),
@@ -303,49 +295,6 @@ where
     }
 }
 
-fn fmt_mark_line<T: Default + Display>(
-    m: &Mark,
-    dmax: u8,
-    next_pos: u64,
-    items: &[T],
-    f: &mut std::fmt::Formatter<'_>,
-) -> std::fmt::Result {
-    const TAB_WIDTH: usize = 3;
-    write!(
-        f,
-        "{lp:>width$}",
-        lp = "",
-        width = ((dmax - m.depth) as usize) * TAB_WIDTH
-    )?;
-    let d_current = m.depth + 1;
-    write!(
-        f,
-        "{d:>3} {rp:─>rw$}",
-        d = d_current,
-        rp = "┤",
-        rw = (d_current as usize) * TAB_WIDTH
-    )?;
-    if m.pos < next_pos {
-        let end = next_pos.min(items.len() as u64);
-        let mut iter = m.pos..end;
-        if let Some(i) = iter.next() {
-            writeln!(f, " {}", items[i as usize])?;
-        }
-        for i in iter {
-            writeln!(
-                f,
-                "{lp:>width$}   ┤ {}",
-                items[i as usize],
-                lp = "",
-                width = (dmax as usize + 1) * TAB_WIDTH
-            )?;
-        }
-    } else {
-        writeln!(f, "")?;
-    }
-    Ok(())
-}
-
 impl<T> Display for Deck<T>
 where
     T: Default + Display,
@@ -355,11 +304,45 @@ where
             return writeln!(f, "<empty_deck>");
         }
         let dmax = self.max_depth();
-        for [m, next] in self.marks.array_windows::<2>() {
-            fmt_mark_line(m, dmax, next.pos, &self.items, f)?;
-        }
-        if let Some(m) = self.marks.last() {
-            fmt_mark_line(m, dmax, self.items.len() as u64, &self.items, f)?;
+        for (mi, m) in self.marks.iter().enumerate() {
+            let next_pos = self
+                .marks
+                .get(mi + 1)
+                .map(|m| m.pos)
+                .unwrap_or(self.items.len() as u64);
+            const TAB_WIDTH: usize = 3;
+            write!(
+                f,
+                "{lp:>width$}",
+                lp = "",
+                width = ((dmax - m.depth) as usize) * TAB_WIDTH
+            )?;
+            let d_current = m.depth + 1;
+            write!(
+                f,
+                "{d:>3} {rp:─>rw$}",
+                d = d_current,
+                rp = "┤",
+                rw = (d_current as usize) * TAB_WIDTH
+            )?;
+            if m.pos < next_pos {
+                let end = next_pos.min(self.items.len() as u64);
+                let mut iter = m.pos..end;
+                if let Some(i) = iter.next() {
+                    writeln!(f, " {}", self.items[i as usize])?;
+                }
+                for i in iter {
+                    writeln!(
+                        f,
+                        "{lp:>width$}   ┤ {}",
+                        self.items[i as usize],
+                        lp = "",
+                        width = (dmax as usize + 1) * TAB_WIDTH
+                    )?;
+                }
+            } else {
+                writeln!(f, "")?;
+            }
         }
         Ok(())
     }
@@ -386,7 +369,7 @@ fn mark_pos(marks: &[Mark], n_items: usize, idx: usize) -> usize {
 
 /// A view into a `Deck`. At depth >= 1, `start`/`end` are mark indices.
 /// At depth 0, they are item indices.
-pub struct View<'a, T>
+pub struct DeckView<'a, T>
 where
     T: Default,
 {
@@ -399,7 +382,7 @@ where
     end: usize,
 }
 
-impl<'a, T> View<'a, T>
+impl<'a, T> DeckView<'a, T>
 where
     T: Default,
 {
@@ -408,46 +391,46 @@ where
     }
 
     pub fn len(&self) -> usize {
-        if self.depth == 0 {
-            self.end - self.start
+        if self.start >= self.end {
+            0
+        } else if self.depth == 0 {
+            1
         } else {
-            mark_pos(self.marks, self.items.len(), self.end)
-                - mark_pos(self.marks, self.items.len(), self.start)
-        }
-    }
-
-    pub fn children(&self) -> View<'a, T> {
-        if self.depth == 1 {
-            // Convert from mark indices to item indices.
-            View {
-                items: self.items,
-                marks: self.marks,
-                strides: self.strides,
-                stride_offsets: self.stride_offsets,
-                depth: 0,
-                start: mark_pos(self.marks, self.items.len(), self.start),
-                end: mark_pos(self.marks, self.items.len(), self.end),
-            }
-        } else {
-            View {
-                items: self.items,
-                marks: self.marks,
-                strides: self.strides,
-                stride_offsets: self.stride_offsets,
-                depth: self.depth - 1,
-                start: self.start,
-                end: self.end,
-            }
+            let start = mark_pos(self.marks, self.items.len(), self.start);
+            let end = mark_pos(
+                self.marks,
+                self.items.len(),
+                self.start
+                    + stride(
+                        self.marks,
+                        self.strides,
+                        self.stride_offsets,
+                        self.start,
+                        self.depth - 1,
+                    ),
+            );
+            return end - start;
         }
     }
 
     pub fn as_slice(&self) -> &[T] {
         if self.depth == 0 {
-            &self.items[self.start..self.end]
+            &self.items[self.start..(self.start + 1)]
         } else {
-            let i_start = mark_pos(self.marks, self.items.len(), self.start);
-            let i_end = mark_pos(self.marks, self.items.len(), self.end);
-            &self.items[i_start..i_end]
+            let start = mark_pos(self.marks, self.items.len(), self.start);
+            let end = mark_pos(
+                self.marks,
+                self.items.len(),
+                self.start
+                    + stride(
+                        self.marks,
+                        self.strides,
+                        self.stride_offsets,
+                        self.start,
+                        self.depth - 1,
+                    ),
+            );
+            &self.items[start..end]
         }
     }
 
@@ -458,60 +441,99 @@ where
             &self.items[self.marks[self.start].pos as usize]
         }
     }
-}
 
-impl<'a, T> Iterator for View<'a, T>
-where
-    T: Default,
-{
-    type Item = View<'a, T>;
-
-    fn next(&mut self) -> Option<Self::Item> {
+    pub fn child(&self) -> DeckView<'a, T> {
         if self.depth == 0 {
-            if self.start < self.end {
-                let pos = self.start;
-                self.start = pos + 1;
-                Some(View {
-                    items: self.items,
-                    marks: self.marks,
-                    strides: self.strides,
-                    stride_offsets: self.stride_offsets,
-                    depth: 0,
-                    start: pos,
-                    end: pos + 1,
-                })
-            } else {
-                None
+            DeckView {
+                items: self.items,
+                marks: self.marks,
+                strides: self.strides,
+                stride_offsets: self.stride_offsets,
+                depth: self.depth,
+                start: self.start,
+                end: self.end,
+            }
+        } else if self.depth < 2 {
+            DeckView {
+                items: self.items,
+                marks: self.marks,
+                strides: self.strides,
+                stride_offsets: self.stride_offsets,
+                depth: 0,
+                start: mark_pos(self.marks, self.items.len(), self.start),
+                end: mark_pos(
+                    self.marks,
+                    self.items.len(),
+                    self.start
+                        + stride(
+                            self.marks,
+                            self.strides,
+                            self.stride_offsets,
+                            self.start,
+                            self.depth - 1,
+                        ),
+                ),
             }
         } else {
-            if self.start < self.end {
-                let mi = self.start;
-                let s = stride(
-                    self.marks,
-                    self.strides,
-                    self.stride_offsets,
-                    mi,
-                    self.depth - 1,
-                );
-                let next_mi = (mi + s).min(self.end);
-                self.start = next_mi;
-                Some(View {
+            DeckView {
+                items: self.items,
+                marks: self.marks,
+                strides: self.strides,
+                stride_offsets: self.stride_offsets,
+                depth: self.depth - 1,
+                start: self.start,
+                end: self.start
+                    + stride(
+                        self.marks,
+                        self.strides,
+                        self.stride_offsets,
+                        self.start,
+                        self.depth - 1,
+                    ),
+            }
+        }
+    }
+
+    pub fn advance(&mut self) -> bool {
+        if self.start >= self.end {
+            return false;
+        } else if self.depth == 0 {
+            self.start += 1;
+        } else {
+            self.start += stride(
+                self.marks,
+                self.strides,
+                self.stride_offsets,
+                self.start,
+                self.depth - 1,
+            );
+        }
+        self.start < self.end
+    }
+
+    pub fn advance_iter(mut self) -> impl Iterator<Item = DeckView<'a, T>> {
+        let mut valid = true;
+        std::iter::from_fn(move || {
+            if valid && self.start < self.end {
+                let copy = DeckView {
                     items: self.items,
                     marks: self.marks,
                     strides: self.strides,
                     stride_offsets: self.stride_offsets,
                     depth: self.depth,
-                    start: mi,
-                    end: next_mi,
-                })
+                    start: self.start,
+                    end: self.end,
+                };
+                valid = self.advance();
+                Some(copy)
             } else {
                 None
             }
-        }
+        })
     }
 }
 
-impl<'a, T> Index<usize> for View<'a, T>
+impl<'a, T> Index<usize> for DeckView<'a, T>
 where
     T: Default,
 {
@@ -525,7 +547,7 @@ where
 
 /// A view into a `Deck`. At depth >= 1, `start`/`end` are mark indices.
 /// At depth 0, they are item indices.
-pub struct ViewMut<'a, T>
+pub struct DeckWriter<'a, T>
 where
     T: Default,
 {
@@ -535,13 +557,13 @@ where
     start: usize,
 }
 
-impl<'a, T> ViewMut<'a, T>
+impl<'a, T> DeckWriter<'a, T>
 where
     T: Default,
 {
-    pub fn push_child(&mut self) -> ViewMut<'_, T> {
+    pub fn child(&mut self) -> DeckWriter<'_, T> {
         let start = self.deck.len();
-        ViewMut {
+        DeckWriter {
             deck: self.deck,
             depth: self.depth - 1,
             next_depth: self.next_depth.take().or(Some(self.depth - 1)),
@@ -583,10 +605,10 @@ where
 }
 
 /**
-If a view is created, and dropped with no items inserted, it should still insert
+If a DeckWriter is created, and dropped with no items inserted, it should still insert
 it's mark to indicate an empty array.
  */
-impl<'a, T> Drop for ViewMut<'a, T>
+impl<'a, T> Drop for DeckWriter<'a, T>
 where
     T: Default,
 {
@@ -597,7 +619,7 @@ where
     }
 }
 
-impl<'a, T> Extend<T> for ViewMut<'a, T>
+impl<'a, T> Extend<T> for DeckWriter<'a, T>
 where
     T: Default,
 {
@@ -608,7 +630,7 @@ where
     }
 }
 
-impl<'a, T> IndexMut<usize> for ViewMut<'a, T>
+impl<'a, T> IndexMut<usize> for DeckWriter<'a, T>
 where
     T: Default,
 {
@@ -618,7 +640,7 @@ where
     }
 }
 
-impl<'a, T> Index<usize> for ViewMut<'a, T>
+impl<'a, T> Index<usize> for DeckWriter<'a, T>
 where
     T: Default,
 {
@@ -695,9 +717,11 @@ mod test {
     /// Collect depth-3 tree: all depth-2 groups, each with their depth-1 children.
     fn tree3(deck: &Deck<u32>) -> Vec<Vec<Vec<u32>>> {
         deck.view(3)
-            .flat_map(|v| v.children())
+            .advance_iter()
+            .flat_map(|v| v.child().advance_iter())
             .map(|v2| {
-                v2.children()
+                v2.child()
+                    .advance_iter()
                     .map(|v1| v1.as_slice().to_vec())
                     .collect::<Vec<_>>()
             })
@@ -707,45 +731,41 @@ mod test {
     /// Collect depth-2 tree: all depth-1 children across all depth-2 groups.
     fn tree2(deck: &Deck<u32>) -> Vec<Vec<u32>> {
         deck.view(2)
-            .flat_map(|v| v.children())
+            .advance_iter()
+            .flat_map(|v2| v2.child().advance_iter())
             .map(|v1| v1.as_slice().to_vec())
             .collect()
     }
 
     #[test]
     fn t_basic_ops() {
-        const DEPTH: u8 = 5;
-        let deck = binary_deck(DEPTH);
-        assert_eq!(deck.len(), 1 << DEPTH);
-        assert_eq!(deck.max_depth(), DEPTH);
+        let deck = binary_deck(5);
+        assert_eq!(deck.len(), 1 << 5);
+        assert_eq!(deck.max_depth(), 5);
         {
             // Iterate from level 5.
             let mut counter = 0;
-            let v5 = deck.view(DEPTH);
-            assert_eq!(v5.depth(), 5);
-            for v4 in v5.children() {
-                assert_eq!(v4.depth(), 4);
-                for v3 in v4.children() {
-                    assert_eq!(v3.depth(), 3);
-                    for v2 in v3.children() {
-                        assert_eq!(v2.depth(), 2);
-                        for v1 in v2.children() {
-                            assert_eq!(v1.depth(), 1);
-                            // First iterate over v0 references.
-                            let prev = counter;
-                            for v0 in v1.children() {
-                                assert_eq!(v0.depth(), 0);
-                                assert_eq!(v0.len(), 1);
-                                assert_eq!(v0.as_ref(), &counter);
-                                counter += 1;
-                            }
-                            counter = prev;
-                            // Extract slice and iterate over the slice.
-                            let v1 = v1.as_slice();
-                            assert_eq!(v1.len(), 2);
-                            for val in v1 {
-                                assert_eq!(*val, counter);
-                                counter += 1;
+            for v5 in deck.view(5).advance_iter() {
+                assert_eq!(v5.depth(), 5);
+                assert_eq!(v5.len(), 32);
+                for v4 in v5.child().advance_iter() {
+                    assert_eq!(v4.depth(), 4);
+                    assert_eq!(v4.len(), 16);
+                    for v3 in v4.child().advance_iter() {
+                        assert_eq!(v3.depth(), 3);
+                        assert_eq!(v3.len(), 8);
+                        for v2 in v3.child().advance_iter() {
+                            assert_eq!(v2.depth(), 2);
+                            assert_eq!(v2.len(), 4);
+                            for v1 in v2.child().advance_iter() {
+                                assert_eq!(v1.depth(), 1);
+                                // First iterate over v0 references.
+                                for v0 in v1.child().advance_iter() {
+                                    assert_eq!(v0.depth(), 0);
+                                    assert_eq!(v0.len(), 1);
+                                    assert_eq!(v0.as_ref(), &counter);
+                                    counter += 1;
+                                }
                             }
                         }
                     }
@@ -755,29 +775,21 @@ mod test {
         {
             // Iterate from level 4.
             let mut counter = 0;
-            let v4 = deck.view(DEPTH - 1);
-            assert_eq!(v4.depth(), 4);
-            for v3 in v4.children() {
-                assert_eq!(v3.depth(), 3);
-                for v2 in v3.children() {
-                    assert_eq!(v2.depth(), 2);
-                    for v1 in v2.children() {
-                        assert_eq!(v1.depth(), 1);
-                        // First iterate over v0 references.
-                        let prev = counter;
-                        for v0 in v1.children() {
-                            assert_eq!(v0.depth(), 0);
-                            assert_eq!(v0.len(), 1);
-                            assert_eq!(v0.as_ref(), &counter);
-                            counter += 1;
-                        }
-                        counter = prev;
-                        // Extract slice and iterate over the slice.
-                        let v1 = v1.as_slice();
-                        assert_eq!(v1.len(), 2);
-                        for val in v1 {
-                            assert_eq!(*val, counter);
-                            counter += 1;
+            for v4 in deck.view(4).advance_iter() {
+                assert_eq!(v4.depth(), 4);
+                for v3 in v4.child().advance_iter() {
+                    assert_eq!(v3.depth(), 3);
+                    for v2 in v3.child().advance_iter() {
+                        assert_eq!(v2.depth(), 2);
+                        for v1 in v2.child().advance_iter() {
+                            assert_eq!(v1.depth(), 1);
+                            // First iterate over v0 references.
+                            for v0 in v1.child().advance_iter() {
+                                assert_eq!(v0.depth(), 0);
+                                assert_eq!(v0.len(), 1);
+                                assert_eq!(v0.as_ref(), &counter);
+                                counter += 1;
+                            }
                         }
                     }
                 }
@@ -786,27 +798,19 @@ mod test {
         {
             // Iterate from level 3.
             let mut counter = 0;
-            let v3 = deck.view(DEPTH - 2);
-            assert_eq!(v3.depth(), 3);
-            for v2 in v3.children() {
-                assert_eq!(v2.depth(), 2);
-                for v1 in v2.children() {
-                    assert_eq!(v1.depth(), 1);
-                    // First iterate over v0 references.
-                    let prev = counter;
-                    for v0 in v1.children() {
-                        assert_eq!(v0.depth(), 0);
-                        assert_eq!(v0.len(), 1);
-                        assert_eq!(v0.as_ref(), &counter);
-                        counter += 1;
-                    }
-                    counter = prev;
-                    // Extract slice and iterate over the slice.
-                    let v1 = v1.as_slice();
-                    assert_eq!(v1.len(), 2);
-                    for val in v1 {
-                        assert_eq!(*val, counter);
-                        counter += 1;
+            for v3 in deck.view(3).advance_iter() {
+                assert_eq!(v3.depth(), 3);
+                for v2 in v3.child().advance_iter() {
+                    assert_eq!(v2.depth(), 2);
+                    for v1 in v2.child().advance_iter() {
+                        assert_eq!(v1.depth(), 1);
+                        // First iterate over v0 references.
+                        for v0 in v1.child().advance_iter() {
+                            assert_eq!(v0.depth(), 0);
+                            assert_eq!(v0.len(), 1);
+                            assert_eq!(v0.as_ref(), &counter);
+                            counter += 1;
+                        }
                     }
                 }
             }
@@ -855,14 +859,14 @@ mod test {
         let empty = Deck::<usize>::default();
         assert_eq!(empty.len(), 0);
         assert_eq!(empty.max_depth(), 0);
-        assert_eq!(empty.view(0).count(), 0);
+        assert_eq!(empty.view(0).advance_iter().count(), 0);
         // Single element at depth 0 (bare leaf).
         let mut d = Deck::default();
         d.push(42usize, 0);
         assert_eq!(d.len(), 1);
         assert_eq!(d.max_depth(), 0);
         assert!(d.marks.is_empty());
-        let mut v = d.view(0);
+        let mut v = d.view(0).advance_iter();
         let item = v.next().unwrap();
         assert_eq!(item.as_ref(), &42);
         assert!(v.next().is_none());
@@ -870,8 +874,8 @@ mod test {
         let mut d = Deck::default();
         d.push(7usize, 1);
         assert_eq!(d.max_depth(), 1);
-        assert_eq!(d.view(1).count(), 1);
-        assert_eq!(d.view(1).next().unwrap().as_slice(), &[7]);
+        assert_eq!(d.view(1).advance_iter().count(), 1);
+        assert_eq!(d.view(1).advance_iter().next().unwrap().as_slice(), &[7]);
         // clear() resets everything.
         let mut d = binary_deck(3);
         d.clear();
@@ -882,7 +886,7 @@ mod test {
         d.push(2usize, 0);
         assert_eq!(d.len(), 2);
         assert_eq!(d.max_depth(), 1);
-        assert_eq!(d.view(1).next().unwrap().as_slice(), &[1, 2]);
+        assert_eq!(d.view(1).advance_iter().next().unwrap().as_slice(), &[1, 2]);
     }
 
     #[test]
@@ -897,9 +901,9 @@ mod test {
         assert_eq!(d.marks[0].depth, 0);
         assert_eq!(d.marks[0].pos, 0);
         // Iterating at depth 1 yields all elements as one flat group.
-        assert_eq!(d.view(1).count(), 1);
+        assert_eq!(d.view(1).advance_iter().count(), 1);
         assert_eq!(
-            d.view(1).next().unwrap().as_slice(),
+            d.view(1).advance_iter().next().unwrap().as_slice(),
             items_before.as_slice()
         );
         // Flatten a single-element deck: no marks needed.
@@ -930,11 +934,11 @@ mod test {
         // Iteration still produces correct sequential values after graft:
         // The deck is now a depth-4 structure; iterating at depth 4 gives 2 groups.
         let mut counter = 0usize;
-        for v3 in d.view(4).children() {
+        for v3 in d.view(4).child().advance_iter() {
             assert_eq!(v3.depth(), 3);
-            for v2 in v3.children() {
+            for v2 in v3.child().advance_iter() {
                 assert_eq!(v2.depth(), 2);
-                for v1 in v2.children() {
+                for v1 in v2.child().advance_iter() {
                     assert_eq!(v1.depth(), 1);
                     assert_eq!(v1.len(), 1);
                     for val in v1.as_slice() {
@@ -973,9 +977,9 @@ mod test {
         assert_eq!(d.max_depth(), 2);
         assert_eq!(mark_depths(&d), vec![1, 0]);
         // Iteration still works correctly after remapping.
-        assert_eq!(d.view(2).count(), 1);
+        assert_eq!(d.view(2).advance_iter().count(), 1);
         let mut counter = 0usize;
-        for v1 in d.view(2).children() {
+        for v1 in d.view(2).child().advance_iter() {
             for val in v1.as_slice() {
                 assert_eq!(*val, counter);
                 counter += 1;
@@ -997,7 +1001,7 @@ mod test {
         assert_eq!(d.max_depth(), 1);
         assert_eq!(d.marks.len(), 1);
         // Iterating at depth 1 yields one group with zero items.
-        let groups: Vec<_> = d.view(1).collect();
+        let groups: Vec<_> = d.view(1).advance_iter().collect();
         assert_eq!(groups.len(), 1);
         assert_eq!(groups[0].as_slice(), &[]);
         assert_eq!(groups[0].len(), 0);
@@ -1014,9 +1018,9 @@ mod test {
         assert_eq!(d.items, vec![1, 2, 3, 4]);
         assert_eq!(mark_positions(&d), vec![0, 2, 2]);
         // Iterating: one outer group containing 3 inner groups.
-        let outer: Vec<_> = d.view(2).collect();
+        let outer: Vec<_> = d.view(2).advance_iter().collect();
         assert_eq!(outer.len(), 1);
-        let inner: Vec<_> = outer[0].children().collect();
+        let inner: Vec<_> = outer[0].child().advance_iter().collect();
         assert_eq!(inner.len(), 3);
         assert_eq!(inner[0].as_slice(), &[1, 2]);
         assert_eq!(inner[1].as_slice(), &[]); // the empty list
@@ -1031,9 +1035,9 @@ mod test {
         d.push(3, 1); // third inner group
         d.push(4, 0);
         assert_eq!(d.items, vec![1, 2, 3, 4]);
-        let outer: Vec<_> = d.view(2).collect();
+        let outer: Vec<_> = d.view(2).advance_iter().collect();
         assert_eq!(outer.len(), 1);
-        let inner: Vec<_> = outer[0].children().collect();
+        let inner: Vec<_> = outer[0].child().advance_iter().collect();
         assert_eq!(inner.len(), 3);
         assert_eq!(inner[0].as_slice(), &[]);
         assert_eq!(inner[1].as_slice(), &[1, 2]);
@@ -1047,9 +1051,9 @@ mod test {
         d.push(4, 0);
         d.start_new_arr(1); // empty last inner group
         assert_eq!(d.items, vec![1, 2, 3, 4]);
-        let outer: Vec<_> = d.view(2).collect();
+        let outer: Vec<_> = d.view(2).advance_iter().collect();
         assert_eq!(outer.len(), 1);
-        let inner: Vec<_> = outer[0].children().collect();
+        let inner: Vec<_> = outer[0].child().advance_iter().collect();
         assert_eq!(inner.len(), 3);
         assert_eq!(inner[0].as_slice(), &[1, 2]);
         assert_eq!(inner[1].as_slice(), &[3, 4]);
@@ -1062,9 +1066,9 @@ mod test {
         d.start_new_arr(1);
         assert_eq!(d.len(), 0);
         assert_eq!(d.max_depth(), 2);
-        let outer: Vec<_> = d.view(2).collect();
+        let outer: Vec<_> = d.view(2).advance_iter().collect();
         assert_eq!(outer.len(), 1);
-        let inner: Vec<_> = outer[0].children().collect();
+        let inner: Vec<_> = outer[0].child().advance_iter().collect();
         assert_eq!(inner.len(), 3);
         for group in &inner {
             assert_eq!(group.as_slice(), &[]);
@@ -1078,17 +1082,17 @@ mod test {
         d.push(3, 2); // second depth-2 group
         d.push(4, 0);
         assert_eq!(d.max_depth(), 3);
-        let top: Vec<_> = d.view(3).collect();
+        let top: Vec<_> = d.view(3).advance_iter().collect();
         assert_eq!(top.len(), 1);
-        let mid: Vec<_> = top[0].children().collect();
+        let mid: Vec<_> = top[0].child().advance_iter().collect();
         assert_eq!(mid.len(), 2);
         // First mid group: ((1, 2), ())
-        let first_inner: Vec<_> = mid[0].children().collect();
+        let first_inner: Vec<_> = mid[0].child().advance_iter().collect();
         assert_eq!(first_inner.len(), 2);
         assert_eq!(first_inner[0].as_slice(), &[1, 2]);
         assert_eq!(first_inner[1].as_slice(), &[]);
         // Second mid group: ((3, 4))
-        let second_inner: Vec<_> = mid[1].children().collect();
+        let second_inner: Vec<_> = mid[1].child().advance_iter().collect();
         assert_eq!(second_inner.len(), 1);
         assert_eq!(second_inner[0].as_slice(), &[3, 4]);
         // Flatten preserves items but drops empty structure.
@@ -1101,7 +1105,10 @@ mod test {
         d.flatten();
         assert_eq!(d.items, vec![1, 2, 3, 4]);
         assert_eq!(d.max_depth(), 1);
-        assert_eq!(d.view(1).next().unwrap().as_slice(), &[1, 2, 3, 4]);
+        assert_eq!(
+            d.view(1).advance_iter().next().unwrap().as_slice(),
+            &[1, 2, 3, 4]
+        );
     }
 
     #[test]
@@ -1110,9 +1117,9 @@ mod test {
         let d = deck![[1usize, 2], [], [3, 4]];
         assert_eq!(d.items, vec![1, 2, 3, 4]);
         assert_eq!(d.max_depth(), 2);
-        let outer: Vec<_> = d.view(2).collect();
+        let outer: Vec<_> = d.view(2).advance_iter().collect();
         assert_eq!(outer.len(), 1);
-        let inner: Vec<_> = outer[0].children().collect();
+        let inner: Vec<_> = outer[0].child().advance_iter().collect();
         assert_eq!(inner.len(), 3);
         assert_eq!(inner[0].as_slice(), &[1, 2]);
         assert_eq!(inner[1].as_slice(), &[]);
@@ -1121,13 +1128,27 @@ mod test {
         let d = deck![[], [1usize, 2]];
         assert_eq!(d.items, vec![1, 2]);
         assert_eq!(d.max_depth(), 2);
-        let inner: Vec<_> = d.view(2).next().unwrap().children().collect();
+        let inner: Vec<_> = d
+            .view(2)
+            .advance_iter()
+            .next()
+            .unwrap()
+            .child()
+            .advance_iter()
+            .collect();
         assert_eq!(inner.len(), 2);
         assert_eq!(inner[0].as_slice(), &[]);
         assert_eq!(inner[1].as_slice(), &[1, 2]);
         // Empty group at the end: [[1, 2], []]
         let d = deck![[1usize, 2], []];
-        let inner: Vec<_> = d.view(2).next().unwrap().children().collect();
+        let inner: Vec<_> = d
+            .view(2)
+            .advance_iter()
+            .next()
+            .unwrap()
+            .child()
+            .advance_iter()
+            .collect();
         assert_eq!(inner.len(), 2);
         assert_eq!(inner[0].as_slice(), &[1, 2]);
         assert_eq!(inner[1].as_slice(), &[]);
@@ -1135,7 +1156,14 @@ mod test {
         let d: Deck<i32> = deck![[], [], []];
         assert_eq!(d.len(), 0);
         assert_eq!(d.max_depth(), 2);
-        let inner: Vec<_> = d.view(2).next().unwrap().children().collect();
+        let inner: Vec<_> = d
+            .view(2)
+            .advance_iter()
+            .next()
+            .unwrap()
+            .child()
+            .advance_iter()
+            .collect();
         assert_eq!(inner.len(), 3);
         for g in &inner {
             assert_eq!(g.as_slice(), &[] as &[i32]);
@@ -1144,19 +1172,33 @@ mod test {
         let d: Deck<i32> = deck![[]];
         assert_eq!(d.len(), 0);
         assert_eq!(d.max_depth(), 2);
-        let inner: Vec<_> = d.view(2).next().unwrap().children().collect();
+        let inner: Vec<_> = d
+            .view(2)
+            .advance_iter()
+            .next()
+            .unwrap()
+            .child()
+            .advance_iter()
+            .collect();
         assert_eq!(inner.len(), 1);
         assert_eq!(inner[0].as_slice(), &[] as &[i32]);
         // Depth-3 with empty: [[[1, 2], []], [[3, 4]]]
         let d = deck![[[1usize, 2], []], [[3, 4]]];
         assert_eq!(d.max_depth(), 3);
-        let mid: Vec<_> = d.view(3).next().unwrap().children().collect();
+        let mid: Vec<_> = d
+            .view(3)
+            .advance_iter()
+            .next()
+            .unwrap()
+            .child()
+            .advance_iter()
+            .collect();
         assert_eq!(mid.len(), 2);
-        let first: Vec<_> = mid[0].children().collect();
+        let first: Vec<_> = mid[0].child().advance_iter().collect();
         assert_eq!(first.len(), 2);
         assert_eq!(first[0].as_slice(), &[1, 2]);
         assert_eq!(first[1].as_slice(), &[]);
-        let second: Vec<_> = mid[1].children().collect();
+        let second: Vec<_> = mid[1].child().advance_iter().collect();
         assert_eq!(second.len(), 1);
         assert_eq!(second[0].as_slice(), &[3, 4]);
         // Matches the manual construction from t_empty_lists.
@@ -1173,17 +1215,17 @@ mod test {
     }
 
     #[test]
-    fn t_view_mut_basic() {
+    fn t_deck_writer_basic() {
         let mut deck: Deck<u32> = Deck::default();
         let mut counter = 0u32;
         {
-            let mut dst3 = deck.view_mut(3);
+            let mut dst3 = deck.writer(3);
             assert_eq!(dst3.depth, 3);
             for _ in 0..3 {
-                let mut dst2 = dst3.push_child();
+                let mut dst2 = dst3.child();
                 assert_eq!(dst2.depth, 2);
                 for _ in 0..3 {
-                    let mut dst1 = dst2.push_child();
+                    let mut dst1 = dst2.child();
                     assert_eq!(dst1.depth, 1);
                     for _ in 0..3 {
                         dst1.push(counter);
@@ -1209,10 +1251,14 @@ mod test {
                 vec![vec![18, 19, 20], vec![21, 22, 23], vec![24, 25, 26]],
             ]
         );
-        for v2 in deck.view(3).flat_map(|g| g.children()) {
+        for v2 in deck
+            .view(3)
+            .advance_iter()
+            .flat_map(|g| g.child().advance_iter())
+        {
             // View::Index
             assert_eq!(v2[0], counter);
-            for v1 in v2.children() {
+            for v1 in v2.child().advance_iter() {
                 let arr = v1.as_slice();
                 // View::Index
                 assert_eq!(v1[0], counter);
@@ -1225,17 +1271,17 @@ mod test {
     }
 
     #[test]
-    fn t_view_mut_with_extend() {
+    fn t_deck_writer_with_extend() {
         let mut deck: Deck<u32> = Deck::default();
         let mut counter = 0u32;
         {
-            let mut dst3 = deck.view_mut(3);
+            let mut dst3 = deck.writer(3);
             assert_eq!(dst3.depth, 3);
             for _ in 0..3 {
-                let mut dst2 = dst3.push_child();
+                let mut dst2 = dst3.child();
                 assert_eq!(dst2.depth, 2);
                 for _ in 0..3 {
-                    let mut dst1 = dst2.push_child();
+                    let mut dst1 = dst2.child();
                     assert_eq!(dst1.depth, 1);
                     dst1.extend_from_slice(&[counter, counter + 1, counter + 2]);
                     counter += 3;
@@ -1249,8 +1295,12 @@ mod test {
         }
         // Read and check.
         counter = 0;
-        for v2 in deck.view(3).flat_map(|g| g.children()) {
-            for v1 in v2.children() {
+        for v2 in deck
+            .view(3)
+            .advance_iter()
+            .flat_map(|g| g.child().advance_iter())
+        {
+            for v1 in v2.child().advance_iter() {
                 let arr = v1.as_slice();
                 for val in arr {
                     assert_eq!(*val, counter);
@@ -1265,19 +1315,19 @@ mod test {
         // Asymmetric: ((1), (2, 3, 4), (5, 6))
         let mut deck: Deck<u32> = Deck::default();
         {
-            let mut dst = deck.view_mut(2);
+            let mut dst = deck.writer(2);
             {
-                let mut c = dst.push_child();
+                let mut c = dst.child();
                 c.push(1);
             }
             {
-                let mut c = dst.push_child();
+                let mut c = dst.child();
                 c.push(2);
                 c.push(3);
                 c.push(4);
             }
             {
-                let mut c = dst.push_child();
+                let mut c = dst.child();
                 c.push(5);
                 c.push(6);
             }
@@ -1286,28 +1336,28 @@ mod test {
     }
 
     #[test]
-    fn t_empty_groups_via_view_mut() {
+    fn t_empty_groups_via_deck_writer() {
         // Build ((), (1, 2), (), (3), ()) via ViewMut
         let mut deck: Deck<u32> = Deck::default();
         {
-            let mut dst = deck.view_mut(2);
+            let mut dst = deck.writer(2);
             {
-                dst.push_child();
+                dst.child();
             } // empty
             {
-                let mut c = dst.push_child();
+                let mut c = dst.child();
                 c.push(1);
                 c.push(2);
             }
             {
-                dst.push_child();
+                dst.child();
             } // empty
             {
-                let mut c = dst.push_child();
+                let mut c = dst.child();
                 c.push(3);
             }
             {
-                dst.push_child();
+                dst.child();
             } // empty
         }
         assert_eq!(
@@ -1318,33 +1368,33 @@ mod test {
     }
 
     #[test]
-    fn t_nested_empty_via_view_mut() {
+    fn t_nested_empty_via_deck_writer() {
         // Build (((), (1, 2)), ((3,)), ((),)) via ViewMut — depth 3
         let mut deck: Deck<u32> = Deck::default();
         {
-            let mut dst3 = deck.view_mut(3);
+            let mut dst3 = deck.writer(3);
             {
-                let mut dst2 = dst3.push_child();
+                let mut dst2 = dst3.child();
                 {
-                    dst2.push_child();
+                    dst2.child();
                 } // empty inner
                 {
-                    let mut dst1 = dst2.push_child();
+                    let mut dst1 = dst2.child();
                     dst1.push(1);
                     dst1.push(2);
                 }
             }
             {
-                let mut dst2 = dst3.push_child();
+                let mut dst2 = dst3.child();
                 {
-                    let mut dst1 = dst2.push_child();
+                    let mut dst1 = dst2.child();
                     dst1.push(3);
                 }
             }
             {
-                let mut dst2 = dst3.push_child();
+                let mut dst2 = dst3.child();
                 {
-                    dst2.push_child();
+                    dst2.child();
                 } // empty inner
             }
         }
@@ -1359,21 +1409,21 @@ mod test {
         // Extend with empty slice should create an empty group.
         let mut deck: Deck<u32> = Deck::default();
         {
-            let mut dst = deck.view_mut(2);
+            let mut dst = deck.writer(2);
             {
-                let mut c = dst.push_child();
+                let mut c = dst.child();
                 c.extend_from_slice(&[1, 2]);
             }
             {
-                let mut c = dst.push_child();
+                let mut c = dst.child();
                 c.extend_from_slice(&[]); // empty extend
             }
             {
-                let mut c = dst.push_child();
+                let mut c = dst.child();
                 c.extend(std::iter::empty::<u32>()); // empty Extend trait
             }
             {
-                let mut c = dst.push_child();
+                let mut c = dst.child();
                 c.extend_from_slice(&[3]);
             }
         }
@@ -1385,11 +1435,11 @@ mod test {
         // One item wrapped at depth 5: (((((42)))))
         let mut deck: Deck<u32> = Deck::default();
         {
-            let mut v5 = deck.view_mut(5);
-            let mut v4 = v5.push_child();
-            let mut v3 = v4.push_child();
-            let mut v2 = v3.push_child();
-            let mut v1 = v2.push_child();
+            let mut v5 = deck.writer(5);
+            let mut v4 = v5.child();
+            let mut v3 = v4.child();
+            let mut v2 = v3.child();
+            let mut v1 = v2.child();
             v1.push(42);
         }
         assert_eq!(deck.max_depth(), 5);
@@ -1397,9 +1447,10 @@ mod test {
         // Unwrap all the way down via children().
         let leaf = deck
             .view(5)
-            .flat_map(|g| g.children())
-            .flat_map(|g| g.children())
-            .flat_map(|g| g.children())
+            .advance_iter()
+            .flat_map(|g| g.child().advance_iter())
+            .flat_map(|g| g.child().advance_iter())
+            .flat_map(|g| g.child().advance_iter())
             .next()
             .unwrap();
         assert_eq!(leaf.as_slice(), &[42]);
@@ -1407,7 +1458,7 @@ mod test {
 
     #[test]
     fn t_append_to_existing() {
-        // Build some data manually, then append more via view_mut.
+        // Build some data manually, then append more via deck_writer.
         let mut deck: Deck<u32> = Deck::default();
         deck.push(1, 2);
         deck.push(2, 0);
@@ -1417,7 +1468,7 @@ mod test {
         assert_eq!(tree2(&deck), vec![vec![1, 2], vec![3, 4]]);
         // Append another group at depth 1 (same outer group).
         {
-            let mut dst = deck.view_mut(1);
+            let mut dst = deck.writer(1);
             dst.push(5);
             dst.push(6);
         }
@@ -1430,11 +1481,11 @@ mod test {
         // Build a depth-3 tree and iterate at depth 2 (flattened view).
         let mut deck: Deck<u32> = Deck::default();
         {
-            let mut dst3 = deck.view_mut(3);
+            let mut dst3 = deck.writer(3);
             for i in 0..2u32 {
-                let mut dst2 = dst3.push_child();
+                let mut dst2 = dst3.child();
                 for j in 0..2u32 {
-                    let mut dst1 = dst2.push_child();
+                    let mut dst1 = dst2.child();
                     dst1.push(i * 4 + j * 2);
                     dst1.push(i * 4 + j * 2 + 1);
                 }
@@ -1451,23 +1502,27 @@ mod test {
             vec![vec![0, 1], vec![2, 3], vec![4, 5], vec![6, 7]]
         );
         // depth-1 view: 4 groups of 2 (each mark starts a depth-1 group)
-        let flat: Vec<_> = deck.view(1).map(|v| v.as_slice().to_vec()).collect();
+        let flat: Vec<_> = deck
+            .view(1)
+            .advance_iter()
+            .map(|v| v.as_slice().to_vec())
+            .collect();
         assert_eq!(flat, vec![vec![0, 1], vec![2, 3], vec![4, 5], vec![6, 7]]);
     }
 
     #[test]
-    fn t_graft_simplify_after_view_mut() {
+    fn t_graft_simplify_after_deck_writer() {
         // Build via ViewMut, then graft, then verify structure.
         let mut deck: Deck<u32> = Deck::default();
         {
-            let mut dst = deck.view_mut(2);
+            let mut dst = deck.writer(2);
             {
-                let mut c = dst.push_child();
+                let mut c = dst.child();
                 c.push(1);
                 c.push(2);
             }
             {
-                let mut c = dst.push_child();
+                let mut c = dst.child();
                 c.push(3);
             }
         }
@@ -1487,24 +1542,24 @@ mod test {
     }
 
     #[test]
-    fn t_all_empty_via_view_mut() {
+    fn t_all_empty_via_deck_writer() {
         // Depth-3 tree with no items at all: (((), ()), (()))
         let mut deck: Deck<u32> = Deck::default();
         {
-            let mut dst3 = deck.view_mut(3);
+            let mut dst3 = deck.writer(3);
             {
-                let mut dst2 = dst3.push_child();
+                let mut dst2 = dst3.child();
                 {
-                    dst2.push_child();
+                    dst2.child();
                 }
                 {
-                    dst2.push_child();
+                    dst2.child();
                 }
             }
             {
-                let mut dst2 = dst3.push_child();
+                let mut dst2 = dst3.child();
                 {
-                    dst2.push_child();
+                    dst2.child();
                 }
             }
         }
@@ -1514,17 +1569,17 @@ mod test {
     }
 
     #[test]
-    fn t_view_mut_len_at_each_level() {
+    fn t_deck_writer_len_at_each_level() {
         // Verify ViewMut::len reflects items added at each scope.
         let mut deck: Deck<u32> = Deck::default();
         {
-            let mut dst3 = deck.view_mut(3);
+            let mut dst3 = deck.writer(3);
             assert_eq!(dst3.len(), 0);
             {
-                let mut dst2 = dst3.push_child();
+                let mut dst2 = dst3.child();
                 assert_eq!(dst2.len(), 0);
                 {
-                    let mut dst1 = dst2.push_child();
+                    let mut dst1 = dst2.child();
                     assert_eq!(dst1.len(), 0);
                     dst1.push(10);
                     assert_eq!(dst1.len(), 1);
@@ -1533,7 +1588,7 @@ mod test {
                 }
                 assert_eq!(dst2.len(), 2);
                 {
-                    let mut dst1 = dst2.push_child();
+                    let mut dst1 = dst2.child();
                     dst1.push(30);
                     assert_eq!(dst1.len(), 1);
                 }
@@ -1541,10 +1596,10 @@ mod test {
             }
             assert_eq!(dst3.len(), 3);
             {
-                let mut dst2 = dst3.push_child();
+                let mut dst2 = dst3.child();
                 assert_eq!(dst2.len(), 0);
                 {
-                    let mut dst1 = dst2.push_child();
+                    let mut dst1 = dst2.child();
                     dst1.push(40);
                 }
                 assert_eq!(dst2.len(), 1);

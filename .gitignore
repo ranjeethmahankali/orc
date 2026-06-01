@@ -34,8 +34,8 @@ Cargo.lock
 
 # C SDK stuff
 
-/sdk/c/build/
-/sdk/c/nob
-/sdk/c/nob.old
-/sdk/c/nob.exe
-/sdk/c/nob.exe.old
+/c/build/
+/c/nob
+/c/nob.old
+/c/nob.exe
+/c/nob.exe.old
