@@ -481,7 +481,7 @@ static void _deck_push_mark(_DeckHeader* h, uint8_t depth, size_t const pos)
   if (n_marks > 0 && depth > h->marks[0].depth) {
     depth = h->marks[0].depth;
   }
-  size_t const n_strides = (size_t)depth + 1;
+  size_t const n_strides = (size_t)depth;
   {  // Make sure we have enough pegs.
     size_t const n_old = arr_len(h->pegs);
     if (n_old < n_strides) {
@@ -498,7 +498,7 @@ static void _deck_push_mark(_DeckHeader* h, uint8_t depth, size_t const pos)
     uint64_t last_depth = 0;
     n                   = arr_len(h->marks);
     if (n > 0) {
-      last_depth = (uint64_t)(h->marks[n - 1].depth) + 1;
+      last_depth = (uint64_t)(h->marks[n - 1].depth);
     }
     size_t const total = last_offset + last_depth;
     arr_push(h->stride_offset, total);
@@ -647,18 +647,18 @@ static void _deck_calc_strides(_DeckHeader* h)
   arr_clear(h->stride_offset);
   arr_clear(h->strides);
   size_t const n_marks = arr_len(h->marks);
-  {  // Exclusive scan of depth + 1.
+  {  // Exclusive scan of depth.
     size_t acc = 0;
     for (size_t i = 0; i < n_marks; ++i) {
       arr_push(h->stride_offset, acc);
-      acc += (size_t)(h->marks[i].depth) + 1;
+      acc += (size_t)(h->marks[i].depth);
     }
   }
   {  // One stride entry per depth level per mark.
     size_t       n           = arr_len(h->stride_offset);
     size_t const last_offset = n > 0 ? h->stride_offset[n - 1] : 0;
     n                        = arr_len(h->marks);
-    size_t const last_depth  = n > 0 ? h->marks[n - 1].depth + 1 : 0;
+    size_t const last_depth  = n > 0 ? h->marks[n - 1].depth : 0;
     size_t const n_total     = last_offset + last_depth;
     size_t const prevlen     = arr_len(h->strides);
     arr_resize(h->strides, n_total);
@@ -666,7 +666,7 @@ static void _deck_calc_strides(_DeckHeader* h)
   }
   {  // Fill strides using pegs.
     for (size_t i = 0; i < n_marks; ++i) {
-      size_t const d = h->marks[i].depth + 1;
+      size_t const d = h->marks[i].depth;
       size_t       n = arr_len(h->pegs);
       if (d > n) {
         arr_resize(h->pegs, d);
@@ -838,11 +838,14 @@ static size_t _stride(OrcMark const*  marks,
                       uint8_t const   depth)
 {
   if (mark_idx < n_marks) {
-    if (depth > marks[mark_idx].depth) {
+    if (depth == 0) {
+      return 1;
+    }
+    else if (depth > marks[mark_idx].depth) {
       return n_marks - mark_idx;
     }
     else {
-      size_t       out   = strides[stride_offset[mark_idx] + depth];
+      size_t       out   = strides[stride_offset[mark_idx] + depth - 1];
       size_t const other = n_marks - mark_idx;
       if (other < out) {
         out = other;

@@ -120,14 +120,14 @@ where
             depth,
             pos: mark.pos,
         };
-        let d = depth as usize + 1; // number of stride levels for this mark
+        let d = depth as usize; // number of stride levels for this mark
         if d > self.pegs.len() {
             self.pegs.resize(d, 0);
         }
         // Update the scan then push the actual marker.
         self.stride_offset.push(
             self.stride_offset.last().copied().unwrap_or(0)
-                + self.marks.last().map(|m| m.depth as u64 + 1).unwrap_or(0),
+                + self.marks.last().map(|m| m.depth as u64).unwrap_or(0),
         );
         // Update strides.
         self.strides.resize(self.strides.len() + d, u64::MAX);
@@ -356,9 +356,10 @@ fn stride(
     depth: u8,
 ) -> usize {
     match marks.get(mark_idx) {
+        Some(_) if depth == 0 => 1,
         Some(m) if depth > m.depth => marks.len() - mark_idx,
         None => 0usize,
-        _ => strides[(stride_offset[mark_idx] + depth as u64) as usize]
+        _ => strides[(stride_offset[mark_idx] + (depth - 1) as u64) as usize]
             .min((marks.len() - mark_idx) as u64) as usize,
     }
 }
@@ -661,19 +662,19 @@ fn calc_strides(
     pegs.clear();
     stride_offset.clear();
     strides.clear();
-    // Exclusive prefix sum of (depth + 1).
+    // Exclusive prefix sum of depth.
     stride_offset.extend(marks.iter().scan(0u64, |acc, m| {
         let prev = *acc;
-        *acc += m.depth as u64 + 1;
+        *acc += m.depth as u64;
         Some(prev)
     }));
     // One stride entry per depth level per mark.
     let total = stride_offset.last().copied().unwrap_or(0)
-        + marks.last().map(|m| m.depth as u64 + 1).unwrap_or(0);
+        + marks.last().map(|m| m.depth as u64).unwrap_or(0);
     strides.resize(total as usize, u64::MAX);
     // Fill strides using pegs.
     for (i, m) in marks.iter().enumerate() {
-        let d = m.depth as usize + 1;
+        let d = m.depth as usize;
         if d > pegs.len() {
             pegs.resize(d, 0);
         }
