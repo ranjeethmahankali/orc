@@ -34,6 +34,7 @@ typedef struct
 
   void (*render_fn)(uint64_t const ctx, OrcHandle const* input);
   void (*string_fn)(uint64_t const ctx, OrcHandle const* input, OrcHandle* out_str);
+  void (*clone_fn)(uint64_t const ctx, void* src, void* dst);
 } OrcTypeInfo;
 
 typedef struct
