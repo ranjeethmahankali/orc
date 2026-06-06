@@ -27,6 +27,14 @@
    :CREATED:  2026-06-06 Sat 19:28
    :END:
 
+* TODO Unit System
+  :PROPERTIES:
+  :CREATED:  2026-06-06 Sat 19:20
+  :END:
+
+  I awkwardly shoved the unit system in the DeckHandle. This needs a lot of
+  thought and needs to be done properly.
+
 * TODO Rendering API
   :PROPERTIES:
   :CREATED:  2026-06-06 Sat 19:21
@@ -35,14 +43,6 @@
   The current rendering API in [[file:c/src/orc_ffi.h::rendering_api][the current ffi]] is just a stub. While supporting
   static rendering primitives is simple, supporting implicit rendering requires
   a lot more thought.
-
-* TODO Unit System
-  :PROPERTIES:
-  :CREATED:  2026-06-06 Sat 19:20
-  :END:
-
-  I awkwardly shoved the unit system in the DeckHandle. This needs a lot of
-  thought and needs to be done properly.
 
 * TODO Combinations Logic
   :PROPERTIES:
