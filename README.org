@@ -1,0 +1,54 @@
+#+title: ORC Framework for Plugins and Automation
+#+author: Ranjeeth Mahankali
+
+* TODO Versioning and Backwards Compatibility
+  :PROPERTIES:
+  :CREATED:  2026-06-06 Sat 19:25
+  :END:
+
+  I have some vague inklings we should just break up our blocks into multiple
+  DLLs grouped by topic, and just load an older version compiled DLL when the
+  user tries to run an older block. Of course, this only works when the datatype
+  hasn't changed, and only the behavior has changed.
+
+  Whatever system we design, it should work for both functions and types, and
+  gracefully error out when the user tries to run an unsupported combination of
+  versions fo things.
+
+  Figuring this out requires a lot of work.
+
+** TODO Get Clarity from nTop Product Team
+   :PROPERTIES:
+   :CREATED:  2026-06-06 Sat 19:28
+   :END:
+
+** TODO Figure out how to version types
+   :PROPERTIES:
+   :CREATED:  2026-06-06 Sat 19:28
+   :END:
+
+* TODO Rendering API
+  :PROPERTIES:
+  :CREATED:  2026-06-06 Sat 19:21
+  :END:
+
+  The current rendering API in [[file:c/src/orc_ffi.h::rendering_api][the current ffi]] is just a stub. While supporting
+  static rendering primitives is simple, supporting implicit rendering requires
+  a lot more thought.
+
+* TODO Unit System
+  :PROPERTIES:
+  :CREATED:  2026-06-06 Sat 19:20
+  :END:
+
+  I awkwardly shoved the unit system in the DeckHandle. This needs a lot of
+  thought and needs to be done properly.
+
+* TODO Combinations Logic
+  :PROPERTIES:
+  :CREATED:  2026-06-06 Sat 19:19
+  :END:
+
+  Given a set of input and output decks, and a function signature, we need a
+  helper function that strides along the deck with the right views and writers
+  to call the function.
