@@ -106,12 +106,12 @@ struct OrcHandle
   uint64_t    handle;
   void*       items;
   uint64_t    n_items;
+  uint64_t    item_size;
   OrcMark*    marks;
   uint64_t*   stride_offset;
   uint64_t    n_marks;
   uint64_t*   strides;
   OrcTypeInfo type_info;
-  Dims        dims;
 };
 
 OrcTypeInfo _orc_type_info_u8(void);
@@ -125,10 +125,6 @@ OrcTypeInfo _orc_type_info_i16(void);
 OrcTypeInfo _orc_type_info_i32(void);
 OrcTypeInfo _orc_type_info_i64(void);
 
-OrcHandle _di_from_deck_impl(void* deck, OrcTypeInfo type_info);
-
-#define di_from_deck(deck, type) (_di_from_deck((deck), _orc_type_info_##type()))
-
-void orc_deck_alloc(OrcTypeId const id, OrcHandle* out);
+void orc_deck_alloc(OrcTypeId const id, OrcHandle* const out);
 
 void orc_deck_free(OrcHandle* const handle);

@@ -1672,10 +1672,12 @@ void test_deck_basic_push_and_length(void)
   REQUIRE(deck_len(deck) == 1);
   REQUIRE(deck_max_depth(deck) == 1);
   REQUIRE(!deck_is_empty(deck));
+  REQUIRE(_deck_header(deck)->item_size == sizeof(size_t));
   REQUIRE(deck[0] == 7);
   REQUIRE(deck_push(deck, ((size_t) {8}), 0) == OK);
   REQUIRE(deck_push(deck, ((size_t) {9}), 0) == OK);
   REQUIRE(deck_len(deck) == 3);
+  REQUIRE(_deck_header(deck)->item_size == sizeof(size_t));
   REQUIRE(deck[0] == 7);
   REQUIRE(deck[1] == 8);
   REQUIRE(deck[2] == 9);
@@ -1688,6 +1690,7 @@ void test_deck_binary_deck(void)
   size_t*       deck  = _binary_deck(DEPTH);
   REQUIRE(deck_len(deck) == (size_t)(1 << DEPTH));
   REQUIRE(deck_max_depth(deck) == DEPTH);
+  REQUIRE(_deck_header(deck)->item_size == sizeof(size_t));
   for (size_t i = 0; i < deck_len(deck); ++i) {
     REQUIRE(deck[i] == i);
   }
@@ -1699,6 +1702,7 @@ void test_deck_mark_structure(void)
   // Depth-3 binary deck: marks at positions 0,2,4,6 with depths 2,0,1,0.
   size_t*      deck = _binary_deck(3);
   _DeckHeader* h    = _deck_header(deck);
+  REQUIRE(h->item_size == sizeof(size_t));
   REQUIRE(arr_len(h->marks) == 4);
   REQUIRE(h->marks[0].depth == 2);
   REQUIRE(h->marks[1].depth == 0);
@@ -1714,14 +1718,17 @@ void test_deck_clear(void)
 {
   size_t* deck = _binary_deck(3);
   REQUIRE(deck_len(deck) == 8);
+  REQUIRE(_deck_header(deck)->item_size == sizeof(size_t));
   deck_clear(deck);
   REQUIRE(deck_len(deck) == 0);
   REQUIRE(deck_max_depth(deck) == 0);
+  REQUIRE(_deck_header(deck)->item_size == sizeof(size_t));
   // Re-use after clear.
   REQUIRE(deck_push(deck, ((size_t) {1}), 1) == OK);
   REQUIRE(deck_push(deck, ((size_t) {2}), 0) == OK);
   REQUIRE(deck_len(deck) == 2);
   REQUIRE(deck_max_depth(deck) == 1);
+  REQUIRE(_deck_header(deck)->item_size == sizeof(size_t));
   REQUIRE(deck[0] == 1);
   REQUIRE(deck[1] == 2);
   deck_free(deck);
@@ -1732,8 +1739,10 @@ void test_deck_flatten(void)
   size_t* deck = _binary_deck(4);
   size_t  n    = deck_len(deck);
   REQUIRE(n == 16);
+  REQUIRE(_deck_header(deck)->item_size == sizeof(size_t));
   deck_flatten(deck);
   REQUIRE(deck_max_depth(deck) == 1);
+  REQUIRE(_deck_header(deck)->item_size == sizeof(size_t));
   for (size_t i = 0; i < n; ++i) {
     REQUIRE(deck[i] == i);
   }
@@ -1749,8 +1758,10 @@ void test_deck_flatten(void)
   // Flatten a single-element deck pushed at depth 0: no marks.
   size_t* deck2 = NULL;
   REQUIRE(deck_push(deck2, ((size_t) {5}), 0) == OK);
+  REQUIRE(_deck_header(deck2)->item_size == sizeof(size_t));
   deck_flatten(deck2);
   REQUIRE(deck_max_depth(deck2) == 0);
+  REQUIRE(_deck_header(deck2)->item_size == sizeof(size_t));
   REQUIRE(arr_len(_deck_header(deck2)->marks) == 0);
   deck_free(deck2);
 }
@@ -1761,10 +1772,12 @@ void test_deck_reserve(void)
   REQUIRE(deck_reserve(deck, 32) == OK);
   REQUIRE(deck != NULL);
   REQUIRE(deck_len(deck) == 0);
+  REQUIRE(_deck_header(deck)->item_size == sizeof(size_t));
   for (size_t i = 0; i < 32; ++i) {
     REQUIRE(deck_push(deck, i, (i == 0) ? 1 : 0) == OK);
   }
   REQUIRE(deck_len(deck) == 32);
+  REQUIRE(_deck_header(deck)->item_size == sizeof(size_t));
   for (size_t i = 0; i < 32; ++i) {
     REQUIRE(deck[i] == i);
   }
@@ -1782,6 +1795,7 @@ void test_deck_depth_clamping(void)
   REQUIRE(deck_len(deck) == 4);
   REQUIRE(deck_max_depth(deck) == 2);
   _DeckHeader* h = _deck_header(deck);
+  REQUIRE(h->item_size == sizeof(size_t));
   REQUIRE(arr_len(h->marks) == 2);
   REQUIRE(h->marks[0].depth == 1);
   REQUIRE(h->marks[1].depth <= h->marks[0].depth);
@@ -1795,6 +1809,7 @@ void test_deck_single_element(void)
   REQUIRE(deck_push(deck, ((size_t) {42}), 0) == OK);
   REQUIRE(deck_len(deck) == 1);
   REQUIRE(deck_max_depth(deck) == 0);
+  REQUIRE(_deck_header(deck)->item_size == sizeof(size_t));
   REQUIRE(deck[0] == 42);
   REQUIRE(arr_len(_deck_header(deck)->marks) == 0);
   deck_free(deck);
@@ -1803,6 +1818,7 @@ void test_deck_single_element(void)
   REQUIRE(deck_push(deck2, ((size_t) {7}), 1) == OK);
   REQUIRE(deck_len(deck2) == 1);
   REQUIRE(deck_max_depth(deck2) == 1);
+  REQUIRE(_deck_header(deck2)->item_size == sizeof(size_t));
   REQUIRE(deck2[0] == 7);
   deck_free(deck2);
 }
@@ -1823,6 +1839,7 @@ void test_deck_many_pushes(void)
   }
   REQUIRE(deck_len(deck) == n);
   REQUIRE(deck_max_depth(deck) == 1);
+  REQUIRE(_deck_header(deck)->item_size == sizeof(size_t));
   for (size_t i = 0; i < n; ++i) {
     REQUIRE(deck[i] == i);
   }
@@ -1833,8 +1850,10 @@ void test_deck_graft(void)
 {
   // Graft a depth-3 binary deck: depth should increase by 1, items unchanged.
   size_t* deck = _binary_deck(3);
+  REQUIRE(_deck_header(deck)->item_size == sizeof(size_t));
   deck_graft(deck);
   REQUIRE(deck_max_depth(deck) == 4);
+  REQUIRE(_deck_header(deck)->item_size == sizeof(size_t));
   for (size_t i = 0; i < 8; ++i) {
     REQUIRE(deck[i] == i);
   }
@@ -1855,8 +1874,10 @@ void test_deck_graft(void)
   // Graft then flatten roundtrip: items survive.
   size_t* deck2 = _binary_deck(2);
   deck_graft(deck2);
+  REQUIRE(_deck_header(deck2)->item_size == sizeof(size_t));
   deck_flatten(deck2);
   REQUIRE(deck_max_depth(deck2) == 1);
+  REQUIRE(_deck_header(deck2)->item_size == sizeof(size_t));
   REQUIRE(deck_len(deck2) == 4);
   for (size_t i = 0; i < 4; ++i) {
     REQUIRE(deck2[i] == i);
@@ -1870,6 +1891,7 @@ void test_deck_graft(void)
   REQUIRE(deck_max_depth(deck3) == 1);
   deck_graft(deck3);
   REQUIRE(deck_max_depth(deck3) == 2);
+  REQUIRE(_deck_header(deck3)->item_size == sizeof(size_t));
   REQUIRE(deck_len(deck3) == 3);
   // Every item should have its own mark at depth 0 (wrapped individually),
   // plus the original depth-0 mark promoted to depth 1.
@@ -1892,8 +1914,9 @@ void test_deck_simplify(void)
 {
   // A deck whose mark depths already use every level is unchanged.
   {
-    size_t*      deck    = _binary_deck(3);
-    _DeckHeader* h       = _deck_header(deck);
+    size_t*      deck = _binary_deck(3);
+    _DeckHeader* h    = _deck_header(deck);
+    REQUIRE(h->item_size == sizeof(size_t));
     size_t const n_marks = arr_len(h->marks);
     uint8_t      depths_before[4];
     for (size_t i = 0; i < n_marks; ++i)
@@ -1921,6 +1944,7 @@ void test_deck_simplify(void)
     REQUIRE(h->marks[1].depth == 1);
     deck_simplify(deck);
     REQUIRE(deck_max_depth(deck) == 2);
+    REQUIRE(h->item_size == sizeof(size_t));
     REQUIRE(h->marks[0].depth == 1);
     REQUIRE(h->marks[1].depth == 0);
     // Items unchanged.
@@ -1981,8 +2005,9 @@ void _print_size_t(void* item, char* dst, size_t len)
 
 void test_deck_printf(void)
 {
-  size_t* deck   = _binary_deck(5);
-  char*   output = deck_to_str(deck, _print_size_t);
+  size_t* deck = _binary_deck(5);
+  REQUIRE(_deck_header(deck)->item_size == sizeof(size_t));
+  char* output = deck_to_str(deck, _print_size_t);
   REQUIRE(sv_eq(sv_trim(sv_from_str(output)),
                 sv_trim(sv_from_str("  5 ---------------| 0\n"
                                     "                   | 1\n"
@@ -2080,6 +2105,7 @@ void test_deck_init(void)
   DECK_INIT(deck, size_t, (10, 20, 30));
   REQUIRE(deck_len(deck) == 3);
   REQUIRE(deck_max_depth(deck) == 1);
+  REQUIRE(_deck_header(deck)->item_size == sizeof(size_t));
   REQUIRE(deck[0] == 10);
   REQUIRE(deck[1] == 20);
   REQUIRE(deck[2] == 30);
@@ -2091,6 +2117,7 @@ void test_deck_init(void)
   DECK_INIT(deck, size_t, ((1, 2, 3), (4, 5, 6), (7, 8, 9)));
   REQUIRE(deck_len(deck) == 9);
   REQUIRE(deck_max_depth(deck) == 2);
+  REQUIRE(_deck_header(deck)->item_size == sizeof(size_t));
   for (size_t i = 0; i < 9; ++i)
     REQUIRE(deck[i] == i + 1);
   h = _deck_header(deck);
@@ -2105,6 +2132,7 @@ void test_deck_init(void)
   DECK_INIT(deck, size_t, (((1, 2), (3, 4)), ((5, 6), (7, 8))));
   REQUIRE(deck_len(deck) == 8);
   REQUIRE(deck_max_depth(deck) == 3);
+  REQUIRE(_deck_header(deck)->item_size == sizeof(size_t));
   for (size_t i = 0; i < 8; ++i)
     REQUIRE(deck[i] == i + 1);
   h = _deck_header(deck);
@@ -2155,6 +2183,7 @@ void test_dv_binary_deck(void)
   size_t*       deck  = _binary_deck(DEPTH);
   REQUIRE(DEPTH == deck_max_depth(deck));
   REQUIRE((1 << DEPTH) == deck_len(deck));
+  REQUIRE(_deck_header(deck)->item_size == sizeof(size_t));
   {  // Iterate from level 5.
     size_t   counter = 0;
     DeckView v5      = dv_from_deck(deck, 5);
@@ -2267,6 +2296,7 @@ void test_dw_basic_depth2(void)
   }
   REQUIRE(deck_len(deck) == 9);
   REQUIRE(deck_max_depth(deck) == 2);
+  REQUIRE(_deck_header(deck)->item_size == sizeof(uint32_t));
   // Read back via DeckView.
   counter     = 0;
   DeckView v2 = dv_from_deck(deck, 2);
@@ -2307,6 +2337,7 @@ void test_dw_depth3_nested(void)
   }
   REQUIRE(deck_len(deck) == 27);
   REQUIRE(deck_max_depth(deck) == 3);
+  REQUIRE(_deck_header(deck)->item_size == sizeof(uint32_t));
   // Read back: iterate depth 3 → 2 → 1 → items.
   counter     = 0;
   DeckView v3 = dv_from_deck(deck, 3);
@@ -2357,6 +2388,7 @@ void test_dw_unbalanced_tree(void)
     }
   }
   REQUIRE(deck_len(deck) == 6);
+  REQUIRE(_deck_header(deck)->item_size == sizeof(uint32_t));
   // Verify structure.
   DeckView outer = dv_from_deck(deck, 2);
   DeckView g1    = dv_child(&outer);
@@ -2418,6 +2450,7 @@ void test_dw_empty_groups(void)
     }
   }
   REQUIRE(deck_len(deck) == 3);
+  REQUIRE(_deck_header(deck)->item_size == sizeof(uint32_t));
   REQUIRE(deck[0] == 1);
   REQUIRE(deck[1] == 2);
   REQUIRE(deck[2] == 3);
@@ -2474,6 +2507,7 @@ void test_dw_nested_empty(void)
   }
   REQUIRE(deck_len(deck) == 3);
   REQUIRE(deck_max_depth(deck) == 3);
+  REQUIRE(_deck_header(deck)->item_size == sizeof(uint32_t));
   // Verify structure by iterating depth 3 → 2 → 1.
   // Expected: (((), (1,2)), ((3,)), (()))
   DeckView v3 = dv_from_deck(deck, 3);
@@ -2524,6 +2558,7 @@ void test_dw_single_element_deep(void)
   }
   REQUIRE(deck_len(deck) == 1);
   REQUIRE(deck_max_depth(deck) == 5);
+  REQUIRE(_deck_header(deck)->item_size == sizeof(uint32_t));
   REQUIRE(deck[0] == 42);
   // Unwrap all the way down.
   DeckView v5 = dv_from_deck(deck, 5);
@@ -2579,6 +2614,7 @@ void test_dw_len_tracking(void)
     REQUIRE(dw_len(&w3) == 4);
   }
   REQUIRE(deck_len(deck) == 4);
+  REQUIRE(_deck_header(deck)->item_size == sizeof(uint32_t));
   deck_free(deck);
 }
 
@@ -2596,6 +2632,7 @@ void test_dw_append_to_existing(void)
   v = 4;
   REQUIRE(OK == deck_push(deck, v, 0));
   REQUIRE(deck_len(deck) == 4);
+  REQUIRE(_deck_header(deck)->item_size == sizeof(uint32_t));
   // Append another depth-1 group.
   {
     DeckWriter w = dw_from_deck(deck, 1);
@@ -2605,6 +2642,7 @@ void test_dw_append_to_existing(void)
     dw_push(&w, v);
   }
   REQUIRE(deck_len(deck) == 6);
+  REQUIRE(_deck_header(deck)->item_size == sizeof(uint32_t));
   // Verify: ((1,2),(3,4),(5,6))
   uint32_t counter = 0;
   DeckView top     = dv_from_deck(deck, 2);
@@ -2638,6 +2676,7 @@ void test_dw_flat_depth1(void)
   }
   REQUIRE(deck_len(deck) == 5);
   REQUIRE(deck_max_depth(deck) == 1);
+  REQUIRE(_deck_header(deck)->item_size == sizeof(uint32_t));
   for (uint32_t i = 0; i < 5; ++i) {
     REQUIRE(deck[i] == i * 10);
   }
@@ -2683,6 +2722,7 @@ void test_dw_deck_item_ptr(void)
     }
   }
   REQUIRE(deck_len(deck) == 5);
+  REQUIRE(_deck_header(deck)->item_size == sizeof(uint32_t));
   deck_free(deck);
 }
 
@@ -2713,6 +2753,7 @@ void test_dw_close_idempotent(void)
     }
   }
   REQUIRE(deck_len(deck) == 2);
+  REQUIRE(_deck_header(deck)->item_size == sizeof(uint32_t));
   // Verify: ((1), (), (2))
   size_t   group_sizes[] = {1, 0, 1};
   size_t   gi            = 0;
@@ -2754,6 +2795,7 @@ void test_dw_all_empty_depth3(void)
   }
   REQUIRE(deck_len(deck) == 0);
   REQUIRE(deck_max_depth(deck) == 3);
+  REQUIRE(_deck_header(deck)->item_size == sizeof(uint32_t));
   // Verify: one top group, two mid groups, inner groups all empty.
   DeckView v3  = dv_from_deck(deck, 3);
   DeckView mid = dv_child(&v3);
@@ -2862,4 +2904,156 @@ void test_dims_pow(void)
   dims_pow(force, -2, out);
   Dims expected = {-2, -2, 4, 0, 0, 0, 0};
   REQUIRE(dims_equal(out, expected));
+}
+
+// ========== Plugin Functions ==========
+
+void _print_double(void* item, char* dst, size_t len)
+{
+  double const val = *(double*)item;
+  snprintf(dst, len, "%.2f", val);
+}
+
+void _print_uint32_t(void* item, char* dst, size_t len)
+{
+  uint32_t const val = *(uint32_t*)item;
+  snprintf(dst, len, "%d", val);
+}
+
+// This simulates a function that will lives inside the plugin DLL. It takes a
+// list<double>, a uin32_t and outputs the item from the list at that index.
+void _plugin_function_list_element(OrcHandle const* list_handle,
+                                   OrcHandle const* index_handle,
+                                   OrcHandle*       item_handle)
+{
+  // Check the types of inpuuts.
+  REQUIRE(list_handle->type_info.type_id.primitive_id == ORC_F64);
+  REQUIRE(index_handle->type_info.type_id.primitive_id == ORC_U32);
+  REQUIRE(item_handle->type_info.type_id.primitive_id == ORC_F64);
+  // Use the SDK provided combinatorics helper to stride over the input data.
+  void* combinations = comb_init((OrcHandle const*[]) {list_handle, index_handle},
+                                 (uint8_t const[]) {1, 0},
+                                 2,
+                                 (OrcHandle*[]) {item_handle},
+                                 (uint8_t const[]) {0},
+                                 1);
+  while (combinations) {  // List processing iterations.
+    // Get inputs for the current combination.
+    DeckView list_input  = comb_get_input(combinations, 0),
+             index_input = comb_get_input(combinations, 1);
+    REQUIRE(list_input.depth == 1);
+    REQUIRE(index_input.depth == 0);
+    // Get output for the current combination.
+    DeckWriter* item_ouput = comb_get_output(combinations, 0);
+    REQUIRE(item_ouput->depth == 0);
+    double* output_ptr = (double*)dw_push_empty(item_ouput);
+    {  // This scope simulates the actual doRun of the block.
+      double*        list  = (double*)dv_item_ptr(&list_input);
+      uint32_t const index = *(uint32_t*)dv_item_ptr(&index_input);
+      REQUIRE_WITH_MSG(index < dv_len(&list_input), "Index out of bounds");
+      *output_ptr = list[index];  // Copy the output to the writer.
+    }
+    combinations = comb_advance(combinations);
+  }
+}
+
+void test_list_item_combinations(void)
+{
+  /*=== This test simulates the running of a list-element block. ===*/
+  // Allocate decks - In a real scenario, the host program is allocating these,
+  // by calling below functions, defined inside a plugin.
+  OrcHandle lists = {0}, indices = {0}, out_items = {0};
+  orc_deck_alloc((OrcTypeId) {.primitive_id = ORC_F64, .opaque_id = 0}, &lists);
+  orc_deck_alloc((OrcTypeId) {.primitive_id = ORC_U32, .opaque_id = 0}, &indices);
+  orc_deck_alloc((OrcTypeId) {.primitive_id = ORC_F64, .opaque_id = 0}, &out_items);
+  REQUIRE_WITH_MSG(
+    lists.items != NULL && indices.items != NULL && out_items.items != NULL,
+    "Unable to allocate decks");
+
+  { /*Depth 2 lists, with one index.*/
+    // Populate the inputs with data - in a real scenario this data is computed
+    // by upstream functions. Here we pretend.
+    DECK_INIT(lists.items,
+              double,
+              ((1.1, 2.23, 3.34, 3.14159),
+               (4.4, 5.5, 6.6, 6.28318),
+               (7.7, 8.8, 9.9, 10.1, 3.14159),
+               (11.1, 12.1, 13.1, 14.1, 15.1)));
+    oh_update(&lists);
+    REQUIRE(deck_len(lists.items) == 18);
+    DECK_INIT(indices.items, uint32_t, 2);
+    oh_update(&indices);
+    REQUIRE(deck_len(indices.items) == 1);
+
+    // Run the block - In a real scenario, this function is provided by a plugin DLL.
+    _plugin_function_list_element(&lists, &indices, &out_items);
+
+    // Check the outputs. The input had 4 lists, so the output should have 4 items.
+    oh_update(&out_items);
+    size_t const count = deck_len(out_items.items);
+    REQUIRE(count == 4);
+    REQUIRE(deck_max_depth(out_items.items) == 1);
+    // Output should contain the #2 item from every input list.
+    double const  expected[] = {3.34, 6.6, 9.9, 13.1};
+    double* const actual     = (double*)out_items.items;
+    for (size_t i = 0; i < count; ++i) {
+      REQUIRE(actual[i] == expected[i]);
+    }
+  }
+  { /* Same depth 2 lists, with a list of indices. */
+    DECK_INIT(indices.items, uint32_t, (0, 1, 2));
+    oh_update(&indices);
+    deck_clear(out_items.items);  // Clear the outputs.
+    oh_update(&out_items);
+
+    // Run the block - In a real scenario, this function is provided by a plugin DLL.
+    _plugin_function_list_element(&lists, &indices, &out_items);
+
+    oh_update(&out_items);
+    size_t const count = deck_len(out_items.items);
+    REQUIRE(count == 4);
+    REQUIRE(deck_max_depth(out_items.items) == 1);
+    double const  expected[] = {1.1, 5.5, 9.9, 13.1};
+    double* const actual     = (double*)out_items.items;
+    for (size_t i = 0; i < count; ++i) {
+      REQUIRE(actual[i] == expected[i]);
+    }
+  }
+  { /* Same depth 2 lists as before, with depth-2 indices. */
+    DECK_INIT(indices.items, uint32_t, ((0, 1, 2), (1, 2, 3)));
+    oh_update(&indices);
+    deck_clear(out_items.items);  // Clear the outputs.
+    oh_update(&out_items);
+
+    // Run the block - In a real scenario, this function is provided by a plugin DLL.
+    _plugin_function_list_element(&lists, &indices, &out_items);
+
+    oh_update(&out_items);
+    double* actual   = (double*)out_items.items;
+    double* expected = NULL;
+    DECK_INIT(expected, double, ((1.1, 5.5, 9.9, 13.1), (2.23, 6.6, 10.1, 14.1)));
+    REQUIRE(deck_max_depth(actual) == deck_max_depth(expected));
+    size_t n_marks = 0;
+    {
+      _DeckHeader* h = _deck_header(actual);
+      n_marks        = arr_len(h->marks);
+      REQUIRE(arr_len(_deck_header(expected)->marks) == n_marks);
+    }
+    for (size_t i = 0; i < n_marks; ++i) {
+      OrcMark const m1 = _deck_header(expected)->marks[i];
+      OrcMark const m2 = _deck_header(actual)->marks[i];
+      REQUIRE(m1.pos == m2.pos && m1.depth == m2.depth);
+    }
+    size_t const count = deck_len(actual);
+    REQUIRE(count == deck_len(expected));
+    for (size_t i = 0; i < count; ++i) {
+      REQUIRE(actual[i] == expected[i]);
+    }
+    deck_free(expected);
+  }
+  // Clean up decks - In a real scenario, the host program is cleaning up, by calling
+  // below functions, which are defined inside a plugin.
+  orc_deck_free(&lists);
+  orc_deck_free(&indices);
+  orc_deck_free(&out_items);
 }

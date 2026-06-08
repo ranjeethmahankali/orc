@@ -53,9 +53,8 @@ typedef enum
   OK = 0,
   ALLOC_FAILED,
   OUT_OF_BOUNDS,
+  NULL_PTR,
 } Status;
-
-int stat_printf(Status const s);
 
 // ========== Array ==========
 
@@ -333,6 +332,9 @@ typedef struct
   size_t*   pegs;
   size_t    count;
   size_t    capacity;
+  size_t    item_size;
+  Dims      units;
+  OrcTypeId type_id;
 } _DeckHeader;
 
 static inline _DeckHeader* _deck_header(void* ptr)
@@ -438,10 +440,13 @@ char* _deck_to_str(void*        ptr,
 #define _DI_NOT_0 1
 #define _DI_NOT_1 0
 
-/* --- End sentinel (NOT a macro -- just a pasteable token) --- */
-#define _DI_END_CHK__DI_END ~, 1
-#define _DI_END_CHK_ ~, 1
-#define _DI_IS_END(x) _DI_SECOND(_DI_END_CHK_##x, 0)
+/* --- End sentinel (function-like macro; detected via invocation, not ##).
+ *     _DI_DONE_CHK is a probe: for empty x it sees () directly; for _DI_END
+ *     the sentinel eats () instead.  Either way ~,1 is injected.  For normal
+ *     values (including 1.1) neither fires, so _DI_SECOND returns 0. --- */
+#define _DI_END(...) ~, 1
+#define _DI_DONE_CHK() ~, 1
+#define _DI_IS_END(x) _DI_SECOND(_DI_DONE_CHK x(), 0)
 #define _DI_CONT(x) _DI_CAT(_DI_CONT_, _DI_IS_PAREN(x))(x)
 #define _DI_CONT_1(x) 1
 #define _DI_CONT_0(x) _DI_NOT(_DI_IS_END(x))
@@ -451,7 +456,8 @@ char* _deck_to_str(void*        ptr,
  *     Rest-groups always restart at depth 1 (intrinsic depth). */
 #define _DI_PUSH(ptr, type, depth, ...) \
   _DI_CAT(_DI_PC_, _DI_CONT(_DI_FIRST(__VA_ARGS__)))(ptr, type, depth, __VA_ARGS__)
-#define _DI_PC_0(ptr, type, depth, ...) (void)deck_start_arr(ptr, (uint8_t)(depth));
+#define _DI_PC_0(ptr, type, depth, ...) \
+  (void)((ptr) = _deck_start_new_arr((ptr), sizeof(type), (uint8_t)(depth)));
 #define _DI_PC_1(ptr, type, depth, ...) \
   _DI_CAT(_DI_PP_, _DI_IS_PAREN(_DI_FIRST(__VA_ARGS__)))(ptr, type, depth, __VA_ARGS__)
 #define _DI_PP_0(ptr, type, depth, ...) _DI_PUSH_VALS(ptr, type, depth, __VA_ARGS__)
@@ -462,11 +468,12 @@ char* _deck_to_str(void*        ptr,
 #define _DI_PUSH_I() _DI_PUSH
 
 /* --- Push flat values: first gets depth, rest get 0 --- */
-#define _DI_PUSH_VALS(ptr, type, depth, first, ...)         \
-  (void)deck_push(ptr, ((type) {first}), (uint8_t)(depth)); \
+#define _DI_PUSH_VALS(ptr, type, depth, first, ...)                                    \
+  (void)((ptr) =                                                                       \
+           _deck_push_impl((ptr), &((type) {first}), sizeof(type), (uint8_t)(depth))); \
   _DI_CAT(_DI_VT_, _DI_CONT(_DI_FIRST(__VA_ARGS__)))(ptr, type, __VA_ARGS__)
-#define _DI_PUSH_VALS_REST(ptr, type, first, ...) \
-  (void)deck_push(ptr, ((type) {first}), 0);      \
+#define _DI_PUSH_VALS_REST(ptr, type, first, ...)                             \
+  (void)((ptr) = _deck_push_impl((ptr), &((type) {first}), sizeof(type), 0)); \
   _DI_CAT(_DI_VT_, _DI_CONT(_DI_FIRST(__VA_ARGS__)))(ptr, type, __VA_ARGS__)
 #define _DI_VT_0(ptr, type, ...)
 #define _DI_VT_1(ptr, type, ...) _DI_DEFER(_DI_PUSH_VALS_REST_I)()(ptr, type, __VA_ARGS__)
@@ -481,11 +488,16 @@ char* _deck_to_str(void*        ptr,
     _DI_CAT(_DI_GT_, _DI_CONT(_DI_FIRST(__VA_ARGS__)))(ptr, type, __VA_ARGS__)
 #define _DI_PUSH_REST_GRP_I() _DI_PUSH_REST_GRP
 
+/* --- Unwrap: strip outer parens if present, pass through bare values --- */
+#define _DI_UNWRAP(x) _DI_CAT(_DI_UW_, _DI_IS_PAREN(x))(x)
+#define _DI_UW_1(x) _DI_EXPAND x
+#define _DI_UW_0(x) x
+
 /* --- Entry point --- */
-#define DECK_INIT(ptr, type, data)                             \
-  do {                                                         \
-    deck_clear(ptr);                                           \
-    _DI_EVAL(_DI_PUSH(ptr, type, 1, _DI_EXPAND data, _DI_END)) \
+#define DECK_INIT(ptr, type, data)                                \
+  do {                                                            \
+    deck_clear((ptr));                                            \
+    _DI_EVAL(_DI_PUSH((ptr), type, 1, _DI_UNWRAP(data), _DI_END)) \
   } while (0)
 
 // ========== DeckView ==========
@@ -569,6 +581,8 @@ static inline size_t dw_len(DeckWriter* writer)
 
 Status dw_close(DeckWriter* writer);
 
+Status dw_advance(DeckWriter* writer);
+
 // ========== Dims (Units) ==========
 
 bool dims_equal(Dims const a, Dims const b);
@@ -578,3 +592,22 @@ void dims_multiply(Dims const a, Dims const b, Dims out);
 void dims_divide(Dims const a, Dims const b, Dims out);
 
 void dims_pow(Dims const a, int const pow, Dims out);
+
+// ========== Combinations ==========
+
+void* comb_init(OrcHandle const** inputs,
+                uint8_t const*    input_depths,
+                size_t const      n_inputs,
+                OrcHandle**       outputs,
+                uint8_t const*    output_depths,
+                size_t const      n_outputs);
+
+void comb_free(void* comb);
+
+void* comb_advance(void* comb);
+
+DeckView comb_get_input(void* comb, size_t const index);
+
+DeckWriter* comb_get_output(void* comb, size_t const index);
+
+void oh_update(OrcHandle* handle);

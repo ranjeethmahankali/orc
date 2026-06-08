@@ -532,8 +532,9 @@ void* _deck_push_empty(void* ptr, size_t const itemsize, uint8_t const depth)
     if (h == NULL)
       return NULL;
     memset(h, 0, bufsize);
-    h->capacity = 1;
-    ptr         = (void*)(h + 1);
+    h->capacity  = 1;
+    h->item_size = itemsize;
+    ptr          = (void*)(h + 1);
   }
   else if (h->count == h->capacity) {
     size_t const newcap = h->capacity * 2;
@@ -568,8 +569,9 @@ void* _deck_start_new_arr(void* ptr, size_t const itemsize, uint8_t const depth)
     if (h == NULL)
       return NULL;
     memset(h, 0, bufsize);
-    h->capacity = 1;
-    ptr         = (void*)(h + 1);
+    h->capacity  = 1;
+    h->item_size = itemsize;
+    ptr          = (void*)(h + 1);
   }
   if (depth)
     _deck_push_mark(h, depth - 1, h->count);
@@ -602,9 +604,10 @@ void* _deck_grow_capacity(void* ptr, size_t const itemsize, size_t const n)
     if (h == NULL)
       return NULL;
     memset(h, 0, bufsize);
-    h->count    = 0;
-    h->capacity = n;
-    ptr         = h + 1;
+    h->count     = 0;
+    h->capacity  = n;
+    h->item_size = itemsize;
+    ptr          = h + 1;
   }
   else if (h->capacity < n) {
     h = realloc(h, sizeof *h + n * itemsize);
@@ -951,17 +954,21 @@ DeckView dv_child(DeckView const* const v)
 
 bool dv_advance(DeckView* const v)
 {
-  if (v->start >= v->end) {
+  if (v->start >= v->end)
     return false;
-  }
+  size_t new_start = v->start;
   if (v->depth == 0) {
-    ++v->start;
+    ++new_start;
   }
   else {
-    v->start +=
+    new_start +=
       _stride(v->marks, v->stride_offset, v->n_marks, v->strides, v->start, v->depth - 1);
   }
-  return v->start < v->end;
+  if (new_start < v->end) {
+    v->start = new_start;
+    return true;
+  }
+  return false;
 }
 
 void const* dv_item_ptr(DeckView const* const v)
@@ -1026,6 +1033,23 @@ Status dw_close(DeckWriter* writer)
   return status;
 }
 
+Status dw_advance(DeckWriter* writer)
+{
+  if (writer == NULL)
+    return NULL_PTR;
+  if (writer->has_next_depth) {
+    *(writer->deck) =
+      _deck_start_new_arr(*(writer->deck), writer->item_size, writer->next_depth);
+    if (*(writer->deck) == NULL) {
+      return ALLOC_FAILED;
+    }
+  }
+  writer->has_next_depth = true;
+  writer->next_depth     = writer->depth;
+  writer->start          = deck_len(*(writer->deck));
+  return OK;
+}
+
 void* dw_push_empty(DeckWriter* writer)
 {
   *(writer->deck) =
@@ -1040,24 +1064,6 @@ void* dw_push_empty(DeckWriter* writer)
 }
 
 // ========== FFI ==========
-
-OrcHandle _di_from_deck_impl(void* deck, OrcTypeInfo type_info)
-{
-  _DeckHeader* h = _deck_header(deck);
-  REQUIRE_WITH_MSG(h != NULL, "Cannot create deck-input from NULL");
-  REQUIRE_WITH_MSG(arr_len(h->marks) == arr_len(h->stride_offset),
-                   "Malformed deck datastructure");
-  return (OrcHandle) {
-    .handle        = (uint64_t)deck,
-    .items         = deck,
-    .n_items       = h->count,
-    .marks         = h->marks,
-    .stride_offset = h->stride_offset,
-    .n_marks       = arr_len(h->marks),
-    .strides       = h->strides,
-    .type_info     = type_info,
-  };
-}
 
 OrcTypeInfo _orc_type_info_u8(void)
 {
@@ -1126,4 +1132,354 @@ void dims_pow(Dims const a, int const pow, Dims out)
   for (size_t i = 0; i < ORC_NUM_DIMS; ++i) {
     out[i] = a[i] * pow;
   }
+}
+
+// ========== Deck Allocations ==========
+
+void orc_deck_alloc(OrcTypeId const id, OrcHandle* const out)
+{
+  REQUIRE_WITH_MSG(out != NULL, "Cannot write into uninitialized handle");
+  out->item_size = 0;
+  switch (id.primitive_id) {
+    // Unsigned integers.
+  case ORC_U8:
+    out->item_size = sizeof(uint8_t);
+    out->type_info = _orc_type_info_u8();
+    break;
+  case ORC_U16:
+    out->item_size = sizeof(uint16_t);
+    out->type_info = _orc_type_info_u16();
+    break;
+  case ORC_U32:
+    out->item_size = sizeof(uint32_t);
+    out->type_info = _orc_type_info_u32();
+    break;
+  case ORC_U64:
+    out->item_size = sizeof(uint64_t);
+    out->type_info = _orc_type_info_u64();
+    break;
+    // Scalars.
+  case ORC_F32:
+    out->item_size = sizeof(float);
+    out->type_info = _orc_type_info_f32();
+    break;
+  case ORC_F64:
+    out->item_size = sizeof(double);
+    out->type_info = _orc_type_info_f64();
+    break;
+    // Signed integers.
+  case ORC_I8:
+    out->item_size = sizeof(int8_t);
+    out->type_info = _orc_type_info_i8();
+    break;
+  case ORC_I16:
+    out->item_size = sizeof(int16_t);
+    out->type_info = _orc_type_info_i16();
+    break;
+  case ORC_I32:
+    out->item_size = sizeof(int32_t);
+    out->type_info = _orc_type_info_i32();
+    break;
+  case ORC_I64:
+    out->item_size = sizeof(int64_t);
+    out->type_info = _orc_type_info_i64();
+    break;
+  case ORC_OPAQUE:
+    TODO("The plugin should handle its own types here");
+  default:
+    REQUIRE_WITH_MSG(false, "Unhandled type id. Should never happen.");
+  }
+  REQUIRE_WITH_MSG(out->item_size != 0, "Item size cannot be inferred from the type id.");
+  size_t const INIT_SIZE = 1;
+  void*        deck_ptr  = _deck_grow_capacity(NULL, out->item_size, INIT_SIZE);
+  _DeckHeader* h         = _deck_header(deck_ptr);
+  // Assign to the output deck.
+  out->handle = (uint64_t)deck_ptr;
+  out->items  = deck_ptr;
+  REQUIRE_WITH_MSG(h->count == 0, "New deck must be empty");
+  out->n_items         = h->count;
+  out->marks           = h->marks;
+  out->stride_offset   = h->stride_offset;
+  size_t const n_marks = arr_len(h->marks);
+  REQUIRE_WITH_MSG(n_marks == 0, "New deck must have no marks");
+  out->n_marks = n_marks;
+  out->strides = h->strides;
+}
+
+void _free_deck_data(void* data, uint32_t const type_id)
+{
+  (void)data;
+  (void)type_id;
+  TODO(
+    "This should be implemented for specific opaque types defined inside a plugin. For "
+    "example, type_id could refer to a MESH type. Then the plugin casts the data pointer "
+    "into a mesh pointer and frees it properly.");
+}
+
+void orc_deck_free(OrcHandle* const handle)
+{
+  REQUIRE_WITH_MSG(handle->handle == (uint64_t)handle->items,
+                   "In this implementation the handle is just the pointer.");
+  if (handle->type_info.type_id.primitive_id == ORC_OPAQUE) {
+    // This is a custom type defined inside the plugin. The contents of the deck must be
+    // freed first.
+    size_t const count = deck_len(handle->items);
+    char*        data  = (char*)handle->items;
+    for (size_t i = 0; i < count; ++i, data += handle->item_size) {
+      _free_deck_data(data, handle->type_info.type_id.opaque_id);
+    }
+  }
+  _deck_free_impl(handle->items);  // Now we can free the deck container.
+  memset(handle, 0, sizeof(OrcHandle));
+}
+
+// ========== Combinations ==========
+
+DeckView _dv_from_oh_impl(OrcHandle const* const handle, uint8_t const depth)
+{
+  if (handle == NULL)
+    return (DeckView) {0};
+  else
+    return (DeckView) {
+      .items         = handle->items,
+      .n_items       = (size_t)handle->n_items,
+      .item_size     = (size_t)handle->item_size,
+      .marks         = handle->marks,
+      .stride_offset = handle->stride_offset,
+      .n_marks       = (size_t)handle->n_marks,
+      .strides       = handle->strides,
+      .depth         = depth,
+      .start         = 0,
+      .end           = (size_t)(depth == 0 ? handle->n_items : handle->n_marks),
+    };
+}
+
+typedef struct
+{
+  DeckView*   view_matrix;
+  uint8_t*    input_depths;
+  size_t      n_inputs;
+  DeckWriter* writer_matrix;
+  uint8_t*    output_depths;
+  size_t      n_outputs;
+  size_t      stack_depth;
+} Combinations;
+
+void comb_free(void* ptr)
+{
+  if (ptr == NULL)
+    return;
+  Combinations* comb = (Combinations*)ptr;
+  REQUIRE_WITH_MSG(comb->n_inputs == arr_len(comb->input_depths), "Invalid combinations");
+  arr_free(comb->view_matrix);
+  arr_free(comb->input_depths);
+  REQUIRE_WITH_MSG(comb->n_outputs == arr_len(comb->output_depths),
+                   "Invalid combinations");
+  arr_free(comb->writer_matrix);
+  arr_free(comb->output_depths);
+  free(comb);
+}
+
+uint8_t _oh_max_depth(OrcHandle const* handle)
+{
+  if (handle != NULL && handle->n_marks != 0) {
+    return handle->marks[0].depth + 1;
+  }
+  return 0;
+}
+
+void* comb_init(OrcHandle const** inputs,
+                uint8_t const*    input_depths,
+                size_t const      n_inputs,
+                OrcHandle**       outputs,
+                uint8_t const*    output_depths,
+                size_t const      n_outputs)
+{
+  if (inputs == NULL || outputs == NULL || input_depths == NULL ||
+      output_depths == NULL) {
+    return NULL;
+  }
+  uint8_t max_delta = 0;
+  for (size_t i = 0; i < n_inputs; ++i) {
+    uint8_t const input_depth = _oh_max_depth(inputs[i]);
+    uint8_t const arg_depth   = input_depths[i];
+    if (input_depth > arg_depth) {
+      uint8_t const delta = input_depth - arg_depth;
+      if (delta > max_delta) {
+        max_delta = delta;
+      }
+    }
+  }
+  // Initialize output combinations structure.
+  size_t const  stack_depth = max_delta + 1;
+  Combinations* out         = malloc(sizeof(Combinations));
+  memset(out, 0, sizeof(Combinations));
+  // Allocate buffers.
+  arr_resize(out->view_matrix, n_inputs * stack_depth);
+  arr_resize(out->writer_matrix, n_outputs * stack_depth);
+  arr_resize(out->input_depths, n_inputs);
+  arr_resize(out->output_depths, n_outputs);
+  REQUIRE_WITH_MSG(out->view_matrix != NULL && out->writer_matrix != NULL &&
+                     out->input_depths != NULL && out->output_depths != NULL,
+                   "Allocation failed");
+  // Populate input views and depths.
+  for (size_t i = 0; i < n_inputs; ++i) {
+    uint8_t const arg_depth = input_depths[i];
+    out->input_depths[i]    = arg_depth;
+    DeckView* dst           = out->view_matrix + i * stack_depth;
+    *dst                    = _dv_from_oh_impl(inputs[i], arg_depth + max_delta);
+    // Telescope the views until we reach the target depth.
+    for (size_t d = 1; d < stack_depth; ++d) {
+      DeckView child = dv_child(dst);
+      *(++dst)       = child;
+    }
+    REQUIRE(dst->depth == arg_depth);
+  }
+  // Populate output decks, writers, and depths.
+  for (size_t i = 0; i < n_outputs; ++i) {
+    uint8_t const arg_depth = output_depths[i];
+    out->output_depths[i]   = arg_depth;
+    DeckWriter* dst         = out->writer_matrix + i * stack_depth;
+    *dst                    = (DeckWriter) {
+                         .deck           = &(outputs[i]->items),
+                         .item_size      = outputs[i]->item_size,
+                         .depth          = arg_depth + max_delta,
+                         .has_next_depth = true,
+                         .next_depth     = arg_depth + max_delta,
+                         .start          = deck_len(outputs[i]->items),
+    };
+    for (size_t d = 1; d < stack_depth; ++d) {
+      DeckWriter child = dw_child(dst);
+      *(++dst)         = child;
+    }
+    REQUIRE(dst->depth == arg_depth);
+  }
+  out->n_inputs    = n_inputs;
+  out->n_outputs   = n_outputs;
+  out->stack_depth = stack_depth;
+  return out;
+}
+
+void* comb_advance(void* ptr)
+{
+  if (ptr == NULL)
+    return NULL;
+  Combinations* comb      = (Combinations*)ptr;
+  size_t const  n_inputs  = comb->n_inputs;
+  size_t const  n_outputs = comb->n_outputs;
+  {  // Try to advance all the input views and check if at least one input advances.
+    bool any_advanced = false;
+    for (size_t i = 0; i < n_inputs; ++i) {
+      DeckView*  last_view = comb->view_matrix + (i + 1) * comb->stack_depth - 1;
+      bool const advanced  = dv_advance(last_view);
+      any_advanced         = any_advanced || advanced;
+    }
+    if (any_advanced) {  // At least one input advanced. Advance all the writers.
+      for (size_t i = 0; i < n_outputs; ++i) {
+        DeckWriter*  last_writer = comb->writer_matrix + (i + 1) * comb->stack_depth - 1;
+        Status const status      = dw_advance(last_writer);
+        REQUIRE(status == OK);
+      }
+      return comb;
+    }
+  }
+  enum
+  {
+    CONTINUE,
+    ADVANCED,
+    EXHAUSTED
+  } state = CONTINUE;
+  REQUIRE(comb->stack_depth > 0);
+  size_t stack_top = comb->stack_depth - 1;
+  do {
+    if (stack_top == 0) {
+      state = EXHAUSTED;
+      break;
+    }
+    for (size_t i = 0; i < n_inputs; ++i) {  // Pop all the inputs.
+      DeckView* last_view = comb->view_matrix + i * comb->stack_depth + stack_top;
+      *last_view          = (DeckView) {0};
+    }
+    for (size_t i = 0; i < n_outputs; ++i) {  // Pop all the outputs.
+      DeckWriter*  last_writer = comb->writer_matrix + i * comb->stack_depth + stack_top;
+      Status const status      = dw_close(last_writer);
+      REQUIRE(status == OK);
+    }
+    --stack_top;
+    // Try to advance lower in the stack.
+    for (size_t i = 0; i < n_inputs; ++i) {  // Advance all the inputs.
+      DeckView* last_view = comb->view_matrix + i * comb->stack_depth + stack_top;
+      if (dv_advance(last_view)) {
+        state = ADVANCED;
+      }
+    }
+    if (state == ADVANCED) {  // Only advance all the outputs if inputs did.
+      for (size_t i = 0; i < n_outputs; ++i) {
+        DeckWriter* last_writer = comb->writer_matrix + i * comb->stack_depth + stack_top;
+        Status const status     = dw_advance(last_writer);
+        REQUIRE(status == OK);
+      }
+    }
+  } while (state == CONTINUE);
+  switch (state) {
+  case ADVANCED: {
+    // Telescope the inputs to the desired depth.
+    for (size_t i = 0; i < n_inputs; ++i) {
+      DeckView* prev = comb->view_matrix + i * comb->stack_depth + stack_top;
+      for (size_t d = stack_top + 1; d < comb->stack_depth; ++d) {
+        DeckView* dst = prev + 1;
+        *dst          = dv_child(prev);
+        prev          = dst;
+      }
+    }
+    // Telescope the outputs to the desired depth.
+    for (size_t i = 0; i < n_outputs; ++i) {
+      DeckWriter* prev = comb->writer_matrix + i * comb->stack_depth + stack_top;
+      for (size_t d = stack_top + 1; d < comb->stack_depth; ++d) {
+        DeckWriter* dst = prev + 1;
+        *dst            = dw_child(prev);
+        prev            = dst;
+      }
+    }
+    return comb;
+  } break;
+  case EXHAUSTED: {
+    comb_free(comb);
+    return NULL;
+  }
+  case CONTINUE:  // fall through.
+  default:
+    REQUIRE_WITH_MSG(
+      false,
+      "Previous loop can only terminate when either we advance, or exhaust the inputs.");
+    return NULL;
+  }
+}
+
+DeckView comb_get_input(void* ptr, size_t const index)
+{
+  REQUIRE_WITH_MSG(ptr != NULL, "Invalid combinations");
+  Combinations* comb = (Combinations*)ptr;
+  REQUIRE_WITH_MSG(index < comb->n_inputs, "Index out of bounds");
+  return *(comb->view_matrix + (index + 1) * comb->stack_depth - 1);
+}
+
+DeckWriter* comb_get_output(void* ptr, size_t const index)
+{
+  REQUIRE_WITH_MSG(ptr != NULL, "Invalid combinations");
+  Combinations* comb = (Combinations*)ptr;
+  REQUIRE_WITH_MSG(index < comb->n_outputs, "Index out of bounds");
+  return comb->writer_matrix + (index + 1) * comb->stack_depth - 1;
+}
+
+void oh_update(OrcHandle* handle)
+{
+  _DeckHeader* h        = _deck_header(handle->items);
+  handle->handle        = (uint64_t)handle->items;
+  handle->n_items       = h->count;
+  handle->item_size     = h->item_size;
+  handle->marks         = h->marks;
+  handle->stride_offset = h->stride_offset;
+  handle->n_marks       = arr_len(h->marks);
+  handle->strides       = h->strides;
 }

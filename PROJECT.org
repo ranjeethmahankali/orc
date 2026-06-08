@@ -1,0 +1,207 @@
+#+title: Orc
+#+author: Ranjeeth Mahankali
+#+filetags: :project:orc:
+
+* C-API: Design Goals
+  :PROPERTIES:
+  :CREATED:  2026-06-08 Mon 10:16
+  :END:
+
+  - Should run anywhere. Headless, on remote machines.
+  - Should run in any host. Scripting environment, different UI apps etc.
+  - Allow independent, and decentralized development without bottlenecks.
+    - Teams can develop features independently without being blocked.
+    - Easy to update dependencies.
+    - Teams can work on different code bases, in different languages.
+
+  #+header: :crates '((orc_sdk . "0"))
+  #+header: :paths '((orc_sdk . "C:/home/dev/orc/rust"))
+  #+begin_src rustic :results output
+    use orc_sdk::deck;
+  #+end_src
+
+  #+header: :dir "." :flags "-I./c/src ./c/src/orc_sdk.c"
+  #+begin_src C :results output
+    #include <stdio.h>
+    #include "orc_sdk.h"
+
+    void _print_double(void* item, char* dst, size_t len)
+    {
+      double const val = *(double*)item;
+      snprintf(dst, len, "%.2f", val);
+    }
+
+    int main() {
+      double* deck = NULL;
+      DECK_INIT(deck, double, ((1.0, 2.0, 3.0), (4.0, 5.0, 6.0), (7.0, 8.0, 9.0)));
+
+      size_t const count = deck_len(deck);
+      for (size_t i = 0; i < count; ++i) { // Multiply values by PI
+        deck[i] *= 3.14159;
+      }
+
+      char* as_str = deck_to_str(deck, _print_double);
+      printf("%s", as_str);
+      str_free(as_str);
+      return 0;
+    }
+  #+end_src
+
+  #+RESULTS:
+  : 2 ------| 3.14
+  :         | 6.28
+  :         | 9.42
+  :    1 ---| 12.57
+  :         | 15.71
+  :         | 18.85
+  :    1 ---| 21.99
+  :         | 25.13
+  :         | 28.27
+
+* TODO Versioning and Backwards Compatibility
+  :PROPERTIES:
+  :CREATED:  2026-06-06 Sat 19:25
+  :END:
+
+  I have some vague inklings we should just break up our blocks into multiple
+  DLLs grouped by topic, and just load an older version compiled DLL when the
+  user tries to run an older block. Of course, this only works when the datatype
+  hasn't changed, and only the behavior has changed.
+
+  Whatever system we design, it should work for both functions and types, and
+  gracefully error out when the user tries to run an unsupported combination of
+  versions fo things.
+
+  Figuring this out requires a lot of work.
+
+** TODO Get Clarity from nTop Product Team
+   :PROPERTIES:
+   :CREATED:  2026-06-06 Sat 19:28
+   :END:
+
+** TODO Figure out how to version types
+   :PROPERTIES:
+   :CREATED:  2026-06-06 Sat 19:28
+   :END:
+
+* TODO Deferred failures in niche scenarios
+  :PROPERTIES:
+  :CREATED:  2026-06-07 Sun 07:55
+  :END:
+
+  If we want to migrate to a nicer system that does more things at runtime
+  instead of compile time, in some very niche scenarios, we MAY have to live
+  with not knowing type mismatch errors before running some functions. This is
+  only the case with types that use some type of polymorphism.
+
+* TODO Thread Safety in C SDK
+  :PROPERTIES:
+  :CREATED:  2026-06-07 Sun 15:12
+  :END:
+
+  Whenever the plugin code receives an output handle from the host, it has to
+  verify that the output handle was allocated in the same plugin. Otherwise it
+  is unsafe to write into that memory address. If it came from another plugin,
+  then this plugin cannot know anything about the datatype or memory layout. To
+  check for this, each plugin likely needs to keep a global list of allocated
+  decks, and ensure the output handle matches one of them. Access to this global
+  list should be thread safe, since the host can call the plugin functions from
+  any thread.
+
+  While this is trivial to do in C++ and Rust, it is not trivial to do in a
+  cross platform manner in C. For now, I just have a dummy check that always
+  returns true (safe). This is good enough for a prototype, but at some point we
+  need to figure out a good cross platform thread API for our C SDK.
+
+  Should the host provide the thread API too? How does Parasolid handle it?
+
+* TODO Objectify Test
+  :PROPERTIES:
+  :CREATED:  2026-06-07 Sun 15:19
+  :END:
+
+  =Objectify= is a Grasshopper plugin that I wrote a long time ago. It is a very
+  good litmus test to judge the quality of this new system, once enough details
+  are fleshed out. =Objectify= implements structs on top of Grasshopper. The
+  user can compose arbitrary data into their own struct, pass it around their
+  file, and later access members of that struct. It is a minor convenience, and
+  was trivial to implement in GH. Trying to do the same in Kratos turned into a
+  dumpster fire. That is what makes this a good litmus test.
+
+* TODO Unit System
+  :PROPERTIES:
+  :CREATED:  2026-06-06 Sat 19:20
+  :END:
+
+  I awkwardly shoved the unit system in the DeckHandle. This needs a lot of
+  thought and needs to be done properly.
+
+* TODO Rendering API
+  :PROPERTIES:
+  :CREATED:  2026-06-06 Sat 19:21
+  :END:
+
+  The current rendering API in [[file:c/src/orc_ffi.h::rendering_api][the current ffi]] is just a stub. While supporting
+  static rendering primitives is simple, supporting implicit rendering requires
+  a lot more thought.
+* DONE tgah09 - Combinations: Helper functions to stride along decks
+  CLOSED: [2026-06-08 Mon 18:26]
+  :PROPERTIES:
+  :CREATED:  2026-06-07 Sun 08:36
+  :END:
+  :LOGBOOK:
+  - State "DONE"       from "NEXT"       [2026-06-08 Mon 18:26]
+  - State "NEXT"       from "TODO"       [2026-06-07 Sun 16:11]
+  :END:
+
+  <2026-06-07 Sun 08:36> Write a stubbed out API for combinations. Starting to
+  take shape in C.
+
+  <2026-06-07 Sun 16:11> Made some more progress. Have a rough sketch of what
+  the API should look like, and the mechanism.
+
+  <2026-06-07 Sun 21:23> Finished writing out the entire logic of combinations
+  with zero testing done so far. Made a lot of progress. This also forced me to
+  get more clarity on the ownership of decks and handles.
+
+  <2026-06-08 Mon 17:32> Tested with several combinations of inputs. Working
+  beautifully.
+
+** DONE Use matrices for storage of views and writers
+   CLOSED: [2026-06-08 Mon 18:26]
+   :PROPERTIES:
+   :CREATED:  2026-06-07 Sun 20:11
+   :END:
+   :LOGBOOK:
+   - State "DONE"       from "TODO"       [2026-06-08 Mon 18:26]
+   :END:
+
+   [[file:./c/src/orc_sdk.c::// TODO - Use matrices for storage of views and writers. view_stacks, and][Change here]]
+
+   =view_stacks=, and =writer_stacks= arrays nested arrays are rectangular, so it
+   should be allocated as one buffer with matrix style indexing. This has a lot
+   of benefits:
+   - This will move all the potential allocation failures all into one place
+     inside comb_init, because that is the only place allocations
+     happen.
+   - Currently I have a set of asserts to make sure the stacks corresponding to
+     different inputs and outputs are all of the same depth. All that mess, can
+     be simplified by having just one integer to keep track of the depth of all
+     stacks. This design will make a bunch of invalid states impossible to
+     represent in this datastructure.
+
+  <2026-06-08 Mon> Just did this refactor. Simplified the code, works
+  beautifully. The test cases of list processing pass.
+
+** DONE comb_init should take explicit array lengths
+   CLOSED: [2026-06-08 Mon 14:07]
+   :PROPERTIES:
+   :CREATED:  2026-06-08 Mon 13:58
+   :END:
+   :LOGBOOK:
+   - State "DONE"       from "TODO"       [2026-06-08 Mon 14:07]
+   :END:
+
+   [[file:c/src/orc_sdk.c::// TODO: Update this function to take input and output counts explicitly instead of][Change here]]
+
+   <2026-06-08 Mon 14:07> This was trivial, just did it, and it worked.
