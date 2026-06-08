@@ -3316,6 +3316,90 @@ void test_add_f64_combinations(void)
   orc_deck_free(&out);
 }
 
+// This simulates a function that takes depth=1 lists of F64 and outputs the length of
+// each list as U64.
+void _plugin_function_list_length(OrcHandle const* in_handle, OrcHandle* out_handle)
+{
+  REQUIRE(in_handle->type_info.type_id.primitive_id == ORC_F64);
+  REQUIRE(out_handle->type_info.type_id.primitive_id == ORC_U64);
+  void* combinations = comb_init((OrcHandle const*[]) {in_handle},
+                                 (uint8_t const[]) {1},
+                                 1,
+                                 (OrcHandle*[]) {out_handle},
+                                 (uint8_t const[]) {0},
+                                 1);
+  while (combinations) {
+    DeckView    list_input = comb_get_input(combinations, 0);
+    DeckWriter* out        = comb_get_output(combinations, 0);
+    REQUIRE(list_input.depth == 1);
+    REQUIRE(out->depth == 0);
+    uint64_t* output_ptr = (uint64_t*)dw_push_empty(out);
+    *output_ptr          = (uint64_t)dv_len(&list_input);
+    combinations         = comb_advance(combinations);
+  }
+}
+
+void test_list_length_combinations(void)
+{
+  /*=== Tests arg_depth=1 with U64 output: outputs the length of each input list, with
+   * empty lists producing zeros. ===*/
+  OrcHandle in  = {0};
+  OrcHandle out = {0};
+  orc_deck_alloc((OrcTypeId) {.primitive_id = ORC_F64, .opaque_id = 0}, &in);
+  orc_deck_alloc((OrcTypeId) {.primitive_id = ORC_U64, .opaque_id = 0}, &out);
+  REQUIRE_WITH_MSG(in.items != NULL && out.items != NULL, "Unable to allocate decks");
+
+  { /* Depth-2 input: 5 lists, some empty (stack_depth=2). */
+    DECK_INIT(in.items, double, ((1.0, 2.0, 3.0), (), (4.0), (), (5.0, 6.0)));
+    oh_update(&in);
+
+    _plugin_function_list_length(&in, &out);
+
+    oh_update(&out);
+    size_t const count = deck_len(out.items);
+    REQUIRE(count == 5);
+    REQUIRE(deck_max_depth(out.items) == 1);
+    uint64_t const  expected[] = {3, 0, 1, 0, 2};
+    uint64_t* const actual     = (uint64_t*)out.items;
+    for (size_t i = 0; i < count; ++i) {
+      REQUIRE(actual[i] == expected[i]);
+    }
+  }
+  { /* Depth-3 input: two outer groups each containing lists, with empty lists inside
+       (stack_depth=3). */
+    DECK_INIT(in.items, double, (((1.0, 2.0), ()), ((3.0, 4.0, 5.0), (), (6.0))));
+    oh_update(&in);
+    deck_clear(out.items);
+    oh_update(&out);
+
+    _plugin_function_list_length(&in, &out);
+
+    oh_update(&out);
+    uint64_t* actual   = (uint64_t*)out.items;
+    uint64_t* expected = NULL;
+    DECK_INIT(expected, uint64_t, ((2, 0), (3, 0, 1)));
+    REQUIRE(deck_max_depth(actual) == deck_max_depth(expected));
+    size_t n_marks = 0;
+    {
+      _DeckHeader* h = _deck_header(actual);
+      n_marks        = arr_len(h->marks);
+      REQUIRE(arr_len(_deck_header(expected)->marks) == n_marks);
+    }
+    for (size_t i = 0; i < n_marks; ++i) {
+      OrcMark const m1 = _deck_header(expected)->marks[i];
+      OrcMark const m2 = _deck_header(actual)->marks[i];
+      REQUIRE(m1.pos == m2.pos && m1.depth == m2.depth);
+    }
+    size_t const count = deck_len(actual);
+    REQUIRE(count == deck_len(expected));
+    for (size_t i = 0; i < count; ++i) {
+      REQUIRE(actual[i] == expected[i]);
+    }
+    deck_free(expected);
+  }
+  orc_deck_free(&in);
+  orc_deck_free(&out);
+}
 void test_two_output_combinations(void)
 {
   /*=== Tests multiple-output Combinations: sq+cb (1 in, 2 out) and add+mul (2 in, 2 out).
