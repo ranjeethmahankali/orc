@@ -2957,6 +2957,140 @@ void _plugin_function_list_element(OrcHandle const* list_handle,
   }
 }
 
+// This simulates a function that takes two F64 scalars and outputs their sum.
+void _plugin_function_add_f64(OrcHandle const* a_handle,
+                              OrcHandle const* b_handle,
+                              OrcHandle*       out_handle)
+{
+  REQUIRE(a_handle->type_info.type_id.primitive_id == ORC_F64);
+  REQUIRE(b_handle->type_info.type_id.primitive_id == ORC_F64);
+  REQUIRE(out_handle->type_info.type_id.primitive_id == ORC_F64);
+  void* combinations = comb_init((OrcHandle const*[]) {a_handle, b_handle},
+                                 (uint8_t const[]) {0, 0},
+                                 2,
+                                 (OrcHandle*[]) {out_handle},
+                                 (uint8_t const[]) {0},
+                                 1);
+  while (combinations) {
+    DeckView a_input = comb_get_input(combinations, 0),
+             b_input = comb_get_input(combinations, 1);
+    REQUIRE(a_input.depth == 0);
+    REQUIRE(b_input.depth == 0);
+    DeckWriter* out = comb_get_output(combinations, 0);
+    REQUIRE(out->depth == 0);
+    double* output_ptr = (double*)dw_push_empty(out);
+    {
+      double const a = *(double*)dv_item_ptr(&a_input);
+      double const b = *(double*)dv_item_ptr(&b_input);
+      *output_ptr    = a + b;
+    }
+    combinations = comb_advance(combinations);
+  }
+}
+
+// This simulates a function that takes one F64 scalar and outputs its square and cube.
+void _plugin_function_sq_cb(OrcHandle const* in_handle,
+                            OrcHandle*       out_sq_handle,
+                            OrcHandle*       out_cb_handle)
+{
+  REQUIRE(in_handle->type_info.type_id.primitive_id == ORC_F64);
+  REQUIRE(out_sq_handle->type_info.type_id.primitive_id == ORC_F64);
+  REQUIRE(out_cb_handle->type_info.type_id.primitive_id == ORC_F64);
+  void* combinations = comb_init((OrcHandle const*[]) {in_handle},
+                                 (uint8_t const[]) {0},
+                                 1,
+                                 (OrcHandle*[]) {out_sq_handle, out_cb_handle},
+                                 (uint8_t const[]) {0, 0},
+                                 2);
+  while (combinations) {
+    DeckView in_input = comb_get_input(combinations, 0);
+    REQUIRE(in_input.depth == 0);
+    DeckWriter* out_sq = comb_get_output(combinations, 0);
+    DeckWriter* out_cb = comb_get_output(combinations, 1);
+    REQUIRE(out_sq->depth == 0);
+    REQUIRE(out_cb->depth == 0);
+    double* sq_ptr = (double*)dw_push_empty(out_sq);
+    double* cb_ptr = (double*)dw_push_empty(out_cb);
+    {
+      double const x = *(double*)dv_item_ptr(&in_input);
+      *sq_ptr        = x * x;
+      *cb_ptr        = x * x * x;
+    }
+    combinations = comb_advance(combinations);
+  }
+}
+
+// This simulates a function that takes two F64 scalars and outputs their sum and product.
+void _plugin_function_add_mul(OrcHandle const* a_handle,
+                              OrcHandle const* b_handle,
+                              OrcHandle*       out_sum_handle,
+                              OrcHandle*       out_prod_handle)
+{
+  REQUIRE(a_handle->type_info.type_id.primitive_id == ORC_F64);
+  REQUIRE(b_handle->type_info.type_id.primitive_id == ORC_F64);
+  REQUIRE(out_sum_handle->type_info.type_id.primitive_id == ORC_F64);
+  REQUIRE(out_prod_handle->type_info.type_id.primitive_id == ORC_F64);
+  void* combinations = comb_init((OrcHandle const*[]) {a_handle, b_handle},
+                                 (uint8_t const[]) {0, 0},
+                                 2,
+                                 (OrcHandle*[]) {out_sum_handle, out_prod_handle},
+                                 (uint8_t const[]) {0, 0},
+                                 2);
+  while (combinations) {
+    DeckView a_input = comb_get_input(combinations, 0),
+             b_input = comb_get_input(combinations, 1);
+    REQUIRE(a_input.depth == 0);
+    REQUIRE(b_input.depth == 0);
+    DeckWriter* out_sum  = comb_get_output(combinations, 0);
+    DeckWriter* out_prod = comb_get_output(combinations, 1);
+    REQUIRE(out_sum->depth == 0);
+    REQUIRE(out_prod->depth == 0);
+    double* sum_ptr  = (double*)dw_push_empty(out_sum);
+    double* prod_ptr = (double*)dw_push_empty(out_prod);
+    {
+      double const a = *(double*)dv_item_ptr(&a_input);
+      double const b = *(double*)dv_item_ptr(&b_input);
+      *sum_ptr       = a + b;
+      *prod_ptr      = a * b;
+    }
+    combinations = comb_advance(combinations);
+  }
+}
+
+// This simulates a function that takes two depth=1 lists of F64 and outputs
+// first(a)+first(b).
+void _plugin_function_first_add(OrcHandle const* a_handle,
+                                OrcHandle const* b_handle,
+                                OrcHandle*       out_handle)
+{
+  REQUIRE(a_handle->type_info.type_id.primitive_id == ORC_F64);
+  REQUIRE(b_handle->type_info.type_id.primitive_id == ORC_F64);
+  REQUIRE(out_handle->type_info.type_id.primitive_id == ORC_F64);
+  void* combinations = comb_init((OrcHandle const*[]) {a_handle, b_handle},
+                                 (uint8_t const[]) {1, 1},
+                                 2,
+                                 (OrcHandle*[]) {out_handle},
+                                 (uint8_t const[]) {0},
+                                 1);
+  while (combinations) {
+    DeckView a_input = comb_get_input(combinations, 0),
+             b_input = comb_get_input(combinations, 1);
+    REQUIRE(a_input.depth == 1);
+    REQUIRE(b_input.depth == 1);
+    DeckWriter* out = comb_get_output(combinations, 0);
+    REQUIRE(out->depth == 0);
+    double* output_ptr = (double*)dw_push_empty(out);
+    {
+      REQUIRE_WITH_MSG(dv_len(&a_input) > 0 && dv_len(&b_input) > 0,
+                       "Lists must be non-empty");
+      double const a_first = *(double*)dv_item_ptr(&a_input);
+      double const b_first = *(double*)dv_item_ptr(&b_input);
+      *output_ptr          = a_first + b_first;
+    }
+    combinations = comb_advance(combinations);
+  }
+}
+
 void test_list_item_combinations(void)
 {
   /*=== This test simulates the running of a list-element block. ===*/
@@ -3056,4 +3190,250 @@ void test_list_item_combinations(void)
   orc_deck_free(&lists);
   orc_deck_free(&indices);
   orc_deck_free(&out_items);
+}
+
+void test_add_f64_combinations(void)
+{
+  /*=== Tests two-input scalar addition: equal lengths, broadcast, and depth-2 inputs.
+   * ===*/
+  OrcHandle a = {0}, b = {0}, out = {0};
+  orc_deck_alloc((OrcTypeId) {.primitive_id = ORC_F64, .opaque_id = 0}, &a);
+  orc_deck_alloc((OrcTypeId) {.primitive_id = ORC_F64, .opaque_id = 0}, &b);
+  orc_deck_alloc((OrcTypeId) {.primitive_id = ORC_F64, .opaque_id = 0}, &out);
+  REQUIRE_WITH_MSG(a.items != NULL && b.items != NULL && out.items != NULL,
+                   "Unable to allocate decks");
+
+  { /* Flat equal-length inputs: a and b each have 3 scalars (stack_depth=2). */
+    DECK_INIT(a.items, double, (1.0, 2.0, 3.0));
+    oh_update(&a);
+    DECK_INIT(b.items, double, (10.0, 20.0, 30.0));
+    oh_update(&b);
+
+    _plugin_function_add_f64(&a, &b, &out);
+
+    oh_update(&out);
+    size_t const count = deck_len(out.items);
+    REQUIRE(count == 3);
+    REQUIRE(deck_max_depth(out.items) == 1);
+    double const  expected[] = {11.0, 22.0, 33.0};
+    double* const actual     = (double*)out.items;
+    for (size_t i = 0; i < count; ++i) {
+      REQUIRE(actual[i] == expected[i]);
+    }
+  }
+  { /* Flat inputs, broadcast-last: a has 4 scalars, b has 2 (stack_depth=2). */
+    DECK_INIT(a.items, double, (1.0, 2.0, 3.0, 4.0));
+    oh_update(&a);
+    DECK_INIT(b.items, double, (10.0, 20.0));
+    oh_update(&b);
+    deck_clear(out.items);
+    oh_update(&out);
+
+    _plugin_function_add_f64(&a, &b, &out);
+
+    oh_update(&out);
+    size_t const count = deck_len(out.items);
+    REQUIRE(count == 4);
+    REQUIRE(deck_max_depth(out.items) == 1);
+    // b is exhausted at 20.0 and stays there for the remaining elements of a.
+    double const  expected[] = {11.0, 22.0, 23.0, 24.0};
+    double* const actual     = (double*)out.items;
+    for (size_t i = 0; i < count; ++i) {
+      REQUIRE(actual[i] == expected[i]);
+    }
+  }
+  { /* Depth-2 inputs, equal groups: 2 inner groups of 2 items each (stack_depth=3). */
+    DECK_INIT(a.items, double, ((1.0, 2.0), (3.0, 4.0)));
+    oh_update(&a);
+    DECK_INIT(b.items, double, ((10.0, 20.0), (30.0, 40.0)));
+    oh_update(&b);
+    deck_clear(out.items);
+    oh_update(&out);
+
+    _plugin_function_add_f64(&a, &b, &out);
+
+    oh_update(&out);
+    double* actual   = (double*)out.items;
+    double* expected = NULL;
+    DECK_INIT(expected, double, ((11.0, 22.0), (33.0, 44.0)));
+    REQUIRE(deck_max_depth(actual) == deck_max_depth(expected));
+    size_t n_marks = 0;
+    {
+      _DeckHeader* h = _deck_header(actual);
+      n_marks        = arr_len(h->marks);
+      REQUIRE(arr_len(_deck_header(expected)->marks) == n_marks);
+    }
+    for (size_t i = 0; i < n_marks; ++i) {
+      OrcMark const m1 = _deck_header(expected)->marks[i];
+      OrcMark const m2 = _deck_header(actual)->marks[i];
+      REQUIRE(m1.pos == m2.pos && m1.depth == m2.depth);
+    }
+    size_t const count = deck_len(actual);
+    REQUIRE(count == deck_len(expected));
+    for (size_t i = 0; i < count; ++i) {
+      REQUIRE(actual[i] == expected[i]);
+    }
+    deck_free(expected);
+  }
+  { /* Depth-2 inputs, broadcast-last at inner-group level: a has 2 groups, b has 1
+       (stack_depth=3). */
+    DECK_INIT(a.items, double, ((1.0, 2.0), (3.0, 4.0)));
+    oh_update(&a);
+    // b is a single depth-2 group (((10.0, 20.0))): b's one group broadcasts across a's
+    // two.
+    DECK_INIT(b.items, double, (((10.0, 20.0))));
+    oh_update(&b);
+    deck_clear(out.items);
+    oh_update(&out);
+
+    _plugin_function_add_f64(&a, &b, &out);
+
+    oh_update(&out);
+    double* actual   = (double*)out.items;
+    double* expected = NULL;
+    DECK_INIT(expected, double, (((11.0, 22.0), (13.0, 24.0))));
+    REQUIRE(deck_max_depth(actual) == deck_max_depth(expected));
+    size_t n_marks = 0;
+    {
+      _DeckHeader* h = _deck_header(actual);
+      n_marks        = arr_len(h->marks);
+      REQUIRE(arr_len(_deck_header(expected)->marks) == n_marks);
+    }
+    for (size_t i = 0; i < n_marks; ++i) {
+      OrcMark const m1 = _deck_header(expected)->marks[i];
+      OrcMark const m2 = _deck_header(actual)->marks[i];
+      REQUIRE(m1.pos == m2.pos && m1.depth == m2.depth);
+    }
+    size_t const count = deck_len(actual);
+    REQUIRE(count == deck_len(expected));
+    for (size_t i = 0; i < count; ++i) {
+      REQUIRE(actual[i] == expected[i]);
+    }
+    deck_free(expected);
+  }
+  orc_deck_free(&a);
+  orc_deck_free(&b);
+  orc_deck_free(&out);
+}
+
+void test_two_output_combinations(void)
+{
+  /*=== Tests multiple-output Combinations: sq+cb (1 in, 2 out) and add+mul (2 in, 2 out).
+   * ===*/
+  OrcHandle in_a = {0}, in_b = {0}, out1 = {0}, out2 = {0};
+  orc_deck_alloc((OrcTypeId) {.primitive_id = ORC_F64, .opaque_id = 0}, &in_a);
+  orc_deck_alloc((OrcTypeId) {.primitive_id = ORC_F64, .opaque_id = 0}, &in_b);
+  orc_deck_alloc((OrcTypeId) {.primitive_id = ORC_F64, .opaque_id = 0}, &out1);
+  orc_deck_alloc((OrcTypeId) {.primitive_id = ORC_F64, .opaque_id = 0}, &out2);
+  REQUIRE_WITH_MSG(
+    in_a.items != NULL && in_b.items != NULL && out1.items != NULL && out2.items != NULL,
+    "Unable to allocate decks");
+
+  { /* One input, two outputs: square and cube of 3 scalars (stack_depth=2). */
+    DECK_INIT(in_a.items, double, (2.0, 3.0, 4.0));
+    oh_update(&in_a);
+
+    _plugin_function_sq_cb(&in_a, &out1, &out2);
+
+    oh_update(&out1);
+    oh_update(&out2);
+    REQUIRE(deck_len(out1.items) == 3);
+    REQUIRE(deck_len(out2.items) == 3);
+    REQUIRE(deck_max_depth(out1.items) == 1);
+    REQUIRE(deck_max_depth(out2.items) == 1);
+    double const  expected_sq[] = {4.0, 9.0, 16.0};
+    double const  expected_cb[] = {8.0, 27.0, 64.0};
+    double* const sq_actual     = (double*)out1.items;
+    double* const cb_actual     = (double*)out2.items;
+    for (size_t i = 0; i < 3; ++i) {
+      REQUIRE(sq_actual[i] == expected_sq[i]);
+      REQUIRE(cb_actual[i] == expected_cb[i]);
+    }
+  }
+  { /* Two inputs, two outputs: sum and product of 3 scalars each (stack_depth=2). */
+    DECK_INIT(in_a.items, double, (1.0, 2.0, 3.0));
+    oh_update(&in_a);
+    DECK_INIT(in_b.items, double, (4.0, 5.0, 6.0));
+    oh_update(&in_b);
+    deck_clear(out1.items);
+    oh_update(&out1);
+    deck_clear(out2.items);
+    oh_update(&out2);
+
+    _plugin_function_add_mul(&in_a, &in_b, &out1, &out2);
+
+    oh_update(&out1);
+    oh_update(&out2);
+    REQUIRE(deck_len(out1.items) == 3);
+    REQUIRE(deck_len(out2.items) == 3);
+    REQUIRE(deck_max_depth(out1.items) == 1);
+    REQUIRE(deck_max_depth(out2.items) == 1);
+    double const  expected_sum[]  = {5.0, 7.0, 9.0};
+    double const  expected_prod[] = {4.0, 10.0, 18.0};
+    double* const sum_actual      = (double*)out1.items;
+    double* const prod_actual     = (double*)out2.items;
+    for (size_t i = 0; i < 3; ++i) {
+      REQUIRE(sum_actual[i] == expected_sum[i]);
+      REQUIRE(prod_actual[i] == expected_prod[i]);
+    }
+  }
+  orc_deck_free(&in_a);
+  orc_deck_free(&in_b);
+  orc_deck_free(&out1);
+  orc_deck_free(&out2);
+}
+
+void test_first_add_combinations(void)
+{
+  /*=== Tests arg_depth=1: plugin receives depth-1 list views and sums their first
+   * elements. ===*/
+  OrcHandle a = {0}, b = {0}, out = {0};
+  orc_deck_alloc((OrcTypeId) {.primitive_id = ORC_F64, .opaque_id = 0}, &a);
+  orc_deck_alloc((OrcTypeId) {.primitive_id = ORC_F64, .opaque_id = 0}, &b);
+  orc_deck_alloc((OrcTypeId) {.primitive_id = ORC_F64, .opaque_id = 0}, &out);
+  REQUIRE_WITH_MSG(a.items != NULL && b.items != NULL && out.items != NULL,
+                   "Unable to allocate decks");
+
+  { /* Equal-length: a and b each have 3 depth=1 groups (stack_depth=2). */
+    DECK_INIT(a.items, double, ((1.0, 99.0), (2.0, 99.0), (3.0, 99.0)));
+    oh_update(&a);
+    DECK_INIT(b.items, double, ((10.0, 99.0), (20.0, 99.0), (30.0, 99.0)));
+    oh_update(&b);
+
+    _plugin_function_first_add(&a, &b, &out);
+
+    oh_update(&out);
+    size_t const count = deck_len(out.items);
+    REQUIRE(count == 3);
+    REQUIRE(deck_max_depth(out.items) == 1);
+    double const  expected[] = {11.0, 22.0, 33.0};
+    double* const actual     = (double*)out.items;
+    for (size_t i = 0; i < count; ++i) {
+      REQUIRE(actual[i] == expected[i]);
+    }
+  }
+  { /* Broadcast-last at group level: a has 4 groups, b has 2 (stack_depth=2). */
+    DECK_INIT(a.items, double, ((1.0, 99.0), (2.0, 99.0), (3.0, 99.0), (4.0, 99.0)));
+    oh_update(&a);
+    DECK_INIT(b.items, double, ((10.0, 99.0), (20.0, 99.0)));
+    oh_update(&b);
+    deck_clear(out.items);
+    oh_update(&out);
+
+    _plugin_function_first_add(&a, &b, &out);
+
+    oh_update(&out);
+    size_t const count = deck_len(out.items);
+    REQUIRE(count == 4);
+    REQUIRE(deck_max_depth(out.items) == 1);
+    // b is exhausted after its second group and stays at first(b[1])=20.0.
+    double const  expected[] = {11.0, 22.0, 23.0, 24.0};
+    double* const actual     = (double*)out.items;
+    for (size_t i = 0; i < count; ++i) {
+      REQUIRE(actual[i] == expected[i]);
+    }
+  }
+  orc_deck_free(&a);
+  orc_deck_free(&b);
+  orc_deck_free(&out);
 }
