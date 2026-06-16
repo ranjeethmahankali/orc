@@ -110,6 +110,9 @@
   <2026-06-08 Mon 17:32> Tested with several combinations of inputs. Working
   beautifully.
 
+  <2026-06-14 Sun 18:08> Also wrote and tested a Rust implementation, that
+  resembles the C implementation.
+
 ** DONE Use matrices for storage of views and writers
    CLOSED: [2026-06-08 Mon 18:26]
    :PROPERTIES:

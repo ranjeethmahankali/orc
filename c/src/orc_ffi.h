@@ -42,7 +42,9 @@ typedef struct
   char*      name;
   char*      desc;
   OrcTypeId* inputs;
+  uint64_t   n_inputs;
   OrcTypeId* outputs;
+  uint64_t   n_outputs;
 } OrcFuncInfo;
 
 typedef struct
@@ -66,6 +68,7 @@ typedef struct OrcHost
     void (*draw_points)(void* data);
     void (*draw_lines)(void* data);
     void (*draw_triangles)(void* data);
+    void (*draw_voxel_grid)(void* data);
   } rendering_api;  // This is just to get the idea. I don't know what the rendering API
                     // should look like.
   struct

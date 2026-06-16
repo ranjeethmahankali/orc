@@ -2,7 +2,6 @@
 
 #include <inttypes.h>
 #include <limits.h>
-#include <math.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <string.h>
@@ -3400,6 +3399,7 @@ void test_list_length_combinations(void)
   orc_deck_free(&in);
   orc_deck_free(&out);
 }
+
 void test_two_output_combinations(void)
 {
   /*=== Tests multiple-output Combinations: sq+cb (1 in, 2 out) and add+mul (2 in, 2 out).

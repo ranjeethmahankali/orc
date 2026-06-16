@@ -1138,7 +1138,9 @@ void dims_pow(Dims const a, int const pow, Dims out)
 
 void orc_deck_alloc(OrcTypeId const id, OrcHandle* const out)
 {
-  REQUIRE_WITH_MSG(out != NULL, "Cannot write into uninitialized handle");
+  if (out == NULL) {
+    return;
+  }
   out->item_size = 0;
   switch (id.primitive_id) {
     // Unsigned integers.
@@ -1270,11 +1272,11 @@ void comb_free(void* ptr)
   if (ptr == NULL)
     return;
   Combinations* comb = (Combinations*)ptr;
-  REQUIRE_WITH_MSG(comb->n_inputs == arr_len(comb->input_depths), "Invalid combinations");
+  REQUIRE_WITH_MSG(comb->n_inputs == arr_len(comb->input_depths) &&
+                     comb->n_outputs == arr_len(comb->output_depths),
+                   "Invalid combinations");
   arr_free(comb->view_matrix);
   arr_free(comb->input_depths);
-  REQUIRE_WITH_MSG(comb->n_outputs == arr_len(comb->output_depths),
-                   "Invalid combinations");
   arr_free(comb->writer_matrix);
   arr_free(comb->output_depths);
   free(comb);
@@ -1327,7 +1329,8 @@ void* comb_init(OrcHandle const** inputs,
     uint8_t const arg_depth = input_depths[i];
     out->input_depths[i]    = arg_depth;
     DeckView* dst           = out->view_matrix + i * stack_depth;
-    *dst                    = _dv_from_oh_impl(inputs[i], arg_depth + max_delta);
+    // The first view.
+    *dst = _dv_from_oh_impl(inputs[i], arg_depth + max_delta);
     // Telescope the views until we reach the target depth.
     for (size_t d = 1; d < stack_depth; ++d) {
       DeckView child = dv_child(dst);
@@ -1340,13 +1343,14 @@ void* comb_init(OrcHandle const** inputs,
     uint8_t const arg_depth = output_depths[i];
     out->output_depths[i]   = arg_depth;
     DeckWriter* dst         = out->writer_matrix + i * stack_depth;
-    *dst                    = (DeckWriter) {
-                         .deck           = &(outputs[i]->items),
-                         .item_size      = outputs[i]->item_size,
-                         .depth          = arg_depth + max_delta,
-                         .has_next_depth = true,
-                         .next_depth     = arg_depth + max_delta,
-                         .start          = deck_len(outputs[i]->items),
+    // The first writer.
+    *dst = (DeckWriter) {
+      .deck           = &(outputs[i]->items),
+      .item_size      = outputs[i]->item_size,
+      .depth          = arg_depth + max_delta,
+      .has_next_depth = true,
+      .next_depth     = arg_depth + max_delta,
+      .start          = deck_len(outputs[i]->items),
     };
     for (size_t d = 1; d < stack_depth; ++d) {
       DeckWriter child = dw_child(dst);
