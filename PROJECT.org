@@ -87,6 +87,48 @@
   The current rendering API in [[file:c/src/orc_ffi.h::rendering_api][the current ffi]] is just a stub. While supporting
   static rendering primitives is simple, supporting implicit rendering requires
   a lot more thought.
+
+* TODO tgp7lf - Plugin Architecture
+  :PROPERTIES:
+  :CREATED:  2026-06-15 Mon 20:19
+  :END:
+  :LOGBOOK:
+  - State "TODO"       from "NEXT"       [2026-07-03 Fri 11:08]
+  - State "NEXT"       from "TODO"       [2026-06-15 Mon 20:30]
+  :END:
+
+  The basic datastructure stuff is coming out nicely, but still, all the C code
+  is one place, and the all the Rust code is in one crate. I need to make clean
+  boundary between the host programs, the ABI layer, and the plugin
+  binaries. The Rust side of this task is non-trivial and will require some
+  thought.
+
+  <2026-07-03 Fri 11:10> Started figuring out the solution for generic
+  containers, while working through this task. Will get that done as a separate
+  task and return to this later.
+
+* DONE thlu2u - Generic Container Operations
+  CLOSED: [2026-07-03 Fri 19:12]
+  :PROPERTIES:
+  :CREATED:  2026-07-03 Fri 11:08
+  :END:
+  :LOGBOOK:
+  - State "DONE"       from "NEXT"       [2026-07-03 Fri 19:12]
+  - State "NEXT"       from "TODO"       [2026-07-03 Fri 11:13]
+  :END:
+
+  A plugin needs to be able to implement generic container operations that work
+  with datatypes that are not owned by that plugin, across the DLL
+  boundary. This is not so trivial. While trying to figure out the plugin
+  architecture, I came up with the idea of using an API that is similar to
+  LLVM's vector shuffle instruction.
+
+  <2026-07-03 Fri 12:16> Wrote an untested implementation in C to create decks
+  from proxy decks.
+
+  <2026-07-03 Fri 19:12> Tested it with LLM generated tests, and fixed
+  issues. Ready to merge and mark this done.
+
 * DONE tgah09 - Combinations: Helper functions to stride along decks
   CLOSED: [2026-06-08 Mon 18:26]
   :PROPERTIES:

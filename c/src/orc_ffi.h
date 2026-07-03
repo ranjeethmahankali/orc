@@ -2,19 +2,22 @@
 #include <stdint.h>
 
 // Primitive type ids.
+#define ORC_ANY ((uint32_t)0x00)
 // Unsigned integers.
-#define ORC_U8 ((uint32_t)0x00)
-#define ORC_U16 ((uint32_t)0x01)
-#define ORC_U32 ((uint32_t)0x02)
-#define ORC_U64 ((uint32_t)0x03)
+#define ORC_U8 ((uint32_t)0x01)
+#define ORC_U16 ((uint32_t)0x02)
+#define ORC_U32 ((uint32_t)0x03)
+#define ORC_U64 ((uint32_t)0x04)
 // Scalars.
-#define ORC_F32 ((uint32_t)0x04)
-#define ORC_F64 ((uint32_t)0x05)
+#define ORC_F32 ((uint32_t)0x05)
+#define ORC_F64 ((uint32_t)0x06)
 // Signed integers.
-#define ORC_I8 ((uint32_t)0x10)
-#define ORC_I16 ((uint32_t)0x11)
-#define ORC_I32 ((uint32_t)0x12)
-#define ORC_I64 ((uint32_t)0x13)
+#define ORC_I8 ((uint32_t)0x11)
+#define ORC_I16 ((uint32_t)0x12)
+#define ORC_I32 ((uint32_t)0x13)
+#define ORC_I64 ((uint32_t)0x14)
+// Proxy for an item in a tree.
+#define ORC_PROXY ((uint32_t)0x40)
 // All custom opaque types defined by a plugin.
 #define ORC_OPAQUE ((uint32_t)UINT32_MAX)
 
@@ -31,10 +34,6 @@ typedef struct
   OrcTypeId type_id;
   char*     name;
   char*     desc;
-
-  void (*render_fn)(uint64_t const ctx, OrcHandle const* input);
-  void (*string_fn)(uint64_t const ctx, OrcHandle const* input, OrcHandle* out_str);
-  void (*clone_fn)(uint64_t const ctx, void* src, void* dst);
 } OrcTypeInfo;
 
 typedef struct
@@ -59,30 +58,18 @@ typedef struct OrcHost
 {
   struct
   {
-    void* (*alloc)(size_t const nbytes);
-    void* (*realloc)(void* ptr, size_t const nbytes);
-    void (*free)(void* ptr);
+    void* (*alloc)(uint64_t const size, uint64_t const alignment);
+    void (*dealloc)(void* ptr, uint64_t const size, uint64_t const alignment);
   } memory_api;
-  struct
-  {
-    void (*draw_points)(void* data);
-    void (*draw_lines)(void* data);
-    void (*draw_triangles)(void* data);
-    void (*draw_voxel_grid)(void* data);
-  } rendering_api;  // This is just to get the idea. I don't know what the rendering API
-                    // should look like.
+
   struct
   {
     void (*report_progress)(uint64_t const ctx, double progress);
-    void (*report_error)(uint64_t const ctx, char* error);
-    void (*report_warning)(uint64_t const ctx, char* warning);
+    void (*report_error)(uint64_t const ctx, char const* error);
+    void (*report_warning)(uint64_t const ctx, char const* warning);
     bool (*check_cancellation)(uint64_t const ctx);
   } callbacks;
 } OrcHost;
-
-void orc_plugin_init(OrcHost const* host, OrcPlugin* plugin_data_out);
-
-void orc_plugin_data_free(OrcPlugin* plugin_data);
 
 // ========== Units ==========
 
@@ -106,28 +93,44 @@ typedef struct
 
 struct OrcHandle
 {
-  uint64_t    handle;
-  void*       items;
-  uint64_t    n_items;
-  uint64_t    item_size;
-  OrcMark*    marks;
-  uint64_t*   stride_offset;
-  uint64_t    n_marks;
-  uint64_t*   strides;
-  OrcTypeInfo type_info;
+  uint64_t  handle;
+  void*     items;
+  uint64_t  n_items;
+  uint64_t  item_size;
+  OrcMark*  marks;
+  uint64_t* stride_offset;
+  uint64_t  n_marks;
+  uint64_t* strides;
+  OrcTypeId type_id;
+  Dims      dims;
 };
 
-OrcTypeInfo _orc_type_info_u8(void);
-OrcTypeInfo _orc_type_info_u16(void);
-OrcTypeInfo _orc_type_info_u32(void);
-OrcTypeInfo _orc_type_info_u64(void);
-OrcTypeInfo _orc_type_info_f32(void);
-OrcTypeInfo _orc_type_info_f64(void);
-OrcTypeInfo _orc_type_info_i8(void);
-OrcTypeInfo _orc_type_info_i16(void);
-OrcTypeInfo _orc_type_info_i32(void);
-OrcTypeInfo _orc_type_info_i64(void);
+// ===========================================================
+// Functions meant to be implemented by the plugin.
+// ===========================================================
 
+// Loading the plugin, and register the host with the plugin.
+void orc_plugin_init(OrcHost const* host, OrcPlugin* plugin_data_out);
+void orc_plugin_data_free(OrcPlugin* plugin_data);
+
+// Deck lifetime operations.
 void orc_deck_alloc(OrcTypeId const id, OrcHandle* const out);
-
 void orc_deck_free(OrcHandle* const handle);
+
+// Each plugin has to provide a generic way to construct decks out of a given input deck,
+// for all of it's custom datatypes.
+typedef struct
+{
+  uint64_t tree;
+  uint64_t item;
+} ItemProxy;
+
+#define ORC_DECK_PROXY_COPY_ALL ((uint32_t)0x01)
+#define ORC_DECK_PROXY_COPY_ITEMS ((uint32_t)0x02)
+#define ORC_DECK_PROXY_SHUFFLE ((uint32_t)0x03)
+
+void orc_deck_from_proxy(OrcHandle const* inputs,
+                         uint64_t const   n_inputs,
+                         uint32_t const   proxy_type,
+                         OrcHandle const* proxy,
+                         OrcHandle*       out);

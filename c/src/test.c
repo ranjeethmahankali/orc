@@ -2926,9 +2926,9 @@ void _plugin_function_list_element(OrcHandle const* list_handle,
                                    OrcHandle*       item_handle)
 {
   // Check the types of inpuuts.
-  REQUIRE(list_handle->type_info.type_id.primitive_id == ORC_F64);
-  REQUIRE(index_handle->type_info.type_id.primitive_id == ORC_U32);
-  REQUIRE(item_handle->type_info.type_id.primitive_id == ORC_F64);
+  REQUIRE(list_handle->type_id.primitive_id == ORC_F64);
+  REQUIRE(index_handle->type_id.primitive_id == ORC_U32);
+  REQUIRE(item_handle->type_id.primitive_id == ORC_F64);
   // Use the SDK provided combinatorics helper to stride over the input data.
   void* combinations = comb_init((OrcHandle const*[]) {list_handle, index_handle},
                                  (uint8_t const[]) {1, 0},
@@ -2961,9 +2961,9 @@ void _plugin_function_add_f64(OrcHandle const* a_handle,
                               OrcHandle const* b_handle,
                               OrcHandle*       out_handle)
 {
-  REQUIRE(a_handle->type_info.type_id.primitive_id == ORC_F64);
-  REQUIRE(b_handle->type_info.type_id.primitive_id == ORC_F64);
-  REQUIRE(out_handle->type_info.type_id.primitive_id == ORC_F64);
+  REQUIRE(a_handle->type_id.primitive_id == ORC_F64);
+  REQUIRE(b_handle->type_id.primitive_id == ORC_F64);
+  REQUIRE(out_handle->type_id.primitive_id == ORC_F64);
   void* combinations = comb_init((OrcHandle const*[]) {a_handle, b_handle},
                                  (uint8_t const[]) {0, 0},
                                  2,
@@ -2992,9 +2992,9 @@ void _plugin_function_sq_cb(OrcHandle const* in_handle,
                             OrcHandle*       out_sq_handle,
                             OrcHandle*       out_cb_handle)
 {
-  REQUIRE(in_handle->type_info.type_id.primitive_id == ORC_F64);
-  REQUIRE(out_sq_handle->type_info.type_id.primitive_id == ORC_F64);
-  REQUIRE(out_cb_handle->type_info.type_id.primitive_id == ORC_F64);
+  REQUIRE(in_handle->type_id.primitive_id == ORC_F64);
+  REQUIRE(out_sq_handle->type_id.primitive_id == ORC_F64);
+  REQUIRE(out_cb_handle->type_id.primitive_id == ORC_F64);
   void* combinations = comb_init((OrcHandle const*[]) {in_handle},
                                  (uint8_t const[]) {0},
                                  1,
@@ -3025,10 +3025,10 @@ void _plugin_function_add_mul(OrcHandle const* a_handle,
                               OrcHandle*       out_sum_handle,
                               OrcHandle*       out_prod_handle)
 {
-  REQUIRE(a_handle->type_info.type_id.primitive_id == ORC_F64);
-  REQUIRE(b_handle->type_info.type_id.primitive_id == ORC_F64);
-  REQUIRE(out_sum_handle->type_info.type_id.primitive_id == ORC_F64);
-  REQUIRE(out_prod_handle->type_info.type_id.primitive_id == ORC_F64);
+  REQUIRE(a_handle->type_id.primitive_id == ORC_F64);
+  REQUIRE(b_handle->type_id.primitive_id == ORC_F64);
+  REQUIRE(out_sum_handle->type_id.primitive_id == ORC_F64);
+  REQUIRE(out_prod_handle->type_id.primitive_id == ORC_F64);
   void* combinations = comb_init((OrcHandle const*[]) {a_handle, b_handle},
                                  (uint8_t const[]) {0, 0},
                                  2,
@@ -3062,9 +3062,9 @@ void _plugin_function_first_add(OrcHandle const* a_handle,
                                 OrcHandle const* b_handle,
                                 OrcHandle*       out_handle)
 {
-  REQUIRE(a_handle->type_info.type_id.primitive_id == ORC_F64);
-  REQUIRE(b_handle->type_info.type_id.primitive_id == ORC_F64);
-  REQUIRE(out_handle->type_info.type_id.primitive_id == ORC_F64);
+  REQUIRE(a_handle->type_id.primitive_id == ORC_F64);
+  REQUIRE(b_handle->type_id.primitive_id == ORC_F64);
+  REQUIRE(out_handle->type_id.primitive_id == ORC_F64);
   void* combinations = comb_init((OrcHandle const*[]) {a_handle, b_handle},
                                  (uint8_t const[]) {1, 1},
                                  2,
@@ -3102,7 +3102,6 @@ void test_list_item_combinations(void)
   REQUIRE_WITH_MSG(
     lists.items != NULL && indices.items != NULL && out_items.items != NULL,
     "Unable to allocate decks");
-
   { /*Depth 2 lists, with one index.*/
     // Populate the inputs with data - in a real scenario this data is computed
     // by upstream functions. Here we pretend.
@@ -3117,10 +3116,8 @@ void test_list_item_combinations(void)
     DECK_INIT(indices.items, uint32_t, 2);
     oh_update(&indices);
     REQUIRE(deck_len(indices.items) == 1);
-
     // Run the block - In a real scenario, this function is provided by a plugin DLL.
     _plugin_function_list_element(&lists, &indices, &out_items);
-
     // Check the outputs. The input had 4 lists, so the output should have 4 items.
     oh_update(&out_items);
     size_t const count = deck_len(out_items.items);
@@ -3138,10 +3135,8 @@ void test_list_item_combinations(void)
     oh_update(&indices);
     deck_clear(out_items.items);  // Clear the outputs.
     oh_update(&out_items);
-
     // Run the block - In a real scenario, this function is provided by a plugin DLL.
     _plugin_function_list_element(&lists, &indices, &out_items);
-
     oh_update(&out_items);
     size_t const count = deck_len(out_items.items);
     REQUIRE(count == 4);
@@ -3157,10 +3152,8 @@ void test_list_item_combinations(void)
     oh_update(&indices);
     deck_clear(out_items.items);  // Clear the outputs.
     oh_update(&out_items);
-
     // Run the block - In a real scenario, this function is provided by a plugin DLL.
     _plugin_function_list_element(&lists, &indices, &out_items);
-
     oh_update(&out_items);
     double* actual   = (double*)out_items.items;
     double* expected = NULL;
@@ -3319,8 +3312,8 @@ void test_add_f64_combinations(void)
 // each list as U64.
 void _plugin_function_list_length(OrcHandle const* in_handle, OrcHandle* out_handle)
 {
-  REQUIRE(in_handle->type_info.type_id.primitive_id == ORC_F64);
-  REQUIRE(out_handle->type_info.type_id.primitive_id == ORC_U64);
+  REQUIRE(in_handle->type_id.primitive_id == ORC_F64);
+  REQUIRE(out_handle->type_id.primitive_id == ORC_U64);
   void* combinations = comb_init((OrcHandle const*[]) {in_handle},
                                  (uint8_t const[]) {1},
                                  1,
@@ -3520,4 +3513,410 @@ void test_first_add_combinations(void)
   orc_deck_free(&a);
   orc_deck_free(&b);
   orc_deck_free(&out);
+}
+
+// ==================== Shuffling decks with a proxy ====================
+
+static OrcHandle _make_flattened_proxy(void* deck)
+{
+  _DeckHeader*  h     = _deck_header(deck);
+  OrcMark*      marks = NULL;
+  OrcMark const mark  = (OrcMark) {.depth = 0, .pos = 0};
+  arr_push(marks, mark);
+  return (OrcHandle) {
+    .handle        = 0,
+    .items         = NULL,
+    .n_items       = 0,
+    .item_size     = h->item_size,
+    .marks         = marks,
+    .stride_offset = NULL,
+    .n_marks       = 1,
+    .strides       = NULL,
+    .type_id       = (OrcTypeId) {.primitive_id = ORC_PROXY, .opaque_id = 0},
+    .dims          = {0},
+  };
+}
+
+static OrcHandle _make_grafted_proxy(void* deck)
+{
+  _DeckHeader* h         = _deck_header(deck);
+  OrcMark*     old_marks = h->marks;
+  size_t const n_marks   = arr_len(old_marks);
+  OrcMark*     marks     = NULL;
+  uint64_t     prev      = 0;
+  for (size_t i = 0; i < n_marks; ++i) {
+    uint8_t const  new_depth = old_marks[i].depth + 1;
+    uint64_t const current   = old_marks[i].pos;
+    for (uint64_t j = prev; j < current; ++j) {
+      OrcMark const m = {.depth = 0, .pos = j};
+      arr_push(marks, m);
+    }
+    {
+      OrcMark const m = {.depth = new_depth, .pos = current};
+      arr_push(marks, m);
+    }
+    prev = current + 1;
+  }
+  for (uint64_t j = prev; j < (uint64_t)h->count; ++j) {
+    OrcMark const m = {.depth = 0, .pos = j};
+    arr_push(marks, m);
+  }
+  return (OrcHandle) {
+    .handle        = 0,
+    .items         = NULL,
+    .n_items       = 0,
+    .item_size     = h->item_size,
+    .marks         = marks,
+    .stride_offset = NULL,
+    .n_marks       = (uint64_t)arr_len(marks),
+    .strides       = NULL,
+    .type_id       = (OrcTypeId) {.primitive_id = ORC_PROXY, .opaque_id = 0},
+    .dims          = {0},
+  };
+}
+
+static OrcHandle _make_simplified_proxy(void* deck)
+{
+  _DeckHeader* h       = _deck_header(deck);
+  size_t const n_marks = arr_len(h->marks);
+  OrcMark*     marks   = NULL;
+  if (n_marks == 0) {
+    return (OrcHandle) {
+      .type_id = (OrcTypeId) {.primitive_id = ORC_PROXY, .opaque_id = 0},
+    };
+  }
+  uint8_t remap[256] = {0};
+  {
+    size_t const d_max = (size_t)h->marks[0].depth;
+    for (size_t i = 0; i < n_marks; ++i) {
+      remap[h->marks[i].depth] = 1;
+    }
+    uint8_t acc = 0;
+    for (size_t r = 0; r <= d_max; ++r) {
+      uint8_t const p = acc;
+      acc += remap[r];
+      remap[r] = p;
+    }
+  }
+  for (size_t i = 0; i < n_marks; ++i) {
+    OrcMark const m = {.depth = remap[h->marks[i].depth], .pos = h->marks[i].pos};
+    arr_push(marks, m);
+  }
+  return (OrcHandle) {
+    .handle        = 0,
+    .items         = NULL,
+    .n_items       = 0,
+    .item_size     = h->item_size,
+    .marks         = marks,
+    .stride_offset = NULL,
+    .n_marks       = (uint64_t)arr_len(marks),
+    .strides       = NULL,
+    .type_id       = (OrcTypeId) {.primitive_id = ORC_PROXY, .opaque_id = 0},
+    .dims          = {0},
+  };
+}
+
+static OrcHandle _make_shuffle_proxy(ItemProxy* pdeck)
+{
+  _DeckHeader* h = _deck_header(pdeck);
+  h->type_id     = (OrcTypeId) {.primitive_id = ORC_PROXY, .opaque_id = 0};
+  OrcHandle handle;
+  memset(&handle, 0, sizeof(handle));
+  handle.items = pdeck;
+  oh_update(&handle);
+  return handle;
+}
+
+static void _assert_decks_match(void* actual, void* expected, size_t const item_size)
+{
+  size_t const na = deck_len(actual);
+  size_t const ne = deck_len(expected);
+  REQUIRE(na == ne);
+  REQUIRE(memcmp(actual, expected, na * item_size) == 0);
+  REQUIRE(deck_max_depth(actual) == deck_max_depth(expected));
+  _DeckHeader* ha  = _deck_header(actual);
+  _DeckHeader* he  = _deck_header(expected);
+  size_t const nma = arr_len(ha->marks);
+  size_t const nme = arr_len(he->marks);
+  REQUIRE(nma == nme);
+  for (size_t i = 0; i < nma; ++i) {
+    REQUIRE(ha->marks[i].pos == he->marks[i].pos);
+    REQUIRE(ha->marks[i].depth == he->marks[i].depth);
+  }
+}
+
+void test_deck_from_proxy_copy_items(void)
+{
+  /*=== COPY_ITEMS: copies items from input, structure (marks) from proxy. ===*/
+  { /* Flatten a depth-2 deck. */
+    OrcHandle in = {0}, out = {0};
+    orc_deck_alloc((OrcTypeId) {.primitive_id = ORC_F64, .opaque_id = 0}, &in);
+    DECK_INIT(in.items, double, ((1.0, 2.0), (3.0, 4.0, 5.0)));
+    oh_update(&in);
+
+    OrcHandle proxy = _make_flattened_proxy(in.items);
+    orc_deck_from_proxy(&in, 1, ORC_DECK_PROXY_COPY_ITEMS, &proxy, &out);
+
+    REQUIRE(out.type_id.primitive_id == ORC_F64);
+    REQUIRE(deck_len(out.items) == 5);
+    REQUIRE(deck_max_depth(out.items) == 1);
+    double* actual = (double*)out.items;
+    REQUIRE(actual[0] == 1.0 && actual[1] == 2.0 && actual[2] == 3.0);
+    REQUIRE(actual[3] == 4.0 && actual[4] == 5.0);
+
+    arr_free(proxy.marks);
+    orc_deck_free(&out);
+    orc_deck_free(&in);
+  }
+  { /* Flatten a depth-3 deck. */
+    OrcHandle in = {0}, out = {0};
+    orc_deck_alloc((OrcTypeId) {.primitive_id = ORC_F64, .opaque_id = 0}, &in);
+    DECK_INIT(in.items, double, (((1.0, 2.0), (3.0)), ((4.0, 5.0))));
+    oh_update(&in);
+
+    OrcHandle proxy = _make_flattened_proxy(in.items);
+    orc_deck_from_proxy(&in, 1, ORC_DECK_PROXY_COPY_ITEMS, &proxy, &out);
+
+    REQUIRE(deck_len(out.items) == 5);
+    REQUIRE(deck_max_depth(out.items) == 1);
+    double* actual = (double*)out.items;
+    REQUIRE(actual[0] == 1.0 && actual[4] == 5.0);
+
+    arr_free(proxy.marks);
+    orc_deck_free(&out);
+    orc_deck_free(&in);
+  }
+  { /* Graft a flat deck: (1, 2, 3) → ((1), (2), (3)). */
+    OrcHandle in = {0}, out = {0};
+    orc_deck_alloc((OrcTypeId) {.primitive_id = ORC_F64, .opaque_id = 0}, &in);
+    DECK_INIT(in.items, double, (1.0, 2.0, 3.0));
+    oh_update(&in);
+
+    OrcHandle proxy = _make_grafted_proxy(in.items);
+    orc_deck_from_proxy(&in, 1, ORC_DECK_PROXY_COPY_ITEMS, &proxy, &out);
+
+    double* expected = NULL;
+    DECK_INIT(expected, double, ((1.0), (2.0), (3.0)));
+    _assert_decks_match(out.items, expected, sizeof(double));
+    REQUIRE(out.type_id.primitive_id == ORC_F64);
+
+    deck_free(expected);
+    arr_free(proxy.marks);
+    orc_deck_free(&out);
+    orc_deck_free(&in);
+  }
+  { /* Graft a depth-2 deck: ((1, 2), (3)) → (((1, 2)), ((3))). */
+    OrcHandle in = {0}, out = {0};
+    orc_deck_alloc((OrcTypeId) {.primitive_id = ORC_F64, .opaque_id = 0}, &in);
+    DECK_INIT(in.items, double, ((1.0, 2.0), (3.0)));
+    oh_update(&in);
+
+    OrcHandle proxy = _make_grafted_proxy(in.items);
+    orc_deck_from_proxy(&in, 1, ORC_DECK_PROXY_COPY_ITEMS, &proxy, &out);
+
+    double* expected = NULL;
+    DECK_INIT(expected, double, (((1.0), (2.0)), ((3.0))));
+    _assert_decks_match(out.items, expected, sizeof(double));
+
+    deck_free(expected);
+    arr_free(proxy.marks);
+    orc_deck_free(&out);
+    orc_deck_free(&in);
+  }
+  { /* Simplify: remove gaps in depth levels. */
+    OrcHandle in = {0}, out = {0};
+    orc_deck_alloc((OrcTypeId) {.primitive_id = ORC_F64, .opaque_id = 0}, &in);
+    DECK_INIT(in.items, double, ((1.0, 2.0), (3.0, 4.0)));
+    oh_update(&in);
+    /* Graft to create a gap in depth levels, then use simplify proxy. */
+    deck_graft(in.items);
+    oh_update(&in);
+
+    OrcHandle proxy = _make_simplified_proxy(in.items);
+    orc_deck_from_proxy(&in, 1, ORC_DECK_PROXY_COPY_ITEMS, &proxy, &out);
+
+    /* Simplify should match deck_simplify on an equivalent deck. */
+    double* expected = NULL;
+    DECK_INIT(expected, double, ((1.0, 2.0), (3.0, 4.0)));
+    deck_graft(expected);
+    deck_simplify(expected);
+    _assert_decks_match(out.items, expected, sizeof(double));
+
+    deck_free(expected);
+    arr_free(proxy.marks);
+    orc_deck_free(&out);
+    orc_deck_free(&in);
+  }
+}
+
+void test_deck_from_proxy_shuffle(void)
+{
+  /*=== SHUFFLE: copies items one-at-a-time using proxy ItemProxy references. ===*/
+  { /* Flat reverse: (1, 2, 3) → (3, 2, 1). */
+    OrcHandle in = {0}, out = {0};
+    orc_deck_alloc((OrcTypeId) {.primitive_id = ORC_F64, .opaque_id = 0}, &in);
+    DECK_INIT(in.items, double, (1.0, 2.0, 3.0));
+    oh_update(&in);
+
+    ItemProxy* pdeck = NULL;
+    REQUIRE(deck_push(pdeck, ((ItemProxy) {.tree = 0, .item = 2}), 1) == OK);
+    REQUIRE(deck_push(pdeck, ((ItemProxy) {.tree = 0, .item = 1}), 0) == OK);
+    REQUIRE(deck_push(pdeck, ((ItemProxy) {.tree = 0, .item = 0}), 0) == OK);
+    OrcHandle proxy = _make_shuffle_proxy(pdeck);
+    orc_deck_from_proxy(&in, 1, ORC_DECK_PROXY_SHUFFLE, &proxy, &out);
+
+    double* expected = NULL;
+    DECK_INIT(expected, double, (3.0, 2.0, 1.0));
+    _assert_decks_match(out.items, expected, sizeof(double));
+    REQUIRE(out.type_id.primitive_id == ORC_F64);
+
+    deck_free(expected);
+    deck_free(pdeck);
+    orc_deck_free(&out);
+    orc_deck_free(&in);
+  }
+  { /* Nested reverse: ((1, 2), (3, 4, 5)) → ((2, 1), (5, 4, 3)). */
+    OrcHandle in = {0}, out = {0};
+    orc_deck_alloc((OrcTypeId) {.primitive_id = ORC_F64, .opaque_id = 0}, &in);
+    DECK_INIT(in.items, double, ((1.0, 2.0), (3.0, 4.0, 5.0)));
+    oh_update(&in);
+
+    ItemProxy* pdeck = NULL;
+    /* First sublist reversed: flat indices 1, 0. */
+    REQUIRE(deck_push(pdeck, ((ItemProxy) {.tree = 0, .item = 1}), 2) == OK);
+    REQUIRE(deck_push(pdeck, ((ItemProxy) {.tree = 0, .item = 0}), 0) == OK);
+    /* Second sublist reversed: flat indices 4, 3, 2. */
+    REQUIRE(deck_push(pdeck, ((ItemProxy) {.tree = 0, .item = 4}), 1) == OK);
+    REQUIRE(deck_push(pdeck, ((ItemProxy) {.tree = 0, .item = 3}), 0) == OK);
+    REQUIRE(deck_push(pdeck, ((ItemProxy) {.tree = 0, .item = 2}), 0) == OK);
+    OrcHandle proxy = _make_shuffle_proxy(pdeck);
+    orc_deck_from_proxy(&in, 1, ORC_DECK_PROXY_SHUFFLE, &proxy, &out);
+
+    double* expected = NULL;
+    DECK_INIT(expected, double, ((2.0, 1.0), (5.0, 4.0, 3.0)));
+    _assert_decks_match(out.items, expected, sizeof(double));
+
+    deck_free(expected);
+    deck_free(pdeck);
+    orc_deck_free(&out);
+    orc_deck_free(&in);
+  }
+  { /* Generic list_item: pick item at index 1 from each sublist.
+       ((1, 2, 3), (4, 5)) → (2, 5). */
+    OrcHandle in = {0}, out = {0};
+    orc_deck_alloc((OrcTypeId) {.primitive_id = ORC_F64, .opaque_id = 0}, &in);
+    DECK_INIT(in.items, double, ((1.0, 2.0, 3.0), (4.0, 5.0)));
+    oh_update(&in);
+
+    ItemProxy* pdeck = NULL;
+    REQUIRE(deck_push(pdeck, ((ItemProxy) {.tree = 0, .item = 1}), 1) == OK);
+    REQUIRE(deck_push(pdeck, ((ItemProxy) {.tree = 0, .item = 4}), 0) == OK);
+    OrcHandle proxy = _make_shuffle_proxy(pdeck);
+    orc_deck_from_proxy(&in, 1, ORC_DECK_PROXY_SHUFFLE, &proxy, &out);
+
+    REQUIRE(out.type_id.primitive_id == ORC_F64);
+    REQUIRE(deck_len(out.items) == 2);
+    double* actual = (double*)out.items;
+    REQUIRE(actual[0] == 2.0 && actual[1] == 5.0);
+
+    deck_free(pdeck);
+    orc_deck_free(&out);
+    orc_deck_free(&in);
+  }
+  { /* Multi-input shuffle: interleave from two decks.
+       A=(1, 2), B=(10, 20) → (1, 10, 2, 20). */
+    OrcHandle a = {0}, b = {0}, out = {0};
+    orc_deck_alloc((OrcTypeId) {.primitive_id = ORC_F64, .opaque_id = 0}, &a);
+    orc_deck_alloc((OrcTypeId) {.primitive_id = ORC_F64, .opaque_id = 0}, &b);
+    DECK_INIT(a.items, double, (1.0, 2.0));
+    oh_update(&a);
+    DECK_INIT(b.items, double, (10.0, 20.0));
+    oh_update(&b);
+
+    ItemProxy* pdeck = NULL;
+    REQUIRE(deck_push(pdeck, ((ItemProxy) {.tree = 0, .item = 0}), 1) == OK);
+    REQUIRE(deck_push(pdeck, ((ItemProxy) {.tree = 1, .item = 0}), 0) == OK);
+    REQUIRE(deck_push(pdeck, ((ItemProxy) {.tree = 0, .item = 1}), 0) == OK);
+    REQUIRE(deck_push(pdeck, ((ItemProxy) {.tree = 1, .item = 1}), 0) == OK);
+    OrcHandle proxy = _make_shuffle_proxy(pdeck);
+
+    OrcHandle inputs[2] = {a, b};
+    orc_deck_from_proxy(inputs, 2, ORC_DECK_PROXY_SHUFFLE, &proxy, &out);
+
+    double* expected = NULL;
+    DECK_INIT(expected, double, (1.0, 10.0, 2.0, 20.0));
+    _assert_decks_match(out.items, expected, sizeof(double));
+
+    deck_free(expected);
+    deck_free(pdeck);
+    orc_deck_free(&out);
+    orc_deck_free(&b);
+    orc_deck_free(&a);
+  }
+}
+
+void test_deck_from_proxy_type_agnostic(void)
+{
+  /*=== Verifies orc_deck_from_proxy preserves type across u32, i32, i16. ===*/
+  { /* u32 flatten. */
+    OrcHandle in = {0}, out = {0};
+    orc_deck_alloc((OrcTypeId) {.primitive_id = ORC_U32, .opaque_id = 0}, &in);
+    DECK_INIT(in.items, uint32_t, ((10, 20), (30)));
+    oh_update(&in);
+
+    OrcHandle proxy = _make_flattened_proxy(in.items);
+    orc_deck_from_proxy(&in, 1, ORC_DECK_PROXY_COPY_ITEMS, &proxy, &out);
+
+    REQUIRE(out.type_id.primitive_id == ORC_U32);
+    REQUIRE(deck_len(out.items) == 3);
+    REQUIRE(deck_max_depth(out.items) == 1);
+    uint32_t* actual = (uint32_t*)out.items;
+    REQUIRE(actual[0] == 10 && actual[1] == 20 && actual[2] == 30);
+
+    arr_free(proxy.marks);
+    orc_deck_free(&out);
+    orc_deck_free(&in);
+  }
+  { /* i32 shuffle reverse. */
+    OrcHandle in = {0}, out = {0};
+    orc_deck_alloc((OrcTypeId) {.primitive_id = ORC_I32, .opaque_id = 0}, &in);
+    DECK_INIT(in.items, int32_t, (-1, -2, -3, -4));
+    oh_update(&in);
+
+    ItemProxy* pdeck = NULL;
+    REQUIRE(deck_push(pdeck, ((ItemProxy) {.tree = 0, .item = 3}), 1) == OK);
+    REQUIRE(deck_push(pdeck, ((ItemProxy) {.tree = 0, .item = 2}), 0) == OK);
+    REQUIRE(deck_push(pdeck, ((ItemProxy) {.tree = 0, .item = 1}), 0) == OK);
+    REQUIRE(deck_push(pdeck, ((ItemProxy) {.tree = 0, .item = 0}), 0) == OK);
+    OrcHandle proxy = _make_shuffle_proxy(pdeck);
+    orc_deck_from_proxy(&in, 1, ORC_DECK_PROXY_SHUFFLE, &proxy, &out);
+
+    REQUIRE(out.type_id.primitive_id == ORC_I32);
+    REQUIRE(deck_len(out.items) == 4);
+    int32_t* actual = (int32_t*)out.items;
+    REQUIRE(actual[0] == -4 && actual[1] == -3 && actual[2] == -2 && actual[3] == -1);
+
+    deck_free(pdeck);
+    orc_deck_free(&out);
+    orc_deck_free(&in);
+  }
+  { /* i16 graft. */
+    OrcHandle in = {0}, out = {0};
+    orc_deck_alloc((OrcTypeId) {.primitive_id = ORC_I16, .opaque_id = 0}, &in);
+    DECK_INIT(in.items, int16_t, (10, 20, 30));
+    oh_update(&in);
+
+    OrcHandle proxy = _make_grafted_proxy(in.items);
+    orc_deck_from_proxy(&in, 1, ORC_DECK_PROXY_COPY_ITEMS, &proxy, &out);
+
+    REQUIRE(out.type_id.primitive_id == ORC_I16);
+    REQUIRE(deck_len(out.items) == 3);
+    REQUIRE(deck_max_depth(out.items) == 2);
+    int16_t* actual = (int16_t*)out.items;
+    REQUIRE(actual[0] == 10 && actual[1] == 20 && actual[2] == 30);
+
+    arr_free(proxy.marks);
+    orc_deck_free(&out);
+    orc_deck_free(&in);
+  }
 }

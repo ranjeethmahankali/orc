@@ -333,7 +333,7 @@ typedef struct
   size_t    count;
   size_t    capacity;
   size_t    item_size;
-  Dims      units;
+  Dims      dims;
   OrcTypeId type_id;
 } _DeckHeader;
 
