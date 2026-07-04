@@ -1156,8 +1156,6 @@ void oh_update(OrcHandle* handle)
   handle->stride_offset = h->stride_offset;
   handle->n_marks       = arr_len(h->marks);
   handle->strides       = h->strides;
-  memcpy(handle->dims, h->dims, sizeof(Dims));
-  handle->type_id = h->type_id;
 }
 
 void* comb_init(OrcHandle const** inputs,
@@ -1485,7 +1483,6 @@ void orc_deck_alloc(OrcTypeId const id, OrcHandle* const out)
   size_t const INIT_SIZE = 1;
   void*        deck_ptr  = _deck_grow_capacity(NULL, out->item_size, INIT_SIZE);
   _DeckHeader* h         = _deck_header(deck_ptr);
-  h->type_id             = out->type_id;
   // Assign to the output deck.
   out->handle = (uint64_t)deck_ptr;
   out->items  = deck_ptr;
@@ -1569,8 +1566,8 @@ void orc_deck_from_proxy(OrcHandle const* inputs,
     void*        deck    = _deck_grow_capacity(out->items, item_size, n_items);
     _DeckHeader* h       = _deck_header(deck);
     h->item_size         = item_size;
-    memcpy(h->dims, inputs[0].dims, sizeof(Dims));
-    h->type_id = id;
+    memcpy(out->dims, inputs[0].dims, sizeof(Dims));
+    out->type_id = id;
     // Copy the data.
     if (id.primitive_id == ORC_OPAQUE) {
       memset(deck, 0, item_size * n_items);
@@ -1595,8 +1592,8 @@ void orc_deck_from_proxy(OrcHandle const* inputs,
     void*        deck    = _deck_grow_capacity(out->items, item_size, n_items);
     _DeckHeader* h       = _deck_header(deck);
     h->item_size         = item_size;
-    memcpy(h->dims, inputs[0].dims, sizeof(Dims));
-    h->type_id = id;
+    memcpy(out->dims, inputs[0].dims, sizeof(Dims));
+    out->type_id = id;
     // Copy the data.
     if (id.primitive_id == ORC_OPAQUE) {
       memset(deck, 0, item_size * n_items);
@@ -1620,8 +1617,8 @@ void orc_deck_from_proxy(OrcHandle const* inputs,
     void*        deck    = _deck_grow_capacity(out->items, item_size, n_items);
     _DeckHeader* h       = _deck_header(deck);
     h->item_size         = item_size;
-    memcpy(h->dims, proxy->dims, sizeof(Dims));
-    h->type_id = id;
+    memcpy(out->dims, proxy->dims, sizeof(Dims));
+    out->type_id = id;
     // Copy the data one at a time from by iterating over the proxy.
     ItemProxy* proxies = (ItemProxy*)proxy->items;
     if (id.primitive_id == ORC_OPAQUE) {

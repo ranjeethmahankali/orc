@@ -3618,12 +3618,11 @@ static OrcHandle _make_simplified_proxy(void* deck)
 
 static OrcHandle _make_shuffle_proxy(ItemProxy* pdeck)
 {
-  _DeckHeader* h = _deck_header(pdeck);
-  h->type_id     = (OrcTypeId) {.primitive_id = ORC_PROXY, .opaque_id = 0};
   OrcHandle handle;
   memset(&handle, 0, sizeof(handle));
   handle.items = pdeck;
   oh_update(&handle);
+  handle.type_id = (OrcTypeId) {.primitive_id = ORC_PROXY, .opaque_id = 0};
   return handle;
 }
 

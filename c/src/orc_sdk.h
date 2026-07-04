@@ -333,8 +333,7 @@ typedef struct
   size_t    count;
   size_t    capacity;
   size_t    item_size;
-  Dims      dims;
-  OrcTypeId type_id;
+  size_t    _alignment;
 } _DeckHeader;
 
 static inline _DeckHeader* _deck_header(void* ptr)
