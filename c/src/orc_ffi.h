@@ -1,8 +1,6 @@
 #include <stddef.h>
 #include <stdint.h>
 
-// Primitive type ids.
-#define ORC_ANY ((uint32_t)0x00)
 // Unsigned integers.
 #define ORC_U8 ((uint32_t)0x01)
 #define ORC_U16 ((uint32_t)0x02)
