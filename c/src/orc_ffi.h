@@ -104,7 +104,6 @@ struct OrcHandle
   OrcTypeId type_id;
   OrcDims   dims;
 };
-// Related to proxy trees.
 
 // Each plugin has to provide a generic way to construct decks out of a given input deck,
 // for all of it's custom datatypes.

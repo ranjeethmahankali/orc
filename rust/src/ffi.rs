@@ -159,7 +159,7 @@ macro_rules! orc_plugin {
 }
 
 pub trait TOrcPlugin {
-    fn deck_alloc(id: OrcTypeId, out: *mut OrcHandle);
+    fn deck_alloc(id: OrcTypeId) -> OrcHandle;
     fn deck_free(handle: *mut OrcHandle);
     fn plugin_init(host: *const OrcHost, out: *mut OrcPlugin);
     fn plugin_data_free(out: *mut OrcPlugin);
