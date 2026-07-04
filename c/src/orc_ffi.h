@@ -36,12 +36,16 @@ typedef struct
 
 typedef struct
 {
-  char*      name;
-  char*      desc;
-  OrcTypeId* inputs;
-  uint64_t   n_inputs;
-  OrcTypeId* outputs;
-  uint64_t   n_outputs;
+  char*    name;
+  char*    desc;
+  uint64_t n_inputs;
+  uint64_t n_outputs;
+
+  void (*func)(uint64_t const   ctx,
+               OrcHandle const* inputs,
+               size_t const     n_inputs,
+               OrcHandle*       outputs,
+               size_t const     n_outputs);
 } OrcFuncInfo;
 
 typedef struct
