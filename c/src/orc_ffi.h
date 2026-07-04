@@ -73,8 +73,6 @@ typedef struct OrcHost
   } callbacks;
 } OrcHost;
 
-// ========== Units ==========
-
 #define ORC_DIM_LENGTH ((uint32_t)0)
 #define ORC_DIM_MASS ((uint32_t)1)
 #define ORC_DIM_TIME ((uint32_t)2)
@@ -85,7 +83,7 @@ typedef struct OrcHost
 
 #define ORC_NUM_DIMS 7
 
-typedef int32_t Dims[ORC_NUM_DIMS];
+typedef int32_t OrcDims[ORC_NUM_DIMS];
 
 typedef struct
 {
@@ -104,8 +102,21 @@ struct OrcHandle
   uint64_t  n_marks;
   uint64_t* strides;
   OrcTypeId type_id;
-  Dims      dims;
+  OrcDims   dims;
 };
+// Related to proxy trees.
+
+// Each plugin has to provide a generic way to construct decks out of a given input deck,
+// for all of it's custom datatypes.
+typedef struct
+{
+  uint64_t tree;
+  uint64_t item;
+} OrcItemProxy;
+
+#define ORC_DECK_PROXY_COPY_ALL ((uint32_t)0x01)
+#define ORC_DECK_PROXY_COPY_ITEMS ((uint32_t)0x02)
+#define ORC_DECK_PROXY_SHUFFLE ((uint32_t)0x03)
 
 // ===========================================================
 // Functions meant to be implemented by the plugin.
@@ -118,18 +129,6 @@ void orc_plugin_data_free(OrcPlugin* plugin_data);
 // Deck lifetime operations.
 void orc_deck_alloc(OrcTypeId const id, OrcHandle* const out);
 void orc_deck_free(OrcHandle* const handle);
-
-// Each plugin has to provide a generic way to construct decks out of a given input deck,
-// for all of it's custom datatypes.
-typedef struct
-{
-  uint64_t tree;
-  uint64_t item;
-} ItemProxy;
-
-#define ORC_DECK_PROXY_COPY_ALL ((uint32_t)0x01)
-#define ORC_DECK_PROXY_COPY_ITEMS ((uint32_t)0x02)
-#define ORC_DECK_PROXY_SHUFFLE ((uint32_t)0x03)
 
 void orc_deck_from_proxy(OrcHandle const* inputs,
                          uint64_t const   n_inputs,

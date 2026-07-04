@@ -1065,26 +1065,26 @@ void* dw_push_empty(DeckWriter* writer)
 
 // ========== Dims (Units) ==========
 
-bool dims_equal(Dims const a, Dims const b)
+bool dims_equal(OrcDims const a, OrcDims const b)
 {
   return memcmp(a, b, sizeof(*a) * ORC_NUM_DIMS) == 0;
 }
 
-void dims_multiply(Dims const a, Dims const b, Dims out)
+void dims_multiply(OrcDims const a, OrcDims const b, OrcDims out)
 {
   for (size_t i = 0; i < ORC_NUM_DIMS; ++i) {
     out[i] = a[i] + b[i];
   }
 }
 
-void dims_divide(Dims const a, Dims const b, Dims out)
+void dims_divide(OrcDims const a, OrcDims const b, OrcDims out)
 {
   for (size_t i = 0; i < ORC_NUM_DIMS; ++i) {
     out[i] = a[i] - b[i];
   }
 }
 
-void dims_pow(Dims const a, int const pow, Dims out)
+void dims_pow(OrcDims const a, int const pow, OrcDims out)
 {
   for (size_t i = 0; i < ORC_NUM_DIMS; ++i) {
     out[i] = a[i] * pow;
@@ -1566,7 +1566,7 @@ void orc_deck_from_proxy(OrcHandle const* inputs,
     void*        deck    = _deck_grow_capacity(out->items, item_size, n_items);
     _DeckHeader* h       = _deck_header(deck);
     h->item_size         = item_size;
-    memcpy(out->dims, inputs[0].dims, sizeof(Dims));
+    memcpy(out->dims, inputs[0].dims, sizeof(OrcDims));
     out->type_id = id;
     // Copy the data.
     if (id.primitive_id == ORC_OPAQUE) {
@@ -1592,7 +1592,7 @@ void orc_deck_from_proxy(OrcHandle const* inputs,
     void*        deck    = _deck_grow_capacity(out->items, item_size, n_items);
     _DeckHeader* h       = _deck_header(deck);
     h->item_size         = item_size;
-    memcpy(out->dims, inputs[0].dims, sizeof(Dims));
+    memcpy(out->dims, inputs[0].dims, sizeof(OrcDims));
     out->type_id = id;
     // Copy the data.
     if (id.primitive_id == ORC_OPAQUE) {
@@ -1617,10 +1617,10 @@ void orc_deck_from_proxy(OrcHandle const* inputs,
     void*        deck    = _deck_grow_capacity(out->items, item_size, n_items);
     _DeckHeader* h       = _deck_header(deck);
     h->item_size         = item_size;
-    memcpy(out->dims, proxy->dims, sizeof(Dims));
+    memcpy(out->dims, proxy->dims, sizeof(OrcDims));
     out->type_id = id;
     // Copy the data one at a time from by iterating over the proxy.
-    ItemProxy* proxies = (ItemProxy*)proxy->items;
+    OrcItemProxy* proxies = (OrcItemProxy*)proxy->items;
     if (id.primitive_id == ORC_OPAQUE) {
       while (h->count < n_items) {
         REQUIRE_WITH_MSG(h->count < proxy->n_items && proxies[h->count].tree < n_inputs,

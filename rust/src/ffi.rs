@@ -4,7 +4,6 @@ use std::ffi::{c_char, c_void};
 #[repr(u32)]
 #[derive(Clone, Copy)]
 pub enum OrcPrimitiveTypeId {
-    Any = 0x00,
     // Unsigned integers.
     U8 = 0x01,
     U16 = 0x02,
@@ -37,45 +36,20 @@ pub struct OrcTypeInfo {
     pub desc: *const c_char,
 }
 
-// ========== Units ==========
-
-pub const ORC_NUM_DIMS: usize = 7;
-
-#[derive(PartialEq, Eq)]
-#[repr(C)]
-#[derive(Default, Copy, Clone)]
-pub struct Dims([i32; ORC_NUM_DIMS]);
-
-#[repr(C)]
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub struct OrcMark {
-    pub(crate) depth: u8,
-    pub(crate) pos: u64,
-}
-
-#[repr(C)]
-#[derive(Clone, Copy)]
-pub struct OrcHandle {
-    pub handle: u64,
-    pub items: *const std::ffi::c_void,
-    pub n_items: u64,
-    pub item_size: u64,
-    pub marks: *const OrcMark,
-    pub stride_offset: *const u64,
-    pub n_marks: u64,
-    pub strides: *const u64,
-    pub type_id: OrcTypeId,
-    pub dims: Dims,
-}
-
 #[repr(C)]
 pub struct OrcFuncInfo {
     name: *const c_char,
     desc: *const c_char,
-    inputs: *const OrcTypeInfo,
     n_inputs: u64,
-    outputs: *const OrcFuncInfo,
     n_outputs: u64,
+
+    func: extern "C" fn(
+        ctx: u64,
+        inputs: *const OrcHandle,
+        n_inputs: u64,
+        outputs: *mut OrcHandle,
+        n_outputs: u64,
+    ),
 }
 
 #[repr(C)]
@@ -94,16 +68,94 @@ pub struct OrcHostMemoryApi {
 
 #[repr(C)]
 pub struct OrcHostCallbacks {
-    report_progress: unsafe extern "C" fn(ctx: u64, progress: f64),
-    report_error: unsafe extern "C" fn(ctx: u64, error: *const c_char),
-    report_warning: unsafe extern "C" fn(ctx: u64, warning: *const c_char),
-    check_cancellation: unsafe extern "C" fn(ctx: u64) -> bool,
+    report_progress: extern "C" fn(ctx: u64, progress: f64),
+    report_error: extern "C" fn(ctx: u64, error: *const c_char),
+    report_warning: extern "C" fn(ctx: u64, warning: *const c_char),
+    check_cancellation: extern "C" fn(ctx: u64) -> bool,
 }
 
 #[repr(C)]
 pub struct OrcHost {
     memory_api: OrcHostMemoryApi,
     callbacks: OrcHostCallbacks,
+}
+
+pub const ORC_NUM_DIMS: usize = 7;
+
+#[derive(PartialEq, Eq)]
+#[repr(C)]
+#[derive(Default, Copy, Clone)]
+pub struct OrcDims([i32; ORC_NUM_DIMS]);
+
+#[repr(C)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub struct OrcMark {
+    pub(crate) depth: u8,
+    pub(crate) pos: u64,
+}
+
+#[repr(C)]
+#[derive(Clone)]
+pub struct OrcHandle {
+    pub handle: u64,
+    pub items: *const std::ffi::c_void,
+    pub n_items: u64,
+    pub item_size: u64,
+    pub marks: *const OrcMark,
+    pub stride_offset: *const u64,
+    pub n_marks: u64,
+    pub strides: *const u64,
+    pub type_id: OrcTypeId,
+    pub dims: OrcDims,
+}
+
+#[repr(C)]
+pub struct OrcItemProxy {
+    tree: u64,
+    item: u64,
+}
+
+// ===========================================================
+// Functions meant to be implemented by the plugin.
+// ===========================================================
+
+#[macro_export]
+macro_rules! orc_plugin {
+    ($plugin:ident) => {
+        #[unsafe(no_mangle)]
+        pub unsafe extern "C" fn orc_plugin_init(
+            host: *const OrcHost,
+            plugin_data_out: *mut OrcPlugin,
+        ) {
+            todo!()
+        }
+
+        #[unsafe(no_mangle)]
+        pub unsafe extern "C" fn orc_plugin_data_free(plugin_data_out: *mut OrcPlugin) {
+            todo!()
+        }
+
+        // This function should be inside a macro, to be invoked (hence defining the function) inside the plugin.
+        #[unsafe(no_mangle)]
+        pub unsafe extern "C" fn orc_deck_alloc(_id: OrcTypeId, _out: *mut OrcHandle) {
+            todo!()
+        }
+
+        // This function should be inside a macro, to be invoked (hence defining the function) inside the plugin.
+        #[unsafe(no_mangle)]
+        pub unsafe extern "C" fn orc_deck_free(_handle: *mut OrcHandle) {
+            todo!()
+        }
+
+        #[unsafe(no_mangle)]
+        pub unsafe extern "C" fn orc_deck_from_proxy(
+            inputs: *const OrcHandle, n_inputs: u64,
+            proxy_type: u32, proxy: *const OrcHandle,
+            out: *OrcHandle
+        ) {
+            todo!()
+        }
+    };
 }
 
 pub trait TOrcPlugin {
@@ -137,7 +189,7 @@ impl<T: TOrcData> From<&Deck<T>> for OrcHandle {
             n_marks: marks.len() as u64,
             strides: strides.as_ptr(),
             type_id: type_info.type_id,
-            dims: Dims([0; ORC_NUM_DIMS]),
+            dims: OrcDims([0; ORC_NUM_DIMS]),
         }
     }
 }
@@ -263,44 +315,28 @@ impl TOrcData for i64 {
     }
 }
 
-impl Dims {
-    pub fn multiply(&self, other: &Dims) -> Dims {
-        let mut out = Dims([0; ORC_NUM_DIMS]);
+impl OrcDims {
+    pub fn multiply(&self, other: &OrcDims) -> OrcDims {
+        let mut out = OrcDims([0; ORC_NUM_DIMS]);
         for i in 0..ORC_NUM_DIMS {
             out.0[i] = self.0[i] + other.0[i]
         }
         out
     }
 
-    pub fn divide(&self, other: &Dims) -> Dims {
-        let mut out = Dims([0; ORC_NUM_DIMS]);
+    pub fn divide(&self, other: &OrcDims) -> OrcDims {
+        let mut out = OrcDims([0; ORC_NUM_DIMS]);
         for i in 0..ORC_NUM_DIMS {
             out.0[i] = self.0[i] - other.0[i]
         }
         out
     }
 
-    pub fn pow(&self, exponent: u32) -> Dims {
-        let mut out = Dims([0; ORC_NUM_DIMS]);
+    pub fn pow(&self, exponent: u32) -> OrcDims {
+        let mut out = OrcDims([0; ORC_NUM_DIMS]);
         for i in 0..ORC_NUM_DIMS {
             out.0[i] = self.0[i].pow(exponent)
         }
         out
     }
-}
-
-// ===========================================================
-// Functions meant to be implemented by the plugin.
-// ===========================================================
-
-// This function should be inside a macro, to be invoked (hence defining the function) inside the plugin.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn orc_deck_alloc(_id: OrcTypeId, _out: *mut OrcHandle) {
-    todo!()
-}
-
-// This function should be inside a macro, to be invoked (hence defining the function) inside the plugin.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn orc_deck_free(_handle: *mut OrcHandle) {
-    todo!()
 }

@@ -584,13 +584,13 @@ Status dw_advance(DeckWriter* writer);
 
 // ========== Dims (Units) ==========
 
-bool dims_equal(Dims const a, Dims const b);
+bool dims_equal(OrcDims const a, OrcDims const b);
 
-void dims_multiply(Dims const a, Dims const b, Dims out);
+void dims_multiply(OrcDims const a, OrcDims const b, OrcDims out);
 
-void dims_divide(Dims const a, Dims const b, Dims out);
+void dims_divide(OrcDims const a, OrcDims const b, OrcDims out);
 
-void dims_pow(Dims const a, int const pow, Dims out);
+void dims_pow(OrcDims const a, int const pow, OrcDims out);
 
 // ========== Combinations ==========
 

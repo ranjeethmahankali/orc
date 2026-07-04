@@ -2821,36 +2821,36 @@ void test_dw_all_empty_depth3(void)
 
 void test_dims_equal(void)
 {
-  Dims a = {1, 0, -2, 0, 0, 0, 0};
-  Dims b = {1, 0, -2, 0, 0, 0, 0};
-  Dims c = {1, 0, -1, 0, 0, 0, 0};
+  OrcDims a = {1, 0, -2, 0, 0, 0, 0};
+  OrcDims b = {1, 0, -2, 0, 0, 0, 0};
+  OrcDims c = {1, 0, -1, 0, 0, 0, 0};
   REQUIRE(dims_equal(a, b));
   REQUIRE(!dims_equal(a, c));
   // Dimensionless
-  Dims zero_a = {0, 0, 0, 0, 0, 0, 0};
-  Dims zero_b = {0, 0, 0, 0, 0, 0, 0};
+  OrcDims zero_a = {0, 0, 0, 0, 0, 0, 0};
+  OrcDims zero_b = {0, 0, 0, 0, 0, 0, 0};
   REQUIRE(dims_equal(zero_a, zero_b));
   // Differ only in last dimension
-  Dims d = {0, 0, 0, 0, 0, 0, 1};
+  OrcDims d = {0, 0, 0, 0, 0, 0, 1};
   REQUIRE(!dims_equal(zero_a, d));
 }
 
 void test_dims_multiply(void)
 {
   // force * distance = energy
-  Dims force  = {1, 1, -2, 0, 0, 0, 0};
-  Dims length = {1, 0, 0, 0, 0, 0, 0};
-  Dims out;
+  OrcDims force  = {1, 1, -2, 0, 0, 0, 0};
+  OrcDims length = {1, 0, 0, 0, 0, 0, 0};
+  OrcDims out;
   dims_multiply(force, length, out);
-  Dims energy = {2, 1, -2, 0, 0, 0, 0};
+  OrcDims energy = {2, 1, -2, 0, 0, 0, 0};
   REQUIRE(dims_equal(out, energy));
   // Multiply by dimensionless is identity
-  Dims zero = {0, 0, 0, 0, 0, 0, 0};
+  OrcDims zero = {0, 0, 0, 0, 0, 0, 0};
   dims_multiply(force, zero, out);
   REQUIRE(dims_equal(out, force));
   // Negative exponents cancel
-  Dims a = {-1, -1, 3, 0, 0, 0, 0};
-  Dims b = {1, 1, -3, 0, 0, 0, 0};
+  OrcDims a = {-1, -1, 3, 0, 0, 0, 0};
+  OrcDims b = {1, 1, -3, 0, 0, 0, 0};
   dims_multiply(a, b, out);
   REQUIRE(dims_equal(out, zero));
 }
@@ -2858,50 +2858,50 @@ void test_dims_multiply(void)
 void test_dims_divide(void)
 {
   // velocity / time = acceleration
-  Dims velocity = {1, 0, -1, 0, 0, 0, 0};
-  Dims time     = {0, 0, 1, 0, 0, 0, 0};
-  Dims out;
+  OrcDims velocity = {1, 0, -1, 0, 0, 0, 0};
+  OrcDims time     = {0, 0, 1, 0, 0, 0, 0};
+  OrcDims out;
   dims_divide(velocity, time, out);
-  Dims accel = {1, 0, -2, 0, 0, 0, 0};
+  OrcDims accel = {1, 0, -2, 0, 0, 0, 0};
   REQUIRE(dims_equal(out, accel));
   // Divide by self = dimensionless
   dims_divide(velocity, velocity, out);
-  Dims zero = {0, 0, 0, 0, 0, 0, 0};
+  OrcDims zero = {0, 0, 0, 0, 0, 0, 0};
   REQUIRE(dims_equal(out, zero));
   // Divide dimensionless by something = negated exponents
   dims_divide(zero, time, out);
-  Dims inv_time = {0, 0, -1, 0, 0, 0, 0};
+  OrcDims inv_time = {0, 0, -1, 0, 0, 0, 0};
   REQUIRE(dims_equal(out, inv_time));
 }
 
 void test_dims_pow(void)
 {
-  Dims length = {1, 0, 0, 0, 0, 0, 0};
-  Dims out;
+  OrcDims length = {1, 0, 0, 0, 0, 0, 0};
+  OrcDims out;
   // length^2 = area
   dims_pow(length, 2, out);
-  Dims area = {2, 0, 0, 0, 0, 0, 0};
+  OrcDims area = {2, 0, 0, 0, 0, 0, 0};
   REQUIRE(dims_equal(out, area));
   // length^3 = volume
   dims_pow(length, 3, out);
-  Dims volume = {3, 0, 0, 0, 0, 0, 0};
+  OrcDims volume = {3, 0, 0, 0, 0, 0, 0};
   REQUIRE(dims_equal(out, volume));
   // pow 0 = dimensionless
-  Dims velocity = {1, 0, -1, 0, 0, 0, 0};
+  OrcDims velocity = {1, 0, -1, 0, 0, 0, 0};
   dims_pow(velocity, 0, out);
-  Dims zero = {0, 0, 0, 0, 0, 0, 0};
+  OrcDims zero = {0, 0, 0, 0, 0, 0, 0};
   REQUIRE(dims_equal(out, zero));
   // pow 1 = identity
   dims_pow(velocity, 1, out);
   REQUIRE(dims_equal(out, velocity));
   // Negative power
   dims_pow(velocity, -1, out);
-  Dims inv_vel = {-1, 0, 1, 0, 0, 0, 0};
+  OrcDims inv_vel = {-1, 0, 1, 0, 0, 0, 0};
   REQUIRE(dims_equal(out, inv_vel));
   // pow -2 on multi-dim
-  Dims force = {1, 1, -2, 0, 0, 0, 0};
+  OrcDims force = {1, 1, -2, 0, 0, 0, 0};
   dims_pow(force, -2, out);
-  Dims expected = {-2, -2, 4, 0, 0, 0, 0};
+  OrcDims expected = {-2, -2, 4, 0, 0, 0, 0};
   REQUIRE(dims_equal(out, expected));
 }
 
@@ -3616,7 +3616,7 @@ static OrcHandle _make_simplified_proxy(void* deck)
   };
 }
 
-static OrcHandle _make_shuffle_proxy(ItemProxy* pdeck)
+static OrcHandle _make_shuffle_proxy(OrcItemProxy* pdeck)
 {
   OrcHandle handle;
   memset(&handle, 0, sizeof(handle));
@@ -3757,10 +3757,10 @@ void test_deck_from_proxy_shuffle(void)
     DECK_INIT(in.items, double, (1.0, 2.0, 3.0));
     oh_update(&in);
 
-    ItemProxy* pdeck = NULL;
-    REQUIRE(deck_push(pdeck, ((ItemProxy) {.tree = 0, .item = 2}), 1) == OK);
-    REQUIRE(deck_push(pdeck, ((ItemProxy) {.tree = 0, .item = 1}), 0) == OK);
-    REQUIRE(deck_push(pdeck, ((ItemProxy) {.tree = 0, .item = 0}), 0) == OK);
+    OrcItemProxy* pdeck = NULL;
+    REQUIRE(deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 2}), 1) == OK);
+    REQUIRE(deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 1}), 0) == OK);
+    REQUIRE(deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 0}), 0) == OK);
     OrcHandle proxy = _make_shuffle_proxy(pdeck);
     orc_deck_from_proxy(&in, 1, ORC_DECK_PROXY_SHUFFLE, &proxy, &out);
 
@@ -3780,14 +3780,14 @@ void test_deck_from_proxy_shuffle(void)
     DECK_INIT(in.items, double, ((1.0, 2.0), (3.0, 4.0, 5.0)));
     oh_update(&in);
 
-    ItemProxy* pdeck = NULL;
+    OrcItemProxy* pdeck = NULL;
     /* First sublist reversed: flat indices 1, 0. */
-    REQUIRE(deck_push(pdeck, ((ItemProxy) {.tree = 0, .item = 1}), 2) == OK);
-    REQUIRE(deck_push(pdeck, ((ItemProxy) {.tree = 0, .item = 0}), 0) == OK);
+    REQUIRE(deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 1}), 2) == OK);
+    REQUIRE(deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 0}), 0) == OK);
     /* Second sublist reversed: flat indices 4, 3, 2. */
-    REQUIRE(deck_push(pdeck, ((ItemProxy) {.tree = 0, .item = 4}), 1) == OK);
-    REQUIRE(deck_push(pdeck, ((ItemProxy) {.tree = 0, .item = 3}), 0) == OK);
-    REQUIRE(deck_push(pdeck, ((ItemProxy) {.tree = 0, .item = 2}), 0) == OK);
+    REQUIRE(deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 4}), 1) == OK);
+    REQUIRE(deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 3}), 0) == OK);
+    REQUIRE(deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 2}), 0) == OK);
     OrcHandle proxy = _make_shuffle_proxy(pdeck);
     orc_deck_from_proxy(&in, 1, ORC_DECK_PROXY_SHUFFLE, &proxy, &out);
 
@@ -3807,9 +3807,9 @@ void test_deck_from_proxy_shuffle(void)
     DECK_INIT(in.items, double, ((1.0, 2.0, 3.0), (4.0, 5.0)));
     oh_update(&in);
 
-    ItemProxy* pdeck = NULL;
-    REQUIRE(deck_push(pdeck, ((ItemProxy) {.tree = 0, .item = 1}), 1) == OK);
-    REQUIRE(deck_push(pdeck, ((ItemProxy) {.tree = 0, .item = 4}), 0) == OK);
+    OrcItemProxy* pdeck = NULL;
+    REQUIRE(deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 1}), 1) == OK);
+    REQUIRE(deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 4}), 0) == OK);
     OrcHandle proxy = _make_shuffle_proxy(pdeck);
     orc_deck_from_proxy(&in, 1, ORC_DECK_PROXY_SHUFFLE, &proxy, &out);
 
@@ -3832,11 +3832,11 @@ void test_deck_from_proxy_shuffle(void)
     DECK_INIT(b.items, double, (10.0, 20.0));
     oh_update(&b);
 
-    ItemProxy* pdeck = NULL;
-    REQUIRE(deck_push(pdeck, ((ItemProxy) {.tree = 0, .item = 0}), 1) == OK);
-    REQUIRE(deck_push(pdeck, ((ItemProxy) {.tree = 1, .item = 0}), 0) == OK);
-    REQUIRE(deck_push(pdeck, ((ItemProxy) {.tree = 0, .item = 1}), 0) == OK);
-    REQUIRE(deck_push(pdeck, ((ItemProxy) {.tree = 1, .item = 1}), 0) == OK);
+    OrcItemProxy* pdeck = NULL;
+    REQUIRE(deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 0}), 1) == OK);
+    REQUIRE(deck_push(pdeck, ((OrcItemProxy) {.tree = 1, .item = 0}), 0) == OK);
+    REQUIRE(deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 1}), 0) == OK);
+    REQUIRE(deck_push(pdeck, ((OrcItemProxy) {.tree = 1, .item = 1}), 0) == OK);
     OrcHandle proxy = _make_shuffle_proxy(pdeck);
 
     OrcHandle inputs[2] = {a, b};
@@ -3882,11 +3882,11 @@ void test_deck_from_proxy_type_agnostic(void)
     DECK_INIT(in.items, int32_t, (-1, -2, -3, -4));
     oh_update(&in);
 
-    ItemProxy* pdeck = NULL;
-    REQUIRE(deck_push(pdeck, ((ItemProxy) {.tree = 0, .item = 3}), 1) == OK);
-    REQUIRE(deck_push(pdeck, ((ItemProxy) {.tree = 0, .item = 2}), 0) == OK);
-    REQUIRE(deck_push(pdeck, ((ItemProxy) {.tree = 0, .item = 1}), 0) == OK);
-    REQUIRE(deck_push(pdeck, ((ItemProxy) {.tree = 0, .item = 0}), 0) == OK);
+    OrcItemProxy* pdeck = NULL;
+    REQUIRE(deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 3}), 1) == OK);
+    REQUIRE(deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 2}), 0) == OK);
+    REQUIRE(deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 1}), 0) == OK);
+    REQUIRE(deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 0}), 0) == OK);
     OrcHandle proxy = _make_shuffle_proxy(pdeck);
     orc_deck_from_proxy(&in, 1, ORC_DECK_PROXY_SHUFFLE, &proxy, &out);
 
