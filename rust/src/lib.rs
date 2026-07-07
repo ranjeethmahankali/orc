@@ -7,5 +7,7 @@ pub use ffi::{
     OrcPrimitiveTypeId, OrcTypeInfo, TOrcPlugin,
 };
 
+mod bindings;
+
 mod error;
 pub use error::Error;
