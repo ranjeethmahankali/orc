@@ -123,7 +123,6 @@ typedef struct
 
 // Loading the plugin, and register the host with the plugin.
 void orc_plugin_init(OrcHost const* host, OrcPlugin* plugin_data_out);
-void orc_plugin_data_free(OrcPlugin* plugin_data);
 
 // Deck lifetime operations.
 void orc_deck_alloc(OrcTypeId const id, OrcHandle* const out);

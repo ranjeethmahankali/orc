@@ -130,11 +130,6 @@ macro_rules! orc_plugin {
             todo!()
         }
 
-        #[unsafe(no_mangle)]
-        pub unsafe extern "C" fn orc_plugin_data_free(plugin_data_out: *mut OrcPlugin) {
-            todo!()
-        }
-
         // This function should be inside a macro, to be invoked (hence defining the function) inside the plugin.
         #[unsafe(no_mangle)]
         pub unsafe extern "C" fn orc_deck_alloc(_id: OrcTypeId, _out: *mut OrcHandle) {
@@ -160,9 +155,8 @@ macro_rules! orc_plugin {
 
 pub trait TOrcPlugin {
     fn deck_alloc(id: OrcTypeId) -> OrcHandle;
-    fn deck_free(handle: *mut OrcHandle);
-    fn plugin_init(host: *const OrcHost, out: *mut OrcPlugin);
-    fn plugin_data_free(out: *mut OrcPlugin);
+    fn deck_free(handle: &mut OrcHandle);
+    fn plugin_init(host: &OrcHost, out: &mut OrcPlugin);
 }
 
 pub trait TOrcData: Default {
