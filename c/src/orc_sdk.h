@@ -456,7 +456,7 @@ char* _deck_to_str(void*        ptr,
 #define _DI_PUSH(ptr, type, depth, ...) \
   _DI_CAT(_DI_PC_, _DI_CONT(_DI_FIRST(__VA_ARGS__)))(ptr, type, depth, __VA_ARGS__)
 #define _DI_PC_0(ptr, type, depth, ...) \
-  (void)((ptr) = _deck_start_new_arr((ptr), sizeof(type), (uint8_t)(depth)));
+  (void)((ptr) = _deck_start_new_arr((void*)(ptr), sizeof(type), (uint8_t)(depth)));
 #define _DI_PC_1(ptr, type, depth, ...) \
   _DI_CAT(_DI_PP_, _DI_IS_PAREN(_DI_FIRST(__VA_ARGS__)))(ptr, type, depth, __VA_ARGS__)
 #define _DI_PP_0(ptr, type, depth, ...) _DI_PUSH_VALS(ptr, type, depth, __VA_ARGS__)
