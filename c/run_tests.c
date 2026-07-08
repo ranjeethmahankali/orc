@@ -15,7 +15,7 @@
 #define TEST_RUNNER_SRC_PATH BUILD_DIR "_test_runner.c"
 #define TEST_RUNNER_BIN_PATH BUILD_DIR "test_runner"
 
-void cc_append_flags(Nob_Cmd* cmd)
+void cc_append_flags(Nob_Cmd *cmd)
 {
   nob_cc_flags(cmd);
   nob_cmd_append(cmd, "-std=c99", "-pedantic");
@@ -32,11 +32,11 @@ void cc_append_flags(Nob_Cmd* cmd)
                  "-Wstrict-overflow=5");
 }
 
-void discover_tests(char const*         src,
+void discover_tests(char const         *src,
                     size_t const        size,
-                    Nob_String_Builder* dst,
-                    size_t*             counter,
-                    char* const         test_filter)
+                    Nob_String_Builder *dst,
+                    size_t             *counter,
+                    char *const         test_filter)
 {
   stb_lexer lex;
   char      string_storage[4096];
@@ -83,7 +83,7 @@ void discover_tests(char const*         src,
   }
 }
 
-bool list_src_files(Nob_File_Paths* dst)
+bool list_src_files(Nob_File_Paths *dst)
 {
   dst->count = 0;
   if (!nob_read_entire_dir(SRC_DIR, dst)) {
@@ -102,7 +102,7 @@ bool list_src_files(Nob_File_Paths* dst)
   return true;
 }
 
-bool run_tests(Nob_File_Paths const files, char* const test_filter)
+bool run_tests(Nob_File_Paths const files, char *const test_filter)
 {
   Nob_String_Builder contents    = {0};
   Nob_String_Builder sbtestnames = {0};
@@ -112,10 +112,10 @@ bool run_tests(Nob_File_Paths const files, char* const test_filter)
   bool               success     = true;
   // Scan all test files and discover tests.
   {
-    char const** begin = files.items;
-    char const** end   = begin + files.count;
+    char const **begin = files.items;
+    char const **end   = begin + files.count;
     while (begin != end) {
-      char const* fpath = *(begin++);
+      char const *fpath = *(begin++);
       if (!nob_sv_end_with(nob_sv_from_cstr(fpath), ".c")) {
         nob_log(NOB_INFO, "Skipping test discovery in %s...", fpath);
         continue;
@@ -210,10 +210,10 @@ cleanup:
   return success;
 }
 
-int main(int argc, char** argv)
+int main(int argc, char **argv)
 {
   NOB_GO_REBUILD_URSELF(argc, argv);
-  char* test_filter = NULL;
+  char *test_filter = NULL;
   if (argc > 1) {
     test_filter = argv[1];
   }

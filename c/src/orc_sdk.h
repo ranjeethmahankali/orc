@@ -15,7 +15,7 @@
     if (!(cond)) {                                                                     \
       fprintf(stderr, "\n\n%s:%d: REQUIRE FAILED: (%s)\n", __FILE__, __LINE__, #cond); \
       if (msg != NULL) {                                                               \
-        fprintf(stderr, "  %s", (char*)msg);                                           \
+        fprintf(stderr, "  %s", (char *)msg);                                          \
         fflush(stderr);                                                                \
       }                                                                                \
       fprintf(stderr, "\n");                                                           \
@@ -30,7 +30,7 @@
   do {                                                  \
     fprintf(stderr, "TODO: %s:%d", __FILE__, __LINE__); \
     if (msg != NULL) {                                  \
-      fprintf(stderr, "  %s", (char*)msg);              \
+      fprintf(stderr, "  %s", (char *)msg);             \
     }                                                   \
     fprintf(stderr, "\n");                              \
     fflush(stderr);                                     \
@@ -45,7 +45,7 @@ typedef union
 {
   long long   ll;
   long double ld;
-  void*       p;
+  void       *p;
 } _MaxAlignCompat;
 
 typedef enum
@@ -64,17 +64,17 @@ typedef struct
   size_t capacity;
 } _ArrHeader;
 
-static inline _ArrHeader* _arr_header(void const* ptr)
+static inline _ArrHeader *_arr_header(void const *ptr)
 {
-  _ArrHeader* h = (_ArrHeader*)ptr;
+  _ArrHeader *h = (_ArrHeader *)ptr;
   if (h)
     return --h;
   return NULL;
 }
 
-static inline size_t _arr_capacity(void* ptr)
+static inline size_t _arr_capacity(void *ptr)
 {
-  _ArrHeader* h = _arr_header(ptr);
+  _ArrHeader *h = _arr_header(ptr);
   if (h)
     return h->capacity;
   return 0;
@@ -91,17 +91,17 @@ static inline size_t _arr_capacity(void* ptr)
  * @param ptr Pointer to the array.
  * @return size_t Length.
  */
-static inline size_t arr_len(void* ptr)
+static inline size_t arr_len(void *ptr)
 {
-  _ArrHeader* h = _arr_header(ptr);
+  _ArrHeader *h = _arr_header(ptr);
   if (h)
     return h->count;
   return 0;
 }
 
-void* _arr_grow(void* ptr, size_t elemsize);
+void *_arr_grow(void *ptr, size_t elemsize);
 
-Status _arr_remove_impl(void* ptr, size_t const idx, size_t const elemsize);
+Status _arr_remove_impl(void *ptr, size_t const idx, size_t const elemsize);
 
 /**
  * Remove the element at index idx from the array. This preserves the order of the
@@ -131,7 +131,7 @@ Status _arr_remove_impl(void* ptr, size_t const idx, size_t const elemsize);
      ? ((ptr)[(idx)] = (ptr)[--(_arr_header((ptr))->count)], OK) \
      : OUT_OF_BOUNDS)
 
-void* _arr_grow_capacity(void* ptr, size_t const elemsize, size_t const nelems);
+void *_arr_grow_capacity(void *ptr, size_t const elemsize, size_t const nelems);
 
 /**
  * Reserve memory for the `size` number of elements in the array.
@@ -141,7 +141,7 @@ void* _arr_grow_capacity(void* ptr, size_t const elemsize, size_t const nelems);
      ? OK                                                     \
      : ((size) == 0 ? OK : ALLOC_FAILED))
 
-void* _arr_resize_impl(void* ptr, size_t const elemsize, size_t const count);
+void *_arr_resize_impl(void *ptr, size_t const elemsize, size_t const count);
 
 /**
  * Resize the array to the given size. If the new size is smaller than the original size,
@@ -156,16 +156,16 @@ void* _arr_resize_impl(void* ptr, size_t const elemsize, size_t const count);
  *
  * @param ptr Pointer to the array.
  */
-void arr_clear(void* ptr);
+void arr_clear(void *ptr);
 
-void _arr_fill_impl(void*             arr,
-                    void const* const elem,
+void _arr_fill_impl(void             *arr,
+                    void const *const elem,
                     size_t const      count,
                     size_t const      elemsize);
 
 #define arr_fill(ptr, val) _arr_fill_impl((ptr), &(val), arr_len((ptr)), sizeof(*ptr))
 
-Status _arr_remove_range_impl(void*        ptr,
+Status _arr_remove_range_impl(void        *ptr,
                               size_t const start,
                               size_t const stop,
                               size_t const elemsize);
@@ -193,21 +193,21 @@ Status _arr_remove_range_impl(void*        ptr,
  * @param ptr Pointer to the array.
  * @return bool True if the array is empty.
  */
-bool arr_is_empty(void* ptr);
+bool arr_is_empty(void *ptr);
 
 // ========== String ==========
 
 #define str_free(ptr) arr_free((ptr))
 
-static inline size_t str_len(void* ptr)
+static inline size_t str_len(void *ptr)
 {
-  _ArrHeader* h = _arr_header(ptr);
+  _ArrHeader *h = _arr_header(ptr);
   if (h)
     return h->count == 0 ? 0 : h->count - 1;
   return 0;
 }
 
-Status _str_remove_impl(char* const ptr, size_t const idx);
+Status _str_remove_impl(char *const ptr, size_t const idx);
 
 /**
  * @brief Remove a character from a position in a stirng.
@@ -217,7 +217,7 @@ Status _str_remove_impl(char* const ptr, size_t const idx);
  */
 #define str_remove(ptr, idx) _str_remove_impl((ptr), (idx))
 
-char* _str_push_impl(char*, char);
+char *_str_push_impl(char *, char);
 
 /**
  * @brief Push a character to the end of the string.
@@ -242,9 +242,9 @@ char* _str_push_impl(char*, char);
  *
  * @param ptr The string to clear.
  */
-void str_clear(char* ptr);
+void str_clear(char *ptr);
 
-char* _str_push_str_impl(char*, char const*);
+char *_str_push_str_impl(char *, char const *);
 
 /**
  * @brief Push the `tail` string at the end of the `ptr` string.
@@ -261,62 +261,54 @@ char* _str_push_str_impl(char*, char const*);
  * @param ptr The string.
  * @return bool Flag indicating if the string is empty.
  */
-static inline bool str_is_empty(void* ptr)
-{
-  return str_len(ptr) == 0;
-}
+static inline bool str_is_empty(void *ptr)
+{ return str_len(ptr) == 0; }
 
-bool str_eq(char* const a, char* const b);
+bool str_eq(char *const a, char *const b);
 
 // ========== String views ==========
 
 typedef struct
 {
-  char* start;
-  char* end;
+  char *start;
+  char *end;
 } StrView;
 
 #define sv_len(sv) \
   (((sv).start == NULL || (sv).end == NULL) ? 0 : (size_t)((sv).end - (sv).start))
 
 static inline bool sv_is_empty(StrView const sv)
-{
-  return sv.start == sv.end || sv.start == NULL || sv.end == NULL;
-}
+{ return sv.start == sv.end || sv.start == NULL || sv.end == NULL; }
 
-StrView sv_from_str(char* str);
+StrView sv_from_str(char *str);
 
 StrView sv_trim_left(StrView sv);
 
 StrView sv_trim_right(StrView sv);
 
 static inline StrView sv_trim(StrView sv)
-{
-  return sv_trim_left(sv_trim_right(sv));
-}
+{ return sv_trim_left(sv_trim_right(sv)); }
 
-bool sv_starts_with(StrView const sv, char const* const prefix);
+bool sv_starts_with(StrView const sv, char const *const prefix);
 
-bool sv_ends_with(StrView const sv, char const* const suffix);
+bool sv_ends_with(StrView const sv, char const *const suffix);
 
-bool sv_strip_prefix(StrView* sv, char const* const prefix);
+bool sv_strip_prefix(StrView *sv, char const *const prefix);
 
-bool sv_strip_suffix(StrView* sv, char const* const suffix);
+bool sv_strip_suffix(StrView *sv, char const *const suffix);
 
-bool sv_contains_str(StrView const sv, char const* const needle);
+bool sv_contains_str(StrView const sv, char const *const needle);
 
-StrView sv_split_at_delim(StrView* sv, char const delim);
+StrView sv_split_at_delim(StrView *sv, char const delim);
 
 #define sv_split_line(sv) sv_split_at_delim((sv), '\n')
 
-char* sv_find(StrView sv, char const c);
+char *sv_find(StrView sv, char const c);
 
 static inline bool sv_contains_char(StrView sv, char const c)
-{
-  return sv_find(sv, c) != NULL;
-}
+{ return sv_find(sv, c) != NULL; }
 
-char* sv_rfind(StrView sv, char const c);
+char *sv_rfind(StrView sv, char const c);
 
 StrView sv_slice(StrView sv, size_t const start, size_t const end);
 
@@ -326,71 +318,69 @@ bool sv_eq(StrView const a, StrView const b);
 
 typedef struct
 {
-  OrcMark*  marks;
-  uint64_t* stride_offset;
-  uint64_t* strides;
-  size_t*   pegs;
+  OrcMark  *marks;
+  uint64_t *stride_offset;
+  uint64_t *strides;
+  size_t   *pegs;
   size_t    count;
   size_t    capacity;
   size_t    item_size;
   size_t    _alignment;
 } _DeckHeader;
 
-static inline _DeckHeader* _deck_header(void const* ptr)
+static inline _DeckHeader *_deck_header(void const *ptr)
 {
-  _DeckHeader* h = (_DeckHeader*)ptr;
+  _DeckHeader *h = (_DeckHeader *)ptr;
   if (h)
     return --h;
   return NULL;
 }
 
-void _deck_free_impl(void* ptr);
+void _deck_free_impl(void *ptr);
 
 #define deck_free(ptr) (_deck_free_impl((ptr)), (ptr) = NULL)
 
-uint8_t deck_max_depth(void const* deck);
+uint8_t deck_max_depth(void const *deck);
 
-static inline size_t deck_len(void const* deck)
+static inline size_t deck_len(void const *deck)
 {
-  _DeckHeader* h = _deck_header(deck);
+  _DeckHeader *h = _deck_header(deck);
   if (h)
     return h->count;
   return 0;
 }
 
-static inline bool deck_is_empty(void* deck)
-{
-  return deck_len(deck) == 0;
-}
+static inline bool deck_is_empty(void *deck)
+{ return deck_len(deck) == 0; }
 
-void* _deck_push_impl(void* ptr, void* item, size_t const itemsize, uint8_t const depth);
+void *_deck_push_impl(void *ptr, void *item, size_t const itemsize, uint8_t const depth);
 
 #define deck_push(ptr, item, depth) \
   (((ptr) = _deck_push_impl((ptr), &(item), sizeof(*ptr), (depth))) ? OK : ALLOC_FAILED)
 
-void* _deck_start_new_arr(void* ptr, size_t const itemsize, uint8_t const depth);
+void *_deck_start_new_arr(void *ptr, size_t const itemsize, uint8_t const depth);
 
 #define deck_start_arr(ptr, depth) \
   (((ptr) = _deck_start_new_arr((ptr), sizeof(*(ptr)), (depth))) ? OK : ALLOC_FAILED)
 
-void deck_clear(void const* ptr);
+void deck_clear(void const *ptr);
 
-void* _deck_grow_capacity(void* ptr, size_t const itemsize, size_t const n);
+void *_deck_grow_capacity(void *ptr, size_t const itemsize, size_t const n);
 
 #define deck_reserve(ptr, size)                                \
   (((ptr) = _deck_grow_capacity((ptr), sizeof *(ptr), (size))) \
      ? OK                                                      \
      : ((size) == 0 ? OK : ALLOC_FAILED))
 
-void deck_flatten(void* ptr);
+void deck_flatten(void *ptr);
 
-void deck_graft(void* ptr);
+void deck_graft(void *ptr);
 
-void deck_simplify(void* ptr);
+void deck_simplify(void *ptr);
 
-char* _deck_to_str(void*        ptr,
+char *_deck_to_str(void        *ptr,
                    size_t const item_size,
-                   void (*snprint_item)(void* item, char* dst, size_t len));
+                   void (*snprint_item)(void *item, char *dst, size_t len));
 
 #define deck_to_str(ptr, snprint_item) _deck_to_str((ptr), sizeof(*(ptr)), snprint_item)
 
@@ -456,7 +446,7 @@ char* _deck_to_str(void*        ptr,
 #define _DI_PUSH(ptr, type, depth, ...) \
   _DI_CAT(_DI_PC_, _DI_CONT(_DI_FIRST(__VA_ARGS__)))(ptr, type, depth, __VA_ARGS__)
 #define _DI_PC_0(ptr, type, depth, ...) \
-  (void)((ptr) = _deck_start_new_arr((void*)(ptr), sizeof(type), (uint8_t)(depth)));
+  (void)((ptr) = _deck_start_new_arr((void *)(ptr), sizeof(type), (uint8_t)(depth)));
 #define _DI_PC_1(ptr, type, depth, ...) \
   _DI_CAT(_DI_PP_, _DI_IS_PAREN(_DI_FIRST(__VA_ARGS__)))(ptr, type, depth, __VA_ARGS__)
 #define _DI_PP_0(ptr, type, depth, ...) _DI_PUSH_VALS(ptr, type, depth, __VA_ARGS__)
@@ -467,12 +457,12 @@ char* _deck_to_str(void*        ptr,
 #define _DI_PUSH_I() _DI_PUSH
 
 /* --- Push flat values: first gets depth, rest get 0 --- */
-#define _DI_PUSH_VALS(ptr, type, depth, first, ...)                           \
-  (void)((ptr) = _deck_push_impl(                                             \
-           (void*)(ptr), &((type) {first}), sizeof(type), (uint8_t)(depth))); \
+#define _DI_PUSH_VALS(ptr, type, depth, first, ...)                            \
+  (void)((ptr) = _deck_push_impl(                                              \
+           (void *)(ptr), &((type) {first}), sizeof(type), (uint8_t)(depth))); \
   _DI_CAT(_DI_VT_, _DI_CONT(_DI_FIRST(__VA_ARGS__)))(ptr, type, __VA_ARGS__)
-#define _DI_PUSH_VALS_REST(ptr, type, first, ...)                                    \
-  (void)((ptr) = _deck_push_impl((void*)(ptr), &((type) {first}), sizeof(type), 0)); \
+#define _DI_PUSH_VALS_REST(ptr, type, first, ...)                                     \
+  (void)((ptr) = _deck_push_impl((void *)(ptr), &((type) {first}), sizeof(type), 0)); \
   _DI_CAT(_DI_VT_, _DI_CONT(_DI_FIRST(__VA_ARGS__)))(ptr, type, __VA_ARGS__)
 #define _DI_VT_0(ptr, type, ...)
 #define _DI_VT_1(ptr, type, ...) _DI_DEFER(_DI_PUSH_VALS_REST_I)()(ptr, type, __VA_ARGS__)
@@ -495,7 +485,7 @@ char* _deck_to_str(void*        ptr,
 /* --- Entry point --- */
 #define DECK_INIT(ptr, type, data)                                \
   do {                                                            \
-    deck_clear((void*)(ptr));                                     \
+    deck_clear((void *)(ptr));                                    \
     _DI_EVAL(_DI_PUSH((ptr), type, 1, _DI_UNWRAP(data), _DI_END)) \
   } while (0)
 
@@ -503,37 +493,37 @@ char* _deck_to_str(void*        ptr,
 
 typedef struct
 {
-  void const*     items;
+  void const     *items;
   size_t          n_items;
   size_t          item_size;
-  OrcMark const*  marks;
-  uint64_t const* stride_offset;
+  OrcMark const  *marks;
+  uint64_t const *stride_offset;
   size_t          n_marks;
-  uint64_t const* strides;
+  uint64_t const *strides;
   uint8_t         depth;
   size_t          start;
   size_t          end;
 } DeckView;
 
-DeckView _dv_from_deck_impl(void* ptr, size_t const item_size, uint8_t const depth);
+DeckView _dv_from_deck_impl(void *ptr, size_t const item_size, uint8_t const depth);
 
 #define dv_from_deck(ptr, depth) _dv_from_deck_impl((ptr), sizeof(*(ptr)), (depth))
 
-uint8_t dv_depth(DeckView const* const v);
+uint8_t dv_depth(DeckView const *const v);
 
-size_t dv_len(DeckView const* const v);
+size_t dv_len(DeckView const *const v);
 
-DeckView dv_child(DeckView const* const v);
+DeckView dv_child(DeckView const *const v);
 
-void const* dv_item_ptr(DeckView const* const v);
+void const *dv_item_ptr(DeckView const *const v);
 
-bool dv_advance(DeckView* const v);
+bool dv_advance(DeckView *const v);
 
 // ========== DeckWriter ==========
 
 typedef struct
 {
-  void**  deck;
+  void  **deck;
   size_t  item_size;
   uint8_t depth;
   bool    has_next_depth;
@@ -541,7 +531,7 @@ typedef struct
   size_t  start;
 } DeckWriter;
 
-static inline DeckWriter _dw_from_deck_impl(void**        deck,
+static inline DeckWriter _dw_from_deck_impl(void        **deck,
                                             uint8_t const depth,
                                             size_t const  item_size)
 {
@@ -556,31 +546,27 @@ static inline DeckWriter _dw_from_deck_impl(void**        deck,
 }
 
 #define dw_from_deck(deck, depth) \
-  (_dw_from_deck_impl((void**)(&(deck)), (depth), sizeof(*(deck))))
+  (_dw_from_deck_impl((void **)(&(deck)), (depth), sizeof(*(deck))))
 
-DeckWriter dw_child(DeckWriter* writer);
+DeckWriter dw_child(DeckWriter *writer);
 
-uint8_t _dw_next_depth(DeckWriter* writer);
+uint8_t _dw_next_depth(DeckWriter *writer);
 
-Status _dw_push_impl(DeckWriter* writer, void* item);
+Status _dw_push_impl(DeckWriter *writer, void *item);
 
 #define dw_push(writer, item) (_dw_push_impl((writer), &(item)))
 
-void* dw_push_empty(DeckWriter* writer);
+void *dw_push_empty(DeckWriter *writer);
 
-static inline void* deck_item_ptr(DeckWriter* writer)
-{
-  return (char*)(*(writer->deck)) + writer->start * writer->item_size;
-}
+static inline void *deck_item_ptr(DeckWriter *writer)
+{ return (char *)(*(writer->deck)) + writer->start * writer->item_size; }
 
-static inline size_t dw_len(DeckWriter* writer)
-{
-  return deck_len(*(writer->deck)) - writer->start;
-}
+static inline size_t dw_len(DeckWriter *writer)
+{ return deck_len(*(writer->deck)) - writer->start; }
 
-Status dw_close(DeckWriter* writer);
+Status dw_close(DeckWriter *writer);
 
-Status dw_advance(DeckWriter* writer);
+Status dw_advance(DeckWriter *writer);
 
 // ========== Dims (Units) ==========
 
@@ -594,19 +580,19 @@ void dims_pow(OrcDims const a, int const pow, OrcDims out);
 
 // ========== Combinations ==========
 
-void* comb_init(OrcHandle const** inputs,
-                uint8_t const*    input_depths,
+void *comb_init(OrcHandle const **inputs,
+                uint8_t const    *input_depths,
                 size_t const      n_inputs,
-                OrcHandle**       outputs,
-                uint8_t const*    output_depths,
+                OrcHandle       **outputs,
+                uint8_t const    *output_depths,
                 size_t const      n_outputs);
 
-void comb_free(void* comb);
+void comb_free(void *comb);
 
-void* comb_advance(void* comb);
+void *comb_advance(void *comb);
 
-DeckView comb_get_input(void* comb, size_t const index);
+DeckView comb_get_input(void *comb, size_t const index);
 
-DeckWriter* comb_get_output(void* comb, size_t const index);
+DeckWriter *comb_get_output(void *comb, size_t const index);
 
-void oh_update(OrcHandle* handle);
+void oh_update(OrcHandle *handle);

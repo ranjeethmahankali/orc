@@ -31,29 +31,29 @@ typedef struct OrcHandle OrcHandle;
 typedef struct
 {
   OrcTypeId   type_id;
-  char const* name;
-  char const* desc;
+  char const *name;
+  char const *desc;
 } OrcTypeInfo;
 
 typedef struct
 {
-  char const* name;
-  char const* desc;
+  char const *name;
+  char const *desc;
   uint64_t    n_inputs;
   uint64_t    n_outputs;
 
   void (*func)(uint64_t const   ctx,
-               OrcHandle const* inputs,
+               OrcHandle const *inputs,
                size_t const     n_inputs,
-               OrcHandle*       outputs,
+               OrcHandle       *outputs,
                size_t const     n_outputs);
 } OrcFuncInfo;
 
 typedef struct
 {
-  OrcTypeInfo const* types;
+  OrcTypeInfo const *types;
   uint64_t           n_types;
-  OrcFuncInfo const* functions;
+  OrcFuncInfo const *functions;
   uint64_t           n_functions;
 } OrcPlugin;
 
@@ -61,15 +61,15 @@ typedef struct OrcHost
 {
   struct
   {
-    void* (*alloc)(uint64_t const size, uint64_t const alignment);
-    void (*dealloc)(void* ptr, uint64_t const size, uint64_t const alignment);
+    void *(*alloc)(uint64_t const size, uint64_t const alignment);
+    void (*dealloc)(void *ptr, uint64_t const size, uint64_t const alignment);
   } memory_api;
 
   struct
   {
     void (*report_progress)(uint64_t const ctx, double progress);
-    void (*report_error)(uint64_t const ctx, char const* error);
-    void (*report_warning)(uint64_t const ctx, char const* warning);
+    void (*report_error)(uint64_t const ctx, char const *error);
+    void (*report_warning)(uint64_t const ctx, char const *warning);
     bool (*check_cancellation)(uint64_t const ctx);
   } callbacks;
 } OrcHost;
@@ -95,13 +95,13 @@ typedef struct
 struct OrcHandle
 {
   uint64_t        handle;
-  void const*     items;
+  void const     *items;
   uint64_t        n_items;
   uint64_t        item_size;
-  OrcMark const*  marks;
-  uint64_t const* stride_offset;
+  OrcMark const  *marks;
+  uint64_t const *stride_offset;
   uint64_t        n_marks;
-  uint64_t const* strides;
+  uint64_t const *strides;
   OrcTypeId       type_id;
   OrcDims         dims;
 };
@@ -123,14 +123,14 @@ typedef struct
 // ===========================================================
 
 // Loading the plugin, and register the host with the plugin.
-void orc_plugin_init(OrcHost const* host, OrcPlugin* plugin_data_out);
+void orc_plugin_init(OrcHost const *host, OrcPlugin *plugin_data_out);
 
 // Deck lifetime operations.
-void orc_deck_alloc(OrcTypeId const id, OrcHandle* const out);
-void orc_deck_free(OrcHandle* const handle);
+void orc_deck_alloc(OrcTypeId const id, OrcHandle *const out);
+void orc_deck_free(OrcHandle *const handle);
 
-void orc_deck_from_proxy(OrcHandle const* inputs,
+void orc_deck_from_proxy(OrcHandle const *inputs,
                          uint64_t const   n_inputs,
                          uint32_t const   proxy_type,
-                         OrcHandle const* proxy,
-                         OrcHandle*       out);
+                         OrcHandle const *proxy,
+                         OrcHandle       *out);
