@@ -1,4 +1,7 @@
-use crate::{Error, OrcHandle, OrcMark};
+use crate::{
+    Error,
+    bindings::{OrcHandle, OrcMark},
+};
 use std::{
     fmt::Display,
     ops::{Index, IndexMut, Range},
@@ -781,13 +784,13 @@ impl<'a> Combinations<'a> {
         output_depths: &[u8],
     ) -> Result<Self, Error> {
         if input_depths.len() != inputs.len() {
-            return Err(Error::ArrayLengthMismatcch(
+            return Err(Error::ArrayLengthMismatch(
                 input_depths.len(),
                 inputs.len(),
             ));
         }
         if output_depths.len() != outputs.len() {
-            return Err(Error::ArrayLengthMismatcch(
+            return Err(Error::ArrayLengthMismatch(
                 output_depths.len(),
                 outputs.len(),
             ));
@@ -982,9 +985,7 @@ impl<'a> Combinations<'a> {
 
 #[cfg(test)]
 mod test {
-    use crate::OrcHandle;
-
-    use super::{Combinations, Deck};
+    use super::*;
 
     fn binary_deck(depth: u8) -> Deck<usize> {
         let mut deck = Deck::<usize>::default();

@@ -3,22 +3,22 @@
 #include <stdint.h>
 
 // Unsigned integers.
-#define ORC_U8 ((uint32_t)0x01)
-#define ORC_U16 ((uint32_t)0x02)
-#define ORC_U32 ((uint32_t)0x03)
-#define ORC_U64 ((uint32_t)0x04)
+#define ORC_U8 0x01u
+#define ORC_U16 0x02u
+#define ORC_U32 0x03u
+#define ORC_U64 0x04u
 // Scalars.
-#define ORC_F32 ((uint32_t)0x05)
-#define ORC_F64 ((uint32_t)0x06)
+#define ORC_F32 0x05u
+#define ORC_F64 0x06u
 // Signed integers.
-#define ORC_I8 ((uint32_t)0x11)
-#define ORC_I16 ((uint32_t)0x12)
-#define ORC_I32 ((uint32_t)0x13)
-#define ORC_I64 ((uint32_t)0x14)
+#define ORC_I8 0x11u
+#define ORC_I16 0x12u
+#define ORC_I32 0x13u
+#define ORC_I64 0x14u
 // Proxy for an item in a tree.
-#define ORC_PROXY ((uint32_t)0x40)
+#define ORC_PROXY 0x40u
 // All custom opaque types defined by a plugin.
-#define ORC_OPAQUE ((uint32_t)UINT32_MAX)
+#define ORC_OPAQUE 0xffffffffu
 
 typedef struct
 {
@@ -30,17 +30,17 @@ typedef struct OrcHandle OrcHandle;
 
 typedef struct
 {
-  OrcTypeId type_id;
-  char*     name;
-  char*     desc;
+  OrcTypeId   type_id;
+  char const* name;
+  char const* desc;
 } OrcTypeInfo;
 
 typedef struct
 {
-  char*    name;
-  char*    desc;
-  uint64_t n_inputs;
-  uint64_t n_outputs;
+  char const* name;
+  char const* desc;
+  uint64_t    n_inputs;
+  uint64_t    n_outputs;
 
   void (*func)(uint64_t const   ctx,
                OrcHandle const* inputs,
@@ -51,10 +51,10 @@ typedef struct
 
 typedef struct
 {
-  OrcTypeInfo* types;
-  uint64_t     n_types;
-  OrcFuncInfo* functions;
-  uint64_t     n_functions;
+  OrcTypeInfo const* types;
+  uint64_t           n_types;
+  OrcFuncInfo const* functions;
+  uint64_t           n_functions;
 } OrcPlugin;
 
 typedef struct OrcHost
@@ -94,16 +94,16 @@ typedef struct
 
 struct OrcHandle
 {
-  uint64_t  handle;
-  void*     items;
-  uint64_t  n_items;
-  uint64_t  item_size;
-  OrcMark*  marks;
-  uint64_t* stride_offset;
-  uint64_t  n_marks;
-  uint64_t* strides;
-  OrcTypeId type_id;
-  OrcDims   dims;
+  uint64_t        handle;
+  void const*     items;
+  uint64_t        n_items;
+  uint64_t        item_size;
+  OrcMark const*  marks;
+  uint64_t const* stride_offset;
+  uint64_t        n_marks;
+  uint64_t const* strides;
+  OrcTypeId       type_id;
+  OrcDims         dims;
 };
 
 // Each plugin has to provide a generic way to construct decks out of a given input deck,
