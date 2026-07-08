@@ -50,7 +50,7 @@ macro_rules! orc_plugin {
             // This function doesn't exist yet. I need to figure out how that
             // should work, and potentially change the rest of this
             // implementation.
-            let proxy_deck = $crate::Deck::proxy_deck_from_handle(proxy);
+            let proxy_deck = $crate::Deck::proxy_deck_view_from_handle(proxy);
             if type_id.primitive_id == $crate::bindings::ORC_OPAQUE {
                 <$plugin as $crate::ffi::TOrcPlugin>::create_proxy_deck_opque_type(
                     type_id.opaque_id,
@@ -80,7 +80,7 @@ pub trait TOrcPlugin {
         type_id: u32,
         inputs: &[OrcHandle],
         proxy_type: u32,
-        proxy: &Deck<OrcItemProxy>,
+        proxy: DeckView<OrcItemProxy>,
         out: &mut OrcHandle,
     );
 }
@@ -274,6 +274,6 @@ fn create_proxy_deck_primitive_type(
     todo!()
 }
 
-fn create_proxy_deck_view_from_handle(handle: &OrcHandle) {
+fn proxy_deck_view_from_handle<'a>(handle: &'a OrcHandle) -> DeckView<'a, OrcItemProxy> {
     todo!();
 }
