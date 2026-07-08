@@ -13,28 +13,28 @@ macro_rules! orc_plugin {
             host: *const OrcHost,
             plugin_data_out: *mut OrcPlugin,
         ) {
-            todo!()
+            todo!();
         }
 
-        // This function should be inside a macro, to be invoked (hence defining the function) inside the plugin.
         #[unsafe(no_mangle)]
-        pub unsafe extern "C" fn orc_deck_alloc(_id: OrcTypeId, _out: *mut OrcHandle) {
-            todo!()
+        pub unsafe extern "C" fn orc_deck_alloc(id: OrcTypeId, out: *mut OrcHandle) {
+            todo!();
         }
 
-        // This function should be inside a macro, to be invoked (hence defining the function) inside the plugin.
         #[unsafe(no_mangle)]
-        pub unsafe extern "C" fn orc_deck_free(_handle: *mut OrcHandle) {
-            todo!()
+        pub unsafe extern "C" fn orc_deck_free(handle: *mut OrcHandle) {
+            todo!();
         }
 
         #[unsafe(no_mangle)]
         pub unsafe extern "C" fn orc_deck_from_proxy(
-            inputs: *const OrcHandle, n_inputs: u64,
-            proxy_type: u32, proxy: *const OrcHandle,
-            out: *OrcHandle
+            inputs: *const OrcHandle,
+            n_inputs: u64,
+            proxy_type: u32,
+            proxy: *const OrcHandle,
+            out: *mut OrcHandle,
         ) {
-            todo!()
+            todo!();
         }
     };
 }
