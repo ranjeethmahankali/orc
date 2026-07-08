@@ -10,29 +10,32 @@ macro_rules! orc_plugin {
     ($plugin:ident) => {
         #[unsafe(no_mangle)]
         pub unsafe extern "C" fn orc_plugin_init(
-            host: *const OrcHost,
-            plugin_data_out: *mut OrcPlugin,
+            host: *const $crate::bindings::OrcHost,
+            plugin_data_out: *mut $crate::bindings::OrcPlugin,
         ) {
             todo!();
         }
 
         #[unsafe(no_mangle)]
-        pub unsafe extern "C" fn orc_deck_alloc(id: OrcTypeId, out: *mut OrcHandle) {
+        pub unsafe extern "C" fn orc_deck_alloc(
+            id: $crate::bindings::OrcTypeId,
+            out: *mut $crate::bindings::OrcHandle,
+        ) {
             todo!();
         }
 
         #[unsafe(no_mangle)]
-        pub unsafe extern "C" fn orc_deck_free(handle: *mut OrcHandle) {
+        pub unsafe extern "C" fn orc_deck_free(handle: *mut $crate::bindings::OrcHandle) {
             todo!();
         }
 
         #[unsafe(no_mangle)]
         pub unsafe extern "C" fn orc_deck_from_proxy(
-            inputs: *const OrcHandle,
+            inputs: *const $crate::bindings::OrcHandle,
             n_inputs: u64,
             proxy_type: u32,
-            proxy: *const OrcHandle,
-            out: *mut OrcHandle,
+            proxy: *const $crate::bindings::OrcHandle,
+            out: *mut $crate::bindings::OrcHandle,
         ) {
             todo!();
         }
