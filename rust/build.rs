@@ -7,6 +7,8 @@ fn main() {
         .allowlist_function("orc_.*")
         .derive_partialeq(true)
         .derive_eq(true)
+        .no_partialeq("OrcFuncInfo") // This contains a function pointer and doesn't require comparison.
+        .no_partialeq("OrcHost.*") // This contains function pointers, and doesn't require comparison.
         .generate()
         .expect("Unable to generate bindings");
     // Write bindings to the output directory.
