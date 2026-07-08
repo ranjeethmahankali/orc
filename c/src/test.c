@@ -3517,7 +3517,7 @@ void test_first_add_combinations(void)
 
 // ==================== Shuffling decks with a proxy ====================
 
-static OrcHandle _make_flattened_proxy(void* deck)
+static OrcHandle _make_flattened_proxy(void const* deck)
 {
   _DeckHeader*  h     = _deck_header(deck);
   OrcMark*      marks = NULL;
@@ -3537,7 +3537,7 @@ static OrcHandle _make_flattened_proxy(void* deck)
   };
 }
 
-static OrcHandle _make_grafted_proxy(void* deck)
+static OrcHandle _make_grafted_proxy(void const* deck)
 {
   _DeckHeader* h         = _deck_header(deck);
   OrcMark*     old_marks = h->marks;
@@ -3575,7 +3575,7 @@ static OrcHandle _make_grafted_proxy(void* deck)
   };
 }
 
-static OrcHandle _make_simplified_proxy(void* deck)
+static OrcHandle _make_simplified_proxy(void const* deck)
 {
   _DeckHeader* h       = _deck_header(deck);
   size_t const n_marks = arr_len(h->marks);
@@ -3616,7 +3616,7 @@ static OrcHandle _make_simplified_proxy(void* deck)
   };
 }
 
-static OrcHandle _make_shuffle_proxy(OrcItemProxy* pdeck)
+static OrcHandle _make_shuffle_proxy(OrcItemProxy const* pdeck)
 {
   OrcHandle handle;
   memset(&handle, 0, sizeof(handle));
@@ -3626,7 +3626,9 @@ static OrcHandle _make_shuffle_proxy(OrcItemProxy* pdeck)
   return handle;
 }
 
-static void _assert_decks_match(void* actual, void* expected, size_t const item_size)
+static void _assert_decks_match(void const*  actual,
+                                void const*  expected,
+                                size_t const item_size)
 {
   size_t const na = deck_len(actual);
   size_t const ne = deck_len(expected);
@@ -3728,7 +3730,7 @@ void test_deck_from_proxy_copy_items(void)
     DECK_INIT(in.items, double, ((1.0, 2.0), (3.0, 4.0)));
     oh_update(&in);
     /* Graft to create a gap in depth levels, then use simplify proxy. */
-    deck_graft(in.items);
+    deck_graft((void*)in.items);
     oh_update(&in);
 
     OrcHandle proxy = _make_simplified_proxy(in.items);

@@ -64,7 +64,7 @@ typedef struct
   size_t capacity;
 } _ArrHeader;
 
-static inline _ArrHeader* _arr_header(void* ptr)
+static inline _ArrHeader* _arr_header(void const* ptr)
 {
   _ArrHeader* h = (_ArrHeader*)ptr;
   if (h)
@@ -348,7 +348,7 @@ void _deck_free_impl(void* ptr);
 
 #define deck_free(ptr) (_deck_free_impl((ptr)), (ptr) = NULL)
 
-uint8_t deck_max_depth(void* deck);
+uint8_t deck_max_depth(void const* deck);
 
 static inline size_t deck_len(void const* deck)
 {
@@ -373,7 +373,7 @@ void* _deck_start_new_arr(void* ptr, size_t const itemsize, uint8_t const depth)
 #define deck_start_arr(ptr, depth) \
   (((ptr) = _deck_start_new_arr((ptr), sizeof(*(ptr)), (depth))) ? OK : ALLOC_FAILED)
 
-void deck_clear(void* ptr);
+void deck_clear(void const* ptr);
 
 void* _deck_grow_capacity(void* ptr, size_t const itemsize, size_t const n);
 
@@ -467,12 +467,12 @@ char* _deck_to_str(void*        ptr,
 #define _DI_PUSH_I() _DI_PUSH
 
 /* --- Push flat values: first gets depth, rest get 0 --- */
-#define _DI_PUSH_VALS(ptr, type, depth, first, ...)                                    \
-  (void)((ptr) =                                                                       \
-           _deck_push_impl((ptr), &((type) {first}), sizeof(type), (uint8_t)(depth))); \
+#define _DI_PUSH_VALS(ptr, type, depth, first, ...)                           \
+  (void)((ptr) = _deck_push_impl(                                             \
+           (void*)(ptr), &((type) {first}), sizeof(type), (uint8_t)(depth))); \
   _DI_CAT(_DI_VT_, _DI_CONT(_DI_FIRST(__VA_ARGS__)))(ptr, type, __VA_ARGS__)
-#define _DI_PUSH_VALS_REST(ptr, type, first, ...)                             \
-  (void)((ptr) = _deck_push_impl((ptr), &((type) {first}), sizeof(type), 0)); \
+#define _DI_PUSH_VALS_REST(ptr, type, first, ...)                                    \
+  (void)((ptr) = _deck_push_impl((void*)(ptr), &((type) {first}), sizeof(type), 0)); \
   _DI_CAT(_DI_VT_, _DI_CONT(_DI_FIRST(__VA_ARGS__)))(ptr, type, __VA_ARGS__)
 #define _DI_VT_0(ptr, type, ...)
 #define _DI_VT_1(ptr, type, ...) _DI_DEFER(_DI_PUSH_VALS_REST_I)()(ptr, type, __VA_ARGS__)
@@ -495,7 +495,7 @@ char* _deck_to_str(void*        ptr,
 /* --- Entry point --- */
 #define DECK_INIT(ptr, type, data)                                \
   do {                                                            \
-    deck_clear((ptr));                                            \
+    deck_clear((void*)(ptr));                                     \
     _DI_EVAL(_DI_PUSH((ptr), type, 1, _DI_UNWRAP(data), _DI_END)) \
   } while (0)
 

@@ -465,7 +465,7 @@ void _deck_free_impl(void* ptr)
   }
 }
 
-uint8_t deck_max_depth(void* deck)
+uint8_t deck_max_depth(void const* deck)
 {
   _DeckHeader* h = _deck_header(deck);
   if (h != NULL && !arr_is_empty(h->marks)) {
@@ -578,7 +578,7 @@ void* _deck_start_new_arr(void* ptr, size_t const itemsize, uint8_t const depth)
   return ptr;
 }
 
-void deck_clear(void* ptr)
+void deck_clear(void const* ptr)
 {
   _DeckHeader* h = _deck_header(ptr);
   if (h == NULL)
