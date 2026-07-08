@@ -13,7 +13,7 @@ macro_rules! orc_plugin {
             host: *const $crate::bindings::OrcHost,
             plugin_data_out: *mut $crate::bindings::OrcPlugin,
         ) {
-            todo!();
+            <$plugin as $crate::ffi::TOrcPlugin>::plugin_init(&*host, &mut *plugin_data_out);
         }
 
         #[unsafe(no_mangle)]
@@ -21,12 +21,12 @@ macro_rules! orc_plugin {
             id: $crate::bindings::OrcTypeId,
             out: *mut $crate::bindings::OrcHandle,
         ) {
-            todo!();
+            *out = <$plugin as $crate::ffi::TOrcPlugin>::deck_alloc(id);
         }
 
         #[unsafe(no_mangle)]
         pub unsafe extern "C" fn orc_deck_free(handle: *mut $crate::bindings::OrcHandle) {
-            todo!();
+            <$plugin as $crate::ffi::TOrcPlugin>::deck_free(&mut *handle);
         }
 
         #[unsafe(no_mangle)]
@@ -43,9 +43,9 @@ macro_rules! orc_plugin {
 }
 
 pub trait TOrcPlugin {
+    fn plugin_init(host: &OrcHost, out: &mut OrcPlugin);
     fn deck_alloc(id: OrcTypeId) -> OrcHandle;
     fn deck_free(handle: &mut OrcHandle);
-    fn plugin_init(host: &OrcHost, out: &mut OrcPlugin);
 }
 
 pub trait TOrcData: Default {
