@@ -336,7 +336,7 @@ typedef struct
   size_t    _alignment;
 } _DeckHeader;
 
-static inline _DeckHeader* _deck_header(void* ptr)
+static inline _DeckHeader* _deck_header(void const* ptr)
 {
   _DeckHeader* h = (_DeckHeader*)ptr;
   if (h)
@@ -350,7 +350,7 @@ void _deck_free_impl(void* ptr);
 
 uint8_t deck_max_depth(void* deck);
 
-static inline size_t deck_len(void* deck)
+static inline size_t deck_len(void const* deck)
 {
   _DeckHeader* h = _deck_header(deck);
   if (h)

@@ -1213,7 +1213,7 @@ void* comb_init(OrcHandle const** inputs,
     DeckWriter* dst         = out->writer_matrix + i * stack_depth;
     // The first writer.
     *dst = (DeckWriter) {
-      .deck           = &(outputs[i]->items),
+      .deck           = (void**)&(outputs[i]->items),
       .item_size      = outputs[i]->item_size,
       .depth          = arg_depth + max_delta,
       .has_next_depth = true,
@@ -1519,7 +1519,7 @@ void orc_deck_free(OrcHandle* const handle)
       _free_deck_item(data, handle->type_id.opaque_id);
     }
   }
-  _deck_free_impl(handle->items);  // Now we can free the deck container.
+  _deck_free_impl((void*)handle->items);  // Now we can free the deck container.
   memset(handle, 0, sizeof(OrcHandle));
 }
 
@@ -1529,7 +1529,7 @@ static bool _orc_type_id_eq(OrcTypeId const a, OrcTypeId const b)
 }
 
 void _copy_items_opaque(uint32_t     opaque_type_id,
-                        void*        src,
+                        void const*  src,
                         void*        dst,
                         size_t const n_items)
 {
@@ -1563,7 +1563,7 @@ void orc_deck_from_proxy(OrcHandle const* inputs,
   case ORC_DECK_PROXY_COPY_ALL: {
     REQUIRE_WITH_MSG(n_inputs == 1, "COPY_ALL is only valid with a single input.");
     size_t const n_items = inputs[0].n_items;
-    void*        deck    = _deck_grow_capacity(out->items, item_size, n_items);
+    void*        deck    = _deck_grow_capacity((void*)out->items, item_size, n_items);
     _DeckHeader* h       = _deck_header(deck);
     h->item_size         = item_size;
     memcpy(out->dims, inputs[0].dims, sizeof(OrcDims));
@@ -1589,7 +1589,7 @@ void orc_deck_from_proxy(OrcHandle const* inputs,
   case ORC_DECK_PROXY_COPY_ITEMS: {
     REQUIRE_WITH_MSG(n_inputs == 1, "COPY_ITEMS is only valid with a single input.");
     size_t const n_items = inputs[0].n_items;
-    void*        deck    = _deck_grow_capacity(out->items, item_size, n_items);
+    void*        deck    = _deck_grow_capacity((void*)out->items, item_size, n_items);
     _DeckHeader* h       = _deck_header(deck);
     h->item_size         = item_size;
     memcpy(out->dims, inputs[0].dims, sizeof(OrcDims));
@@ -1614,7 +1614,7 @@ void orc_deck_from_proxy(OrcHandle const* inputs,
   } break;
   case ORC_DECK_PROXY_SHUFFLE: {
     size_t const n_items = proxy->n_items;
-    void*        deck    = _deck_grow_capacity(out->items, item_size, n_items);
+    void*        deck    = _deck_grow_capacity((void*)out->items, item_size, n_items);
     _DeckHeader* h       = _deck_header(deck);
     h->item_size         = item_size;
     memcpy(out->dims, proxy->dims, sizeof(OrcDims));
