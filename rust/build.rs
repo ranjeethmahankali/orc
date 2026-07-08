@@ -7,6 +7,7 @@ fn main() {
         .allowlist_function("orc_.*")
         .derive_partialeq(true)
         .derive_eq(true)
+        .derive_default(true)
         .no_partialeq("OrcFuncInfo") // This contains a function pointer and doesn't require comparison.
         .no_partialeq("OrcHost.*") // This contains function pointers, and doesn't require comparison.
         .generate()

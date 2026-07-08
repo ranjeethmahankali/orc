@@ -1,5 +1,6 @@
 use crate::Deck;
 use crate::bindings::*;
+use crate::deck::DeckView;
 
 // ===========================================================
 // Functions meant to be implemented by the plugin.
@@ -37,7 +38,36 @@ macro_rules! orc_plugin {
             proxy: *const $crate::bindings::OrcHandle,
             out: *mut $crate::bindings::OrcHandle,
         ) {
-            todo!();
+            let inputs = std::slice::from_raw_parts(inputs, n_inputs as usize);
+            let proxy = &*proxy;
+            let out = &mut *out;
+            assert!(!inputs.is_empty(), "orc_deck_from_proxy: no inputs");
+            let type_id = inputs[0].type_id;
+            assert!(
+                inputs.iter().all(|i| i.type_id == type_id),
+                "orc_deck_from_proxy: all input handles must have the same type_id"
+            );
+            // This function doesn't exist yet. I need to figure out how that
+            // should work, and potentially change the rest of this
+            // implementation.
+            let proxy_deck = $crate::Deck::proxy_deck_from_handle(proxy);
+            if type_id.primitive_id == $crate::bindings::ORC_OPAQUE {
+                <$plugin as $crate::ffi::TOrcPlugin>::create_proxy_deck_opque_type(
+                    type_id.opaque_id,
+                    inputs,
+                    proxy_type,
+                    &proxy_deck,
+                    out,
+                );
+            } else {
+                $crate::ffi::create_proxy_deck_primitive_type(
+                    type_id.primitive_id,
+                    inputs,
+                    proxy_type,
+                    &proxy_deck,
+                    out,
+                );
+            }
         }
     };
 }
@@ -46,6 +76,13 @@ pub trait TOrcPlugin {
     fn plugin_init(host: &OrcHost, out: &mut OrcPlugin);
     fn deck_alloc(id: OrcTypeId) -> OrcHandle;
     fn deck_free(handle: &mut OrcHandle);
+    fn create_proxy_deck_opque_type(
+        type_id: u32,
+        inputs: &[OrcHandle],
+        proxy_type: u32,
+        proxy: &Deck<OrcItemProxy>,
+        out: &mut OrcHandle,
+    );
 }
 
 pub trait TOrcData: Default {
@@ -222,4 +259,21 @@ pub fn dims_pow(dims: &OrcDims, exponent: i32) -> OrcDims {
         out[i] = dims[i] * exponent
     }
     out
+}
+
+// ==================== Other helper functions ====================
+
+#[allow(dead_code)]
+fn create_proxy_deck_primitive_type(
+    type_id: u32,
+    inputs: &[OrcHandle],
+    proxy_type: u32,
+    proxy: DeckView<OrcItemProxy>,
+    out: &mut OrcHandle,
+) {
+    todo!()
+}
+
+fn create_proxy_deck_view_from_handle(handle: &OrcHandle) {
+    todo!();
 }
