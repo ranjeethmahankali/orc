@@ -882,7 +882,9 @@ DeckView _dv_from_deck_impl(void *ptr, size_t const item_size, uint8_t const dep
 }
 
 uint8_t dv_depth(DeckView const *const v)
-{ return v->depth; }
+{
+  return v->depth;
+}
 
 size_t dv_len(DeckView const *const v)
 {
@@ -1064,7 +1066,9 @@ void *dw_push_empty(DeckWriter *writer)
 // ========== Dims (Units) ==========
 
 bool dims_equal(OrcDims const a, OrcDims const b)
-{ return memcmp(a, b, sizeof(*a) * ORC_NUM_DIMS) == 0; }
+{
+  return memcmp(a, b, sizeof(*a) * ORC_NUM_DIMS) == 0;
+}
 
 void dims_multiply(OrcDims const a, OrcDims const b, OrcDims out)
 {
@@ -1089,7 +1093,7 @@ void dims_pow(OrcDims const a, int const pow, OrcDims out)
 
 // ========== Combinations ==========
 
-DeckView _dv_from_oh_impl(OrcHandle const *const handle, uint8_t const depth)
+DeckView _dv_from_oh(OrcHandle const *const handle, uint8_t const depth)
 {
   if (handle == NULL)
     return (DeckView) {0};
@@ -1194,7 +1198,7 @@ void *comb_init(OrcHandle const **inputs,
     out->input_depths[i]    = arg_depth;
     DeckView *dst           = out->view_matrix + i * stack_depth;
     // The first view.
-    *dst = _dv_from_oh_impl(inputs[i], arg_depth + max_delta);
+    *dst = _dv_from_oh(inputs[i], arg_depth + max_delta);
     // Telescope the views until we reach the target depth.
     for (size_t d = 1; d < stack_depth; ++d) {
       DeckView child = dv_child(dst);
@@ -1520,7 +1524,9 @@ void orc_deck_free(OrcHandle *const handle)
 }
 
 static bool _orc_type_id_eq(OrcTypeId const a, OrcTypeId const b)
-{ return a.primitive_id == b.primitive_id && a.opaque_id == b.opaque_id; }
+{
+  return a.primitive_id == b.primitive_id && a.opaque_id == b.opaque_id;
+}
 
 void _copy_items_opaque(uint32_t     opaque_type_id,
                         void const  *src,
