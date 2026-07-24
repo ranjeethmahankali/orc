@@ -111,6 +111,16 @@
   <2026-07-04 Sat 11:42> I want to use bindgen to generate the ABI layer in all
   languages from a single source of truth.
 
+  <2026-07-23 Thu 23:42> Made decent progress using bindgen to establish a single source of truth
+  for the ABI a few weeks ago. Also making slight progress toward a host / plugin split in the Rust
+  SDK. The =orc_plugin= macro is the key to make this work. Every Rust plugin will need to call this
+  macro exactly once in their crate. The macro expansion will implement ABI compatible C functions
+  based on Rust trait implementation.
+
+  The proxy deck stuff (how generic container operations work) is a little behind in Rust compared
+  to the C SDK. Left some todos in the code. I need to finish that up before continuing with the
+  API.
+
 * DONE thlu2u - Generic Container Operations
   CLOSED: [2026-07-03 Fri 19:12]
   :PROPERTIES:
