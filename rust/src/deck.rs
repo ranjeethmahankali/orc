@@ -784,10 +784,7 @@ impl<'a> Combinations<'a> {
         output_depths: &[u8],
     ) -> Result<Self, Error> {
         if input_depths.len() != inputs.len() {
-            return Err(Error::ArrayLengthMismatch(
-                input_depths.len(),
-                inputs.len(),
-            ));
+            return Err(Error::ArrayLengthMismatch(input_depths.len(), inputs.len()));
         }
         if output_depths.len() != outputs.len() {
             return Err(Error::ArrayLengthMismatch(
@@ -806,44 +803,48 @@ impl<'a> Combinations<'a> {
             .max()
             .unwrap_or(0);
         let stack_depth = max_delta as usize + 1;
-        let input_cursors = inputs
-            .iter()
-            .zip(input_depths.iter())
-            .flat_map(|(i, &arg_depth)| {
-                // SAFETY: Assembling slices from pointers. The only tricky part is
-                // computing the length of the `strides` slice. Using a helper
-                // function for that to make sure the logic is consistent with the
-                // one used in the `Deck` implementation.
-                let (marks, stride_offset, strides) = unsafe {
-                    let marks = std::slice::from_raw_parts(i.marks, i.n_marks as usize);
-                    let stride_offset =
-                        std::slice::from_raw_parts(i.stride_offset, i.n_marks as usize);
-                    let strides = std::slice::from_raw_parts(
-                        i.strides,
-                        calc_stride_count(marks, stride_offset),
-                    );
-                    (marks, stride_offset, strides)
-                };
-                let depth = marks.first().map(|m| m.depth + 1).unwrap_or(0);
-                let end = if depth == 0 { i.n_items } else { i.n_marks } as usize;
-                // Telescope the cursors to all depths up to the required arg_depth.
-                (0..stack_depth).scan(
-                    ReadCursor {
-                        n_items: i.n_items as usize,
-                        marks,
-                        strides,
-                        stride_offset,
-                        depth: arg_depth + max_delta,
-                        start: 0,
-                        end,
-                    },
-                    |prev, _d| {
-                        let copy = prev.clone();
-                        *prev = prev.child();
-                        Some(copy)
-                    },
-                )
-            });
+        let input_cursors =
+            inputs
+                .iter()
+                .zip(input_depths.iter())
+                .flat_map(|(input, &arg_depth)| {
+                    // SAFETY: Assembling slices from pointers. The only tricky part is computing
+                    // the length of the `strides` slice. Using a helper function for that to make
+                    // sure the logic is consistent with the one used in the `Deck` implementation.
+                    let (marks, stride_offset, strides) = unsafe {
+                        let marks = std::slice::from_raw_parts(input.marks, input.n_marks as usize);
+                        let stride_offset =
+                            std::slice::from_raw_parts(input.stride_offset, input.n_marks as usize);
+                        let strides = std::slice::from_raw_parts(
+                            input.strides,
+                            calc_stride_count(marks, stride_offset),
+                        );
+                        (marks, stride_offset, strides)
+                    };
+                    let depth = marks.first().map(|m| m.depth + 1).unwrap_or(0);
+                    let end = if depth == 0 {
+                        input.n_items
+                    } else {
+                        input.n_marks
+                    } as usize;
+                    // Telescope the cursors to all depths up to the required arg_depth.
+                    (0..stack_depth).scan(
+                        ReadCursor {
+                            n_items: input.n_items as usize,
+                            marks,
+                            strides,
+                            stride_offset,
+                            depth: arg_depth + max_delta,
+                            start: 0,
+                            end,
+                        },
+                        |prev, _d| {
+                            let copy = prev.clone();
+                            *prev = prev.child();
+                            Some(copy)
+                        },
+                    )
+                });
         let mut output_cursors = Vec::with_capacity(outputs.len() * stack_depth);
         for i in 0..outputs.len() {
             let arg_depth = output_depths[i];
