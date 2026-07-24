@@ -98,18 +98,16 @@
   - State "NEXT"       from "TODO"       [2026-06-15 Mon 20:30]
   :END:
 
-  The basic datastructure stuff is coming out nicely, but still, all the C code
-  is one place, and the all the Rust code is in one crate. I need to make clean
-  boundary between the host programs, the ABI layer, and the plugin
-  binaries. The Rust side of this task is non-trivial and will require some
-  thought.
+  The basic datastructure stuff is coming out nicely, but still, all the C code is one place, and
+  the all the Rust code is in one crate. I need to make clean boundary between the host programs,
+  the ABI layer, and the plugin binaries. The Rust side of this task is non-trivial and will require
+  some thought.
 
-  <2026-07-03 Fri 11:10> Started figuring out the solution for generic
-  containers, while working through this task. Will get that done as a separate
-  task and return to this later.
+  <2026-07-03 Fri 11:10> Started figuring out the solution for generic containers, while working
+  through this task. Will get that done as a separate task and return to this later.
 
-  <2026-07-04 Sat 11:42> I want to use bindgen to generate the ABI layer in all
-  languages from a single source of truth.
+  <2026-07-04 Sat 11:42> I want to use bindgen to generate the ABI layer in all languages from a
+  single source of truth.
 
   <2026-07-23 Thu 23:42> Made decent progress using bindgen to establish a single source of truth
   for the ABI a few weeks ago. Also making slight progress toward a host / plugin split in the Rust
