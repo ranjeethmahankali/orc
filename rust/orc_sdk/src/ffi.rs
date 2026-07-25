@@ -80,7 +80,7 @@ pub enum ProxyType {
     Shuffle,
 }
 
-pub trait TOrcPlugin {
+pub trait TOrcPluginAdaptor {
     fn plugin_init(host: &OrcHost, out: &mut OrcPlugin);
     fn deck_alloc(id: OrcTypeId) -> OrcHandle;
     fn deck_free(handle: &mut OrcHandle);
