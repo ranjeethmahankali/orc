@@ -227,9 +227,5 @@ pub fn dims_divide(dims: &OrcDims, other: &OrcDims) -> OrcDims {
 }
 
 pub fn dims_pow(dims: &OrcDims, exponent: i32) -> OrcDims {
-    let mut out = [0; ORC_NUM_DIMS as usize];
-    for i in 0..(ORC_NUM_DIMS as usize) {
-        out[i] = dims[i] * exponent
-    }
-    out
+    dims.map(|d| d * exponent)
 }
