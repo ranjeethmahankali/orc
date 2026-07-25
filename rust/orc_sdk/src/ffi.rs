@@ -10,37 +10,37 @@ macro_rules! orc_plugin {
     ($plugin:ident) => {
         #[unsafe(no_mangle)]
         pub unsafe extern "C" fn orc_plugin_init(
-            host: *const $crate::bindings::OrcHost,
-            plugin_data_out: *mut $crate::bindings::OrcPlugin,
+            host: *const orc_sdk::OrcHost,
+            plugin_data_out: *mut orc_sdk::OrcPlugin,
         ) {
-            <$plugin as $crate::ffi::TOrcPlugin>::plugin_init(&*host, &mut *plugin_data_out);
+            <$plugin as orc_sdk::TOrcPluginAdaptor>::plugin_init(&*host, &mut *plugin_data_out);
         }
 
         #[unsafe(no_mangle)]
         pub unsafe extern "C" fn orc_deck_alloc(
-            id: $crate::bindings::OrcTypeId,
-            out: *mut $crate::bindings::OrcHandle,
+            id: orc_sdk::OrcTypeId,
+            out: *mut orc_sdk::OrcHandle,
         ) {
-            *out = <$plugin as $crate::ffi::TOrcPlugin>::deck_alloc(id);
+            *out = <$plugin as orc_sdk::TOrcPluginAdaptor>::deck_alloc(id);
         }
 
         #[unsafe(no_mangle)]
-        pub unsafe extern "C" fn orc_deck_free(handle: *mut $crate::bindings::OrcHandle) {
-            <$plugin as $crate::ffi::TOrcPlugin>::deck_free(&mut *handle);
+        pub unsafe extern "C" fn orc_deck_free(handle: *mut orc_sdk::OrcHandle) {
+            <$plugin as orc_sdk::TOrcPluginAdaptor>::deck_free(&mut *handle);
         }
 
         #[unsafe(no_mangle)]
         pub unsafe extern "C" fn orc_deck_from_proxy(
-            inputs: *const $crate::bindings::OrcHandle,
+            inputs: *const orc_sdk::OrcHandle,
             n_inputs: u64,
             proxy_type: u32,
-            proxy: *const $crate::bindings::OrcHandle,
-            out: *mut $crate::bindings::OrcHandle,
+            proxy: *const orc_sdk::OrcHandle,
+            out: *mut orc_sdk::OrcHandle,
         ) {
             // Convert all the FFI pointers to Rust references.
             let proxy = &*proxy;
             assert!(
-                proxy.type_id.primitive_id == ORC_PROXY,
+                proxy.type_id.primitive_id == orc_sdk::ORC_PROXY,
                 "Invalid proxy deck"
             );
             let inputs = std::slice::from_raw_parts(inputs, n_inputs as usize);
@@ -67,7 +67,7 @@ macro_rules! orc_plugin {
             } else {
                 &[]
             };
-            <$plugin as $crate::ffi::TOrcPlugin>::deck_from_proxy(
+            <$plugin as orc_sdk::TOrcPluginAdaptor>::deck_from_proxy(
                 inputs, proxy_type, proxies, marks, out,
             );
         }

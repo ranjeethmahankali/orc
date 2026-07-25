@@ -1,4 +1,7 @@
-use orc_sdk::{OrcHandle, OrcHost, OrcItemProxy, OrcMark, OrcPlugin, OrcTypeId, TOrcPluginAdaptor};
+use orc_sdk::{
+    OrcHandle, OrcHost, OrcItemProxy, OrcMark, OrcPlugin, OrcTypeId, ProxyType, TOrcPluginAdaptor,
+    orc_plugin,
+};
 
 struct Adaptor; // Unit struct to implement the adaptor.
 
@@ -25,6 +28,8 @@ impl TOrcPluginAdaptor for Adaptor {
         todo!()
     }
 }
+
+orc_plugin!(Adaptor);
 
 pub fn add(left: u64, right: u64) -> u64 {
     left + right
