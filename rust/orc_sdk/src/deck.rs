@@ -1,6 +1,6 @@
 use crate::{
-    Error,
     bindings::{OrcHandle, OrcMark},
+    Error,
 };
 use std::{
     fmt::Display,
