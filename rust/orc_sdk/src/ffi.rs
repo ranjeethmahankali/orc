@@ -93,33 +93,44 @@ pub trait TOrcPluginAdaptor {
     );
 }
 
-pub trait TOrcData: Default + Clone {
+pub trait TOrcData: Default + Clone + 'static {
     fn type_info() -> OrcTypeInfo;
 }
 
-impl<T: TOrcData> From<&Deck<T>> for OrcHandle {
-    fn from(deck: &Deck<T>) -> Self {
-        let type_info = T::type_info();
-        let (items, marks, (stride_offset, strides)) =
-            (deck.items(), deck.marks(), deck.stride_info());
-        debug_assert_eq!(
-            marks.len(),
-            stride_offset.len(),
-            "Malformed deck datastructure"
-        );
-        OrcHandle {
-            handle: std::ptr::from_ref(deck) as u64,
-            items: items.as_ptr().cast(),
-            n_items: items.len() as u64,
-            item_size: size_of::<T>() as u64,
-            marks: marks.as_ptr(),
-            stride_offset: stride_offset.as_ptr(),
-            n_marks: marks.len() as u64,
-            strides: strides.as_ptr(),
-            type_id: type_info.type_id,
-            dims: [0; ORC_NUM_DIMS as usize],
-        }
+pub fn handle_from_deck<T: TOrcData>(deck: &Deck<T>, id: u64) -> OrcHandle {
+    let type_info = T::type_info();
+    let (items, marks, (stride_offset, strides)) = (deck.items(), deck.marks(), deck.stride_info());
+    debug_assert_eq!(
+        marks.len(),
+        stride_offset.len(),
+        "Malformed deck datastructure"
+    );
+    OrcHandle {
+        handle: id,
+        items: items.as_ptr().cast(),
+        n_items: items.len() as u64,
+        item_size: size_of::<T>() as u64,
+        marks: marks.as_ptr(),
+        stride_offset: stride_offset.as_ptr(),
+        n_marks: marks.len() as u64,
+        strides: strides.as_ptr(),
+        type_id: type_info.type_id,
+        dims: [0; ORC_NUM_DIMS as usize],
     }
+}
+
+pub fn reset_handle(handle: &mut OrcHandle) {
+    handle.handle = 0;
+    handle.items = std::ptr::null();
+    handle.n_items = 0;
+    handle.item_size = 0;
+    handle.marks = std::ptr::null();
+    handle.stride_offset = std::ptr::null();
+    handle.n_marks = 0;
+    handle.strides = std::ptr::null();
+    handle.type_id.primitive_id = 0;
+    handle.type_id.opaque_id = 0;
+    handle.dims.fill(0);
 }
 
 impl TOrcData for u8 {

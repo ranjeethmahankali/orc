@@ -16,3 +16,6 @@ pub use bindings::{
 
 mod error;
 pub use error::Error;
+
+mod handle_registry;
+pub use handle_registry::DeckRegistry;

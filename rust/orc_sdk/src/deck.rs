@@ -1,6 +1,6 @@
 use crate::{
-    bindings::{OrcHandle, OrcMark},
     Error,
+    bindings::{OrcHandle, OrcMark},
 };
 use std::{
     fmt::Display,
@@ -986,6 +986,8 @@ impl<'a> Combinations<'a> {
 
 #[cfg(test)]
 mod test {
+    use crate::ffi::handle_from_deck;
+
     use super::*;
 
     fn binary_deck(depth: u8) -> Deck<usize> {
@@ -2027,9 +2029,9 @@ mod test {
             let indices: Deck<u64> = deck![2];
             let mut items: Deck<f64> = Deck::default();
             {
-                let list_handle: OrcHandle = (&lists).into();
-                let index_handle: OrcHandle = (&indices).into();
-                let item_handle: OrcHandle = (&items).into();
+                let list_handle: OrcHandle = handle_from_deck(&lists, 0);
+                let index_handle: OrcHandle = handle_from_deck(&indices, 1);
+                let item_handle: OrcHandle = handle_from_deck(&items, 2);
                 let mut comb = Combinations::from_handles(
                     &[list_handle, index_handle],
                     &[1, 0],
@@ -2070,9 +2072,9 @@ mod test {
             let indices: Deck<u64> = deck![1, 2, 0];
             let mut items: Deck<f64> = Deck::default();
             {
-                let list_handle: OrcHandle = (&lists).into();
-                let index_handle: OrcHandle = (&indices).into();
-                let item_handle: OrcHandle = (&items).into();
+                let list_handle: OrcHandle = handle_from_deck(&lists, 0);
+                let index_handle: OrcHandle = handle_from_deck(&indices, 1);
+                let item_handle: OrcHandle = handle_from_deck(&items, 2);
                 let mut comb = Combinations::from_handles(
                     &[list_handle, index_handle],
                     &[1, 0],
@@ -2113,9 +2115,9 @@ mod test {
             let indices: Deck<u64> = deck![[1, 2, 0], [1, 1, 1]];
             let mut items: Deck<f64> = Deck::default();
             {
-                let list_handle: OrcHandle = (&lists).into();
-                let index_handle: OrcHandle = (&indices).into();
-                let item_handle: OrcHandle = (&items).into();
+                let list_handle: OrcHandle = handle_from_deck(&lists, 0);
+                let index_handle: OrcHandle = handle_from_deck(&indices, 1);
+                let item_handle: OrcHandle = handle_from_deck(&items, 2);
                 let mut comb = Combinations::from_handles(
                     &[list_handle, index_handle],
                     &[1, 0],
@@ -2156,9 +2158,9 @@ mod test {
             let b: Deck<f64> = deck![10.0, 20.0, 30.0];
             let mut out: Deck<f64> = Deck::default();
             {
-                let a_handle: OrcHandle = (&a).into();
-                let b_handle: OrcHandle = (&b).into();
-                let out_handle: OrcHandle = (&out).into();
+                let a_handle: OrcHandle = handle_from_deck(&a, 0);
+                let b_handle: OrcHandle = handle_from_deck(&b, 1);
+                let out_handle: OrcHandle = handle_from_deck(&out, 2);
                 let mut comb =
                     Combinations::from_handles(&[a_handle, b_handle], &[0, 0], &[out_handle], &[0])
                         .expect("Failed to create combinations helper struct");
@@ -2185,9 +2187,9 @@ mod test {
             let b: Deck<f64> = deck![10.0, 20.0];
             let mut out: Deck<f64> = Deck::default();
             {
-                let a_handle: OrcHandle = (&a).into();
-                let b_handle: OrcHandle = (&b).into();
-                let out_handle: OrcHandle = (&out).into();
+                let a_handle: OrcHandle = handle_from_deck(&a, 0);
+                let b_handle: OrcHandle = handle_from_deck(&b, 1);
+                let out_handle: OrcHandle = handle_from_deck(&out, 2);
                 let mut comb =
                     Combinations::from_handles(&[a_handle, b_handle], &[0, 0], &[out_handle], &[0])
                         .expect("Failed to create combinations helper struct");
@@ -2215,9 +2217,9 @@ mod test {
             let b: Deck<f64> = deck![[10.0, 20.0], [30.0, 40.0]];
             let mut out: Deck<f64> = Deck::default();
             {
-                let a_handle: OrcHandle = (&a).into();
-                let b_handle: OrcHandle = (&b).into();
-                let out_handle: OrcHandle = (&out).into();
+                let a_handle: OrcHandle = handle_from_deck(&a, 0);
+                let b_handle: OrcHandle = handle_from_deck(&b, 1);
+                let out_handle: OrcHandle = handle_from_deck(&out, 2);
                 let mut comb =
                     Combinations::from_handles(&[a_handle, b_handle], &[0, 0], &[out_handle], &[0])
                         .expect("Failed to create combinations helper struct");
@@ -2243,9 +2245,9 @@ mod test {
             let b: Deck<f64> = deck![[[10.0, 20.0]]];
             let mut out: Deck<f64> = Deck::default();
             {
-                let a_handle: OrcHandle = (&a).into();
-                let b_handle: OrcHandle = (&b).into();
-                let out_handle: OrcHandle = (&out).into();
+                let a_handle: OrcHandle = handle_from_deck(&a, 0);
+                let b_handle: OrcHandle = handle_from_deck(&b, 1);
+                let out_handle: OrcHandle = handle_from_deck(&out, 2);
                 let mut comb =
                     Combinations::from_handles(&[a_handle, b_handle], &[0, 0], &[out_handle], &[0])
                         .expect("Failed to create combinations helper struct");
@@ -2274,8 +2276,8 @@ mod test {
             let input: Deck<f64> = deck![[1.0, 2.0, 3.0], [], [4.0], [], [5.0, 6.0]];
             let mut out: Deck<u64> = Deck::default();
             {
-                let in_handle: OrcHandle = (&input).into();
-                let out_handle: OrcHandle = (&out).into();
+                let in_handle: OrcHandle = handle_from_deck(&input, 0);
+                let out_handle: OrcHandle = handle_from_deck(&out, 1);
                 let mut comb = Combinations::from_handles(&[in_handle], &[1], &[out_handle], &[0])
                     .expect("Failed to create combinations helper struct");
                 loop {
@@ -2298,8 +2300,8 @@ mod test {
             let input: Deck<f64> = deck![[[1.0, 2.0], []], [[3.0, 4.0, 5.0], [], [6.0]]];
             let mut out: Deck<u64> = Deck::default();
             {
-                let in_handle: OrcHandle = (&input).into();
-                let out_handle: OrcHandle = (&out).into();
+                let in_handle: OrcHandle = handle_from_deck(&input, 0);
+                let out_handle: OrcHandle = handle_from_deck(&out, 1);
                 let mut comb = Combinations::from_handles(&[in_handle], &[1], &[out_handle], &[0])
                     .expect("Failed to create combinations helper struct");
                 loop {
@@ -2326,9 +2328,9 @@ mod test {
             let mut sq: Deck<f64> = Deck::default();
             let mut cb: Deck<f64> = Deck::default();
             {
-                let in_handle: OrcHandle = (&input).into();
-                let sq_handle: OrcHandle = (&sq).into();
-                let cb_handle: OrcHandle = (&cb).into();
+                let in_handle: OrcHandle = handle_from_deck(&input, 0);
+                let sq_handle: OrcHandle = handle_from_deck(&sq, 1);
+                let cb_handle: OrcHandle = handle_from_deck(&cb, 2);
                 let mut comb = Combinations::from_handles(
                     &[in_handle],
                     &[0],
@@ -2365,10 +2367,10 @@ mod test {
             let mut sum: Deck<f64> = Deck::default();
             let mut prod: Deck<f64> = Deck::default();
             {
-                let a_handle: OrcHandle = (&a).into();
-                let b_handle: OrcHandle = (&b).into();
-                let sum_handle: OrcHandle = (&sum).into();
-                let prod_handle: OrcHandle = (&prod).into();
+                let a_handle: OrcHandle = handle_from_deck(&a, 0);
+                let b_handle: OrcHandle = handle_from_deck(&b, 1);
+                let sum_handle: OrcHandle = handle_from_deck(&sum, 2);
+                let prod_handle: OrcHandle = handle_from_deck(&prod, 3);
                 let mut comb = Combinations::from_handles(
                     &[a_handle, b_handle],
                     &[0, 0],
@@ -2410,9 +2412,9 @@ mod test {
             let b: Deck<f64> = deck![[10.0, 99.0], [20.0, 99.0], [30.0, 99.0]];
             let mut out: Deck<f64> = Deck::default();
             {
-                let a_handle: OrcHandle = (&a).into();
-                let b_handle: OrcHandle = (&b).into();
-                let out_handle: OrcHandle = (&out).into();
+                let a_handle: OrcHandle = handle_from_deck(&a, 0);
+                let b_handle: OrcHandle = handle_from_deck(&b, 1);
+                let out_handle: OrcHandle = handle_from_deck(&out, 2);
                 let mut comb =
                     Combinations::from_handles(&[a_handle, b_handle], &[1, 1], &[out_handle], &[0])
                         .expect("Failed to create combinations helper struct");
@@ -2439,9 +2441,9 @@ mod test {
             let b: Deck<f64> = deck![[10.0, 99.0], [20.0, 99.0]];
             let mut out: Deck<f64> = Deck::default();
             {
-                let a_handle: OrcHandle = (&a).into();
-                let b_handle: OrcHandle = (&b).into();
-                let out_handle: OrcHandle = (&out).into();
+                let a_handle: OrcHandle = handle_from_deck(&a, 0);
+                let b_handle: OrcHandle = handle_from_deck(&b, 1);
+                let out_handle: OrcHandle = handle_from_deck(&out, 2);
                 let mut comb =
                     Combinations::from_handles(&[a_handle, b_handle], &[1, 1], &[out_handle], &[0])
                         .expect("Failed to create combinations helper struct");
