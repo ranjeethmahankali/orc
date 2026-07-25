@@ -38,8 +38,12 @@ macro_rules! orc_plugin {
             out: *mut $crate::bindings::OrcHandle,
         ) {
             // Convert all the FFI pointers to Rust references.
-            let inputs = std::slice::from_raw_parts(inputs, n_inputs as usize);
             let proxy = &*proxy;
+            assert!(
+                proxy.type_id.primitive_id == ORC_PROXY,
+                "Invalid proxy deck"
+            );
+            let inputs = std::slice::from_raw_parts(inputs, n_inputs as usize);
             let out = &mut *out;
             assert!(!inputs.is_empty(), "orc_deck_from_proxy: no inputs");
             let type_id = inputs[0].type_id;
@@ -47,15 +51,46 @@ macro_rules! orc_plugin {
                 inputs.iter().all(|i| i.type_id == type_id),
                 "orc_deck_from_proxy: all input handles must have the same type_id"
             );
-            todo!();
+            let proxy_type = match proxy_type {
+                ORC_DECK_PROXY_COPY_ALL => ProxyType::CopyAll,
+                ORC_DECK_PROXY_COPY_ITEMS => ProxyType::CopyItems,
+                ORC_DECK_PROXY_SHUFFLE => ProxyType::Shuffle,
+                _ => panic!("Invalid proxy type."),
+            };
+            let proxies: &[OrcItemProxy] = if proxy.n_items > 0 && proxy.items != std::ptr::null() {
+                std::slice::from_raw_parts(proxy.items.cast(), proxy.n_items as usize)
+            } else {
+                &[]
+            };
+            let marks: &[OrcMark] = if proxy.n_marks > 0 && proxy.marks != std::ptr::null() {
+                std::slice::from_raw_parts(proxy.marks, proxy.n_marks as usize)
+            } else {
+                &[]
+            }
+            <$plugin as $crate::ffi::TOrcPlugin>::deck_from_proxy(
+                inputs, proxy_type, proxies, marks, out,
+            );
         }
     };
+}
+
+pub enum ProxyType {
+    CopyAll,
+    CopyItems,
+    Shuffle,
 }
 
 pub trait TOrcPlugin {
     fn plugin_init(host: &OrcHost, out: &mut OrcPlugin);
     fn deck_alloc(id: OrcTypeId) -> OrcHandle;
     fn deck_free(handle: &mut OrcHandle);
+    fn deck_from_proxy(
+        inputs: &[OrcHandle],
+        proxy_type: ProxyType,
+        proxies: &[OrcItemProxy],
+        marks: &[OrcMark],
+        out: &mut OrcHandle,
+    );
 }
 
 pub trait TOrcData: Default + Clone {
@@ -72,6 +107,7 @@ impl<T: TOrcData> From<&Deck<T>> for OrcHandle {
             stride_offset.len(),
             "Malformed deck datastructure"
         );
+        let proxy_type: ProxyType;
         OrcHandle {
             handle: std::ptr::from_ref(deck) as u64,
             items: items.as_ptr().cast(),
