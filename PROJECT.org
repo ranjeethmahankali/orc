@@ -123,6 +123,12 @@
   Rust. Need to separate out the SDK library crate from concrete plugin crates to be able to test
   it.
 
+  <2026-07-25 Sat 19:52> Started implementing =DeckRegistry=. Made me realize assumptions around
+  concurrency require a lot more thought. Host programs will generally take responsibility for
+  running things in the correct order, keeping track of dependencies etc. But the plugins also need
+  to be able to assert their own safety, locks etc. I am trying to figure out if there is a common
+  denominator of behavior + checking that all plugins will use, that I can include in the SDK.
+
 * DONE thlu2u - Generic Container Operations
   CLOSED: [2026-07-03 Fri 19:12]
   :PROPERTIES:
