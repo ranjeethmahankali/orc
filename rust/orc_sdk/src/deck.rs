@@ -986,7 +986,7 @@ impl<'a> Combinations<'a> {
 
 #[cfg(test)]
 mod test {
-    use crate::ffi::handle_from_deck;
+    use crate::handle_from_deck;
 
     use super::*;
 

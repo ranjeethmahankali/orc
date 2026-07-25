@@ -17,5 +17,5 @@ pub use bindings::{
 mod error;
 pub use error::Error;
 
-mod handle_registry;
-pub use handle_registry::DeckRegistry;
+mod util;
+pub use util::{DeckRegistry, handle_from_deck, reset_handle};
