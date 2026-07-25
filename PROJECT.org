@@ -119,6 +119,10 @@
   to the C SDK. Left some todos in the code. I need to finish that up before continuing with the
   API.
 
+  <2026-07-25 Sat 16:08> Untested stubs mostly sketched out for dealing with proxy decks in
+  Rust. Need to separate out the SDK library crate from concrete plugin crates to be able to test
+  it.
+
 * DONE thlu2u - Generic Container Operations
   CLOSED: [2026-07-03 Fri 19:12]
   :PROPERTIES:
