@@ -74,15 +74,15 @@ typedef struct OrcHost
   } callbacks;
 } OrcHost;
 
-#define ORC_DIM_LENGTH ((uint32_t)0)
-#define ORC_DIM_MASS ((uint32_t)1)
-#define ORC_DIM_TIME ((uint32_t)2)
-#define ORC_DIM_CURRENT ((uint32_t)3)
-#define ORC_DIM_TEMPERATURE ((uint32_t)4)
-#define ORC_DIM_SUBSTANCE ((uint32_t)5)
-#define ORC_DIM_LUMINOSITY ((uint32_t)6)
+#define ORC_DIM_LENGTH 0u
+#define ORC_DIM_MASS 1u
+#define ORC_DIM_TIME 2u
+#define ORC_DIM_CURRENT 3u
+#define ORC_DIM_TEMPERATURE 4u
+#define ORC_DIM_SUBSTANCE 5u
+#define ORC_DIM_LUMINOSITY 6u
 
-#define ORC_NUM_DIMS 7
+#define ORC_NUM_DIMS 7u
 
 typedef int32_t OrcDims[ORC_NUM_DIMS];
 
@@ -114,9 +114,9 @@ typedef struct
   uint64_t item;
 } OrcItemProxy;
 
-#define ORC_DECK_PROXY_COPY_ALL ((uint32_t)0x01)
-#define ORC_DECK_PROXY_COPY_ITEMS ((uint32_t)0x02)
-#define ORC_DECK_PROXY_SHUFFLE ((uint32_t)0x03)
+#define ORC_DECK_PROXY_COPY_ALL 0x01u
+#define ORC_DECK_PROXY_COPY_ITEMS 0x02u
+#define ORC_DECK_PROXY_SHUFFLE 0x03u
 
 // ===========================================================
 // Functions meant to be implemented by the plugin.
