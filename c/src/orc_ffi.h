@@ -39,8 +39,6 @@ typedef struct
 {
   char const *name;
   char const *desc;
-  uint64_t    n_inputs;
-  uint64_t    n_outputs;
 
   void (*func)(uint64_t const   ctx,
                OrcHandle const *inputs,
