@@ -1,8 +1,11 @@
 use crate::{Deck, Error, ORC_NUM_DIMS, OrcHandle, ffi::TOrcData};
 use std::{
     any::Any,
-    cell::{Ref, RefCell, RefMut},
     collections::HashMap,
+    sync::{
+        Arc, RwLock,
+        atomic::{AtomicU64, Ordering},
+    },
 };
 
 pub fn handle_from_deck<T: TOrcData>(deck: &Deck<T>, id: u64) -> OrcHandle {
@@ -42,43 +45,54 @@ pub fn reset_handle(handle: &mut OrcHandle) {
 }
 
 pub struct DeckRegistry {
-    handles: HashMap<usize, RefCell<Box<dyn Any>>>,
+    handles: RwLock<HashMap<u64, Arc<RwLock<Box<dyn Any>>>>>,
+    counter: AtomicU64,
 }
 
 impl DeckRegistry {
-    pub fn alloc<T: TOrcData>(&mut self) -> OrcHandle {
-        let id = self.handles.len();
-        let deck: Box<Deck<T>> = Box::new(Deck::default());
-        let handle: OrcHandle = handle_from_deck(deck.as_ref(), id as u64);
-        self.handles.insert(id, RefCell::new(deck));
-        handle
+    pub fn alloc<T: Any>(&self, obj: T) -> Result<u64, Error> {
+        // This can block this thread until write access is available.
+        let mut handles = self
+            .handles
+            .write()
+            .map_err(|_e| Error::CannotLockRegistry)?;
+        let id = self.counter.fetch_add(1, Ordering::Relaxed);
+        handles.insert(id, Arc::new(RwLock::new(Box::new(obj))));
+        Ok(id)
     }
 
-    pub fn free(&mut self, handle: &mut OrcHandle) {
-        let id = handle.handle as usize;
-        self.handles.remove(&id);
-        reset_handle(handle);
+    pub fn free(&self, id: u64) -> Result<(), Error> {
+        // This can block this thread until write access is available.
+        let mut handles = self
+            .handles
+            .write()
+            .map_err(|_e| Error::CannotLockRegistry)?;
+        handles.remove(&id);
+        Ok(())
     }
 
-    pub fn get<T: TOrcData>(&self, handle: &OrcHandle) -> Result<Ref<'_, Deck<T>>, Error> {
-        let id = handle.handle as usize;
-        let cell = self.handles.get(&id).ok_or(Error::InvalidHandle)?;
-        let borrow = cell.try_borrow().map_err(|_| Error::DeckBorrowError)?;
-        if borrow.downcast_ref::<Deck<T>>().is_none() {
-            return Err(Error::DeckTypeMismatch);
-        }
-        Ok(Ref::map(borrow, |b| b.downcast_ref::<Deck<T>>().unwrap()))
-    }
-
-    pub fn get_mut<T: TOrcData>(&self, handle: &OrcHandle) -> Result<RefMut<'_, Deck<T>>, Error> {
-        let id = handle.handle as usize;
-        let cell = self.handles.get(&id).ok_or(Error::InvalidHandle)?;
-        let borrow = cell.try_borrow_mut().map_err(|_| Error::DeckBorrowError)?;
-        if borrow.downcast_ref::<Deck<T>>().is_none() {
-            return Err(Error::DeckTypeMismatch);
-        }
-        Ok(RefMut::map(borrow, |b| {
-            b.downcast_mut::<Deck<T>>().unwrap()
-        }))
+    pub fn with_mut<T, F>(&self, ids: &[u64], callback: F) -> Result<T, Error>
+    where
+        F: FnOnce(&[&mut dyn Any]) -> T,
+    {
+        let arcs: Vec<_> = {
+            // This can block this thread until write access is available.
+            let map = self
+                .handles
+                .read()
+                .map_err(|_e| Error::CannotLockRegistry)?;
+            ids.iter()
+                .map(|id| map.get(id).cloned().ok_or(Error::InvalidHandle))
+                .collect::<Result<_, _>>()?
+        };
+        let mut guards: Vec<_> = arcs
+            .iter()
+            .map(|arc| arc.try_write().map_err(|_e| Error::DeckBorrowError))
+            .collect::<Result<_, _>>()?;
+        let references: Vec<&mut dyn Any> = guards
+            .iter_mut()
+            .map(|guard| guard.as_mut() as &mut dyn Any)
+            .collect();
+        Ok(callback(&references))
     }
 }
