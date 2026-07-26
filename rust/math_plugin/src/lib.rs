@@ -81,4 +81,21 @@ as long as all the inputs and the one output handle are of the same type"
     );
 }
 
-const ORC_EXPORTED_FUNCTIONS: &[OrcFuncInfo] = &[orc_fn_info!(plugin_fn_add)];
+#[orc_fn]
+/// Multiplies the inputs together. This function supports all floating point and integer primitives.
+unsafe extern "C" fn plugin_fn_mul(
+    ctx: u64,
+    inputs: *const OrcHandle,
+    n_inputs: usize,
+    outputs: *mut OrcHandle,
+    n_outputs: usize,
+) {
+    todo!(
+        "
+Implement a generic add function that supports any number of inputs, of any scalar or integer type,
+as long as all the inputs and the one output handle are of the same type"
+    );
+}
+
+const ORC_EXPORTED_FUNCTIONS: &[OrcFuncInfo] =
+    &[orc_fn_info!(plugin_fn_add), orc_fn_info!(plugin_fn_mul)];
