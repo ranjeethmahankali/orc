@@ -5,6 +5,9 @@ use orc_sdk::{
 };
 use std::sync::LazyLock;
 
+#[global_allocator]
+static ALLOCATOR: orc_sdk::PluginAllocator = orc_sdk::PluginAllocator::new();
+
 static REGISTRY: LazyLock<ObjectRegistry> = LazyLock::new(ObjectRegistry::new);
 
 fn alloc_deck<T: TOrcData>() -> OrcHandle {
@@ -18,13 +21,13 @@ struct Adaptor;
 
 impl TOrcPluginAdaptor for Adaptor {
     fn plugin_init(host: &OrcHost, out: &mut OrcPlugin) {
-        // Populate the host. For now, this plugin doesn't provide any custom types.
+        // Read host capabilities - Set up the allocator first, before any heap allocations happen.
+        ALLOCATOR.init_from_host(host);
+        // Tell the host about the plugin provided types and functions.
         out.n_types = 0;
         out.types = std::ptr::null();
         out.n_functions = ORC_EXPORTED_FUNCTIONS.len() as u64;
         out.functions = ORC_EXPORTED_FUNCTIONS.as_ptr();
-        // Now read the host capabilities, and at the very least use the host provided allocator.
-        todo!("Read and store the host capabilities. e.g. an allocator.");
     }
 
     fn deck_alloc(id: OrcTypeId) -> OrcHandle {

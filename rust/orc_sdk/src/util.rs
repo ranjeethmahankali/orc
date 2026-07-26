@@ -1,10 +1,12 @@
-use crate::{Deck, Error, ORC_NUM_DIMS, OrcHandle, ffi::TOrcData};
+use crate::{Deck, Error, ORC_NUM_DIMS, OrcHandle, OrcHost, ffi::TOrcData};
 use std::{
+    alloc::{GlobalAlloc, Layout, System},
     any::Any,
     collections::HashMap,
+    ffi::c_void,
     sync::{
         Arc, RwLock,
-        atomic::{AtomicU64, Ordering},
+        atomic::{AtomicPtr, AtomicU64, Ordering},
     },
 };
 
@@ -110,5 +112,70 @@ impl ObjectRegistry {
             .map(|guard| guard.as_mut() as &mut (dyn Any + Send + Sync))
             .collect();
         Ok(callback(&references))
+    }
+}
+
+/// ==================================================
+/// ================= Allocators =====================
+/// ==================================================
+
+type HostAllocFn = unsafe extern "C" fn(size: u64, alignment: u64) -> *mut c_void;
+type HostDeallocFn = unsafe extern "C" fn(ptr: *mut c_void, size: u64, alignment: u64);
+
+unsafe extern "C" fn system_alloc(size: u64, alignment: u64) -> *mut c_void {
+    unsafe {
+        let layout = Layout::from_size_align_unchecked(size as usize, alignment as usize);
+        System.alloc(layout) as *mut c_void
+    }
+}
+
+unsafe extern "C" fn system_dealloc(ptr: *mut c_void, size: u64, alignment: u64) {
+    unsafe {
+        let layout = Layout::from_size_align_unchecked(size as usize, alignment as usize);
+        System.dealloc(ptr as *mut u8, layout);
+    }
+}
+
+pub struct PluginAllocator {
+    alloc_fn: AtomicPtr<()>,
+    dealloc_fn: AtomicPtr<()>,
+}
+
+impl PluginAllocator {
+    pub const fn new() -> Self {
+        PluginAllocator {
+            alloc_fn: AtomicPtr::new(system_alloc as *mut ()),
+            dealloc_fn: AtomicPtr::new(system_dealloc as *mut ()),
+        }
+    }
+
+    pub fn init_from_host(&self, host: &OrcHost) {
+        if let Some(f) = host.memory_api.alloc {
+            self.alloc_fn.store(f as *mut (), Ordering::Release);
+        }
+        if let Some(f) = host.memory_api.dealloc {
+            self.dealloc_fn.store(f as *mut (), Ordering::Release);
+        }
+    }
+}
+
+unsafe impl Sync for PluginAllocator {}
+
+unsafe impl GlobalAlloc for PluginAllocator {
+    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+        let f: HostAllocFn = unsafe { std::mem::transmute(self.alloc_fn.load(Ordering::Relaxed)) };
+        unsafe { f(layout.size() as u64, layout.align() as u64) as *mut u8 }
+    }
+
+    unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
+        let f: HostDeallocFn =
+            unsafe { std::mem::transmute(self.dealloc_fn.load(Ordering::Relaxed)) };
+        unsafe {
+            f(
+                ptr as *mut c_void,
+                layout.size() as u64,
+                layout.align() as u64,
+            )
+        }
     }
 }
