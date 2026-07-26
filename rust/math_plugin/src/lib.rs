@@ -1,7 +1,7 @@
 use orc_sdk::{
     Deck, ORC_F32, ORC_F64, ORC_I8, ORC_I16, ORC_I32, ORC_I64, ORC_U8, ORC_U16, ORC_U32, ORC_U64,
-    ObjectRegistry, OrcHandle, OrcHost, OrcItemProxy, OrcMark, OrcPlugin, OrcTypeId, ProxyType,
-    TOrcData, TOrcPluginAdaptor, handle_from_deck, orc_plugin, reset_handle,
+    ObjectRegistry, OrcFuncInfo, OrcHandle, OrcHost, OrcItemProxy, OrcMark, OrcPlugin, OrcTypeId,
+    ProxyType, TOrcData, TOrcPluginAdaptor, handle_from_deck, orc_plugin, reset_handle,
 };
 use std::sync::LazyLock;
 
@@ -18,7 +18,13 @@ struct Adaptor;
 
 impl TOrcPluginAdaptor for Adaptor {
     fn plugin_init(host: &OrcHost, out: &mut OrcPlugin) {
-        todo!()
+        // Populate the host. For now, this plugin doesn't provide any custom types.
+        out.n_types = 0;
+        out.types = std::ptr::null();
+        out.n_functions = ORC_EXPORTED_FUNCTIONS.len() as u64;
+        out.functions = ORC_EXPORTED_FUNCTIONS.as_ptr();
+        // Now read the host capabilities, and at the very least use the host provided allocator.
+        todo!("Read and store the host capabilities. e.g. an allocator.");
     }
 
     fn deck_alloc(id: OrcTypeId) -> OrcHandle {
@@ -54,3 +60,29 @@ impl TOrcPluginAdaptor for Adaptor {
 }
 
 orc_plugin!(Adaptor);
+
+// TODO: I am hard coding this right now, but we should probably think about using proc macros to
+// automatically generate this metadata for the functions. I am imagining something very ergonomic,
+// that lets me write a simple Rust docstring, and turns that into the metadata for the function.
+
+const ORC_FN_ADD_INFO: OrcFuncInfo = OrcFuncInfo {
+    name: c"add".as_ptr(),
+    desc: c"Adds the inputs togehter. This function supports all floating point and integer primitives.".as_ptr(),
+    func: Some(plugin_fn_add),
+};
+
+unsafe extern "C" fn plugin_fn_add(
+    ctx: u64,
+    inputs: *const OrcHandle,
+    n_inputs: usize,
+    outputs: *mut OrcHandle,
+    n_outputs: usize,
+) {
+    todo!(
+        "
+Implement a generic add function that supports any number of inputs, of any scalar or integer type,
+as long as all the inputs and the one output handle are of the same type"
+    );
+}
+
+const ORC_EXPORTED_FUNCTIONS: &[OrcFuncInfo] = &[ORC_FN_ADD_INFO];

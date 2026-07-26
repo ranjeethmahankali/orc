@@ -5,7 +5,9 @@ mod ffi;
 pub use ffi::{ProxyType, TOrcData, TOrcPluginAdaptor, dims_divide, dims_multiply, dims_pow};
 
 mod bindings;
-pub use bindings::{OrcHandle, OrcHost, OrcItemProxy, OrcMark, OrcPlugin, OrcTypeId};
+pub use bindings::{
+    OrcFuncInfo, OrcHandle, OrcHost, OrcItemProxy, OrcMark, OrcPlugin, OrcTypeId, OrcTypeInfo,
+};
 // Export all the type tags and other constants.
 pub use bindings::{
     ORC_DECK_PROXY_COPY_ALL, ORC_DECK_PROXY_COPY_ITEMS, ORC_DECK_PROXY_SHUFFLE, ORC_DIM_CURRENT,
