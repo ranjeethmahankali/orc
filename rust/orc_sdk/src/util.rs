@@ -8,6 +8,15 @@ use std::{
     },
 };
 
+#[inline]
+fn ptr_from_slice<T>(arr: &[T]) -> *const T {
+    if arr.is_empty() {
+        std::ptr::null()
+    } else {
+        arr.as_ptr()
+    }
+}
+
 pub fn handle_from_deck<T: TOrcData>(deck: &Deck<T>, id: u64) -> OrcHandle {
     let type_info = T::type_info();
     let (items, marks, (stride_offset, strides)) = (deck.items(), deck.marks(), deck.stride_info());
@@ -18,13 +27,13 @@ pub fn handle_from_deck<T: TOrcData>(deck: &Deck<T>, id: u64) -> OrcHandle {
     );
     OrcHandle {
         handle: id,
-        items: items.as_ptr().cast(),
+        items: ptr_from_slice(items).cast(),
         n_items: items.len() as u64,
         item_size: size_of::<T>() as u64,
-        marks: marks.as_ptr(),
-        stride_offset: stride_offset.as_ptr(),
+        marks: ptr_from_slice(marks),
+        stride_offset: ptr_from_slice(stride_offset),
         n_marks: marks.len() as u64,
-        strides: strides.as_ptr(),
+        strides: ptr_from_slice(strides),
         type_id: type_info.type_id,
         dims: [0; ORC_NUM_DIMS as usize],
     }
