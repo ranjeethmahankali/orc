@@ -66,14 +66,17 @@ orc_plugin!(Adaptor);
 
 // TODO: I am hard coding this right now, but we should probably think about using proc macros to
 // automatically generate this metadata for the functions. I am imagining something very ergonomic,
-// that lets me write a simple Rust docstring, and turns that into the metadata for the function.
+// that lets me write a simple Rust docstring, and turns that into the metadata for the
+// function. The proc_macro would have to somehow add all the registered functions to a global const
+// array, at compile time. I don't know at this time whether that is possible.
 
 const ORC_FN_ADD_INFO: OrcFuncInfo = OrcFuncInfo {
     name: c"add".as_ptr(),
-    desc: c"Adds the inputs togehter. This function supports all floating point and integer primitives.".as_ptr(),
+    desc: c"Adds the inputs together. This function supports all floating point and integer primitives.".as_ptr(),
     func: Some(plugin_fn_add),
 };
 
+/// Adds the inputs together. This function supports all floating point and integer primitives.
 unsafe extern "C" fn plugin_fn_add(
     ctx: u64,
     inputs: *const OrcHandle,
