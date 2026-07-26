@@ -18,4 +18,4 @@ mod error;
 pub use error::Error;
 
 mod util;
-pub use util::{DeckRegistry, handle_from_deck, reset_handle};
+pub use util::{ObjectRegistry, handle_from_deck, reset_handle};

@@ -44,12 +44,12 @@ pub fn reset_handle(handle: &mut OrcHandle) {
     handle.dims.fill(0);
 }
 
-pub struct DeckRegistry {
+pub struct ObjectRegistry {
     handles: RwLock<HashMap<u64, Arc<RwLock<Box<dyn Any>>>>>,
     counter: AtomicU64,
 }
 
-impl DeckRegistry {
+impl ObjectRegistry {
     pub fn alloc<T: Any>(&self, obj: T) -> Result<u64, Error> {
         // This can block this thread until write access is available.
         let mut handles = self
