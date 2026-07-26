@@ -1,7 +1,8 @@
 use orc_sdk::{
     Deck, ORC_F32, ORC_F64, ORC_I8, ORC_I16, ORC_I32, ORC_I64, ORC_U8, ORC_U16, ORC_U32, ORC_U64,
     ObjectRegistry, OrcFuncInfo, OrcHandle, OrcHost, OrcItemProxy, OrcMark, OrcPlugin, OrcTypeId,
-    ProxyType, TOrcData, TOrcPluginAdaptor, handle_from_deck, orc_plugin, reset_handle,
+    ProxyType, TOrcData, TOrcPluginAdaptor, handle_from_deck, orc_fn, orc_fn_info, orc_plugin,
+    reset_handle,
 };
 use std::sync::LazyLock;
 
@@ -64,18 +65,7 @@ impl TOrcPluginAdaptor for Adaptor {
 
 orc_plugin!(Adaptor);
 
-// TODO: I am hard coding this right now, but we should probably think about using proc macros to
-// automatically generate this metadata for the functions. I am imagining something very ergonomic,
-// that lets me write a simple Rust docstring, and turns that into the metadata for the
-// function. The proc_macro would have to somehow add all the registered functions to a global const
-// array, at compile time. I don't know at this time whether that is possible.
-
-const ORC_FN_ADD_INFO: OrcFuncInfo = OrcFuncInfo {
-    name: c"add".as_ptr(),
-    desc: c"Adds the inputs together. This function supports all floating point and integer primitives.".as_ptr(),
-    func: Some(plugin_fn_add),
-};
-
+#[orc_fn]
 /// Adds the inputs together. This function supports all floating point and integer primitives.
 unsafe extern "C" fn plugin_fn_add(
     ctx: u64,
@@ -91,4 +81,4 @@ as long as all the inputs and the one output handle are of the same type"
     );
 }
 
-const ORC_EXPORTED_FUNCTIONS: &[OrcFuncInfo] = &[ORC_FN_ADD_INFO];
+const ORC_EXPORTED_FUNCTIONS: &[OrcFuncInfo] = &[orc_fn_info!(plugin_fn_add)];

@@ -7,4 +7,4 @@ edition = "2024"
 crate-type = ["cdylib"]
 
 [dependencies]
-orc_sdk = { path = "../orc_sdk" }
+orc_sdk = { path = "../orc_sdk", features = ["derive"] }

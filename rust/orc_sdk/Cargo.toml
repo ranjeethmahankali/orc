@@ -3,7 +3,11 @@ name = "orc_sdk"
 version = "0.1.0"
 edition = "2024"
 
+[features]
+derive = ["orc_sdk_derive"]
+
 [dependencies]
+orc_sdk_derive = { path = "derive_macros", optional = true }
 
 [build-dependencies]
 bindgen = "0.72"

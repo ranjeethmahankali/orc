@@ -19,5 +19,8 @@ pub use bindings::{
 mod error;
 pub use error::Error;
 
+#[cfg(feature = "derive")]
+pub use orc_sdk_derive::{orc_fn, orc_fn_info};
+
 mod util;
 pub use util::{ObjectRegistry, PluginAllocator, handle_from_deck, reset_handle};
