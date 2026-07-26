@@ -45,12 +45,19 @@ pub fn reset_handle(handle: &mut OrcHandle) {
 }
 
 pub struct ObjectRegistry {
-    handles: RwLock<HashMap<u64, Arc<RwLock<Box<dyn Any>>>>>,
+    handles: RwLock<HashMap<u64, Arc<RwLock<Box<dyn Any + Send + Sync>>>>>,
     counter: AtomicU64,
 }
 
 impl ObjectRegistry {
-    pub fn alloc<T: Any>(&self, obj: T) -> Result<u64, Error> {
+    pub fn new() -> Self {
+        ObjectRegistry {
+            handles: RwLock::new(HashMap::new()),
+            counter: AtomicU64::new(0),
+        }
+    }
+
+    pub fn alloc<T: Any + Send + Sync>(&self, obj: T) -> Result<u64, Error> {
         // This can block this thread until write access is available.
         let mut handles = self
             .handles
@@ -73,7 +80,7 @@ impl ObjectRegistry {
 
     pub fn with_mut<T, F>(&self, ids: &[u64], callback: F) -> Result<T, Error>
     where
-        F: FnOnce(&[&mut dyn Any]) -> T,
+        F: FnOnce(&[&mut (dyn Any + Send + Sync)]) -> T,
     {
         let arcs: Vec<_> = {
             // This can block this thread until write access is available.
@@ -89,9 +96,9 @@ impl ObjectRegistry {
             .iter()
             .map(|arc| arc.try_write().map_err(|_e| Error::DeckBorrowError))
             .collect::<Result<_, _>>()?;
-        let references: Vec<&mut dyn Any> = guards
+        let references: Vec<&mut (dyn Any + Send + Sync)> = guards
             .iter_mut()
-            .map(|guard| guard.as_mut() as &mut dyn Any)
+            .map(|guard| guard.as_mut() as &mut (dyn Any + Send + Sync))
             .collect();
         Ok(callback(&references))
     }

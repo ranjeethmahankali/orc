@@ -92,7 +92,7 @@ pub trait TOrcPluginAdaptor {
     );
 }
 
-pub trait TOrcData: Default + Clone + 'static {
+pub trait TOrcData: Default + Clone + Send + Sync + 'static {
     fn type_info() -> OrcTypeInfo;
 }
 
