@@ -88,11 +88,13 @@
   static rendering primitives is simple, supporting implicit rendering requires
   a lot more thought.
 
-* NEXT tgp7lf - Plugin Architecture
+* DONE tgp7lf - Plugin Architecture
+  CLOSED: [2026-07-27 Mon 08:45]
   :PROPERTIES:
   :CREATED:  2026-06-15 Mon 20:19
   :END:
   :LOGBOOK:
+  - State "DONE"       from "NEXT"       [2026-07-27 Mon 08:45]
   - State "NEXT"       from "TODO"       [2026-07-04 Sat 11:42]
   - State "TODO"       from "NEXT"       [2026-07-03 Fri 11:08]
   - State "NEXT"       from "TODO"       [2026-06-15 Mon 20:30]
@@ -135,6 +137,9 @@
   shared library, and run the plugin function properly. The host is also able to load the metadata
   for the plugin function. I think I am close to merging this. Will do a final review, and add some
   tests before merging.
+
+  <2026-07-27 Mon 08:44> This is looking pretty good. Could use some more tests, but not important
+  right now. I will let more things take shape before nailing down testing.
 
 * DONE thlu2u - Generic Container Operations
   CLOSED: [2026-07-03 Fri 19:12]
