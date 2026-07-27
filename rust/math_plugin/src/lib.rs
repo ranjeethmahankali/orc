@@ -81,6 +81,18 @@ unsafe extern "C" fn plugin_fn_add(
             slice_from_ptr_mut(outputs, n_outputs as usize),
         )
     };
+    {
+        // Ensure the types are all the same. Otherwise addition doesn't work.
+        let type_id: OrcTypeId = match inputs.first() {
+            Some(first) => first.type_id,
+            None => return, // No inputs were provided. Bail immediately.
+        };
+        if inputs.iter().skip(1).any(|input| input.type_id != type_id)
+            || outputs[0].type_id != type_id
+        {
+            panic!("Type mismatch");
+        }
+    }
     let input_depths = vec![0u8; inputs.len()];
     const OUTPUT_DEPTHS: &[u8] = &[0];
     let mut comb = Combinations::from_handles(inputs, &input_depths, OUTPUT_DEPTHS)
