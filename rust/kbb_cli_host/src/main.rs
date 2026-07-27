@@ -169,7 +169,7 @@ fn main() {
                 slice_from_ptr(out_handle.marks, out_handle.n_marks as usize),
             )
         };
-        println!("Outputs values: \n {items:?}");
-        println!("Outputs marks: \n {marks:?}");
+        let deck = Deck::from_raw_data(items, marks);
+        println!("Output deck: \n{deck}");
     }
 }

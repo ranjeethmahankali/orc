@@ -67,6 +67,29 @@ where
     T: Default,
 {
     /**
+    Create a deck from the raw data buffer, and a raw marks buffer that indicates the structure of the data.
+     */
+    pub fn from_raw_data(items: &[T], marks: &[OrcMark]) -> Self
+    where
+        T: Clone,
+    {
+        let mut out = Deck {
+            items: items.to_vec(),
+            marks: marks.to_vec(),
+            stride_offset: Default::default(),
+            strides: Default::default(),
+            pegs: Default::default(),
+        };
+        calc_strides(
+            &out.marks,
+            &mut out.pegs,
+            &mut out.stride_offset,
+            &mut out.strides,
+        );
+        out
+    }
+
+    /**
     Get the maximum depth of this deck. By definition, this is the depth of the
     first mark.
     */
