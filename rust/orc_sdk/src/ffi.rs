@@ -12,7 +12,8 @@ macro_rules! orc_plugin {
             host: *const orc_sdk::OrcHost,
             plugin_data_out: *mut orc_sdk::OrcPlugin,
         ) {
-            <$plugin as orc_sdk::TOrcPluginAdaptor>::plugin_init(&*host, &mut *plugin_data_out);
+            let (host, plugin_data_out) = unsafe { (&*host, &mut *plugin_data_out) };
+            <$plugin as orc_sdk::TOrcPluginAdaptor>::plugin_init(host, plugin_data_out);
         }
 
         #[unsafe(no_mangle)]
@@ -20,12 +21,14 @@ macro_rules! orc_plugin {
             id: orc_sdk::OrcTypeId,
             out: *mut orc_sdk::OrcHandle,
         ) {
-            *out = <$plugin as orc_sdk::TOrcPluginAdaptor>::deck_alloc(id);
+            unsafe {
+                *out = <$plugin as orc_sdk::TOrcPluginAdaptor>::deck_alloc(id);
+            }
         }
 
         #[unsafe(no_mangle)]
         pub unsafe extern "C" fn orc_deck_free(handle: *mut orc_sdk::OrcHandle) {
-            <$plugin as orc_sdk::TOrcPluginAdaptor>::deck_free(&mut *handle);
+            <$plugin as orc_sdk::TOrcPluginAdaptor>::deck_free(unsafe { &mut *handle });
         }
 
         #[unsafe(no_mangle)]
@@ -37,13 +40,17 @@ macro_rules! orc_plugin {
             out: *mut orc_sdk::OrcHandle,
         ) {
             // Convert all the FFI pointers to Rust references.
-            let proxy = &*proxy;
+            let (inputs, proxy, out) = unsafe {
+                (
+                    orc_sdk::slice_from_ptr(inputs, n_inputs as usize),
+                    &*proxy,
+                    &mut *out,
+                )
+            };
             assert!(
                 proxy.type_id.primitive_id == orc_sdk::ORC_PROXY,
                 "Invalid proxy deck"
             );
-            let inputs = orc_sdk::slice_from_ptr(inputs, n_inputs as usize);
-            let out = &mut *out;
             assert!(!inputs.is_empty(), "orc_deck_from_proxy: no inputs");
             let type_id = inputs[0].type_id;
             assert!(
@@ -51,18 +58,18 @@ macro_rules! orc_plugin {
                 "orc_deck_from_proxy: all input handles must have the same type_id"
             );
             let proxy_type = match proxy_type {
-                ORC_DECK_PROXY_COPY_ALL => ProxyType::CopyAll,
-                ORC_DECK_PROXY_COPY_ITEMS => ProxyType::CopyItems,
-                ORC_DECK_PROXY_SHUFFLE => ProxyType::Shuffle,
+                orc_sdk::ORC_DECK_PROXY_COPY_ALL => ProxyType::CopyAll,
+                orc_sdk::ORC_DECK_PROXY_COPY_ITEMS => ProxyType::CopyItems,
+                orc_sdk::ORC_DECK_PROXY_SHUFFLE => ProxyType::Shuffle,
                 _ => panic!("Invalid proxy type."),
             };
             let proxies: &[OrcItemProxy] = if proxy.n_items > 0 && !proxy.items.is_null() {
-                orc_sdk::slice_from_ptr(proxy.items.cast(), proxy.n_items as usize)
+                unsafe { orc_sdk::slice_from_ptr(proxy.items.cast(), proxy.n_items as usize) }
             } else {
                 &[]
             };
             let marks: &[OrcMark] = if proxy.n_marks > 0 && !proxy.marks.is_null() {
-                orc_sdk::slice_from_ptr(proxy.marks, proxy.n_marks as usize)
+                unsafe { orc_sdk::slice_from_ptr(proxy.marks, proxy.n_marks as usize) }
             } else {
                 &[]
             };
