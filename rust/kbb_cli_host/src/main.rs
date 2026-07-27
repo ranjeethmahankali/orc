@@ -90,12 +90,19 @@ fn load_plugins(dir: &Path) -> Box<[Plugin]> {
             return Default::default();
         }
     };
+    #[cfg(target_os = "windows")]
+    const PLUGIN_EXT: &str = "dll";
+    #[cfg(target_os = "macos")]
+    const PLUGIN_EXT: &str = "dylib";
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    const PLUGIN_EXT: &str = "so";
+
     entries
         .flatten()
         .filter_map(|entry| {
             let path = entry.path();
             match path.extension() {
-                Some(ext) if ext == "so" => match Plugin::load(&path) {
+                Some(ext) if ext == PLUGIN_EXT => match Plugin::load(&path) {
                     Ok(plugin) => Some(plugin),
                     Err(e) => {
                         eprintln!("  Skipping {}: {e}", path.display());
