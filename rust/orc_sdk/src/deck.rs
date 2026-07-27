@@ -323,101 +323,109 @@ where
     }
 }
 
+pub fn fmt_raw_deck<T: Default + Display>(
+    items: &[T],
+    marks: &[OrcMark],
+    f: &mut std::fmt::Formatter<'_>,
+) -> std::fmt::Result {
+    if items.is_empty() && marks.is_empty() {
+        return writeln!(f, "<empty_deck>");
+    }
+    const TAB_WIDTH: usize = 3;
+    let dmax = marks.first().map(|m| m.depth + 1).unwrap_or(0u8);
+    let n_items = items.len() as u64;
+    let mut tail_start = 0u64;
+    for w in marks.windows(2) {
+        let (m, next_pos) = (&w[0], w[1].pos);
+        write!(
+            f,
+            "{lp:>width$}",
+            lp = "",
+            width = ((dmax - m.depth) as usize) * TAB_WIDTH
+        )?;
+        let d_current = m.depth + 1;
+        write!(
+            f,
+            "{d:>3} {rp:─>rw$}",
+            d = d_current,
+            rp = "┤",
+            rw = (d_current as usize) * TAB_WIDTH
+        )?;
+        if m.pos < next_pos {
+            let end = next_pos.min(n_items);
+            let mut iter = m.pos..end;
+            if let Some(i) = iter.next() {
+                writeln!(f, " {}", items[i as usize])?;
+            }
+            for i in iter {
+                writeln!(
+                    f,
+                    "{lp:>width$}   ┤ {}",
+                    items[i as usize],
+                    lp = "",
+                    width = (dmax as usize + 1) * TAB_WIDTH
+                )?;
+            }
+        } else {
+            writeln!(f)?;
+        }
+        tail_start = next_pos;
+    }
+    if let Some(last) = marks.last() {
+        let next_pos = n_items;
+        write!(
+            f,
+            "{lp:>width$}",
+            lp = "",
+            width = ((dmax - last.depth) as usize) * TAB_WIDTH
+        )?;
+        let d_current = last.depth + 1;
+        write!(
+            f,
+            "{d:>3} {rp:─>rw$}",
+            d = d_current,
+            rp = "┤",
+            rw = (d_current as usize) * TAB_WIDTH
+        )?;
+        if last.pos < next_pos {
+            let end = next_pos.min(n_items);
+            let mut iter = last.pos..end;
+            if let Some(i) = iter.next() {
+                writeln!(f, " {}", items[i as usize])?;
+            }
+            for i in iter {
+                writeln!(
+                    f,
+                    "{lp:>width$}   ┤ {}",
+                    items[i as usize],
+                    lp = "",
+                    width = (dmax as usize + 1) * TAB_WIDTH
+                )?;
+            }
+        } else {
+            writeln!(f)?;
+        }
+        tail_start = n_items;
+    }
+    // Items after the last mark (or all items if no marks).
+    for i in tail_start as usize..items.len() {
+        writeln!(
+            f,
+            "{lp:>width$}   ┤ {}",
+            items[i],
+            lp = "",
+            width = (dmax as usize + 1) * TAB_WIDTH
+        )?;
+    }
+    Ok(())
+}
+
 impl<T> Display for Deck<T>
 where
     T: Default + Display,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if self.items.is_empty() && self.marks.is_empty() {
-            return writeln!(f, "<empty_deck>");
-        }
-        const TAB_WIDTH: usize = 3;
-        let dmax = self.max_depth();
-        let n_items = self.items.len() as u64;
-        let mut tail_start = 0u64;
-        for w in self.marks.windows(2) {
-            let (m, next_pos) = (&w[0], w[1].pos);
-            write!(
-                f,
-                "{lp:>width$}",
-                lp = "",
-                width = ((dmax - m.depth) as usize) * TAB_WIDTH
-            )?;
-            let d_current = m.depth + 1;
-            write!(
-                f,
-                "{d:>3} {rp:─>rw$}",
-                d = d_current,
-                rp = "┤",
-                rw = (d_current as usize) * TAB_WIDTH
-            )?;
-            if m.pos < next_pos {
-                let end = next_pos.min(n_items);
-                let mut iter = m.pos..end;
-                if let Some(i) = iter.next() {
-                    writeln!(f, " {}", self.items[i as usize])?;
-                }
-                for i in iter {
-                    writeln!(
-                        f,
-                        "{lp:>width$}   ┤ {}",
-                        self.items[i as usize],
-                        lp = "",
-                        width = (dmax as usize + 1) * TAB_WIDTH
-                    )?;
-                }
-            } else {
-                writeln!(f)?;
-            }
-            tail_start = next_pos;
-        }
-        if let Some(last) = self.marks.last() {
-            let next_pos = n_items;
-            write!(
-                f,
-                "{lp:>width$}",
-                lp = "",
-                width = ((dmax - last.depth) as usize) * TAB_WIDTH
-            )?;
-            let d_current = last.depth + 1;
-            write!(
-                f,
-                "{d:>3} {rp:─>rw$}",
-                d = d_current,
-                rp = "┤",
-                rw = (d_current as usize) * TAB_WIDTH
-            )?;
-            if last.pos < next_pos {
-                let end = next_pos.min(n_items);
-                let mut iter = last.pos..end;
-                if let Some(i) = iter.next() {
-                    writeln!(f, " {}", self.items[i as usize])?;
-                }
-                for i in iter {
-                    writeln!(
-                        f,
-                        "{lp:>width$}   ┤ {}",
-                        self.items[i as usize],
-                        lp = "",
-                        width = (dmax as usize + 1) * TAB_WIDTH
-                    )?;
-                }
-            } else {
-                writeln!(f)?;
-            }
-            tail_start = n_items;
-        }
-        // Items after the last mark (or all items if no marks).
-        for i in tail_start as usize..self.items.len() {
-            writeln!(
-                f,
-                "{lp:>width$}   ┤ {}",
-                self.items[i],
-                lp = "",
-                width = (dmax as usize + 1) * TAB_WIDTH
-            )?;
-        }
-        Ok(())
+        fmt_raw_deck(&self.items, &self.marks, f)
     }
 }
 
