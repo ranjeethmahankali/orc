@@ -1,7 +1,7 @@
 use libloading::Library;
 use orc_sdk::{
     Deck, ORC_F64, OrcFuncInfo, OrcHandle, OrcHost, OrcHostCallbackAPI, OrcHostMemoryAPI,
-    OrcItemProxy, OrcPlugin, OrcTypeId, deck, handle_from_deck,
+    OrcItemProxy, OrcMark, OrcPlugin, OrcTypeId, deck, handle_from_deck, slice_from_ptr,
 };
 use std::ffi::CStr;
 use std::path::Path;
@@ -153,19 +153,23 @@ fn main() {
         .expect("NULL function pointer");
     let a: Deck<f64> = deck![1.0, 2.0, 3.0];
     let b: Deck<f64> = deck![10.0, 20.0, 30.0];
-    let out_handle = math_plugin.alloc_deck(OrcTypeId {
+    let mut out_handle = math_plugin.alloc_deck(OrcTypeId {
         primitive_id: ORC_F64,
         opaque_id: 0,
     });
     let inputs: &[OrcHandle] = &[handle_from_deck(&a, 0), handle_from_deck(&b, 1)];
-    let mut outputs: [OrcHandle; 1] = [out_handle];
     unsafe {
-        add_fn(
-            0,
-            inputs.as_ptr(),
-            inputs.len() as u64,
-            outputs.as_mut_ptr(),
-            outputs.len() as u64,
-        );
+        add_fn(0, inputs.as_ptr(), inputs.len() as u64, &mut out_handle, 1);
+    }
+    {
+        // Print the outputs.
+        let (items, marks): (&[f64], &[OrcMark]) = unsafe {
+            (
+                slice_from_ptr(out_handle.items.cast(), out_handle.n_items as usize),
+                slice_from_ptr(out_handle.marks, out_handle.n_marks as usize),
+            )
+        };
+        println!("Outputs values: \n {items:?}");
+        println!("Outputs marks: \n {marks:?}");
     }
 }
