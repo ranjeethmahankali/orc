@@ -92,7 +92,7 @@ unsafe extern "C" fn plugin_fn_mul(
 ) {
     todo!(
         "
-Implement a generic add function that supports any number of inputs, of any scalar or integer type,
+Implement a generic multiply function that supports any number of inputs, of any scalar or integer type,
 as long as all the inputs and the one output handle are of the same type"
     );
 }
