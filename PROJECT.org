@@ -129,6 +129,13 @@
   to be able to assert their own safety, locks etc. I am trying to figure out if there is a common
   denominator of behavior + checking that all plugins will use, that I can include in the SDK.
 
+  <2026-07-26 Sun 23:02> Figured out quite a few details. Made a lot of progress today. The registry
+  is now super generic, and can be used with any type, not just decks. Got a toy plugin crate to
+  build in Rust, and a toy host program to build in Rust. Verified that the crate can load the
+  shared library, and run the plugin function properly. The host is also able to load the metadata
+  for the plugin function. I think I am close to merging this. Will do a final review, and add some
+  tests before merging.
+
 * DONE thlu2u - Generic Container Operations
   CLOSED: [2026-07-03 Fri 19:12]
   :PROPERTIES:
