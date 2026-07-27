@@ -1,0 +1,10 @@
+[package]
+name = "math_plugin"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+orc_sdk = { path = "../orc_sdk", features = ["derive"] }

@@ -1,4 +1,8 @@
-use crate::{Error, OrcHandle, OrcMark};
+use crate::{
+    Error,
+    bindings::{OrcHandle, OrcMark},
+    slice_from_ptr,
+};
 use std::{
     fmt::Display,
     ops::{Index, IndexMut, Range},
@@ -62,6 +66,29 @@ impl<T> Deck<T>
 where
     T: Default,
 {
+    /**
+    Create a deck from the raw data buffer, and a raw marks buffer that indicates the structure of the data.
+     */
+    pub fn from_raw_data(items: &[T], marks: &[OrcMark]) -> Self
+    where
+        T: Clone,
+    {
+        let mut out = Deck {
+            items: items.to_vec(),
+            marks: marks.to_vec(),
+            stride_offset: Default::default(),
+            strides: Default::default(),
+            pegs: Default::default(),
+        };
+        calc_strides(
+            &out.marks,
+            &mut out.pegs,
+            &mut out.stride_offset,
+            &mut out.strides,
+        );
+        out
+    }
+
     /**
     Get the maximum depth of this deck. By definition, this is the depth of the
     first mark.
@@ -296,56 +323,109 @@ where
     }
 }
 
+pub fn fmt_raw_deck<T: Default + Display>(
+    items: &[T],
+    marks: &[OrcMark],
+    f: &mut std::fmt::Formatter<'_>,
+) -> std::fmt::Result {
+    if items.is_empty() && marks.is_empty() {
+        return writeln!(f, "<empty_deck>");
+    }
+    const TAB_WIDTH: usize = 3;
+    let dmax = marks.first().map(|m| m.depth + 1).unwrap_or(0u8);
+    let n_items = items.len() as u64;
+    let mut tail_start = 0u64;
+    for w in marks.windows(2) {
+        let (m, next_pos) = (&w[0], w[1].pos);
+        write!(
+            f,
+            "{lp:>width$}",
+            lp = "",
+            width = ((dmax - m.depth) as usize) * TAB_WIDTH
+        )?;
+        let d_current = m.depth + 1;
+        write!(
+            f,
+            "{d:>3} {rp:─>rw$}",
+            d = d_current,
+            rp = "┤",
+            rw = (d_current as usize) * TAB_WIDTH
+        )?;
+        if m.pos < next_pos {
+            let end = next_pos.min(n_items);
+            let mut iter = m.pos..end;
+            if let Some(i) = iter.next() {
+                writeln!(f, " {}", items[i as usize])?;
+            }
+            for i in iter {
+                writeln!(
+                    f,
+                    "{lp:>width$}   ┤ {}",
+                    items[i as usize],
+                    lp = "",
+                    width = (dmax as usize + 1) * TAB_WIDTH
+                )?;
+            }
+        } else {
+            writeln!(f)?;
+        }
+        tail_start = next_pos;
+    }
+    if let Some(last) = marks.last() {
+        let next_pos = n_items;
+        write!(
+            f,
+            "{lp:>width$}",
+            lp = "",
+            width = ((dmax - last.depth) as usize) * TAB_WIDTH
+        )?;
+        let d_current = last.depth + 1;
+        write!(
+            f,
+            "{d:>3} {rp:─>rw$}",
+            d = d_current,
+            rp = "┤",
+            rw = (d_current as usize) * TAB_WIDTH
+        )?;
+        if last.pos < next_pos {
+            let end = next_pos.min(n_items);
+            let mut iter = last.pos..end;
+            if let Some(i) = iter.next() {
+                writeln!(f, " {}", items[i as usize])?;
+            }
+            for i in iter {
+                writeln!(
+                    f,
+                    "{lp:>width$}   ┤ {}",
+                    items[i as usize],
+                    lp = "",
+                    width = (dmax as usize + 1) * TAB_WIDTH
+                )?;
+            }
+        } else {
+            writeln!(f)?;
+        }
+        tail_start = n_items;
+    }
+    // Items after the last mark (or all items if no marks).
+    for i in tail_start as usize..items.len() {
+        writeln!(
+            f,
+            "{lp:>width$}   ┤ {}",
+            items[i],
+            lp = "",
+            width = (dmax as usize + 1) * TAB_WIDTH
+        )?;
+    }
+    Ok(())
+}
+
 impl<T> Display for Deck<T>
 where
     T: Default + Display,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if self.marks.is_empty() {
-            return writeln!(f, "<empty_deck>");
-        }
-        let dmax = self.max_depth();
-        for (mi, m) in self.marks.iter().enumerate() {
-            let next_pos = self
-                .marks
-                .get(mi + 1)
-                .map(|m| m.pos)
-                .unwrap_or(self.items.len() as u64);
-            const TAB_WIDTH: usize = 3;
-            write!(
-                f,
-                "{lp:>width$}",
-                lp = "",
-                width = ((dmax - m.depth) as usize) * TAB_WIDTH
-            )?;
-            let d_current = m.depth + 1;
-            write!(
-                f,
-                "{d:>3} {rp:─>rw$}",
-                d = d_current,
-                rp = "┤",
-                rw = (d_current as usize) * TAB_WIDTH
-            )?;
-            if m.pos < next_pos {
-                let end = next_pos.min(self.items.len() as u64);
-                let mut iter = m.pos..end;
-                if let Some(i) = iter.next() {
-                    writeln!(f, " {}", self.items[i as usize])?;
-                }
-                for i in iter {
-                    writeln!(
-                        f,
-                        "{lp:>width$}   ┤ {}",
-                        self.items[i as usize],
-                        lp = "",
-                        width = (dmax as usize + 1) * TAB_WIDTH
-                    )?;
-                }
-            } else {
-                writeln!(f)?;
-            }
-        }
-        Ok(())
+        fmt_raw_deck(&self.items, &self.marks, f)
     }
 }
 
@@ -777,72 +857,68 @@ impl<'a> Combinations<'a> {
     pub fn from_handles(
         inputs: &[OrcHandle],
         input_depths: &[u8],
-        outputs: &[OrcHandle],
         output_depths: &[u8],
     ) -> Result<Self, Error> {
         if input_depths.len() != inputs.len() {
-            return Err(Error::ArrayLengthMismatcch(
-                input_depths.len(),
-                inputs.len(),
-            ));
+            return Err(Error::ArrayLengthMismatch(input_depths.len(), inputs.len()));
         }
-        if output_depths.len() != outputs.len() {
-            return Err(Error::ArrayLengthMismatcch(
-                output_depths.len(),
-                outputs.len(),
-            ));
+        let n_outputs = output_depths.len();
+        if output_depths.len() != n_outputs {
+            return Err(Error::ArrayLengthMismatch(output_depths.len(), n_outputs));
         }
         let max_delta = inputs
             .iter()
             .zip(input_depths.iter())
             .map(|(i, arg_depth)| {
-                let marks = unsafe { std::slice::from_raw_parts(i.marks, i.n_marks as usize) };
+                let marks = unsafe { slice_from_ptr(i.marks, i.n_marks as usize) };
                 let depth = marks.first().map(|m| m.depth + 1).unwrap_or(0);
                 depth.saturating_sub(*arg_depth)
             })
             .max()
             .unwrap_or(0);
         let stack_depth = max_delta as usize + 1;
-        let input_cursors = inputs
-            .iter()
-            .zip(input_depths.iter())
-            .flat_map(|(i, &arg_depth)| {
-                // SAFETY: Assembling slices from pointers. The only tricky part is
-                // computing the length of the `strides` slice. Using a helper
-                // function for that to make sure the logic is consistent with the
-                // one used in the `Deck` implementation.
-                let (marks, stride_offset, strides) = unsafe {
-                    let marks = std::slice::from_raw_parts(i.marks, i.n_marks as usize);
-                    let stride_offset =
-                        std::slice::from_raw_parts(i.stride_offset, i.n_marks as usize);
-                    let strides = std::slice::from_raw_parts(
-                        i.strides,
-                        calc_stride_count(marks, stride_offset),
-                    );
-                    (marks, stride_offset, strides)
-                };
-                let depth = marks.first().map(|m| m.depth + 1).unwrap_or(0);
-                let end = if depth == 0 { i.n_items } else { i.n_marks } as usize;
-                // Telescope the cursors to all depths up to the required arg_depth.
-                (0..stack_depth).scan(
-                    ReadCursor {
-                        n_items: i.n_items as usize,
-                        marks,
-                        strides,
-                        stride_offset,
-                        depth: arg_depth + max_delta,
-                        start: 0,
-                        end,
-                    },
-                    |prev, _d| {
-                        let copy = prev.clone();
-                        *prev = prev.child();
-                        Some(copy)
-                    },
-                )
-            });
-        let mut output_cursors = Vec::with_capacity(outputs.len() * stack_depth);
-        for i in 0..outputs.len() {
+        let input_cursors =
+            inputs
+                .iter()
+                .zip(input_depths.iter())
+                .flat_map(|(input, &arg_depth)| {
+                    // SAFETY: Assembling slices from pointers. The only tricky part is computing
+                    // the length of the `strides` slice. Using a helper function for that to make
+                    // sure the logic is consistent with the one used in the `Deck` implementation.
+                    let (marks, stride_offset, strides) = unsafe {
+                        let marks = slice_from_ptr(input.marks, input.n_marks as usize);
+                        let stride_offset =
+                            slice_from_ptr(input.stride_offset, input.n_marks as usize);
+                        let strides =
+                            slice_from_ptr(input.strides, calc_stride_count(marks, stride_offset));
+                        (marks, stride_offset, strides)
+                    };
+                    let depth = marks.first().map(|m| m.depth + 1).unwrap_or(0);
+                    let end = if depth == 0 {
+                        input.n_items
+                    } else {
+                        input.n_marks
+                    } as usize;
+                    // Telescope the cursors to all depths up to the required arg_depth.
+                    (0..stack_depth).scan(
+                        ReadCursor {
+                            n_items: input.n_items as usize,
+                            marks,
+                            strides,
+                            stride_offset,
+                            depth: arg_depth + max_delta,
+                            start: 0,
+                            end,
+                        },
+                        |prev, _d| {
+                            let copy = prev.clone();
+                            *prev = prev.child();
+                            Some(copy)
+                        },
+                    )
+                });
+        let mut output_cursors = Vec::with_capacity(n_outputs * stack_depth);
+        for i in 0..n_outputs {
             let arg_depth = output_depths[i];
             let depth = arg_depth + max_delta;
             output_cursors.push(WriteCursor {
@@ -963,12 +1039,9 @@ impl<'a> Combinations<'a> {
         }
     }
 
-    pub fn get_input<T: Default>(&self, deck: &'a Deck<T>, index: usize) -> DeckView<'a, T> {
+    pub fn get_input<T: Default>(&self, items: &'a [T], index: usize) -> DeckView<'a, T> {
         let cursor = self.input_cursors[(index + 1) * self.stack_depth - 1].clone();
-        DeckView {
-            items: deck.items(),
-            cursor,
-        }
+        DeckView { items, cursor }
     }
 
     pub fn get_output<'o, T: Default>(
@@ -982,9 +1055,9 @@ impl<'a> Combinations<'a> {
 
 #[cfg(test)]
 mod test {
-    use crate::OrcHandle;
+    use crate::handle_from_deck;
 
-    use super::{Combinations, Deck};
+    use super::*;
 
     fn binary_deck(depth: u8) -> Deck<usize> {
         let mut deck = Deck::<usize>::default();
@@ -2014,6 +2087,10 @@ mod test {
 "
             .trim()
         );
+        // Single item, no marks.
+        let deck: Deck<i32> = Deck::from_raw_data(&[42], &[]);
+        println!("{}", deck);
+        assert_eq!(deck.to_string().trim(), "┤ 42");
     }
 
     #[test]
@@ -2025,20 +2102,15 @@ mod test {
             let indices: Deck<u64> = deck![2];
             let mut items: Deck<f64> = Deck::default();
             {
-                let list_handle: OrcHandle = (&lists).into();
-                let index_handle: OrcHandle = (&indices).into();
-                let item_handle: OrcHandle = (&items).into();
-                let mut comb = Combinations::from_handles(
-                    &[list_handle, index_handle],
-                    &[1, 0],
-                    &[item_handle],
-                    &[0],
-                )
-                .expect("Failed to create combinations helper struct");
+                let list_handle: OrcHandle = handle_from_deck(&lists, 0);
+                let index_handle: OrcHandle = handle_from_deck(&indices, 1);
+                let mut comb =
+                    Combinations::from_handles(&[list_handle, index_handle], &[1, 0], &[0])
+                        .expect("Failed to create combinations helper struct");
                 // List processing iterations.
                 loop {
-                    let list_view = comb.get_input(&lists, 0);
-                    let index_view = comb.get_input(&indices, 1);
+                    let list_view = comb.get_input(&lists.items, 0);
+                    let index_view = comb.get_input(&indices.items, 1);
                     let mut item_view = comb.get_output(&mut items, 0);
                     assert_eq!(list_view.depth(), 1);
                     assert_eq!(index_view.depth(), 0);
@@ -2068,20 +2140,15 @@ mod test {
             let indices: Deck<u64> = deck![1, 2, 0];
             let mut items: Deck<f64> = Deck::default();
             {
-                let list_handle: OrcHandle = (&lists).into();
-                let index_handle: OrcHandle = (&indices).into();
-                let item_handle: OrcHandle = (&items).into();
-                let mut comb = Combinations::from_handles(
-                    &[list_handle, index_handle],
-                    &[1, 0],
-                    &[item_handle],
-                    &[0],
-                )
-                .expect("Failed to create combinations helper struct");
+                let list_handle: OrcHandle = handle_from_deck(&lists, 0);
+                let index_handle: OrcHandle = handle_from_deck(&indices, 1);
+                let mut comb =
+                    Combinations::from_handles(&[list_handle, index_handle], &[1, 0], &[0])
+                        .expect("Failed to create combinations helper struct");
                 // List processing iterations.
                 loop {
-                    let list_view = comb.get_input(&lists, 0);
-                    let index_view = comb.get_input(&indices, 1);
+                    let list_view = comb.get_input(&lists.items, 0);
+                    let index_view = comb.get_input(&indices.items, 1);
                     let mut item_view = comb.get_output(&mut items, 0);
                     assert_eq!(list_view.depth(), 1);
                     assert_eq!(index_view.depth(), 0);
@@ -2111,20 +2178,15 @@ mod test {
             let indices: Deck<u64> = deck![[1, 2, 0], [1, 1, 1]];
             let mut items: Deck<f64> = Deck::default();
             {
-                let list_handle: OrcHandle = (&lists).into();
-                let index_handle: OrcHandle = (&indices).into();
-                let item_handle: OrcHandle = (&items).into();
-                let mut comb = Combinations::from_handles(
-                    &[list_handle, index_handle],
-                    &[1, 0],
-                    &[item_handle],
-                    &[0],
-                )
-                .expect("Failed to create combinations helper struct");
+                let list_handle: OrcHandle = handle_from_deck(&lists, 0);
+                let index_handle: OrcHandle = handle_from_deck(&indices, 1);
+                let mut comb =
+                    Combinations::from_handles(&[list_handle, index_handle], &[1, 0], &[0])
+                        .expect("Failed to create combinations helper struct");
                 // List processing iterations.
                 loop {
-                    let list_view = comb.get_input(&lists, 0);
-                    let index_view = comb.get_input(&indices, 1);
+                    let list_view = comb.get_input(&lists.items, 0);
+                    let index_view = comb.get_input(&indices.items, 1);
                     let mut item_view = comb.get_output(&mut items, 0);
                     assert_eq!(list_view.depth(), 1);
                     assert_eq!(index_view.depth(), 0);
@@ -2154,15 +2216,13 @@ mod test {
             let b: Deck<f64> = deck![10.0, 20.0, 30.0];
             let mut out: Deck<f64> = Deck::default();
             {
-                let a_handle: OrcHandle = (&a).into();
-                let b_handle: OrcHandle = (&b).into();
-                let out_handle: OrcHandle = (&out).into();
-                let mut comb =
-                    Combinations::from_handles(&[a_handle, b_handle], &[0, 0], &[out_handle], &[0])
-                        .expect("Failed to create combinations helper struct");
+                let a_handle: OrcHandle = handle_from_deck(&a, 0);
+                let b_handle: OrcHandle = handle_from_deck(&b, 1);
+                let mut comb = Combinations::from_handles(&[a_handle, b_handle], &[0, 0], &[0])
+                    .expect("Failed to create combinations helper struct");
                 loop {
-                    let a_view = comb.get_input(&a, 0);
-                    let b_view = comb.get_input(&b, 1);
+                    let a_view = comb.get_input(&a.items, 0);
+                    let b_view = comb.get_input(&b.items, 1);
                     let mut out_view = comb.get_output(&mut out, 0);
                     assert_eq!(a_view.depth(), 0);
                     assert_eq!(b_view.depth(), 0);
@@ -2183,15 +2243,13 @@ mod test {
             let b: Deck<f64> = deck![10.0, 20.0];
             let mut out: Deck<f64> = Deck::default();
             {
-                let a_handle: OrcHandle = (&a).into();
-                let b_handle: OrcHandle = (&b).into();
-                let out_handle: OrcHandle = (&out).into();
-                let mut comb =
-                    Combinations::from_handles(&[a_handle, b_handle], &[0, 0], &[out_handle], &[0])
-                        .expect("Failed to create combinations helper struct");
+                let a_handle: OrcHandle = handle_from_deck(&a, 0);
+                let b_handle: OrcHandle = handle_from_deck(&b, 1);
+                let mut comb = Combinations::from_handles(&[a_handle, b_handle], &[0, 0], &[0])
+                    .expect("Failed to create combinations helper struct");
                 loop {
-                    let a_view = comb.get_input(&a, 0);
-                    let b_view = comb.get_input(&b, 1);
+                    let a_view = comb.get_input(&a.items, 0);
+                    let b_view = comb.get_input(&b.items, 1);
                     let mut out_view = comb.get_output(&mut out, 0);
                     assert_eq!(a_view.depth(), 0);
                     assert_eq!(b_view.depth(), 0);
@@ -2213,15 +2271,13 @@ mod test {
             let b: Deck<f64> = deck![[10.0, 20.0], [30.0, 40.0]];
             let mut out: Deck<f64> = Deck::default();
             {
-                let a_handle: OrcHandle = (&a).into();
-                let b_handle: OrcHandle = (&b).into();
-                let out_handle: OrcHandle = (&out).into();
-                let mut comb =
-                    Combinations::from_handles(&[a_handle, b_handle], &[0, 0], &[out_handle], &[0])
-                        .expect("Failed to create combinations helper struct");
+                let a_handle: OrcHandle = handle_from_deck(&a, 0);
+                let b_handle: OrcHandle = handle_from_deck(&b, 1);
+                let mut comb = Combinations::from_handles(&[a_handle, b_handle], &[0, 0], &[0])
+                    .expect("Failed to create combinations helper struct");
                 loop {
-                    let a_view = comb.get_input(&a, 0);
-                    let b_view = comb.get_input(&b, 1);
+                    let a_view = comb.get_input(&a.items, 0);
+                    let b_view = comb.get_input(&b.items, 1);
                     let mut out_view = comb.get_output(&mut out, 0);
                     assert_eq!(a_view.depth(), 0);
                     assert_eq!(b_view.depth(), 0);
@@ -2241,15 +2297,13 @@ mod test {
             let b: Deck<f64> = deck![[[10.0, 20.0]]];
             let mut out: Deck<f64> = Deck::default();
             {
-                let a_handle: OrcHandle = (&a).into();
-                let b_handle: OrcHandle = (&b).into();
-                let out_handle: OrcHandle = (&out).into();
-                let mut comb =
-                    Combinations::from_handles(&[a_handle, b_handle], &[0, 0], &[out_handle], &[0])
-                        .expect("Failed to create combinations helper struct");
+                let a_handle: OrcHandle = handle_from_deck(&a, 0);
+                let b_handle: OrcHandle = handle_from_deck(&b, 1);
+                let mut comb = Combinations::from_handles(&[a_handle, b_handle], &[0, 0], &[0])
+                    .expect("Failed to create combinations helper struct");
                 loop {
-                    let a_view = comb.get_input(&a, 0);
-                    let b_view = comb.get_input(&b, 1);
+                    let a_view = comb.get_input(&a.items, 0);
+                    let b_view = comb.get_input(&b.items, 1);
                     let mut out_view = comb.get_output(&mut out, 0);
                     assert_eq!(a_view.depth(), 0);
                     assert_eq!(b_view.depth(), 0);
@@ -2272,12 +2326,11 @@ mod test {
             let input: Deck<f64> = deck![[1.0, 2.0, 3.0], [], [4.0], [], [5.0, 6.0]];
             let mut out: Deck<u64> = Deck::default();
             {
-                let in_handle: OrcHandle = (&input).into();
-                let out_handle: OrcHandle = (&out).into();
-                let mut comb = Combinations::from_handles(&[in_handle], &[1], &[out_handle], &[0])
+                let in_handle: OrcHandle = handle_from_deck(&input, 0);
+                let mut comb = Combinations::from_handles(&[in_handle], &[1], &[0])
                     .expect("Failed to create combinations helper struct");
                 loop {
-                    let list_view = comb.get_input(&input, 0);
+                    let list_view = comb.get_input(&input.items, 0);
                     let mut out_view = comb.get_output(&mut out, 0);
                     assert_eq!(list_view.depth(), 1);
                     assert_eq!(out_view.depth(), 0);
@@ -2296,12 +2349,11 @@ mod test {
             let input: Deck<f64> = deck![[[1.0, 2.0], []], [[3.0, 4.0, 5.0], [], [6.0]]];
             let mut out: Deck<u64> = Deck::default();
             {
-                let in_handle: OrcHandle = (&input).into();
-                let out_handle: OrcHandle = (&out).into();
-                let mut comb = Combinations::from_handles(&[in_handle], &[1], &[out_handle], &[0])
+                let in_handle: OrcHandle = handle_from_deck(&input, 0);
+                let mut comb = Combinations::from_handles(&[in_handle], &[1], &[0])
                     .expect("Failed to create combinations helper struct");
                 loop {
-                    let list_view = comb.get_input(&input, 0);
+                    let list_view = comb.get_input(&input.items, 0);
                     let mut out_view = comb.get_output(&mut out, 0);
                     assert_eq!(list_view.depth(), 1);
                     assert_eq!(out_view.depth(), 0);
@@ -2324,18 +2376,11 @@ mod test {
             let mut sq: Deck<f64> = Deck::default();
             let mut cb: Deck<f64> = Deck::default();
             {
-                let in_handle: OrcHandle = (&input).into();
-                let sq_handle: OrcHandle = (&sq).into();
-                let cb_handle: OrcHandle = (&cb).into();
-                let mut comb = Combinations::from_handles(
-                    &[in_handle],
-                    &[0],
-                    &[sq_handle, cb_handle],
-                    &[0, 0],
-                )
-                .expect("Failed to create combinations helper struct");
+                let in_handle: OrcHandle = handle_from_deck(&input, 0);
+                let mut comb = Combinations::from_handles(&[in_handle], &[0], &[0, 0])
+                    .expect("Failed to create combinations helper struct");
                 loop {
-                    let in_view = comb.get_input(&input, 0);
+                    let in_view = comb.get_input(&input.items, 0);
                     let mut sq_view = comb.get_output(&mut sq, 0);
                     let mut cb_view = comb.get_output(&mut cb, 1);
                     assert_eq!(in_view.depth(), 0);
@@ -2363,20 +2408,13 @@ mod test {
             let mut sum: Deck<f64> = Deck::default();
             let mut prod: Deck<f64> = Deck::default();
             {
-                let a_handle: OrcHandle = (&a).into();
-                let b_handle: OrcHandle = (&b).into();
-                let sum_handle: OrcHandle = (&sum).into();
-                let prod_handle: OrcHandle = (&prod).into();
-                let mut comb = Combinations::from_handles(
-                    &[a_handle, b_handle],
-                    &[0, 0],
-                    &[sum_handle, prod_handle],
-                    &[0, 0],
-                )
-                .expect("Failed to create combinations helper struct");
+                let a_handle: OrcHandle = handle_from_deck(&a, 0);
+                let b_handle: OrcHandle = handle_from_deck(&b, 1);
+                let mut comb = Combinations::from_handles(&[a_handle, b_handle], &[0, 0], &[0, 0])
+                    .expect("Failed to create combinations helper struct");
                 loop {
-                    let a_view = comb.get_input(&a, 0);
-                    let b_view = comb.get_input(&b, 1);
+                    let a_view = comb.get_input(&a.items, 0);
+                    let b_view = comb.get_input(&b.items, 1);
                     let mut sum_view = comb.get_output(&mut sum, 0);
                     let mut prod_view = comb.get_output(&mut prod, 1);
                     assert_eq!(a_view.depth(), 0);
@@ -2408,15 +2446,13 @@ mod test {
             let b: Deck<f64> = deck![[10.0, 99.0], [20.0, 99.0], [30.0, 99.0]];
             let mut out: Deck<f64> = Deck::default();
             {
-                let a_handle: OrcHandle = (&a).into();
-                let b_handle: OrcHandle = (&b).into();
-                let out_handle: OrcHandle = (&out).into();
-                let mut comb =
-                    Combinations::from_handles(&[a_handle, b_handle], &[1, 1], &[out_handle], &[0])
-                        .expect("Failed to create combinations helper struct");
+                let a_handle: OrcHandle = handle_from_deck(&a, 0);
+                let b_handle: OrcHandle = handle_from_deck(&b, 1);
+                let mut comb = Combinations::from_handles(&[a_handle, b_handle], &[1, 1], &[0])
+                    .expect("Failed to create combinations helper struct");
                 loop {
-                    let a_view = comb.get_input(&a, 0);
-                    let b_view = comb.get_input(&b, 1);
+                    let a_view = comb.get_input(&a.items, 0);
+                    let b_view = comb.get_input(&b.items, 1);
                     let mut out_view = comb.get_output(&mut out, 0);
                     assert_eq!(a_view.depth(), 1);
                     assert_eq!(b_view.depth(), 1);
@@ -2437,15 +2473,13 @@ mod test {
             let b: Deck<f64> = deck![[10.0, 99.0], [20.0, 99.0]];
             let mut out: Deck<f64> = Deck::default();
             {
-                let a_handle: OrcHandle = (&a).into();
-                let b_handle: OrcHandle = (&b).into();
-                let out_handle: OrcHandle = (&out).into();
-                let mut comb =
-                    Combinations::from_handles(&[a_handle, b_handle], &[1, 1], &[out_handle], &[0])
-                        .expect("Failed to create combinations helper struct");
+                let a_handle: OrcHandle = handle_from_deck(&a, 0);
+                let b_handle: OrcHandle = handle_from_deck(&b, 1);
+                let mut comb = Combinations::from_handles(&[a_handle, b_handle], &[1, 1], &[0])
+                    .expect("Failed to create combinations helper struct");
                 loop {
-                    let a_view = comb.get_input(&a, 0);
-                    let b_view = comb.get_input(&b, 1);
+                    let a_view = comb.get_input(&a.items, 0);
+                    let b_view = comb.get_input(&b.items, 1);
                     let mut out_view = comb.get_output(&mut out, 0);
                     assert_eq!(a_view.depth(), 1);
                     assert_eq!(b_view.depth(), 1);

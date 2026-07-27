@@ -1,25 +1,24 @@
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
-// Primitive type ids.
-#define ORC_ANY ((uint32_t)0x00)
 // Unsigned integers.
-#define ORC_U8 ((uint32_t)0x01)
-#define ORC_U16 ((uint32_t)0x02)
-#define ORC_U32 ((uint32_t)0x03)
-#define ORC_U64 ((uint32_t)0x04)
+#define ORC_U8 0x01u
+#define ORC_U16 0x02u
+#define ORC_U32 0x03u
+#define ORC_U64 0x04u
 // Scalars.
-#define ORC_F32 ((uint32_t)0x05)
-#define ORC_F64 ((uint32_t)0x06)
+#define ORC_F32 0x05u
+#define ORC_F64 0x06u
 // Signed integers.
-#define ORC_I8 ((uint32_t)0x11)
-#define ORC_I16 ((uint32_t)0x12)
-#define ORC_I32 ((uint32_t)0x13)
-#define ORC_I64 ((uint32_t)0x14)
+#define ORC_I8 0x11u
+#define ORC_I16 0x12u
+#define ORC_I32 0x13u
+#define ORC_I64 0x14u
 // Proxy for an item in a tree.
-#define ORC_PROXY ((uint32_t)0x40)
+#define ORC_PROXY 0x40u
 // All custom opaque types defined by a plugin.
-#define ORC_OPAQUE ((uint32_t)UINT32_MAX)
+#define ORC_OPAQUE 0xffffffffu
 
 typedef struct
 {
@@ -31,59 +30,62 @@ typedef struct OrcHandle OrcHandle;
 
 typedef struct
 {
-  OrcTypeId type_id;
-  char*     name;
-  char*     desc;
+  OrcTypeId   type_id;
+  char const *name;
+  char const *desc;
 } OrcTypeInfo;
 
 typedef struct
 {
-  char*      name;
-  char*      desc;
-  OrcTypeId* inputs;
-  uint64_t   n_inputs;
-  OrcTypeId* outputs;
-  uint64_t   n_outputs;
+  char const *name;
+  char const *desc;
+
+  void (*func)(uint64_t const   ctx,
+               OrcHandle const *inputs,
+               uint64_t const   n_inputs,
+               OrcHandle       *outputs,
+               uint64_t const   n_outputs);
 } OrcFuncInfo;
 
 typedef struct
 {
-  OrcTypeInfo* types;
-  uint64_t     n_types;
-  OrcFuncInfo* functions;
-  uint64_t     n_functions;
+  OrcTypeInfo const *types;
+  uint64_t           n_types;
+  OrcFuncInfo const *functions;
+  uint64_t           n_functions;
 } OrcPlugin;
+
+typedef struct
+{
+  void *(*alloc)(uint64_t const size, uint64_t const alignment);
+  void (*dealloc)(void *ptr, uint64_t const size, uint64_t const alignment);
+} OrcHostMemoryAPI;
+
+typedef struct
+{
+  void (*report_progress)(uint64_t const ctx, double progress);
+  void (*report_error)(uint64_t const ctx, char const *error);
+  void (*report_warning)(uint64_t const ctx, char const *warning);
+  bool (*check_cancellation)(uint64_t const ctx);
+} OrcHostCallbackAPI;
 
 typedef struct OrcHost
 {
-  struct
-  {
-    void* (*alloc)(uint64_t const size, uint64_t const alignment);
-    void (*dealloc)(void* ptr, uint64_t const size, uint64_t const alignment);
-  } memory_api;
-
-  struct
-  {
-    void (*report_progress)(uint64_t const ctx, double progress);
-    void (*report_error)(uint64_t const ctx, char const* error);
-    void (*report_warning)(uint64_t const ctx, char const* warning);
-    bool (*check_cancellation)(uint64_t const ctx);
-  } callbacks;
+  OrcHostMemoryAPI   memory_api;
+  OrcHostCallbackAPI callbacks;
 } OrcHost;
 
-// ========== Units ==========
+#define ORC_DIM_LENGTH 0u
+#define ORC_DIM_MASS 1u
+#define ORC_DIM_TIME 2u
+#define ORC_DIM_CURRENT 3u
+#define ORC_DIM_TEMPERATURE 4u
+#define ORC_DIM_SUBSTANCE 5u
+#define ORC_DIM_LUMINOSITY 6u
 
-#define ORC_DIM_LENGTH ((uint32_t)0)
-#define ORC_DIM_MASS ((uint32_t)1)
-#define ORC_DIM_TIME ((uint32_t)2)
-#define ORC_DIM_CURRENT ((uint32_t)3)
-#define ORC_DIM_TEMPERATURE ((uint32_t)4)
-#define ORC_DIM_SUBSTANCE ((uint32_t)5)
-#define ORC_DIM_LUMINOSITY ((uint32_t)6)
+#define ORC_NUM_DIMS 7u
 
-#define ORC_NUM_DIMS 7
-
-typedef int32_t Dims[ORC_NUM_DIMS];
+typedef int32_t OrcDims[ORC_NUM_DIMS];
 
 typedef struct
 {
@@ -93,29 +95,17 @@ typedef struct
 
 struct OrcHandle
 {
-  uint64_t  handle;
-  void*     items;
-  uint64_t  n_items;
-  uint64_t  item_size;
-  OrcMark*  marks;
-  uint64_t* stride_offset;
-  uint64_t  n_marks;
-  uint64_t* strides;
-  OrcTypeId type_id;
-  Dims      dims;
+  uint64_t        handle;
+  void const     *items;
+  uint64_t        n_items;
+  uint64_t        item_size;
+  OrcMark const  *marks;
+  uint64_t const *stride_offset;
+  uint64_t        n_marks;
+  uint64_t const *strides;
+  OrcTypeId       type_id;
+  OrcDims         dims;
 };
-
-// ===========================================================
-// Functions meant to be implemented by the plugin.
-// ===========================================================
-
-// Loading the plugin, and register the host with the plugin.
-void orc_plugin_init(OrcHost const* host, OrcPlugin* plugin_data_out);
-void orc_plugin_data_free(OrcPlugin* plugin_data);
-
-// Deck lifetime operations.
-void orc_deck_alloc(OrcTypeId const id, OrcHandle* const out);
-void orc_deck_free(OrcHandle* const handle);
 
 // Each plugin has to provide a generic way to construct decks out of a given input deck,
 // for all of it's custom datatypes.
@@ -123,14 +113,25 @@ typedef struct
 {
   uint64_t tree;
   uint64_t item;
-} ItemProxy;
+} OrcItemProxy;
 
-#define ORC_DECK_PROXY_COPY_ALL ((uint32_t)0x01)
-#define ORC_DECK_PROXY_COPY_ITEMS ((uint32_t)0x02)
-#define ORC_DECK_PROXY_SHUFFLE ((uint32_t)0x03)
+#define ORC_DECK_PROXY_COPY_ALL 0x01u
+#define ORC_DECK_PROXY_COPY_ITEMS 0x02u
+#define ORC_DECK_PROXY_SHUFFLE 0x03u
 
-void orc_deck_from_proxy(OrcHandle const* inputs,
+// ===========================================================
+// Functions meant to be implemented by the plugin.
+// ===========================================================
+
+// Loading the plugin, and register the host with the plugin.
+void orc_plugin_init(OrcHost const *host, OrcPlugin *plugin_data_out);
+
+// Deck lifetime operations.
+void orc_deck_alloc(OrcTypeId const id, OrcHandle *const out);
+void orc_deck_free(OrcHandle *const handle);
+
+void orc_deck_from_proxy(OrcHandle const *inputs,
                          uint64_t const   n_inputs,
                          uint32_t const   proxy_type,
-                         OrcHandle const* proxy,
-                         OrcHandle*       out);
+                         OrcHandle const *proxy,
+                         OrcHandle       *out);

@@ -8,23 +8,23 @@
 
 void test_arr_null_pointer_operations(void)
 {
-  double* null_arr = NULL;
+  double *null_arr = NULL;
   REQUIRE_WITH_MSG(arr_len(null_arr) == 0, "Null pointer represents an empty array");
   REQUIRE_WITH_MSG(arr_end(null_arr) == null_arr, "End of a NULL is itself");
   REQUIRE_WITH_MSG(arr_swap_remove(null_arr, 0) == OUT_OF_BOUNDS,
                    "Cannot remove from empty array");
-  double* arr = NULL;
+  double *arr = NULL;
   REQUIRE_WITH_MSG(arr_reserve(arr, 10) == OK, "Reserve starting with NULL");
   REQUIRE_WITH_MSG(arr != NULL, "Should be allocated after reserve");
   arr_free(arr);
   // Should not crash
-  double* ptr = NULL;
+  double *ptr = NULL;
   arr_free(ptr);
 }
 
 void test_arr_empty_array_operations(void)
 {
-  double* arr = NULL;
+  double *arr = NULL;
   REQUIRE_WITH_MSG(arr_reserve(arr, 0) == OK, "Empty array reserve");
   REQUIRE_WITH_MSG(arr_len(arr) == 0, "Length after reserved is zero");
   REQUIRE_WITH_MSG(arr_swap_remove(arr, 0) == OUT_OF_BOUNDS,
@@ -36,7 +36,7 @@ void test_arr_empty_array_operations(void)
 
 void test_arr_index_boundary_conditions(void)
 {
-  double* arr = NULL;
+  double *arr = NULL;
   arr_push(arr, 1.0);
   // Single element array
   REQUIRE(arr_swap_remove(arr, 0) == OK);
@@ -57,7 +57,7 @@ void test_arr_index_boundary_conditions(void)
 
 void test_arr_capacity_management(void)
 {
-  double* arr = NULL;
+  double *arr = NULL;
   // Reserve initial capacity
   REQUIRE(arr_reserve(arr, 4) == OK);
   REQUIRE(_arr_capacity(arr) == 4);
@@ -88,7 +88,7 @@ void test_arr_capacity_management(void)
 
 void test_arr_double_free_safety(void)
 {
-  double* arr = NULL;
+  double *arr = NULL;
   arr_push(arr, 1.0);
   arr_free(arr);  // First free, arr becomes NULL
   arr_free(arr);  // Second free on NULL, should not crash
@@ -96,7 +96,7 @@ void test_arr_double_free_safety(void)
 
 void test_arr_swap_remove_correctness(void)
 {
-  double* arr = NULL;
+  double *arr = NULL;
   // Setup: [0, 1, 2, 3, 4]
   for (int i = 0; i < 5; i++) {
     arr_push(arr, (double)i);
@@ -123,7 +123,7 @@ void test_arr_swap_remove_correctness(void)
 
 void test_arr_memory_stress(void)
 {
-  double*      arr        = NULL;
+  double      *arr        = NULL;
   const size_t LARGE_SIZE = 1000;
   // Push many elements
   for (size_t i = 0; i < LARGE_SIZE; i++) {
@@ -148,7 +148,7 @@ void test_arr_memory_stress(void)
 void test_arr_different_types(void)
 {
   // Test with int
-  int* ints = NULL;
+  int *ints = NULL;
   REQUIRE(arr_push(ints, 42) == OK);
   REQUIRE(arr_push(ints, -17) == OK);
   REQUIRE(arr_len(ints) == 2);
@@ -156,15 +156,15 @@ void test_arr_different_types(void)
   REQUIRE(ints[1] == -17);
   arr_free(ints);
   // Test with char
-  char* chars = NULL;
+  char *chars = NULL;
   REQUIRE(arr_push(chars, 'A') == OK);
   REQUIRE(arr_push(chars, 'B') == OK);
   REQUIRE(chars[0] == 'A');
   REQUIRE(chars[1] == 'B');
   arr_free(chars);
   // Test with pointers
-  const char*  strings[] = {"hello", "world"};
-  const char** str_ptrs  = NULL;
+  const char  *strings[] = {"hello", "world"};
+  const char **str_ptrs  = NULL;
   REQUIRE(arr_push(str_ptrs, strings[0]) == OK);
   REQUIRE(arr_push(str_ptrs, strings[1]) == OK);
   REQUIRE(str_ptrs[0] == strings[0]);
@@ -176,7 +176,7 @@ void test_arr_different_types(void)
     int    x, y;
     double value;
   } Point;
-  Point* points = NULL;
+  Point *points = NULL;
   Point  p1     = {10, 20, 3.14};
   Point  p2     = {-5, 15, 2.71};
   REQUIRE(arr_push(points, p1) == OK);
@@ -189,7 +189,7 @@ void test_arr_different_types(void)
   REQUIRE(points[1].value == 2.71);
   arr_free(points);
   // Test alignment by checking data pointer alignment
-  long long* longs = NULL;
+  long long *longs = NULL;
   REQUIRE(arr_push(longs, 123456789LL) == OK);
   // Check that data pointer is properly aligned for long long
   uintptr_t addr = (uintptr_t)longs;
@@ -199,7 +199,7 @@ void test_arr_different_types(void)
 
 void test_arr_ordered_remove(void)
 {
-  int* arr = NULL;
+  int *arr = NULL;
   // Setup: [10, 20, 30, 40, 50]
   for (int i = 1; i <= 5; i++) {
     REQUIRE(arr_push(arr, i * 10) == OK);
@@ -239,14 +239,14 @@ void test_arr_ordered_remove(void)
                    "Remove huge index should fail");
   arr_free(arr);
   // Test with NULL pointer
-  int* null_arr = NULL;
+  int *null_arr = NULL;
   REQUIRE_WITH_MSG(arr_remove(null_arr, 0) == OUT_OF_BOUNDS,
                    "Remove from NULL should fail");
 }
 
 void test_arr_resize_zero_fill(void)
 {
-  double* arr = NULL;
+  double *arr = NULL;
   // Test resize from empty array - should zero-fill all elements
   arr_resize(arr, 5);
   REQUIRE_WITH_MSG(arr != NULL, "Resize from empty should succeed");
@@ -306,7 +306,7 @@ void test_arr_resize_zero_fill(void)
   }
   arr_free(arr);
   // Test resize with NULL array - should create and zero-fill
-  double* null_arr = NULL;
+  double *null_arr = NULL;
   arr_resize(null_arr, 3);
   REQUIRE_WITH_MSG(null_arr != NULL, "Resize NULL array should succeed");
   REQUIRE_WITH_MSG(arr_len(null_arr) == 3, "Array should have 3 elements");
@@ -315,7 +315,7 @@ void test_arr_resize_zero_fill(void)
   }
   arr_free(null_arr);
   // Test with different types to ensure zero-initialization works correctly
-  int* int_arr = NULL;
+  int *int_arr = NULL;
   arr_resize(int_arr, 3);
   REQUIRE_WITH_MSG(int_arr != NULL, "Int array resize should succeed");
   for (size_t i = 0; i < 3; i++) {
@@ -323,7 +323,7 @@ void test_arr_resize_zero_fill(void)
   }
   arr_free(int_arr);
   // Test with pointers
-  void** ptr_arr = NULL;
+  void **ptr_arr = NULL;
   arr_resize(ptr_arr, 2);
   REQUIRE_WITH_MSG(ptr_arr != NULL, "Pointer array resize should succeed");
   for (size_t i = 0; i < 2; i++) {
@@ -331,7 +331,7 @@ void test_arr_resize_zero_fill(void)
   }
   arr_free(ptr_arr);
   // Test large resize to verify performance and correctness
-  double*      large_arr  = NULL;
+  double      *large_arr  = NULL;
   const size_t LARGE_SIZE = 10000;
   arr_resize(large_arr, LARGE_SIZE);
   REQUIRE_WITH_MSG(large_arr != NULL, "Large resize should succeed");
@@ -343,7 +343,7 @@ void test_arr_resize_zero_fill(void)
   REQUIRE_WITH_MSG(large_arr[LARGE_SIZE - 1] == 0.0, "Last element should be zero");
   arr_free(large_arr);
   // Test edge case: resize to 1 element
-  double* single_arr = NULL;
+  double *single_arr = NULL;
   arr_resize(single_arr, 1);
   REQUIRE_WITH_MSG(single_arr != NULL, "Single element resize should succeed");
   REQUIRE_WITH_MSG(arr_len(single_arr) == 1, "Array should have 1 element");
@@ -360,7 +360,7 @@ void test_arr_resize_zero_fill(void)
 void test_arr_fill(void)
 {
   // Test 1: Basic fill with integers (power of 2 size)
-  int* ints = NULL;
+  int *ints = NULL;
   arr_resize(ints, 4);
   int val = 42;
   arr_fill(ints, val);
@@ -386,7 +386,7 @@ void test_arr_fill(void)
   }
   arr_free(ints);
   // Test 4: Single element
-  double* doubles = NULL;
+  double *doubles = NULL;
   arr_resize(doubles, 1);
   double dval = 3.14;
   arr_fill(doubles, dval);
@@ -394,7 +394,7 @@ void test_arr_fill(void)
   REQUIRE(doubles[0] == 3.14);
   arr_free(doubles);
   // Test 5: Empty array
-  float* floats = NULL;
+  float *floats = NULL;
   dval          = 1.0f;
   arr_fill(floats, dval);  // arr_len(NULL) is 0
   REQUIRE(arr_len(floats) == 0);
@@ -405,7 +405,7 @@ void test_arr_fill(void)
     int    a;
     double b;
   } TestStruct;
-  TestStruct* structs = NULL;
+  TestStruct *structs = NULL;
   TestStruct  sval    = {10, 20.0};
   arr_resize(structs, 3);
   arr_fill(structs, sval);
@@ -419,7 +419,7 @@ void test_arr_fill(void)
 
 void test_arr_clear(void)
 {
-  double* arr = NULL;
+  double *arr = NULL;
   // Test clear on empty array
   arr_clear(arr);
   REQUIRE_WITH_MSG(arr_len(arr) == 0, "Clear on NULL array should work");
@@ -447,13 +447,13 @@ void test_arr_clear(void)
                    "Remove from cleared array should fail");
   arr_free(arr);
   // Test clear on NULL pointer (should not crash)
-  double* null_arr = NULL;
+  double *null_arr = NULL;
   arr_clear(null_arr);  // Should not crash
 }
 
 void test_arr_remove_range(void)
 {
-  int* arr = NULL;
+  int *arr = NULL;
   // Setup test array: [10, 20, 30, 40, 50]
   for (int i = 1; i <= 5; i++) {
     Status s = arr_push(arr, i * 10);
@@ -519,13 +519,13 @@ void test_arr_remove_range(void)
   REQUIRE_WITH_MSG(arr_len(arr) == 0, "Array should be empty");
   arr_free(arr);
   // Test 8: Operations on NULL array
-  int* null_arr = NULL;
+  int *null_arr = NULL;
   result        = arr_remove_range(null_arr, 0, 0);
   REQUIRE_WITH_MSG(result == OUT_OF_BOUNDS, "Remove from NULL array should fail");
   result = arr_remove_range(null_arr, 0, 1);
   REQUIRE_WITH_MSG(result == OUT_OF_BOUNDS, "Remove from NULL array should fail");
   // Test 9: Large range removal
-  int* large_arr = NULL;
+  int *large_arr = NULL;
   for (int i = 0; i < 10; i++) {
     arr_push(large_arr, i);
   }
@@ -545,13 +545,13 @@ void test_arr_remove_range(void)
 
 void test_arr_pop(void)
 {
-  double* arr = NULL;
+  double *arr = NULL;
   double  value;
   // Test pop from empty array (should fail)
   Status result = arr_pop(arr, &value);
   REQUIRE_WITH_MSG(result == OUT_OF_BOUNDS, "Pop from empty array should fail");
   // Test pop from NULL array (should fail)
-  double* null_arr = NULL;
+  double *null_arr = NULL;
   result           = arr_pop(null_arr, &value);
   REQUIRE_WITH_MSG(result == OUT_OF_BOUNDS, "Pop from NULL array should fail");
   // Setup array with known values: [10.0, 20.0, 30.0]
@@ -582,7 +582,7 @@ void test_arr_pop(void)
   REQUIRE_WITH_MSG(result == OUT_OF_BOUNDS, "Pop from empty array should fail");
   arr_free(arr);
   // Test with different data types
-  int* int_arr = NULL;
+  int *int_arr = NULL;
   int  int_value;
   REQUIRE_WITH_MSG(arr_push(int_arr, 42) == OK, "Int push should succeed");
   REQUIRE_WITH_MSG(arr_push(int_arr, 99) == OK, "Int push should succeed");
@@ -592,9 +592,9 @@ void test_arr_pop(void)
   REQUIRE_WITH_MSG(arr_len(int_arr) == 1, "Int array should have 1 element left");
   arr_free(int_arr);
   // Test with pointers
-  const char*  strings[] = {"first", "second", "third"};
-  const char** str_arr   = NULL;
-  const char*  str_value;
+  const char  *strings[] = {"first", "second", "third"};
+  const char **str_arr   = NULL;
+  const char  *str_value;
   REQUIRE_WITH_MSG(arr_push(str_arr, strings[0]) == OK, "String push should succeed");
   REQUIRE_WITH_MSG(arr_push(str_arr, strings[1]) == OK, "String push should succeed");
   REQUIRE_WITH_MSG(arr_push(str_arr, strings[2]) == OK, "String push should succeed");
@@ -604,7 +604,7 @@ void test_arr_pop(void)
   REQUIRE_WITH_MSG(arr_len(str_arr) == 2, "String array should have 2 elements left");
   arr_free(str_arr);
   // Test capacity behavior - capacity should not decrease on pop
-  double* cap_arr = NULL;
+  double *cap_arr = NULL;
   REQUIRE(OK == arr_reserve(cap_arr, 10));
   size_t initial_capacity = _arr_capacity(cap_arr);
   // Fill with some elements
@@ -620,7 +620,7 @@ void test_arr_pop(void)
                    "Capacity should not decrease");
   arr_free(cap_arr);
   // Test push after pop (ensure array is still usable)
-  double* reuse_arr = NULL;
+  double *reuse_arr = NULL;
   arr_push(reuse_arr, 1.0);
   arr_push(reuse_arr, 2.0);
   arr_pop(reuse_arr, &value);
@@ -634,7 +634,7 @@ void test_arr_pop(void)
 
 void test_arr_fibonacci(void)
 {
-  uint32_t* fibo = NULL;
+  uint32_t *fibo = NULL;
   REQUIRE(arr_push(fibo, 1) == OK);
   REQUIRE(arr_push(fibo, 1) == OK);
   for (size_t i = 0; i < 10; ++i) {
@@ -664,7 +664,7 @@ void test_arr_header_alignment(void)
 
 void test_str_null_pointer_operations(void)
 {
-  char* s = NULL;
+  char *s = NULL;
   REQUIRE_WITH_MSG(str_len(s) == 0, "Null string has length 0");
   REQUIRE_WITH_MSG(str_end(s) == s, "End of NULL string is itself");
   REQUIRE_WITH_MSG(str_remove(s, 0) == OUT_OF_BOUNDS, "Cannot remove from NULL string");
@@ -674,7 +674,7 @@ void test_str_null_pointer_operations(void)
 
 void test_str_push_basic(void)
 {
-  char* s = NULL;
+  char *s = NULL;
   REQUIRE(str_push(s, 'h') == OK);
   REQUIRE(str_push(s, 'e') == OK);
   REQUIRE(str_push(s, 'l') == OK);
@@ -688,7 +688,7 @@ void test_str_push_basic(void)
 
 void test_str_push_from_null(void)
 {
-  char* s = NULL;
+  char *s = NULL;
   // First push allocates
   REQUIRE(str_push(s, 'a') == OK);
   REQUIRE(s != NULL);
@@ -707,7 +707,7 @@ void test_str_push_from_null(void)
 
 void test_str_remove_basic(void)
 {
-  char* s = NULL;
+  char *s = NULL;
   // Build "abcde"
   REQUIRE(str_push(s, 'a') == OK);
   REQUIRE(str_push(s, 'b') == OK);
@@ -735,7 +735,7 @@ void test_str_remove_basic(void)
 void test_str_remove_boundary_conditions(void)
 {
   // Single character string
-  char* s = NULL;
+  char *s = NULL;
   REQUIRE(str_push(s, 'x') == OK);
   REQUIRE(str_remove(s, 0) == OK);
   REQUIRE_WITH_MSG(str_len(s) == 0, "Empty after removing only character");
@@ -750,14 +750,14 @@ void test_str_remove_boundary_conditions(void)
   // Huge index
   REQUIRE(str_remove(s, SIZE_MAX) == OUT_OF_BOUNDS);
   // Remove from NULL
-  char* null_str = NULL;
+  char *null_str = NULL;
   REQUIRE(str_remove(null_str, 0) == OUT_OF_BOUNDS);
   str_free(s);
 }
 
 void test_str_len_and_end(void)
 {
-  char* s = NULL;
+  char *s = NULL;
   REQUIRE(str_len(s) == 0);
   // Build "abc"
   REQUIRE(str_push(s, 'a') == OK);
@@ -776,7 +776,7 @@ void test_str_len_and_end(void)
 
 void test_str_free_and_reuse(void)
 {
-  char* s = NULL;
+  char *s = NULL;
   REQUIRE(str_push(s, 'a') == OK);
   REQUIRE(str_push(s, 'b') == OK);
   REQUIRE(str_len(s) == 2);
@@ -792,7 +792,7 @@ void test_str_free_and_reuse(void)
 
 void test_str_push_special_characters(void)
 {
-  char* s = NULL;
+  char *s = NULL;
   // Whitespace characters
   REQUIRE(str_push(s, ' ') == OK);
   REQUIRE(str_push(s, '\t') == OK);
@@ -828,7 +828,7 @@ void test_str_push_special_characters(void)
 
 void test_str_capacity_growth(void)
 {
-  char*        s = NULL;
+  char        *s = NULL;
   size_t const n = 256;
   for (size_t i = 0; i < n; i++) {
     char ch = (char)('a' + (char)(i % 26));
@@ -849,7 +849,7 @@ void test_str_capacity_growth(void)
 
 void test_str_mixed_operations(void)
 {
-  char* s = NULL;
+  char *s = NULL;
   // Build "hello"
   REQUIRE(str_push(s, 'h') == OK);
   REQUIRE(str_push(s, 'e') == OK);
@@ -881,7 +881,7 @@ void test_str_mixed_operations(void)
 
 void test_str_single_character(void)
 {
-  char* s = NULL;
+  char *s = NULL;
   REQUIRE(str_push(s, 'x') == OK);
   REQUIRE(str_len(s) == 1);
   REQUIRE(s[0] == 'x');
@@ -902,7 +902,7 @@ void test_str_single_character(void)
 
 void test_str_long_string(void)
 {
-  char*        s = NULL;
+  char        *s = NULL;
   size_t const n = 10000;
   // Build a long string
   for (size_t i = 0; i < n; i++) {
@@ -938,7 +938,7 @@ void test_str_long_string(void)
 
 void test_str_clear_basic(void)
 {
-  char* s = NULL;
+  char *s = NULL;
   REQUIRE(str_push(s, 'a') == OK);
   REQUIRE(str_push(s, 'b') == OK);
   REQUIRE(str_push(s, 'c') == OK);
@@ -955,14 +955,14 @@ void test_str_clear_basic(void)
 void test_str_clear_null(void)
 {
   // Should not crash
-  char* s = NULL;
+  char *s = NULL;
   str_clear(s);
   REQUIRE(s == NULL);
 }
 
 void test_str_clear_and_reuse(void)
 {
-  char* s = NULL;
+  char *s = NULL;
   REQUIRE(str_push(s, 'x') == OK);
   REQUIRE(str_push(s, 'y') == OK);
   str_clear(s);
@@ -981,7 +981,7 @@ void test_str_clear_and_reuse(void)
 
 void test_str_clear_already_empty(void)
 {
-  char* s = NULL;
+  char *s = NULL;
   REQUIRE(str_push(s, 'a') == OK);
   REQUIRE(str_remove(s, 0) == OK);
   REQUIRE(str_len(s) == 0);
@@ -996,7 +996,7 @@ void test_str_clear_already_empty(void)
 
 void test_str_push_str_basic(void)
 {
-  char* s = NULL;
+  char *s = NULL;
   REQUIRE(str_push(s, 'h') == OK);
   REQUIRE(str_push(s, 'i') == OK);
   REQUIRE(str_push_str(s, " world") == OK);
@@ -1009,7 +1009,7 @@ void test_str_push_str_basic(void)
 void test_str_push_str_to_null(void)
 {
   // Push string onto NULL pointer
-  char* s = NULL;
+  char *s = NULL;
   REQUIRE(str_push_str(s, "hello") == OK);
   REQUIRE(s != NULL);
   REQUIRE(str_len(s) == 5);
@@ -1021,7 +1021,7 @@ void test_str_push_str_to_null(void)
 void test_str_push_str_empty_tail(void)
 {
   // Push empty string onto existing string
-  char* s = NULL;
+  char *s = NULL;
   REQUIRE(str_push_str(s, "abc") == OK);
   REQUIRE(str_push_str(s, "") == OK);
   REQUIRE_WITH_MSG(str_len(s) == 3, "Length unchanged after pushing empty string");
@@ -1032,7 +1032,7 @@ void test_str_push_str_empty_tail(void)
 void test_str_push_str_empty_tail_to_null(void)
 {
   // Push empty string onto NULL - should allocate an empty string, not fail
-  char* s = NULL;
+  char *s = NULL;
   REQUIRE_WITH_MSG(str_push_str(s, "") == OK, "Pushing empty to NULL should succeed");
   REQUIRE(s != NULL);
   REQUIRE(str_len(s) == 0);
@@ -1042,7 +1042,7 @@ void test_str_push_str_empty_tail_to_null(void)
 
 void test_str_push_str_multiple(void)
 {
-  char* s = NULL;
+  char *s = NULL;
   REQUIRE(str_push_str(s, "foo") == OK);
   REQUIRE(str_push_str(s, "bar") == OK);
   REQUIRE(str_push_str(s, "baz") == OK);
@@ -1054,7 +1054,7 @@ void test_str_push_str_multiple(void)
 
 void test_str_push_str_after_remove(void)
 {
-  char* s = NULL;
+  char *s = NULL;
   REQUIRE(str_push_str(s, "abcde") == OK);
   // Remove middle character
   REQUIRE(str_remove(s, 2) == OK);
@@ -1069,7 +1069,7 @@ void test_str_push_str_after_remove(void)
 
 void test_str_push_str_after_clear(void)
 {
-  char* s = NULL;
+  char *s = NULL;
   REQUIRE(str_push_str(s, "hello") == OK);
   str_clear(s);
   REQUIRE(str_len(s) == 0);
@@ -1081,7 +1081,7 @@ void test_str_push_str_after_clear(void)
 
 void test_str_push_str_long(void)
 {
-  char* s = NULL;
+  char *s = NULL;
   // Build a long string by appending many times
   for (int i = 0; i < 500; i++) {
     REQUIRE(str_push_str(s, "ab") == OK);
@@ -1099,12 +1099,12 @@ void test_str_push_str_long(void)
 void test_str_push_str_single_char(void)
 {
   // Push a single-character string (compare behavior with str_push)
-  char* s = NULL;
+  char *s = NULL;
   REQUIRE(str_push_str(s, "x") == OK);
   REQUIRE(str_len(s) == 1);
   REQUIRE(strcmp(s, "x") == 0);
   // Equivalent to str_push
-  char* s2 = NULL;
+  char *s2 = NULL;
   REQUIRE(str_push(s2, 'x') == OK);
   REQUIRE(str_len(s2) == 1);
   REQUIRE(strcmp(s, s2) == 0);
@@ -1116,13 +1116,13 @@ void test_str_push_str_single_char(void)
 
 void test_str_is_empty_null(void)
 {
-  char* s = NULL;
+  char *s = NULL;
   REQUIRE_WITH_MSG(str_is_empty(s), "NULL string is empty");
 }
 
 void test_str_is_empty_after_operations(void)
 {
-  char* s = NULL;
+  char *s = NULL;
   REQUIRE(str_is_empty(s));
   REQUIRE(str_push(s, 'a') == OK);
   REQUIRE_WITH_MSG(!str_is_empty(s), "Non-empty after push");
@@ -1139,7 +1139,7 @@ void test_str_is_empty_after_operations(void)
 
 void test_str_mixed_new_operations(void)
 {
-  char* s = NULL;
+  char *s = NULL;
   REQUIRE(str_push_str(s, "hello") == OK);
   REQUIRE(str_push(s, '!') == OK);
   REQUIRE(strcmp(s, "hello!") == 0);
@@ -1455,8 +1455,8 @@ void test_sv_rfind(void)
 void test_str_eq(void)
 {
   // Equal strings
-  char* a = NULL;
-  char* b = NULL;
+  char *a = NULL;
+  char *b = NULL;
   REQUIRE(str_push_str(a, "hello") == OK);
   REQUIRE(str_push_str(b, "hello") == OK);
   REQUIRE(str_eq(a, b));
@@ -1648,9 +1648,9 @@ void test_deck_header_alignment(void)
 }
 
 // Helper: build a binary deck of the given depth (port of Rust's binary_deck).
-static size_t* _binary_deck(uint8_t depth)
+static size_t *_binary_deck(uint8_t depth)
 {
-  size_t* deck = NULL;
+  size_t *deck = NULL;
   size_t  n    = (size_t)1 << depth;
   for (size_t i = 0; i < n; ++i) {
     uint8_t tz = (i > 0) ? (uint8_t)__builtin_ctzll(i) : depth;
@@ -1663,7 +1663,7 @@ static size_t* _binary_deck(uint8_t depth)
 
 void test_deck_basic_push_and_length(void)
 {
-  size_t* deck = NULL;
+  size_t *deck = NULL;
   REQUIRE(deck_len(deck) == 0);
   REQUIRE(deck_max_depth(deck) == 0);
   REQUIRE(deck_is_empty(deck));
@@ -1686,7 +1686,7 @@ void test_deck_basic_push_and_length(void)
 void test_deck_binary_deck(void)
 {
   uint8_t const DEPTH = 5;
-  size_t*       deck  = _binary_deck(DEPTH);
+  size_t       *deck  = _binary_deck(DEPTH);
   REQUIRE(deck_len(deck) == (size_t)(1 << DEPTH));
   REQUIRE(deck_max_depth(deck) == DEPTH);
   REQUIRE(_deck_header(deck)->item_size == sizeof(size_t));
@@ -1699,8 +1699,8 @@ void test_deck_binary_deck(void)
 void test_deck_mark_structure(void)
 {
   // Depth-3 binary deck: marks at positions 0,2,4,6 with depths 2,0,1,0.
-  size_t*      deck = _binary_deck(3);
-  _DeckHeader* h    = _deck_header(deck);
+  size_t      *deck = _binary_deck(3);
+  _DeckHeader *h    = _deck_header(deck);
   REQUIRE(h->item_size == sizeof(size_t));
   REQUIRE(arr_len(h->marks) == 4);
   REQUIRE(h->marks[0].depth == 2);
@@ -1715,7 +1715,7 @@ void test_deck_mark_structure(void)
 }
 void test_deck_clear(void)
 {
-  size_t* deck = _binary_deck(3);
+  size_t *deck = _binary_deck(3);
   REQUIRE(deck_len(deck) == 8);
   REQUIRE(_deck_header(deck)->item_size == sizeof(size_t));
   deck_clear(deck);
@@ -1735,7 +1735,7 @@ void test_deck_clear(void)
 
 void test_deck_flatten(void)
 {
-  size_t* deck = _binary_deck(4);
+  size_t *deck = _binary_deck(4);
   size_t  n    = deck_len(deck);
   REQUIRE(n == 16);
   REQUIRE(_deck_header(deck)->item_size == sizeof(size_t));
@@ -1745,7 +1745,7 @@ void test_deck_flatten(void)
   for (size_t i = 0; i < n; ++i) {
     REQUIRE(deck[i] == i);
   }
-  _DeckHeader* h = _deck_header(deck);
+  _DeckHeader *h = _deck_header(deck);
   REQUIRE(arr_len(h->marks) == 1);
   REQUIRE(h->marks[0].depth == 0);
   REQUIRE(h->marks[0].pos == 0);
@@ -1755,7 +1755,7 @@ void test_deck_flatten(void)
   REQUIRE(arr_len(h->marks) == 1);
   deck_free(deck);
   // Flatten a single-element deck pushed at depth 0: no marks.
-  size_t* deck2 = NULL;
+  size_t *deck2 = NULL;
   REQUIRE(deck_push(deck2, ((size_t) {5}), 0) == OK);
   REQUIRE(_deck_header(deck2)->item_size == sizeof(size_t));
   deck_flatten(deck2);
@@ -1767,7 +1767,7 @@ void test_deck_flatten(void)
 
 void test_deck_reserve(void)
 {
-  size_t* deck = NULL;
+  size_t *deck = NULL;
   REQUIRE(deck_reserve(deck, 32) == OK);
   REQUIRE(deck != NULL);
   REQUIRE(deck_len(deck) == 0);
@@ -1786,14 +1786,14 @@ void test_deck_reserve(void)
 void test_deck_depth_clamping(void)
 {
   // Depth higher than the first mark's depth should be clamped.
-  size_t* deck = NULL;
+  size_t *deck = NULL;
   REQUIRE(deck_push(deck, ((size_t) {0}), 2) == OK);  // first mark: internal depth 1
   REQUIRE(deck_push(deck, ((size_t) {1}), 0) == OK);
   REQUIRE(deck_push(deck, ((size_t) {2}), 5) == OK);  // should be clamped
   REQUIRE(deck_push(deck, ((size_t) {3}), 0) == OK);
   REQUIRE(deck_len(deck) == 4);
   REQUIRE(deck_max_depth(deck) == 2);
-  _DeckHeader* h = _deck_header(deck);
+  _DeckHeader *h = _deck_header(deck);
   REQUIRE(h->item_size == sizeof(size_t));
   REQUIRE(arr_len(h->marks) == 2);
   REQUIRE(h->marks[0].depth == 1);
@@ -1804,7 +1804,7 @@ void test_deck_depth_clamping(void)
 void test_deck_single_element(void)
 {
   // Depth 0: bare leaf, no marks.
-  size_t* deck = NULL;
+  size_t *deck = NULL;
   REQUIRE(deck_push(deck, ((size_t) {42}), 0) == OK);
   REQUIRE(deck_len(deck) == 1);
   REQUIRE(deck_max_depth(deck) == 0);
@@ -1813,7 +1813,7 @@ void test_deck_single_element(void)
   REQUIRE(arr_len(_deck_header(deck)->marks) == 0);
   deck_free(deck);
   // Depth 1.
-  size_t* deck2 = NULL;
+  size_t *deck2 = NULL;
   REQUIRE(deck_push(deck2, ((size_t) {7}), 1) == OK);
   REQUIRE(deck_len(deck2) == 1);
   REQUIRE(deck_max_depth(deck2) == 1);
@@ -1824,14 +1824,14 @@ void test_deck_single_element(void)
 
 void test_deck_free_null(void)
 {
-  size_t* deck = NULL;
+  size_t *deck = NULL;
   deck_free(deck);
   REQUIRE(deck == NULL);
 }
 
 void test_deck_many_pushes(void)
 {
-  size_t* deck = NULL;
+  size_t *deck = NULL;
   size_t  n    = 1000;
   for (size_t i = 0; i < n; ++i) {
     REQUIRE(deck_push(deck, i, (i == 0) ? 1 : 0) == OK);
@@ -1848,7 +1848,7 @@ void test_deck_many_pushes(void)
 void test_deck_graft(void)
 {
   // Graft a depth-3 binary deck: depth should increase by 1, items unchanged.
-  size_t* deck = _binary_deck(3);
+  size_t *deck = _binary_deck(3);
   REQUIRE(_deck_header(deck)->item_size == sizeof(size_t));
   deck_graft(deck);
   REQUIRE(deck_max_depth(deck) == 4);
@@ -1862,7 +1862,7 @@ void test_deck_graft(void)
   // After graft, we expect 8 marks total (one per item position), with:
   //   pos 0: depth 3, pos 1: depth 0, pos 2: depth 1, pos 3: depth 0,
   //   pos 4: depth 2, pos 5: depth 0, pos 6: depth 1, pos 7: depth 0.
-  _DeckHeader* h = _deck_header(deck);
+  _DeckHeader *h = _deck_header(deck);
   REQUIRE(arr_len(h->marks) == 8);
   uint8_t const expected_depths[] = {3, 0, 1, 0, 2, 0, 1, 0};
   for (size_t i = 0; i < 8; ++i) {
@@ -1871,7 +1871,7 @@ void test_deck_graft(void)
   }
   deck_free(deck);
   // Graft then flatten roundtrip: items survive.
-  size_t* deck2 = _binary_deck(2);
+  size_t *deck2 = _binary_deck(2);
   deck_graft(deck2);
   REQUIRE(_deck_header(deck2)->item_size == sizeof(size_t));
   deck_flatten(deck2);
@@ -1883,7 +1883,7 @@ void test_deck_graft(void)
   }
   deck_free(deck2);
   // Graft a flat (depth-1) deck: each item gets wrapped.
-  size_t* deck3 = NULL;
+  size_t *deck3 = NULL;
   for (size_t i = 0; i < 3; ++i) {
     REQUIRE(deck_push(deck3, i, (i == 0) ? 1 : 0) == OK);
   }
@@ -1894,7 +1894,7 @@ void test_deck_graft(void)
   REQUIRE(deck_len(deck3) == 3);
   // Every item should have its own mark at depth 0 (wrapped individually),
   // plus the original depth-0 mark promoted to depth 1.
-  _DeckHeader* h3 = _deck_header(deck3);
+  _DeckHeader *h3 = _deck_header(deck3);
   REQUIRE(arr_len(h3->marks) == 3);
   REQUIRE(h3->marks[0].depth == 1);
   REQUIRE(h3->marks[1].depth == 0);
@@ -1904,7 +1904,7 @@ void test_deck_graft(void)
   }
   deck_free(deck3);
   // Graft an empty deck: should be a no-op.
-  size_t* deck4 = NULL;
+  size_t *deck4 = NULL;
   deck_graft(deck4);
   REQUIRE(deck_len(deck4) == 0);
 }
@@ -1913,8 +1913,8 @@ void test_deck_simplify(void)
 {
   // A deck whose mark depths already use every level is unchanged.
   {
-    size_t*      deck = _binary_deck(3);
-    _DeckHeader* h    = _deck_header(deck);
+    size_t      *deck = _binary_deck(3);
+    _DeckHeader *h    = _deck_header(deck);
     REQUIRE(h->item_size == sizeof(size_t));
     size_t const n_marks = arr_len(h->marks);
     uint8_t      depths_before[4];
@@ -1929,12 +1929,12 @@ void test_deck_simplify(void)
   // A deck with gaps in depth levels: only depths 0 and 4 present.
   // Should be remapped to 0 and 1.
   {
-    size_t* deck = NULL;
+    size_t *deck = NULL;
     REQUIRE(deck_push(deck, ((size_t) {0}), 5) == OK);  // mark depth = 4
     REQUIRE(deck_push(deck, ((size_t) {1}), 0) == OK);
     REQUIRE(deck_push(deck, ((size_t) {2}), 2) == OK);  // mark depth = 1
     REQUIRE(deck_push(deck, ((size_t) {3}), 0) == OK);
-    _DeckHeader* h = _deck_header(deck);
+    _DeckHeader *h = _deck_header(deck);
     REQUIRE(arr_len(h->marks) == 2);
     // Before simplify: depths are 4 and 1 (clamped from external 5 and 2).
     // Wait — first mark has internal depth 4, second gets clamped to 4.
@@ -1954,13 +1954,13 @@ void test_deck_simplify(void)
   }
   // Simplify is idempotent.
   {
-    size_t* deck = NULL;
+    size_t *deck = NULL;
     REQUIRE(deck_push(deck, ((size_t) {0}), 5) == OK);
     REQUIRE(deck_push(deck, ((size_t) {1}), 0) == OK);
     REQUIRE(deck_push(deck, ((size_t) {2}), 2) == OK);
     REQUIRE(deck_push(deck, ((size_t) {3}), 0) == OK);
     deck_simplify(deck);
-    _DeckHeader*  h  = _deck_header(deck);
+    _DeckHeader  *h  = _deck_header(deck);
     uint8_t const d0 = h->marks[0].depth;
     uint8_t const d1 = h->marks[1].depth;
     deck_simplify(deck);
@@ -1970,13 +1970,13 @@ void test_deck_simplify(void)
   }
   // Simplify after graft.
   {
-    size_t* deck = _binary_deck(3);
+    size_t *deck = _binary_deck(3);
     deck_graft(deck);
     REQUIRE(deck_max_depth(deck) == 4);
     // After graft, depths are contiguous (0,1,2,3), so simplify is a no-op.
-    _DeckHeader* h             = _deck_header(deck);
+    _DeckHeader *h             = _deck_header(deck);
     size_t const n_marks       = arr_len(h->marks);
-    uint8_t*     depths_before = NULL;
+    uint8_t     *depths_before = NULL;
     for (size_t i = 0; i < n_marks; ++i) {
       arr_push(depths_before, h->marks[i].depth);
     }
@@ -1990,23 +1990,23 @@ void test_deck_simplify(void)
   }
   // Simplify on empty/NULL deck is safe.
   {
-    size_t* deck = NULL;
+    size_t *deck = NULL;
     deck_simplify(deck);
     REQUIRE(deck_len(deck) == 0);
   }
 }
 
-void _print_size_t(void* item, char* dst, size_t len)
+void _print_size_t(void *item, char *dst, size_t len)
 {
-  size_t const val = *(size_t*)item;
+  size_t const val = *(size_t *)item;
   snprintf(dst, len, "%zu", val);
 }
 
 void test_deck_printf(void)
 {
-  size_t* deck = _binary_deck(5);
+  size_t *deck = _binary_deck(5);
   REQUIRE(_deck_header(deck)->item_size == sizeof(size_t));
-  char* output = deck_to_str(deck, _print_size_t);
+  char *output = deck_to_str(deck, _print_size_t);
   REQUIRE(sv_eq(sv_trim(sv_from_str(output)),
                 sv_trim(sv_from_str("  5 ---------------| 0\n"
                                     "                   | 1\n"
@@ -2098,8 +2098,8 @@ void test_deck_printf(void)
 
 void test_deck_init(void)
 {
-  size_t*      deck = NULL;
-  _DeckHeader* h    = NULL;
+  size_t      *deck = NULL;
+  _DeckHeader *h    = NULL;
   /* depth 1: flat list */
   DECK_INIT(deck, size_t, (10, 20, 30));
   REQUIRE(deck_len(deck) == 3);
@@ -2149,7 +2149,7 @@ void test_deck_init(void)
 
 // ========== DeckView ==========
 
-void _print_deck_view(DeckView const* v)  // DEBUG
+void _print_deck_view(DeckView const *v)  // DEBUG
 {
   fprintf(stderr,
           "\nDeckView {\n"
@@ -2164,13 +2164,13 @@ void _print_deck_view(DeckView const* v)  // DEBUG
           "  start:         %zu;\n"
           "  end:           %zu;\n"
           "}\n",
-          (void*)v->items,
+          (void *)v->items,
           v->n_items,
           v->item_size,
-          (void*)v->marks,
-          (void*)v->stride_offset,
+          (void *)v->marks,
+          (void *)v->stride_offset,
           v->n_marks,
-          (void*)v->strides,
+          (void *)v->strides,
           v->depth,
           v->start,
           v->end);
@@ -2179,7 +2179,7 @@ void _print_deck_view(DeckView const* v)  // DEBUG
 void test_dv_binary_deck(void)
 {
   const uint8_t DEPTH = 5;
-  size_t*       deck  = _binary_deck(DEPTH);
+  size_t       *deck  = _binary_deck(DEPTH);
   REQUIRE(DEPTH == deck_max_depth(deck));
   REQUIRE((1 << DEPTH) == deck_len(deck));
   REQUIRE(_deck_header(deck)->item_size == sizeof(size_t));
@@ -2205,9 +2205,9 @@ void test_dv_binary_deck(void)
             do {
               REQUIRE(1 == dv_depth(&v1));
               REQUIRE(2 == dv_len(&v1));
-              size_t const* items = dv_item_ptr(&v1);
+              size_t const *items = dv_item_ptr(&v1);
               REQUIRE(items != NULL);
-              size_t const* end = items + dv_len(&v1);
+              size_t const *end = items + dv_len(&v1);
               while (items != end) {
                 REQUIRE(*(items++) == counter++);
               }
@@ -2236,9 +2236,9 @@ void test_dv_binary_deck(void)
           do {
             REQUIRE(1 == dv_depth(&v1));
             REQUIRE(2 == dv_len(&v1));
-            size_t const* items = dv_item_ptr(&v1);
+            size_t const *items = dv_item_ptr(&v1);
             REQUIRE(items != NULL);
-            size_t const* end = items + dv_len(&v1);
+            size_t const *end = items + dv_len(&v1);
             while (items != end) {
               REQUIRE(*(items++) == counter++);
             }
@@ -2264,7 +2264,7 @@ void test_dv_binary_deck(void)
           REQUIRE(2 == dv_len(&v1));
           DeckView v0 = dv_child(&v1);
           do {
-            size_t const* item = dv_item_ptr(&v0);
+            size_t const *item = dv_item_ptr(&v0);
             REQUIRE(item != NULL);
             REQUIRE(*item == counter++);
           } while (dv_advance(&v0));
@@ -2280,7 +2280,7 @@ void test_dv_binary_deck(void)
 void test_dw_basic_depth2(void)
 {
   // Build ((0,1,2),(3,4,5),(6,7,8)) via DeckWriter, then verify via DeckView.
-  uint32_t* deck    = NULL;
+  uint32_t *deck    = NULL;
   uint32_t  counter = 0;
   {
     DeckWriter w = dw_from_deck(deck, 2);
@@ -2302,7 +2302,7 @@ void test_dw_basic_depth2(void)
   do {
     DeckView v1 = dv_child(&v2);
     do {
-      uint32_t const* items = dv_item_ptr(&v1);
+      uint32_t const *items = dv_item_ptr(&v1);
       for (size_t i = 0; i < dv_len(&v1); ++i) {
         REQUIRE(items[i] == counter++);
       }
@@ -2315,7 +2315,7 @@ void test_dw_basic_depth2(void)
 void test_dw_depth3_nested(void)
 {
   // Build 3x3x3 tree at depth 3, mirroring Rust t_deck_writer_basic.
-  uint32_t* deck    = NULL;
+  uint32_t *deck    = NULL;
   uint32_t  counter = 0;
   {
     DeckWriter w3 = dw_from_deck(deck, 3);
@@ -2345,7 +2345,7 @@ void test_dw_depth3_nested(void)
     do {
       DeckView v1 = dv_child(&v2);
       do {
-        uint32_t const* items = dv_item_ptr(&v1);
+        uint32_t const *items = dv_item_ptr(&v1);
         for (size_t i = 0; i < dv_len(&v1); ++i) {
           REQUIRE(items[i] == counter++);
         }
@@ -2359,7 +2359,7 @@ void test_dw_depth3_nested(void)
 void test_dw_unbalanced_tree(void)
 {
   // ((1), (2,3,4), (5,6)) — groups of different sizes.
-  uint32_t* deck = NULL;
+  uint32_t *deck = NULL;
   {
     DeckWriter w = dw_from_deck(deck, 2);
     {
@@ -2392,7 +2392,7 @@ void test_dw_unbalanced_tree(void)
   DeckView outer = dv_from_deck(deck, 2);
   DeckView g1    = dv_child(&outer);
   REQUIRE(dv_len(&g1) == 1);
-  REQUIRE(*(uint32_t*)dv_item_ptr(&g1) == 1);
+  REQUIRE(*(uint32_t *)dv_item_ptr(&g1) == 1);
   dv_advance(&g1);
 
   // Cannot reuse g1 after advance past end for depth>0,
@@ -2406,7 +2406,7 @@ void test_dw_unbalanced_tree(void)
   do {
     DeckView inner = dv_child(&top);
     do {
-      uint32_t const* items = dv_item_ptr(&inner);
+      uint32_t const *items = dv_item_ptr(&inner);
       for (size_t i = 0; i < dv_len(&inner); ++i) {
         REQUIRE(items[i] == expected[idx++]);
       }
@@ -2419,7 +2419,7 @@ void test_dw_unbalanced_tree(void)
 void test_dw_empty_groups(void)
 {
   // Build ((), (1,2), (), (3), ()) via dw_close for empty groups.
-  uint32_t* deck = NULL;
+  uint32_t *deck = NULL;
   {
     DeckWriter w = dw_from_deck(deck, 2);
     {
@@ -2470,7 +2470,7 @@ void test_dw_empty_groups(void)
 void test_dw_nested_empty(void)
 {
   // Build (((), (1,2)), ((3,)), (())) at depth 3.
-  uint32_t* deck = NULL;
+  uint32_t *deck = NULL;
   {
     DeckWriter w3 = dw_from_deck(deck, 3);
     {
@@ -2518,7 +2518,7 @@ void test_dw_nested_empty(void)
     REQUIRE(dv_len(&inner) == 0);  // empty
     REQUIRE(dv_advance(&inner));
     REQUIRE(dv_len(&inner) == 2);
-    uint32_t const* items = dv_item_ptr(&inner);
+    uint32_t const *items = dv_item_ptr(&inner);
     REQUIRE(items[0] == 1);
     REQUIRE(items[1] == 2);
     REQUIRE(!dv_advance(&inner));
@@ -2528,7 +2528,7 @@ void test_dw_nested_empty(void)
   {
     DeckView inner = dv_child(&mid);
     REQUIRE(dv_len(&inner) == 1);
-    REQUIRE(*(uint32_t*)dv_item_ptr(&inner) == 3);
+    REQUIRE(*(uint32_t *)dv_item_ptr(&inner) == 3);
     REQUIRE(!dv_advance(&inner));
   }
   REQUIRE(dv_advance(&mid));
@@ -2545,7 +2545,7 @@ void test_dw_nested_empty(void)
 void test_dw_single_element_deep(void)
 {
   // One item wrapped at depth 5: (((((42)))))
-  uint32_t* deck = NULL;
+  uint32_t *deck = NULL;
   {
     DeckWriter w5 = dw_from_deck(deck, 5);
     DeckWriter w4 = dw_child(&w5);
@@ -2566,14 +2566,14 @@ void test_dw_single_element_deep(void)
   DeckView v2 = dv_child(&v3);
   DeckView v1 = dv_child(&v2);
   REQUIRE(dv_len(&v1) == 1);
-  REQUIRE(*(uint32_t*)dv_item_ptr(&v1) == 42);
+  REQUIRE(*(uint32_t *)dv_item_ptr(&v1) == 42);
   deck_free(deck);
 }
 
 void test_dw_len_tracking(void)
 {
   // Verify dw_len reflects items added at each scope level.
-  uint32_t* deck = NULL;
+  uint32_t *deck = NULL;
   {
     DeckWriter w3 = dw_from_deck(deck, 3);
     REQUIRE(dw_len(&w3) == 0);
@@ -2620,7 +2620,7 @@ void test_dw_len_tracking(void)
 void test_dw_append_to_existing(void)
 {
   // Build ((1,2),(3,4)) manually, then append (5,6) via writer.
-  uint32_t* deck = NULL;
+  uint32_t *deck = NULL;
   uint32_t  v;
   v = 1;
   REQUIRE(OK == deck_push(deck, v, 2));
@@ -2649,7 +2649,7 @@ void test_dw_append_to_existing(void)
     DeckView inner = dv_child(&top);
     size_t   n     = 0;
     do {
-      uint32_t const* items = dv_item_ptr(&inner);
+      uint32_t const *items = dv_item_ptr(&inner);
       for (size_t i = 0; i < dv_len(&inner); ++i) {
         REQUIRE(items[i] == ++counter);
       }
@@ -2664,7 +2664,7 @@ void test_dw_append_to_existing(void)
 void test_dw_flat_depth1(void)
 {
   // Depth-1 writer: just a flat list.
-  uint32_t* deck = NULL;
+  uint32_t *deck = NULL;
   {
     DeckWriter w = dw_from_deck(deck, 1);
     for (uint32_t i = 0; i < 5; ++i) {
@@ -2689,7 +2689,7 @@ void test_dw_flat_depth1(void)
 void test_dw_deck_item_ptr(void)
 {
   // Verify deck_item_ptr points to the right items.
-  uint32_t* deck = NULL;
+  uint32_t *deck = NULL;
   {
     DeckWriter w = dw_from_deck(deck, 2);
     {
@@ -2701,7 +2701,7 @@ void test_dw_deck_item_ptr(void)
       dw_push(&c, v);
       v = 300;
       dw_push(&c, v);
-      uint32_t* items = deck_item_ptr(&c);
+      uint32_t *items = deck_item_ptr(&c);
       REQUIRE(items[0] == 100);
       REQUIRE(items[1] == 200);
       REQUIRE(items[2] == 300);
@@ -2714,7 +2714,7 @@ void test_dw_deck_item_ptr(void)
       dw_push(&c, v);
       v = 500;
       dw_push(&c, v);
-      uint32_t* items = deck_item_ptr(&c);
+      uint32_t *items = deck_item_ptr(&c);
       REQUIRE(items[0] == 400);
       REQUIRE(items[1] == 500);
       REQUIRE(dw_len(&c) == 2);
@@ -2729,7 +2729,7 @@ void test_dw_close_idempotent(void)
 {
   // dw_close on an already-written writer should be a no-op.
   // dw_close on an already-closed writer should be a no-op.
-  uint32_t* deck = NULL;
+  uint32_t *deck = NULL;
   {
     DeckWriter w = dw_from_deck(deck, 2);
     {
@@ -2770,7 +2770,7 @@ void test_dw_close_idempotent(void)
 void test_dw_all_empty_depth3(void)
 {
   // (((), ()), (())) — depth 3, no items at all.
-  uint32_t* deck = NULL;
+  uint32_t *deck = NULL;
   {
     DeckWriter w3 = dw_from_deck(deck, 3);
     {
@@ -2821,36 +2821,36 @@ void test_dw_all_empty_depth3(void)
 
 void test_dims_equal(void)
 {
-  Dims a = {1, 0, -2, 0, 0, 0, 0};
-  Dims b = {1, 0, -2, 0, 0, 0, 0};
-  Dims c = {1, 0, -1, 0, 0, 0, 0};
+  OrcDims a = {1, 0, -2, 0, 0, 0, 0};
+  OrcDims b = {1, 0, -2, 0, 0, 0, 0};
+  OrcDims c = {1, 0, -1, 0, 0, 0, 0};
   REQUIRE(dims_equal(a, b));
   REQUIRE(!dims_equal(a, c));
   // Dimensionless
-  Dims zero_a = {0, 0, 0, 0, 0, 0, 0};
-  Dims zero_b = {0, 0, 0, 0, 0, 0, 0};
+  OrcDims zero_a = {0, 0, 0, 0, 0, 0, 0};
+  OrcDims zero_b = {0, 0, 0, 0, 0, 0, 0};
   REQUIRE(dims_equal(zero_a, zero_b));
   // Differ only in last dimension
-  Dims d = {0, 0, 0, 0, 0, 0, 1};
+  OrcDims d = {0, 0, 0, 0, 0, 0, 1};
   REQUIRE(!dims_equal(zero_a, d));
 }
 
 void test_dims_multiply(void)
 {
   // force * distance = energy
-  Dims force  = {1, 1, -2, 0, 0, 0, 0};
-  Dims length = {1, 0, 0, 0, 0, 0, 0};
-  Dims out;
+  OrcDims force  = {1, 1, -2, 0, 0, 0, 0};
+  OrcDims length = {1, 0, 0, 0, 0, 0, 0};
+  OrcDims out;
   dims_multiply(force, length, out);
-  Dims energy = {2, 1, -2, 0, 0, 0, 0};
+  OrcDims energy = {2, 1, -2, 0, 0, 0, 0};
   REQUIRE(dims_equal(out, energy));
   // Multiply by dimensionless is identity
-  Dims zero = {0, 0, 0, 0, 0, 0, 0};
+  OrcDims zero = {0, 0, 0, 0, 0, 0, 0};
   dims_multiply(force, zero, out);
   REQUIRE(dims_equal(out, force));
   // Negative exponents cancel
-  Dims a = {-1, -1, 3, 0, 0, 0, 0};
-  Dims b = {1, 1, -3, 0, 0, 0, 0};
+  OrcDims a = {-1, -1, 3, 0, 0, 0, 0};
+  OrcDims b = {1, 1, -3, 0, 0, 0, 0};
   dims_multiply(a, b, out);
   REQUIRE(dims_equal(out, zero));
 }
@@ -2858,82 +2858,82 @@ void test_dims_multiply(void)
 void test_dims_divide(void)
 {
   // velocity / time = acceleration
-  Dims velocity = {1, 0, -1, 0, 0, 0, 0};
-  Dims time     = {0, 0, 1, 0, 0, 0, 0};
-  Dims out;
+  OrcDims velocity = {1, 0, -1, 0, 0, 0, 0};
+  OrcDims time     = {0, 0, 1, 0, 0, 0, 0};
+  OrcDims out;
   dims_divide(velocity, time, out);
-  Dims accel = {1, 0, -2, 0, 0, 0, 0};
+  OrcDims accel = {1, 0, -2, 0, 0, 0, 0};
   REQUIRE(dims_equal(out, accel));
   // Divide by self = dimensionless
   dims_divide(velocity, velocity, out);
-  Dims zero = {0, 0, 0, 0, 0, 0, 0};
+  OrcDims zero = {0, 0, 0, 0, 0, 0, 0};
   REQUIRE(dims_equal(out, zero));
   // Divide dimensionless by something = negated exponents
   dims_divide(zero, time, out);
-  Dims inv_time = {0, 0, -1, 0, 0, 0, 0};
+  OrcDims inv_time = {0, 0, -1, 0, 0, 0, 0};
   REQUIRE(dims_equal(out, inv_time));
 }
 
 void test_dims_pow(void)
 {
-  Dims length = {1, 0, 0, 0, 0, 0, 0};
-  Dims out;
+  OrcDims length = {1, 0, 0, 0, 0, 0, 0};
+  OrcDims out;
   // length^2 = area
   dims_pow(length, 2, out);
-  Dims area = {2, 0, 0, 0, 0, 0, 0};
+  OrcDims area = {2, 0, 0, 0, 0, 0, 0};
   REQUIRE(dims_equal(out, area));
   // length^3 = volume
   dims_pow(length, 3, out);
-  Dims volume = {3, 0, 0, 0, 0, 0, 0};
+  OrcDims volume = {3, 0, 0, 0, 0, 0, 0};
   REQUIRE(dims_equal(out, volume));
   // pow 0 = dimensionless
-  Dims velocity = {1, 0, -1, 0, 0, 0, 0};
+  OrcDims velocity = {1, 0, -1, 0, 0, 0, 0};
   dims_pow(velocity, 0, out);
-  Dims zero = {0, 0, 0, 0, 0, 0, 0};
+  OrcDims zero = {0, 0, 0, 0, 0, 0, 0};
   REQUIRE(dims_equal(out, zero));
   // pow 1 = identity
   dims_pow(velocity, 1, out);
   REQUIRE(dims_equal(out, velocity));
   // Negative power
   dims_pow(velocity, -1, out);
-  Dims inv_vel = {-1, 0, 1, 0, 0, 0, 0};
+  OrcDims inv_vel = {-1, 0, 1, 0, 0, 0, 0};
   REQUIRE(dims_equal(out, inv_vel));
   // pow -2 on multi-dim
-  Dims force = {1, 1, -2, 0, 0, 0, 0};
+  OrcDims force = {1, 1, -2, 0, 0, 0, 0};
   dims_pow(force, -2, out);
-  Dims expected = {-2, -2, 4, 0, 0, 0, 0};
+  OrcDims expected = {-2, -2, 4, 0, 0, 0, 0};
   REQUIRE(dims_equal(out, expected));
 }
 
 // ========== Plugin Functions ==========
 
-void _print_double(void* item, char* dst, size_t len)
+void _print_double(void *item, char *dst, size_t len)
 {
-  double const val = *(double*)item;
+  double const val = *(double *)item;
   snprintf(dst, len, "%.2f", val);
 }
 
-void _print_uint32_t(void* item, char* dst, size_t len)
+void _print_uint32_t(void *item, char *dst, size_t len)
 {
-  uint32_t const val = *(uint32_t*)item;
+  uint32_t const val = *(uint32_t *)item;
   snprintf(dst, len, "%d", val);
 }
 
 // This simulates a function that will lives inside the plugin DLL. It takes a
 // list<double>, a uin32_t and outputs the item from the list at that index.
-void _plugin_function_list_element(OrcHandle const* list_handle,
-                                   OrcHandle const* index_handle,
-                                   OrcHandle*       item_handle)
+void _plugin_function_list_element(OrcHandle const *list_handle,
+                                   OrcHandle const *index_handle,
+                                   OrcHandle       *item_handle)
 {
   // Check the types of inpuuts.
   REQUIRE(list_handle->type_id.primitive_id == ORC_F64);
   REQUIRE(index_handle->type_id.primitive_id == ORC_U32);
   REQUIRE(item_handle->type_id.primitive_id == ORC_F64);
   // Use the SDK provided combinatorics helper to stride over the input data.
-  void* combinations = comb_init((OrcHandle const*[]) {list_handle, index_handle},
+  void *combinations = comb_init((OrcHandle const *[]) {list_handle, index_handle},
                                  (uint8_t const[]) {1, 0},
                                  2,
-                                 (OrcHandle*[]) {item_handle},
+                                 (OrcHandle *[]) {item_handle},
                                  (uint8_t const[]) {0},
                                  1);
   while (combinations) {  // List processing iterations.
@@ -2943,12 +2943,12 @@ void _plugin_function_list_element(OrcHandle const* list_handle,
     REQUIRE(list_input.depth == 1);
     REQUIRE(index_input.depth == 0);
     // Get output for the current combination.
-    DeckWriter* item_ouput = comb_get_output(combinations, 0);
+    DeckWriter *item_ouput = comb_get_output(combinations, 0);
     REQUIRE(item_ouput->depth == 0);
-    double* output_ptr = (double*)dw_push_empty(item_ouput);
+    double *output_ptr = (double *)dw_push_empty(item_ouput);
     {  // This scope simulates the actual doRun of the block.
-      double*        list  = (double*)dv_item_ptr(&list_input);
-      uint32_t const index = *(uint32_t*)dv_item_ptr(&index_input);
+      double        *list  = (double *)dv_item_ptr(&list_input);
+      uint32_t const index = *(uint32_t *)dv_item_ptr(&index_input);
       REQUIRE_WITH_MSG(index < dv_len(&list_input), "Index out of bounds");
       *output_ptr = list[index];  // Copy the output to the writer.
     }
@@ -2957,17 +2957,17 @@ void _plugin_function_list_element(OrcHandle const* list_handle,
 }
 
 // This simulates a function that takes two F64 scalars and outputs their sum.
-void _plugin_function_add_f64(OrcHandle const* a_handle,
-                              OrcHandle const* b_handle,
-                              OrcHandle*       out_handle)
+void _plugin_function_add_f64(OrcHandle const *a_handle,
+                              OrcHandle const *b_handle,
+                              OrcHandle       *out_handle)
 {
   REQUIRE(a_handle->type_id.primitive_id == ORC_F64);
   REQUIRE(b_handle->type_id.primitive_id == ORC_F64);
   REQUIRE(out_handle->type_id.primitive_id == ORC_F64);
-  void* combinations = comb_init((OrcHandle const*[]) {a_handle, b_handle},
+  void *combinations = comb_init((OrcHandle const *[]) {a_handle, b_handle},
                                  (uint8_t const[]) {0, 0},
                                  2,
-                                 (OrcHandle*[]) {out_handle},
+                                 (OrcHandle *[]) {out_handle},
                                  (uint8_t const[]) {0},
                                  1);
   while (combinations) {
@@ -2975,12 +2975,12 @@ void _plugin_function_add_f64(OrcHandle const* a_handle,
              b_input = comb_get_input(combinations, 1);
     REQUIRE(a_input.depth == 0);
     REQUIRE(b_input.depth == 0);
-    DeckWriter* out = comb_get_output(combinations, 0);
+    DeckWriter *out = comb_get_output(combinations, 0);
     REQUIRE(out->depth == 0);
-    double* output_ptr = (double*)dw_push_empty(out);
+    double *output_ptr = (double *)dw_push_empty(out);
     {
-      double const a = *(double*)dv_item_ptr(&a_input);
-      double const b = *(double*)dv_item_ptr(&b_input);
+      double const a = *(double *)dv_item_ptr(&a_input);
+      double const b = *(double *)dv_item_ptr(&b_input);
       *output_ptr    = a + b;
     }
     combinations = comb_advance(combinations);
@@ -2988,30 +2988,30 @@ void _plugin_function_add_f64(OrcHandle const* a_handle,
 }
 
 // This simulates a function that takes one F64 scalar and outputs its square and cube.
-void _plugin_function_sq_cb(OrcHandle const* in_handle,
-                            OrcHandle*       out_sq_handle,
-                            OrcHandle*       out_cb_handle)
+void _plugin_function_sq_cb(OrcHandle const *in_handle,
+                            OrcHandle       *out_sq_handle,
+                            OrcHandle       *out_cb_handle)
 {
   REQUIRE(in_handle->type_id.primitive_id == ORC_F64);
   REQUIRE(out_sq_handle->type_id.primitive_id == ORC_F64);
   REQUIRE(out_cb_handle->type_id.primitive_id == ORC_F64);
-  void* combinations = comb_init((OrcHandle const*[]) {in_handle},
+  void *combinations = comb_init((OrcHandle const *[]) {in_handle},
                                  (uint8_t const[]) {0},
                                  1,
-                                 (OrcHandle*[]) {out_sq_handle, out_cb_handle},
+                                 (OrcHandle *[]) {out_sq_handle, out_cb_handle},
                                  (uint8_t const[]) {0, 0},
                                  2);
   while (combinations) {
     DeckView in_input = comb_get_input(combinations, 0);
     REQUIRE(in_input.depth == 0);
-    DeckWriter* out_sq = comb_get_output(combinations, 0);
-    DeckWriter* out_cb = comb_get_output(combinations, 1);
+    DeckWriter *out_sq = comb_get_output(combinations, 0);
+    DeckWriter *out_cb = comb_get_output(combinations, 1);
     REQUIRE(out_sq->depth == 0);
     REQUIRE(out_cb->depth == 0);
-    double* sq_ptr = (double*)dw_push_empty(out_sq);
-    double* cb_ptr = (double*)dw_push_empty(out_cb);
+    double *sq_ptr = (double *)dw_push_empty(out_sq);
+    double *cb_ptr = (double *)dw_push_empty(out_cb);
     {
-      double const x = *(double*)dv_item_ptr(&in_input);
+      double const x = *(double *)dv_item_ptr(&in_input);
       *sq_ptr        = x * x;
       *cb_ptr        = x * x * x;
     }
@@ -3020,19 +3020,19 @@ void _plugin_function_sq_cb(OrcHandle const* in_handle,
 }
 
 // This simulates a function that takes two F64 scalars and outputs their sum and product.
-void _plugin_function_add_mul(OrcHandle const* a_handle,
-                              OrcHandle const* b_handle,
-                              OrcHandle*       out_sum_handle,
-                              OrcHandle*       out_prod_handle)
+void _plugin_function_add_mul(OrcHandle const *a_handle,
+                              OrcHandle const *b_handle,
+                              OrcHandle       *out_sum_handle,
+                              OrcHandle       *out_prod_handle)
 {
   REQUIRE(a_handle->type_id.primitive_id == ORC_F64);
   REQUIRE(b_handle->type_id.primitive_id == ORC_F64);
   REQUIRE(out_sum_handle->type_id.primitive_id == ORC_F64);
   REQUIRE(out_prod_handle->type_id.primitive_id == ORC_F64);
-  void* combinations = comb_init((OrcHandle const*[]) {a_handle, b_handle},
+  void *combinations = comb_init((OrcHandle const *[]) {a_handle, b_handle},
                                  (uint8_t const[]) {0, 0},
                                  2,
-                                 (OrcHandle*[]) {out_sum_handle, out_prod_handle},
+                                 (OrcHandle *[]) {out_sum_handle, out_prod_handle},
                                  (uint8_t const[]) {0, 0},
                                  2);
   while (combinations) {
@@ -3040,15 +3040,15 @@ void _plugin_function_add_mul(OrcHandle const* a_handle,
              b_input = comb_get_input(combinations, 1);
     REQUIRE(a_input.depth == 0);
     REQUIRE(b_input.depth == 0);
-    DeckWriter* out_sum  = comb_get_output(combinations, 0);
-    DeckWriter* out_prod = comb_get_output(combinations, 1);
+    DeckWriter *out_sum  = comb_get_output(combinations, 0);
+    DeckWriter *out_prod = comb_get_output(combinations, 1);
     REQUIRE(out_sum->depth == 0);
     REQUIRE(out_prod->depth == 0);
-    double* sum_ptr  = (double*)dw_push_empty(out_sum);
-    double* prod_ptr = (double*)dw_push_empty(out_prod);
+    double *sum_ptr  = (double *)dw_push_empty(out_sum);
+    double *prod_ptr = (double *)dw_push_empty(out_prod);
     {
-      double const a = *(double*)dv_item_ptr(&a_input);
-      double const b = *(double*)dv_item_ptr(&b_input);
+      double const a = *(double *)dv_item_ptr(&a_input);
+      double const b = *(double *)dv_item_ptr(&b_input);
       *sum_ptr       = a + b;
       *prod_ptr      = a * b;
     }
@@ -3058,17 +3058,17 @@ void _plugin_function_add_mul(OrcHandle const* a_handle,
 
 // This simulates a function that takes two depth=1 lists of F64 and outputs
 // first(a)+first(b).
-void _plugin_function_first_add(OrcHandle const* a_handle,
-                                OrcHandle const* b_handle,
-                                OrcHandle*       out_handle)
+void _plugin_function_first_add(OrcHandle const *a_handle,
+                                OrcHandle const *b_handle,
+                                OrcHandle       *out_handle)
 {
   REQUIRE(a_handle->type_id.primitive_id == ORC_F64);
   REQUIRE(b_handle->type_id.primitive_id == ORC_F64);
   REQUIRE(out_handle->type_id.primitive_id == ORC_F64);
-  void* combinations = comb_init((OrcHandle const*[]) {a_handle, b_handle},
+  void *combinations = comb_init((OrcHandle const *[]) {a_handle, b_handle},
                                  (uint8_t const[]) {1, 1},
                                  2,
-                                 (OrcHandle*[]) {out_handle},
+                                 (OrcHandle *[]) {out_handle},
                                  (uint8_t const[]) {0},
                                  1);
   while (combinations) {
@@ -3076,14 +3076,14 @@ void _plugin_function_first_add(OrcHandle const* a_handle,
              b_input = comb_get_input(combinations, 1);
     REQUIRE(a_input.depth == 1);
     REQUIRE(b_input.depth == 1);
-    DeckWriter* out = comb_get_output(combinations, 0);
+    DeckWriter *out = comb_get_output(combinations, 0);
     REQUIRE(out->depth == 0);
-    double* output_ptr = (double*)dw_push_empty(out);
+    double *output_ptr = (double *)dw_push_empty(out);
     {
       REQUIRE_WITH_MSG(dv_len(&a_input) > 0 && dv_len(&b_input) > 0,
                        "Lists must be non-empty");
-      double const a_first = *(double*)dv_item_ptr(&a_input);
-      double const b_first = *(double*)dv_item_ptr(&b_input);
+      double const a_first = *(double *)dv_item_ptr(&a_input);
+      double const b_first = *(double *)dv_item_ptr(&b_input);
       *output_ptr          = a_first + b_first;
     }
     combinations = comb_advance(combinations);
@@ -3125,7 +3125,7 @@ void test_list_item_combinations(void)
     REQUIRE(deck_max_depth(out_items.items) == 1);
     // Output should contain the #2 item from every input list.
     double const  expected[] = {3.34, 6.6, 9.9, 13.1};
-    double* const actual     = (double*)out_items.items;
+    double *const actual     = (double *)out_items.items;
     for (size_t i = 0; i < count; ++i) {
       REQUIRE(actual[i] == expected[i]);
     }
@@ -3142,7 +3142,7 @@ void test_list_item_combinations(void)
     REQUIRE(count == 4);
     REQUIRE(deck_max_depth(out_items.items) == 1);
     double const  expected[] = {1.1, 5.5, 9.9, 13.1};
-    double* const actual     = (double*)out_items.items;
+    double *const actual     = (double *)out_items.items;
     for (size_t i = 0; i < count; ++i) {
       REQUIRE(actual[i] == expected[i]);
     }
@@ -3155,13 +3155,13 @@ void test_list_item_combinations(void)
     // Run the block - In a real scenario, this function is provided by a plugin DLL.
     _plugin_function_list_element(&lists, &indices, &out_items);
     oh_update(&out_items);
-    double* actual   = (double*)out_items.items;
-    double* expected = NULL;
+    double *actual   = (double *)out_items.items;
+    double *expected = NULL;
     DECK_INIT(expected, double, ((1.1, 5.5, 9.9, 13.1), (2.23, 6.6, 10.1, 14.1)));
     REQUIRE(deck_max_depth(actual) == deck_max_depth(expected));
     size_t n_marks = 0;
     {
-      _DeckHeader* h = _deck_header(actual);
+      _DeckHeader *h = _deck_header(actual);
       n_marks        = arr_len(h->marks);
       REQUIRE(arr_len(_deck_header(expected)->marks) == n_marks);
     }
@@ -3208,7 +3208,7 @@ void test_add_f64_combinations(void)
     REQUIRE(count == 3);
     REQUIRE(deck_max_depth(out.items) == 1);
     double const  expected[] = {11.0, 22.0, 33.0};
-    double* const actual     = (double*)out.items;
+    double *const actual     = (double *)out.items;
     for (size_t i = 0; i < count; ++i) {
       REQUIRE(actual[i] == expected[i]);
     }
@@ -3229,7 +3229,7 @@ void test_add_f64_combinations(void)
     REQUIRE(deck_max_depth(out.items) == 1);
     // b is exhausted at 20.0 and stays there for the remaining elements of a.
     double const  expected[] = {11.0, 22.0, 23.0, 24.0};
-    double* const actual     = (double*)out.items;
+    double *const actual     = (double *)out.items;
     for (size_t i = 0; i < count; ++i) {
       REQUIRE(actual[i] == expected[i]);
     }
@@ -3245,13 +3245,13 @@ void test_add_f64_combinations(void)
     _plugin_function_add_f64(&a, &b, &out);
 
     oh_update(&out);
-    double* actual   = (double*)out.items;
-    double* expected = NULL;
+    double *actual   = (double *)out.items;
+    double *expected = NULL;
     DECK_INIT(expected, double, ((11.0, 22.0), (33.0, 44.0)));
     REQUIRE(deck_max_depth(actual) == deck_max_depth(expected));
     size_t n_marks = 0;
     {
-      _DeckHeader* h = _deck_header(actual);
+      _DeckHeader *h = _deck_header(actual);
       n_marks        = arr_len(h->marks);
       REQUIRE(arr_len(_deck_header(expected)->marks) == n_marks);
     }
@@ -3281,13 +3281,13 @@ void test_add_f64_combinations(void)
     _plugin_function_add_f64(&a, &b, &out);
 
     oh_update(&out);
-    double* actual   = (double*)out.items;
-    double* expected = NULL;
+    double *actual   = (double *)out.items;
+    double *expected = NULL;
     DECK_INIT(expected, double, (((11.0, 22.0), (13.0, 24.0))));
     REQUIRE(deck_max_depth(actual) == deck_max_depth(expected));
     size_t n_marks = 0;
     {
-      _DeckHeader* h = _deck_header(actual);
+      _DeckHeader *h = _deck_header(actual);
       n_marks        = arr_len(h->marks);
       REQUIRE(arr_len(_deck_header(expected)->marks) == n_marks);
     }
@@ -3310,22 +3310,22 @@ void test_add_f64_combinations(void)
 
 // This simulates a function that takes depth=1 lists of F64 and outputs the length of
 // each list as U64.
-void _plugin_function_list_length(OrcHandle const* in_handle, OrcHandle* out_handle)
+void _plugin_function_list_length(OrcHandle const *in_handle, OrcHandle *out_handle)
 {
   REQUIRE(in_handle->type_id.primitive_id == ORC_F64);
   REQUIRE(out_handle->type_id.primitive_id == ORC_U64);
-  void* combinations = comb_init((OrcHandle const*[]) {in_handle},
+  void *combinations = comb_init((OrcHandle const *[]) {in_handle},
                                  (uint8_t const[]) {1},
                                  1,
-                                 (OrcHandle*[]) {out_handle},
+                                 (OrcHandle *[]) {out_handle},
                                  (uint8_t const[]) {0},
                                  1);
   while (combinations) {
     DeckView    list_input = comb_get_input(combinations, 0);
-    DeckWriter* out        = comb_get_output(combinations, 0);
+    DeckWriter *out        = comb_get_output(combinations, 0);
     REQUIRE(list_input.depth == 1);
     REQUIRE(out->depth == 0);
-    uint64_t* output_ptr = (uint64_t*)dw_push_empty(out);
+    uint64_t *output_ptr = (uint64_t *)dw_push_empty(out);
     *output_ptr          = (uint64_t)dv_len(&list_input);
     combinations         = comb_advance(combinations);
   }
@@ -3352,7 +3352,7 @@ void test_list_length_combinations(void)
     REQUIRE(count == 5);
     REQUIRE(deck_max_depth(out.items) == 1);
     uint64_t const  expected[] = {3, 0, 1, 0, 2};
-    uint64_t* const actual     = (uint64_t*)out.items;
+    uint64_t *const actual     = (uint64_t *)out.items;
     for (size_t i = 0; i < count; ++i) {
       REQUIRE(actual[i] == expected[i]);
     }
@@ -3367,13 +3367,13 @@ void test_list_length_combinations(void)
     _plugin_function_list_length(&in, &out);
 
     oh_update(&out);
-    uint64_t* actual   = (uint64_t*)out.items;
-    uint64_t* expected = NULL;
+    uint64_t *actual   = (uint64_t *)out.items;
+    uint64_t *expected = NULL;
     DECK_INIT(expected, uint64_t, ((2, 0), (3, 0, 1)));
     REQUIRE(deck_max_depth(actual) == deck_max_depth(expected));
     size_t n_marks = 0;
     {
-      _DeckHeader* h = _deck_header(actual);
+      _DeckHeader *h = _deck_header(actual);
       n_marks        = arr_len(h->marks);
       REQUIRE(arr_len(_deck_header(expected)->marks) == n_marks);
     }
@@ -3420,8 +3420,8 @@ void test_two_output_combinations(void)
     REQUIRE(deck_max_depth(out2.items) == 1);
     double const  expected_sq[] = {4.0, 9.0, 16.0};
     double const  expected_cb[] = {8.0, 27.0, 64.0};
-    double* const sq_actual     = (double*)out1.items;
-    double* const cb_actual     = (double*)out2.items;
+    double *const sq_actual     = (double *)out1.items;
+    double *const cb_actual     = (double *)out2.items;
     for (size_t i = 0; i < 3; ++i) {
       REQUIRE(sq_actual[i] == expected_sq[i]);
       REQUIRE(cb_actual[i] == expected_cb[i]);
@@ -3447,8 +3447,8 @@ void test_two_output_combinations(void)
     REQUIRE(deck_max_depth(out2.items) == 1);
     double const  expected_sum[]  = {5.0, 7.0, 9.0};
     double const  expected_prod[] = {4.0, 10.0, 18.0};
-    double* const sum_actual      = (double*)out1.items;
-    double* const prod_actual     = (double*)out2.items;
+    double *const sum_actual      = (double *)out1.items;
+    double *const prod_actual     = (double *)out2.items;
     for (size_t i = 0; i < 3; ++i) {
       REQUIRE(sum_actual[i] == expected_sum[i]);
       REQUIRE(prod_actual[i] == expected_prod[i]);
@@ -3484,7 +3484,7 @@ void test_first_add_combinations(void)
     REQUIRE(count == 3);
     REQUIRE(deck_max_depth(out.items) == 1);
     double const  expected[] = {11.0, 22.0, 33.0};
-    double* const actual     = (double*)out.items;
+    double *const actual     = (double *)out.items;
     for (size_t i = 0; i < count; ++i) {
       REQUIRE(actual[i] == expected[i]);
     }
@@ -3505,7 +3505,7 @@ void test_first_add_combinations(void)
     REQUIRE(deck_max_depth(out.items) == 1);
     // b is exhausted after its second group and stays at first(b[1])=20.0.
     double const  expected[] = {11.0, 22.0, 23.0, 24.0};
-    double* const actual     = (double*)out.items;
+    double *const actual     = (double *)out.items;
     for (size_t i = 0; i < count; ++i) {
       REQUIRE(actual[i] == expected[i]);
     }
@@ -3517,10 +3517,10 @@ void test_first_add_combinations(void)
 
 // ==================== Shuffling decks with a proxy ====================
 
-static OrcHandle _make_flattened_proxy(void* deck)
+static OrcHandle _make_flattened_proxy(void const *deck)
 {
-  _DeckHeader*  h     = _deck_header(deck);
-  OrcMark*      marks = NULL;
+  _DeckHeader  *h     = _deck_header(deck);
+  OrcMark      *marks = NULL;
   OrcMark const mark  = (OrcMark) {.depth = 0, .pos = 0};
   arr_push(marks, mark);
   return (OrcHandle) {
@@ -3537,12 +3537,12 @@ static OrcHandle _make_flattened_proxy(void* deck)
   };
 }
 
-static OrcHandle _make_grafted_proxy(void* deck)
+static OrcHandle _make_grafted_proxy(void const *deck)
 {
-  _DeckHeader* h         = _deck_header(deck);
-  OrcMark*     old_marks = h->marks;
+  _DeckHeader *h         = _deck_header(deck);
+  OrcMark     *old_marks = h->marks;
   size_t const n_marks   = arr_len(old_marks);
-  OrcMark*     marks     = NULL;
+  OrcMark     *marks     = NULL;
   uint64_t     prev      = 0;
   for (size_t i = 0; i < n_marks; ++i) {
     uint8_t const  new_depth = old_marks[i].depth + 1;
@@ -3575,11 +3575,11 @@ static OrcHandle _make_grafted_proxy(void* deck)
   };
 }
 
-static OrcHandle _make_simplified_proxy(void* deck)
+static OrcHandle _make_simplified_proxy(void const *deck)
 {
-  _DeckHeader* h       = _deck_header(deck);
+  _DeckHeader *h       = _deck_header(deck);
   size_t const n_marks = arr_len(h->marks);
-  OrcMark*     marks   = NULL;
+  OrcMark     *marks   = NULL;
   if (n_marks == 0) {
     return (OrcHandle) {
       .type_id = (OrcTypeId) {.primitive_id = ORC_PROXY, .opaque_id = 0},
@@ -3616,26 +3616,27 @@ static OrcHandle _make_simplified_proxy(void* deck)
   };
 }
 
-static OrcHandle _make_shuffle_proxy(ItemProxy* pdeck)
+static OrcHandle _make_shuffle_proxy(OrcItemProxy const *pdeck)
 {
-  _DeckHeader* h = _deck_header(pdeck);
-  h->type_id     = (OrcTypeId) {.primitive_id = ORC_PROXY, .opaque_id = 0};
   OrcHandle handle;
   memset(&handle, 0, sizeof(handle));
   handle.items = pdeck;
   oh_update(&handle);
+  handle.type_id = (OrcTypeId) {.primitive_id = ORC_PROXY, .opaque_id = 0};
   return handle;
 }
 
-static void _assert_decks_match(void* actual, void* expected, size_t const item_size)
+static void _assert_decks_match(void const  *actual,
+                                void const  *expected,
+                                size_t const item_size)
 {
   size_t const na = deck_len(actual);
   size_t const ne = deck_len(expected);
   REQUIRE(na == ne);
   REQUIRE(memcmp(actual, expected, na * item_size) == 0);
   REQUIRE(deck_max_depth(actual) == deck_max_depth(expected));
-  _DeckHeader* ha  = _deck_header(actual);
-  _DeckHeader* he  = _deck_header(expected);
+  _DeckHeader *ha  = _deck_header(actual);
+  _DeckHeader *he  = _deck_header(expected);
   size_t const nma = arr_len(ha->marks);
   size_t const nme = arr_len(he->marks);
   REQUIRE(nma == nme);
@@ -3660,7 +3661,7 @@ void test_deck_from_proxy_copy_items(void)
     REQUIRE(out.type_id.primitive_id == ORC_F64);
     REQUIRE(deck_len(out.items) == 5);
     REQUIRE(deck_max_depth(out.items) == 1);
-    double* actual = (double*)out.items;
+    double *actual = (double *)out.items;
     REQUIRE(actual[0] == 1.0 && actual[1] == 2.0 && actual[2] == 3.0);
     REQUIRE(actual[3] == 4.0 && actual[4] == 5.0);
 
@@ -3679,7 +3680,7 @@ void test_deck_from_proxy_copy_items(void)
 
     REQUIRE(deck_len(out.items) == 5);
     REQUIRE(deck_max_depth(out.items) == 1);
-    double* actual = (double*)out.items;
+    double *actual = (double *)out.items;
     REQUIRE(actual[0] == 1.0 && actual[4] == 5.0);
 
     arr_free(proxy.marks);
@@ -3695,7 +3696,7 @@ void test_deck_from_proxy_copy_items(void)
     OrcHandle proxy = _make_grafted_proxy(in.items);
     orc_deck_from_proxy(&in, 1, ORC_DECK_PROXY_COPY_ITEMS, &proxy, &out);
 
-    double* expected = NULL;
+    double *expected = NULL;
     DECK_INIT(expected, double, ((1.0), (2.0), (3.0)));
     _assert_decks_match(out.items, expected, sizeof(double));
     REQUIRE(out.type_id.primitive_id == ORC_F64);
@@ -3714,7 +3715,7 @@ void test_deck_from_proxy_copy_items(void)
     OrcHandle proxy = _make_grafted_proxy(in.items);
     orc_deck_from_proxy(&in, 1, ORC_DECK_PROXY_COPY_ITEMS, &proxy, &out);
 
-    double* expected = NULL;
+    double *expected = NULL;
     DECK_INIT(expected, double, (((1.0), (2.0)), ((3.0))));
     _assert_decks_match(out.items, expected, sizeof(double));
 
@@ -3729,14 +3730,14 @@ void test_deck_from_proxy_copy_items(void)
     DECK_INIT(in.items, double, ((1.0, 2.0), (3.0, 4.0)));
     oh_update(&in);
     /* Graft to create a gap in depth levels, then use simplify proxy. */
-    deck_graft(in.items);
+    deck_graft((void *)in.items);
     oh_update(&in);
 
     OrcHandle proxy = _make_simplified_proxy(in.items);
     orc_deck_from_proxy(&in, 1, ORC_DECK_PROXY_COPY_ITEMS, &proxy, &out);
 
     /* Simplify should match deck_simplify on an equivalent deck. */
-    double* expected = NULL;
+    double *expected = NULL;
     DECK_INIT(expected, double, ((1.0, 2.0), (3.0, 4.0)));
     deck_graft(expected);
     deck_simplify(expected);
@@ -3758,14 +3759,14 @@ void test_deck_from_proxy_shuffle(void)
     DECK_INIT(in.items, double, (1.0, 2.0, 3.0));
     oh_update(&in);
 
-    ItemProxy* pdeck = NULL;
-    REQUIRE(deck_push(pdeck, ((ItemProxy) {.tree = 0, .item = 2}), 1) == OK);
-    REQUIRE(deck_push(pdeck, ((ItemProxy) {.tree = 0, .item = 1}), 0) == OK);
-    REQUIRE(deck_push(pdeck, ((ItemProxy) {.tree = 0, .item = 0}), 0) == OK);
+    OrcItemProxy *pdeck = NULL;
+    REQUIRE(deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 2}), 1) == OK);
+    REQUIRE(deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 1}), 0) == OK);
+    REQUIRE(deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 0}), 0) == OK);
     OrcHandle proxy = _make_shuffle_proxy(pdeck);
     orc_deck_from_proxy(&in, 1, ORC_DECK_PROXY_SHUFFLE, &proxy, &out);
 
-    double* expected = NULL;
+    double *expected = NULL;
     DECK_INIT(expected, double, (3.0, 2.0, 1.0));
     _assert_decks_match(out.items, expected, sizeof(double));
     REQUIRE(out.type_id.primitive_id == ORC_F64);
@@ -3781,18 +3782,18 @@ void test_deck_from_proxy_shuffle(void)
     DECK_INIT(in.items, double, ((1.0, 2.0), (3.0, 4.0, 5.0)));
     oh_update(&in);
 
-    ItemProxy* pdeck = NULL;
+    OrcItemProxy *pdeck = NULL;
     /* First sublist reversed: flat indices 1, 0. */
-    REQUIRE(deck_push(pdeck, ((ItemProxy) {.tree = 0, .item = 1}), 2) == OK);
-    REQUIRE(deck_push(pdeck, ((ItemProxy) {.tree = 0, .item = 0}), 0) == OK);
+    REQUIRE(deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 1}), 2) == OK);
+    REQUIRE(deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 0}), 0) == OK);
     /* Second sublist reversed: flat indices 4, 3, 2. */
-    REQUIRE(deck_push(pdeck, ((ItemProxy) {.tree = 0, .item = 4}), 1) == OK);
-    REQUIRE(deck_push(pdeck, ((ItemProxy) {.tree = 0, .item = 3}), 0) == OK);
-    REQUIRE(deck_push(pdeck, ((ItemProxy) {.tree = 0, .item = 2}), 0) == OK);
+    REQUIRE(deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 4}), 1) == OK);
+    REQUIRE(deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 3}), 0) == OK);
+    REQUIRE(deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 2}), 0) == OK);
     OrcHandle proxy = _make_shuffle_proxy(pdeck);
     orc_deck_from_proxy(&in, 1, ORC_DECK_PROXY_SHUFFLE, &proxy, &out);
 
-    double* expected = NULL;
+    double *expected = NULL;
     DECK_INIT(expected, double, ((2.0, 1.0), (5.0, 4.0, 3.0)));
     _assert_decks_match(out.items, expected, sizeof(double));
 
@@ -3808,15 +3809,15 @@ void test_deck_from_proxy_shuffle(void)
     DECK_INIT(in.items, double, ((1.0, 2.0, 3.0), (4.0, 5.0)));
     oh_update(&in);
 
-    ItemProxy* pdeck = NULL;
-    REQUIRE(deck_push(pdeck, ((ItemProxy) {.tree = 0, .item = 1}), 1) == OK);
-    REQUIRE(deck_push(pdeck, ((ItemProxy) {.tree = 0, .item = 4}), 0) == OK);
+    OrcItemProxy *pdeck = NULL;
+    REQUIRE(deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 1}), 1) == OK);
+    REQUIRE(deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 4}), 0) == OK);
     OrcHandle proxy = _make_shuffle_proxy(pdeck);
     orc_deck_from_proxy(&in, 1, ORC_DECK_PROXY_SHUFFLE, &proxy, &out);
 
     REQUIRE(out.type_id.primitive_id == ORC_F64);
     REQUIRE(deck_len(out.items) == 2);
-    double* actual = (double*)out.items;
+    double *actual = (double *)out.items;
     REQUIRE(actual[0] == 2.0 && actual[1] == 5.0);
 
     deck_free(pdeck);
@@ -3833,17 +3834,17 @@ void test_deck_from_proxy_shuffle(void)
     DECK_INIT(b.items, double, (10.0, 20.0));
     oh_update(&b);
 
-    ItemProxy* pdeck = NULL;
-    REQUIRE(deck_push(pdeck, ((ItemProxy) {.tree = 0, .item = 0}), 1) == OK);
-    REQUIRE(deck_push(pdeck, ((ItemProxy) {.tree = 1, .item = 0}), 0) == OK);
-    REQUIRE(deck_push(pdeck, ((ItemProxy) {.tree = 0, .item = 1}), 0) == OK);
-    REQUIRE(deck_push(pdeck, ((ItemProxy) {.tree = 1, .item = 1}), 0) == OK);
+    OrcItemProxy *pdeck = NULL;
+    REQUIRE(deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 0}), 1) == OK);
+    REQUIRE(deck_push(pdeck, ((OrcItemProxy) {.tree = 1, .item = 0}), 0) == OK);
+    REQUIRE(deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 1}), 0) == OK);
+    REQUIRE(deck_push(pdeck, ((OrcItemProxy) {.tree = 1, .item = 1}), 0) == OK);
     OrcHandle proxy = _make_shuffle_proxy(pdeck);
 
     OrcHandle inputs[2] = {a, b};
     orc_deck_from_proxy(inputs, 2, ORC_DECK_PROXY_SHUFFLE, &proxy, &out);
 
-    double* expected = NULL;
+    double *expected = NULL;
     DECK_INIT(expected, double, (1.0, 10.0, 2.0, 20.0));
     _assert_decks_match(out.items, expected, sizeof(double));
 
@@ -3870,7 +3871,7 @@ void test_deck_from_proxy_type_agnostic(void)
     REQUIRE(out.type_id.primitive_id == ORC_U32);
     REQUIRE(deck_len(out.items) == 3);
     REQUIRE(deck_max_depth(out.items) == 1);
-    uint32_t* actual = (uint32_t*)out.items;
+    uint32_t *actual = (uint32_t *)out.items;
     REQUIRE(actual[0] == 10 && actual[1] == 20 && actual[2] == 30);
 
     arr_free(proxy.marks);
@@ -3883,17 +3884,17 @@ void test_deck_from_proxy_type_agnostic(void)
     DECK_INIT(in.items, int32_t, (-1, -2, -3, -4));
     oh_update(&in);
 
-    ItemProxy* pdeck = NULL;
-    REQUIRE(deck_push(pdeck, ((ItemProxy) {.tree = 0, .item = 3}), 1) == OK);
-    REQUIRE(deck_push(pdeck, ((ItemProxy) {.tree = 0, .item = 2}), 0) == OK);
-    REQUIRE(deck_push(pdeck, ((ItemProxy) {.tree = 0, .item = 1}), 0) == OK);
-    REQUIRE(deck_push(pdeck, ((ItemProxy) {.tree = 0, .item = 0}), 0) == OK);
+    OrcItemProxy *pdeck = NULL;
+    REQUIRE(deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 3}), 1) == OK);
+    REQUIRE(deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 2}), 0) == OK);
+    REQUIRE(deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 1}), 0) == OK);
+    REQUIRE(deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 0}), 0) == OK);
     OrcHandle proxy = _make_shuffle_proxy(pdeck);
     orc_deck_from_proxy(&in, 1, ORC_DECK_PROXY_SHUFFLE, &proxy, &out);
 
     REQUIRE(out.type_id.primitive_id == ORC_I32);
     REQUIRE(deck_len(out.items) == 4);
-    int32_t* actual = (int32_t*)out.items;
+    int32_t *actual = (int32_t *)out.items;
     REQUIRE(actual[0] == -4 && actual[1] == -3 && actual[2] == -2 && actual[3] == -1);
 
     deck_free(pdeck);
@@ -3912,7 +3913,7 @@ void test_deck_from_proxy_type_agnostic(void)
     REQUIRE(out.type_id.primitive_id == ORC_I16);
     REQUIRE(deck_len(out.items) == 3);
     REQUIRE(deck_max_depth(out.items) == 2);
-    int16_t* actual = (int16_t*)out.items;
+    int16_t *actual = (int16_t *)out.items;
     REQUIRE(actual[0] == 10 && actual[1] == 20 && actual[2] == 30);
 
     arr_free(proxy.marks);

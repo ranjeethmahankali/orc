@@ -88,24 +88,58 @@
   static rendering primitives is simple, supporting implicit rendering requires
   a lot more thought.
 
-* TODO tgp7lf - Plugin Architecture
+* DONE tgp7lf - Plugin Architecture
+  CLOSED: [2026-07-27 Mon 08:45]
   :PROPERTIES:
   :CREATED:  2026-06-15 Mon 20:19
   :END:
   :LOGBOOK:
+  - State "DONE"       from "NEXT"       [2026-07-27 Mon 08:45]
+  - State "NEXT"       from "TODO"       [2026-07-04 Sat 11:42]
   - State "TODO"       from "NEXT"       [2026-07-03 Fri 11:08]
   - State "NEXT"       from "TODO"       [2026-06-15 Mon 20:30]
   :END:
 
-  The basic datastructure stuff is coming out nicely, but still, all the C code
-  is one place, and the all the Rust code is in one crate. I need to make clean
-  boundary between the host programs, the ABI layer, and the plugin
-  binaries. The Rust side of this task is non-trivial and will require some
-  thought.
+  The basic datastructure stuff is coming out nicely, but still, all the C code is one place, and
+  the all the Rust code is in one crate. I need to make clean boundary between the host programs,
+  the ABI layer, and the plugin binaries. The Rust side of this task is non-trivial and will require
+  some thought.
 
-  <2026-07-03 Fri 11:10> Started figuring out the solution for generic
-  containers, while working through this task. Will get that done as a separate
-  task and return to this later.
+  <2026-07-03 Fri 11:10> Started figuring out the solution for generic containers, while working
+  through this task. Will get that done as a separate task and return to this later.
+
+  <2026-07-04 Sat 11:42> I want to use bindgen to generate the ABI layer in all languages from a
+  single source of truth.
+
+  <2026-07-23 Thu 23:42> Made decent progress using bindgen to establish a single source of truth
+  for the ABI a few weeks ago. Also making slight progress toward a host / plugin split in the Rust
+  SDK. The =orc_plugin= macro is the key to make this work. Every Rust plugin will need to call this
+  macro exactly once in their crate. The macro expansion will implement ABI compatible C functions
+  based on Rust trait implementation.
+
+  The proxy deck stuff (how generic container operations work) is a little behind in Rust compared
+  to the C SDK. Left some todos in the code. I need to finish that up before continuing with the
+  API.
+
+  <2026-07-25 Sat 16:08> Untested stubs mostly sketched out for dealing with proxy decks in
+  Rust. Need to separate out the SDK library crate from concrete plugin crates to be able to test
+  it.
+
+  <2026-07-25 Sat 19:52> Started implementing =DeckRegistry=. Made me realize assumptions around
+  concurrency require a lot more thought. Host programs will generally take responsibility for
+  running things in the correct order, keeping track of dependencies etc. But the plugins also need
+  to be able to assert their own safety, locks etc. I am trying to figure out if there is a common
+  denominator of behavior + checking that all plugins will use, that I can include in the SDK.
+
+  <2026-07-26 Sun 23:02> Figured out quite a few details. Made a lot of progress today. The registry
+  is now super generic, and can be used with any type, not just decks. Got a toy plugin crate to
+  build in Rust, and a toy host program to build in Rust. Verified that the crate can load the
+  shared library, and run the plugin function properly. The host is also able to load the metadata
+  for the plugin function. I think I am close to merging this. Will do a final review, and add some
+  tests before merging.
+
+  <2026-07-27 Mon 08:44> This is looking pretty good. Could use some more tests, but not important
+  right now. I will let more things take shape before nailing down testing.
 
 * DONE thlu2u - Generic Container Operations
   CLOSED: [2026-07-03 Fri 19:12]
