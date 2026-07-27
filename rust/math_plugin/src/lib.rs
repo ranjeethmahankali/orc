@@ -1,8 +1,8 @@
 use orc_sdk::{
-    Deck, ORC_F32, ORC_F64, ORC_I8, ORC_I16, ORC_I32, ORC_I64, ORC_U8, ORC_U16, ORC_U32, ORC_U64,
-    ObjectRegistry, OrcFuncInfo, OrcHandle, OrcHost, OrcItemProxy, OrcMark, OrcPlugin, OrcTypeId,
-    ProxyType, TOrcData, TOrcPluginAdaptor, handle_from_deck, orc_fn, orc_fn_info, orc_plugin,
-    reset_handle, slice_from_ptr, slice_from_ptr_mut,
+    Combinations, Deck, ORC_F32, ORC_F64, ORC_I8, ORC_I16, ORC_I32, ORC_I64, ORC_U8, ORC_U16,
+    ORC_U32, ORC_U64, ObjectRegistry, OrcFuncInfo, OrcHandle, OrcHost, OrcItemProxy, OrcMark,
+    OrcPlugin, OrcTypeId, ProxyType, TOrcData, TOrcPluginAdaptor, handle_from_deck, orc_fn,
+    orc_fn_info, orc_plugin, reset_handle, slice_from_ptr, slice_from_ptr_mut,
 };
 use std::sync::LazyLock;
 
@@ -53,11 +53,11 @@ impl TOrcPluginAdaptor for Adaptor {
     }
 
     fn deck_from_proxy(
-        inputs: &[OrcHandle],
-        proxy_type: orc_sdk::ProxyType,
-        proxies: &[OrcItemProxy],
-        marks: &[OrcMark],
-        out: &mut OrcHandle,
+        _inputs: &[OrcHandle],
+        _proxy_type: orc_sdk::ProxyType,
+        _proxies: &[OrcItemProxy],
+        _marks: &[OrcMark],
+        _out: &mut OrcHandle,
     ) {
         todo!()
     }
@@ -68,33 +68,65 @@ orc_plugin!(Adaptor);
 #[orc_fn]
 /// Adds the inputs together. This function supports all floating point and integer primitives.
 unsafe extern "C" fn plugin_fn_add(
-    ctx: u64,
+    _ctx: u64,
     inputs: *const OrcHandle,
     n_inputs: u64,
     outputs: *mut OrcHandle,
     n_outputs: u64,
 ) {
+    assert!(n_outputs == 1, "This function only supports one output");
     let (inputs, outputs) = unsafe {
         (
             slice_from_ptr(inputs, n_inputs as usize),
             slice_from_ptr_mut(outputs, n_outputs as usize),
         )
     };
-    todo!(
-        "
-Implement a generic add function that supports any number of inputs, of any scalar or integer type,
-as long as all the inputs and the one output handle are of the same type"
+    let input_depths = vec![0u8; inputs.len()];
+    const OUTPUT_DEPTHS: &[u8] = &[0];
+    let mut comb = Combinations::from_handles(inputs, &input_depths, OUTPUT_DEPTHS)
+        .expect("Cannot initialize combinations from the provide inputs");
+    // TODO: I am hardcoding f64 for now, later I need to check the input types, and dispatch to different functions.
+    let result = REGISTRY.with_mut(
+        &[outputs[0].handle],
+        |out_decks| -> Result<(), orc_sdk::Error> {
+            let out_deck: &mut Deck<f64> = out_decks[0]
+                .downcast_mut()
+                .ok_or(orc_sdk::Error::DeckTypeMismatch)?;
+            // List processing iterations.
+            loop {
+                let mut out_view = comb.get_output(out_deck, 0);
+                let output = out_view.push_default_mut();
+                let input_views = (0..inputs.len()).map(|i| {
+                    comb.get_input(
+                        unsafe {
+                            slice_from_ptr(
+                                inputs[i].items.cast::<f64>(),
+                                inputs[i].n_items as usize,
+                            )
+                        },
+                        i,
+                    )
+                });
+                *output = 0.0;
+                for input_view in input_views {
+                    *output += *input_view.as_ref();
+                }
+            }
+        },
     );
+    if let Err(e) = result {
+        panic!("Failed to run the function with the following error:\n{e:?}");
+    }
 }
 
 #[orc_fn]
 /// Multiplies the inputs together. This function supports all floating point and integer primitives.
 unsafe extern "C" fn plugin_fn_mul(
-    ctx: u64,
-    inputs: *const OrcHandle,
-    n_inputs: u64,
-    outputs: *mut OrcHandle,
-    n_outputs: u64,
+    _ctx: u64,
+    _inputs: *const OrcHandle,
+    _n_inputs: u64,
+    _outputs: *mut OrcHandle,
+    _n_outputs: u64,
 ) {
     todo!(
         "

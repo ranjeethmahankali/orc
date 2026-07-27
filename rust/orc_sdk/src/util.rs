@@ -106,7 +106,7 @@ impl ObjectRegistry {
 
     pub fn with_mut<T, F>(&self, ids: &[u64], callback: F) -> Result<T, Error>
     where
-        F: FnOnce(&[&mut (dyn Any + Send + Sync)]) -> T,
+        F: FnOnce(&mut [&mut (dyn Any + Send + Sync)]) -> T,
     {
         let arcs: Vec<_> = {
             // This can block this thread until write access is available.
@@ -122,11 +122,11 @@ impl ObjectRegistry {
             .iter()
             .map(|arc| arc.try_write().map_err(|_e| Error::DeckBorrowError))
             .collect::<Result<_, _>>()?;
-        let references: Vec<&mut (dyn Any + Send + Sync)> = guards
+        let mut references: Vec<&mut (dyn Any + Send + Sync)> = guards
             .iter_mut()
             .map(|guard| guard.as_mut() as &mut (dyn Any + Send + Sync))
             .collect();
-        Ok(callback(&references))
+        Ok(callback(&mut references))
     }
 }
 

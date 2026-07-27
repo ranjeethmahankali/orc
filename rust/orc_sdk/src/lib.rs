@@ -1,5 +1,5 @@
 mod deck;
-pub use deck::{Combinations, Deck};
+pub use deck::{Combinations, Deck, DeckView, DeckWriter};
 
 mod ffi;
 pub use ffi::{ProxyType, TOrcData, TOrcPluginAdaptor, dims_divide, dims_multiply, dims_pow};
