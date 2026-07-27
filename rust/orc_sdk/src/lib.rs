@@ -6,7 +6,8 @@ pub use ffi::{ProxyType, TOrcData, TOrcPluginAdaptor, dims_divide, dims_multiply
 
 mod bindings;
 pub use bindings::{
-    OrcFuncInfo, OrcHandle, OrcHost, OrcItemProxy, OrcMark, OrcPlugin, OrcTypeId, OrcTypeInfo,
+    OrcFuncInfo, OrcHandle, OrcHost, OrcHostCallbackAPI, OrcHostMemoryAPI, OrcItemProxy, OrcMark,
+    OrcPlugin, OrcTypeId, OrcTypeInfo,
 };
 // Export all the type tags and other constants.
 pub use bindings::{

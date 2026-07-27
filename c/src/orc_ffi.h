@@ -55,21 +55,24 @@ typedef struct
   uint64_t           n_functions;
 } OrcPlugin;
 
+typedef struct
+{
+  void *(*alloc)(uint64_t const size, uint64_t const alignment);
+  void (*dealloc)(void *ptr, uint64_t const size, uint64_t const alignment);
+} OrcHostMemoryAPI;
+
+typedef struct
+{
+  void (*report_progress)(uint64_t const ctx, double progress);
+  void (*report_error)(uint64_t const ctx, char const *error);
+  void (*report_warning)(uint64_t const ctx, char const *warning);
+  bool (*check_cancellation)(uint64_t const ctx);
+} OrcHostCallbackAPI;
+
 typedef struct OrcHost
 {
-  struct
-  {
-    void *(*alloc)(uint64_t const size, uint64_t const alignment);
-    void (*dealloc)(void *ptr, uint64_t const size, uint64_t const alignment);
-  } memory_api;
-
-  struct
-  {
-    void (*report_progress)(uint64_t const ctx, double progress);
-    void (*report_error)(uint64_t const ctx, char const *error);
-    void (*report_warning)(uint64_t const ctx, char const *warning);
-    bool (*check_cancellation)(uint64_t const ctx);
-  } callbacks;
+  OrcHostMemoryAPI   memory_api;
+  OrcHostCallbackAPI callbacks;
 } OrcHost;
 
 #define ORC_DIM_LENGTH 0u
