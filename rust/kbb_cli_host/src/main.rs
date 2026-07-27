@@ -96,25 +96,30 @@ impl Plugin {
     }
 }
 
-fn load_plugins(dir: &Path) -> Vec<Plugin> {
+fn load_plugins(dir: &Path) -> Box<[Plugin]> {
     let entries = match std::fs::read_dir(dir) {
         Ok(entries) => entries,
         Err(e) => {
             eprintln!("Cannot read plugin directory {}: {e}", dir.display());
-            return Vec::new();
+            return Default::default();
         }
     };
-    let mut plugins = Vec::new();
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if path.extension().is_some_and(|ext| ext == "so") {
-            match Plugin::load(&path) {
-                Ok(plugin) => plugins.push(plugin),
-                Err(e) => eprintln!("  Skipping {}: {e}", path.display()),
+    entries
+        .flatten()
+        .filter_map(|entry| {
+            let path = entry.path();
+            match path.extension() {
+                Some(ext) if ext == "so" => match Plugin::load(&path) {
+                    Ok(plugin) => Some(plugin),
+                    Err(e) => {
+                        eprintln!("  Skipping {}: {e}", path.display());
+                        None
+                    }
+                },
+                _ => None,
             }
-        }
-    }
-    plugins
+        })
+        .collect()
 }
 
 fn main() {
@@ -132,8 +137,7 @@ fn main() {
         let functions = plugin.functions();
         println!("{} function(s):", functions.len());
         for func in functions {
-            let name = unsafe { CStr::from_ptr(func.name) };
-            let desc = unsafe { CStr::from_ptr(func.desc) };
+            let (name, desc) = unsafe { (CStr::from_ptr(func.name), CStr::from_ptr(func.desc)) };
             println!(
                 "  - {}\n    {}",
                 name.to_string_lossy(),
