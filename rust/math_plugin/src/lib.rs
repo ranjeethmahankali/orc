@@ -111,7 +111,13 @@ unsafe extern "C" fn plugin_fn_add(
                 for input_view in input_views {
                     *output += *input_view.as_ref();
                 }
+                if !comb.advance() {
+                    break;
+                }
             }
+            let out_id = outputs[0].handle;
+            outputs[0] = handle_from_deck(out_deck, out_id);
+            Ok(())
         },
     );
     if let Err(e) = result {
