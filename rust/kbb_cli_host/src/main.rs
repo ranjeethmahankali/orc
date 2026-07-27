@@ -140,14 +140,7 @@ fn main() {
         add_fn(0, inputs.as_ptr(), inputs.len() as u64, &mut out_handle, 1);
     }
     {
-        // Print the outputs.
-        let (items, marks): (&[f64], &[OrcMark]) = unsafe {
-            (
-                slice_from_ptr(out_handle.items.cast(), out_handle.n_items as usize),
-                slice_from_ptr(out_handle.marks, out_handle.n_marks as usize),
-            )
-        };
-        let deck = Deck::from_raw_data(items, marks);
-        println!("Output deck: \n{deck}");
+        // Print the output data.
+        println!("Output deck: \n{}", out_handle.display::<f64>());
     }
 }

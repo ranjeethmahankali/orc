@@ -1,12 +1,14 @@
 use crate::{
     Deck, Error, ORC_NUM_DIMS, OrcFuncInfo, OrcHandle, OrcHost, OrcPlugin, OrcTypeId, OrcTypeInfo,
-    ffi::TOrcData,
+    deck::fmt_raw_deck, ffi::TOrcData,
 };
 use std::{
     alloc::{GlobalAlloc, Layout, System},
     any::Any,
     collections::HashMap,
     ffi::{CStr, c_void},
+    fmt::Display,
+    marker::PhantomData,
     sync::{
         Arc, RwLock,
         atomic::{AtomicPtr, AtomicU64, Ordering},
@@ -278,5 +280,36 @@ impl From<&OrcPlugin> for PluginInfo {
                 .collect()
         };
         Self { types, functions }
+    }
+}
+
+/// This is a helper for displaying handle data.
+pub struct HandleDisplayWrapper<'a, T: TOrcData + Display> {
+    handle: &'a OrcHandle,
+    _phantom: PhantomData<T>,
+}
+
+impl<'a, T: TOrcData + Display> Display for HandleDisplayWrapper<'a, T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "handle: {}", self.handle.handle)?;
+        writeln!(f, "type_id: {:?}", self.handle.type_id)?;
+        writeln!(f, "dims: {:?}", self.handle.dims)?;
+        let (items, marks) = unsafe {
+            (
+                slice_from_ptr::<T>(self.handle.items.cast(), self.handle.n_items as usize),
+                slice_from_ptr(self.handle.marks, self.handle.n_marks as usize),
+            )
+        };
+        fmt_raw_deck(items, marks, f)?;
+        Ok(())
+    }
+}
+
+impl OrcHandle {
+    pub fn display<'a, T: TOrcData + Display>(&'a self) -> HandleDisplayWrapper<'a, T> {
+        HandleDisplayWrapper {
+            handle: self,
+            _phantom: PhantomData,
+        }
     }
 }

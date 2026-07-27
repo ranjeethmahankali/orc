@@ -25,6 +25,6 @@ pub use orc_sdk_derive::{orc_fn, orc_fn_info};
 
 mod util;
 pub use util::{
-    FuncInfo, ObjectRegistry, PluginAllocator, PluginInfo, TypeInfo, handle_from_deck,
-    ptr_from_slice, reset_handle, slice_from_ptr, slice_from_ptr_mut,
+    FuncInfo, HandleDisplayWrapper, ObjectRegistry, PluginAllocator, PluginInfo, TypeInfo,
+    handle_from_deck, ptr_from_slice, reset_handle, slice_from_ptr, slice_from_ptr_mut,
 };
