@@ -1,4 +1,4 @@
-use crate::{Deck, Error, ORC_NUM_DIMS, OrcHandle, OrcHost, ffi::TOrcData};
+use crate::{Deck, Error, ORC_NUM_DIMS, OrcHandle, OrcHost, OrcTypeId, ffi::TOrcData};
 use std::{
     alloc::{GlobalAlloc, Layout, System},
     any::Any,
@@ -130,9 +130,9 @@ impl ObjectRegistry {
     }
 }
 
-/// ==================================================
-/// ================= Allocators =====================
-/// ==================================================
+// ==================================================
+// ================= Allocators =====================
+// ==================================================
 
 type HostAllocFn = unsafe extern "C" fn(size: u64, alignment: u64) -> *mut c_void;
 type HostDeallocFn = unsafe extern "C" fn(ptr: *mut c_void, size: u64, alignment: u64);
@@ -193,4 +193,37 @@ unsafe impl GlobalAlloc for PluginAllocator {
             )
         }
     }
+}
+
+// ==================================================
+// ========= Rust native types for C types  =========
+// ==================================================
+//
+// It is nicer to have Rust native types for these things. Using the C types directly may require
+// some assumptions about the lifetimes of the raw pointers. And the users of the SDK are still free
+// to use the raw C types if that fits their needs better. But if they prefer Rust types beyond the
+// FFI boundary, types below can help. For example, a host program written in Rust can keep track of
+// various plugins, their types and functions etc. using below Rust types.
+
+pub struct TypeInfo {
+    pub type_id: OrcTypeId,
+    pub name: String,
+    pub desc: String,
+}
+
+pub struct FuncInfo {
+    pub name: String,
+    pub desc: String,
+    pub func: unsafe extern "C" fn(
+        ctx: u64,
+        inputs: *const OrcHandle,
+        n_inputs: u64,
+        outputs: *mut OrcHandle,
+        n_outputs: u64,
+    ),
+}
+
+pub struct PluginInfo {
+    pub types: Box<[TypeInfo]>,
+    pub functions: Box<[FuncInfo]>,
 }
