@@ -19,9 +19,9 @@ fn info_const_name(fn_name: &str) -> syn::Ident {
 /// unsafe extern "C" fn plugin_fn_add(
 ///     ctx: u64,
 ///     inputs: *const OrcHandle,
-///     n_inputs: usize,
+///     n_inputs: u64,
 ///     outputs: *mut OrcHandle,
-///     n_outputs: usize,
+///     n_outputs: u64,
 /// ) {
 ///     // ...
 /// }

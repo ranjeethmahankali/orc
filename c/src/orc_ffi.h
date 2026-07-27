@@ -42,9 +42,9 @@ typedef struct
 
   void (*func)(uint64_t const   ctx,
                OrcHandle const *inputs,
-               size_t const     n_inputs,
+               uint64_t const   n_inputs,
                OrcHandle       *outputs,
-               size_t const     n_outputs);
+               uint64_t const   n_outputs);
 } OrcFuncInfo;
 
 typedef struct

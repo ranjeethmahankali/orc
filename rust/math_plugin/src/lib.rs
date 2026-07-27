@@ -2,7 +2,7 @@ use orc_sdk::{
     Deck, ORC_F32, ORC_F64, ORC_I8, ORC_I16, ORC_I32, ORC_I64, ORC_U8, ORC_U16, ORC_U32, ORC_U64,
     ObjectRegistry, OrcFuncInfo, OrcHandle, OrcHost, OrcItemProxy, OrcMark, OrcPlugin, OrcTypeId,
     ProxyType, TOrcData, TOrcPluginAdaptor, handle_from_deck, orc_fn, orc_fn_info, orc_plugin,
-    reset_handle,
+    reset_handle, slice_from_ptr, slice_from_ptr_mut,
 };
 use std::sync::LazyLock;
 
@@ -70,10 +70,16 @@ orc_plugin!(Adaptor);
 unsafe extern "C" fn plugin_fn_add(
     ctx: u64,
     inputs: *const OrcHandle,
-    n_inputs: usize,
+    n_inputs: u64,
     outputs: *mut OrcHandle,
-    n_outputs: usize,
+    n_outputs: u64,
 ) {
+    let (inputs, outputs) = unsafe {
+        (
+            slice_from_ptr(inputs, n_inputs as usize),
+            slice_from_ptr_mut(outputs, n_outputs as usize),
+        )
+    };
     todo!(
         "
 Implement a generic add function that supports any number of inputs, of any scalar or integer type,
@@ -86,9 +92,9 @@ as long as all the inputs and the one output handle are of the same type"
 unsafe extern "C" fn plugin_fn_mul(
     ctx: u64,
     inputs: *const OrcHandle,
-    n_inputs: usize,
+    n_inputs: u64,
     outputs: *mut OrcHandle,
-    n_outputs: usize,
+    n_outputs: u64,
 ) {
     todo!(
         "
