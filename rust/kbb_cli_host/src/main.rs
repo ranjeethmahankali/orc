@@ -1,9 +1,8 @@
 use libloading::Library;
 use orc_sdk::{
-    Deck, ORC_F64, OrcFuncInfo, OrcHandle, OrcHost, OrcHostCallbackAPI, OrcHostMemoryAPI,
-    OrcItemProxy, OrcMark, OrcPlugin, OrcTypeId, deck, handle_from_deck, slice_from_ptr,
+    Deck, ORC_F64, OrcHandle, OrcHost, OrcHostCallbackAPI, OrcHostMemoryAPI, OrcItemProxy, OrcMark,
+    OrcPlugin, OrcTypeId, PluginInfo, deck, handle_from_deck, slice_from_ptr,
 };
-use std::ffi::CStr;
 use std::path::Path;
 
 type PluginInitFn = unsafe extern "C" fn(*const OrcHost, *mut OrcPlugin);
@@ -17,7 +16,7 @@ struct Plugin {
     deck_alloc: DeckAllocFn,
     deck_free: DeckFreeFn,
     deck_from_proxy: DeckFromProxyFn,
-    plugin_data: OrcPlugin,
+    info: PluginInfo,
 }
 const PLUGIN_INIT_FN_NAME: &str = "orc_plugin_init";
 const DECK_ALLOC_FN_NAME: &str = "orc_deck_alloc";
@@ -48,8 +47,6 @@ impl Plugin {
                     .map_err(|_| format!("missing symbol '{DECK_FROM_PROXY_FN_NAME}'"))?,
             )
         };
-        // let deck_free: DeckFreeFn = unsafe { get_sym(&lib, b)? };
-        // let deck_from_proxy: DeckFromProxyFn = unsafe { get_sym(&lib, b"orc_deck_from_proxy")? };
         let host = OrcHost {
             memory_api: OrcHostMemoryAPI {
                 alloc: None,
@@ -64,25 +61,14 @@ impl Plugin {
         };
         let mut plugin_data = unsafe { std::mem::zeroed::<OrcPlugin>() };
         unsafe { init(&host, &mut plugin_data) };
+        let info = PluginInfo::from(&plugin_data);
         Ok(Plugin {
             _lib: lib,
             deck_alloc,
             deck_free,
             deck_from_proxy,
-            plugin_data,
+            info,
         })
-    }
-
-    fn functions(&self) -> &[OrcFuncInfo] {
-        if self.plugin_data.n_functions == 0 || self.plugin_data.functions.is_null() {
-            return &[];
-        }
-        unsafe {
-            std::slice::from_raw_parts(
-                self.plugin_data.functions,
-                self.plugin_data.n_functions as usize,
-            )
-        }
     }
 
     fn alloc_deck(&self, type_id: OrcTypeId) -> OrcHandle {
@@ -134,23 +120,15 @@ fn main() {
     println!("Loaded {} plugin(s)\n", plugins.len());
 
     for plugin in &plugins {
-        let functions = plugin.functions();
-        println!("{} function(s):", functions.len());
-        for func in functions {
-            let (name, desc) = unsafe { (CStr::from_ptr(func.name), CStr::from_ptr(func.desc)) };
-            println!(
-                "  - {}\n    {}",
-                name.to_string_lossy(),
-                desc.to_string_lossy()
-            );
+        println!("{} function(s):", plugin.info.functions.len());
+        for func in plugin.info.functions.iter() {
+            println!("  - {}\n    {}", func.name, func.desc);
         }
     }
 
     // Test the add function.
     let math_plugin = &plugins[0];
-    let add_fn = math_plugin.functions()[0]
-        .func
-        .expect("NULL function pointer");
+    let add_fn = math_plugin.info.functions[0].func;
     let a: Deck<f64> = deck![1.0, 2.0, 3.0];
     let b: Deck<f64> = deck![10.0, 20.0, 30.0];
     let mut out_handle = math_plugin.alloc_deck(OrcTypeId {

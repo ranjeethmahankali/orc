@@ -1,9 +1,12 @@
-use crate::{Deck, Error, ORC_NUM_DIMS, OrcHandle, OrcHost, OrcTypeId, ffi::TOrcData};
+use crate::{
+    Deck, Error, ORC_NUM_DIMS, OrcFuncInfo, OrcHandle, OrcHost, OrcPlugin, OrcTypeId, OrcTypeInfo,
+    ffi::TOrcData,
+};
 use std::{
     alloc::{GlobalAlloc, Layout, System},
     any::Any,
     collections::HashMap,
-    ffi::c_void,
+    ffi::{CStr, c_void},
     sync::{
         Arc, RwLock,
         atomic::{AtomicPtr, AtomicU64, Ordering},
@@ -211,6 +214,20 @@ pub struct TypeInfo {
     pub desc: String,
 }
 
+impl From<&OrcTypeInfo> for TypeInfo {
+    fn from(info: &OrcTypeInfo) -> Self {
+        Self {
+            type_id: info.type_id,
+            name: unsafe { CStr::from_ptr(info.name) }
+                .to_string_lossy()
+                .into_owned(),
+            desc: unsafe { CStr::from_ptr(info.desc) }
+                .to_string_lossy()
+                .into_owned(),
+        }
+    }
+}
+
 pub struct FuncInfo {
     pub name: String,
     pub desc: String,
@@ -223,7 +240,43 @@ pub struct FuncInfo {
     ),
 }
 
+impl From<&OrcFuncInfo> for FuncInfo {
+    fn from(info: &OrcFuncInfo) -> Self {
+        Self {
+            name: unsafe { CStr::from_ptr(info.name) }
+                .to_string_lossy()
+                .into_owned(),
+            desc: unsafe { CStr::from_ptr(info.desc) }
+                .to_string_lossy()
+                .into_owned(),
+            func: info.func.expect("NULL function pointer"),
+        }
+    }
+}
+
 pub struct PluginInfo {
     pub types: Box<[TypeInfo]>,
     pub functions: Box<[FuncInfo]>,
+}
+
+impl From<&OrcPlugin> for PluginInfo {
+    fn from(plugin: &OrcPlugin) -> Self {
+        let types = if plugin.n_types == 0 || plugin.types.is_null() {
+            Box::default()
+        } else {
+            unsafe { std::slice::from_raw_parts(plugin.types, plugin.n_types as usize) }
+                .iter()
+                .map(TypeInfo::from)
+                .collect()
+        };
+        let functions = if plugin.n_functions == 0 || plugin.functions.is_null() {
+            Box::default()
+        } else {
+            unsafe { std::slice::from_raw_parts(plugin.functions, plugin.n_functions as usize) }
+                .iter()
+                .map(FuncInfo::from)
+                .collect()
+        };
+        Self { types, functions }
+    }
 }
