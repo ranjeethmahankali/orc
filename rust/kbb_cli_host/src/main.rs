@@ -1,7 +1,7 @@
 use libloading::Library;
 use orc_sdk::{
-    OrcFuncInfo, OrcHandle, OrcHost, OrcHostCallbackAPI, OrcHostMemoryAPI, OrcItemProxy, OrcPlugin,
-    OrcTypeId,
+    Deck, ORC_F64, OrcFuncInfo, OrcHandle, OrcHost, OrcHostCallbackAPI, OrcHostMemoryAPI,
+    OrcItemProxy, OrcPlugin, OrcTypeId, deck, handle_from_deck,
 };
 use std::ffi::CStr;
 use std::path::Path;
@@ -144,5 +144,28 @@ fn main() {
                 desc.to_string_lossy()
             );
         }
+    }
+
+    // Test the add function.
+    let math_plugin = &plugins[0];
+    let add_fn = math_plugin.functions()[0]
+        .func
+        .expect("NULL function pointer");
+    let a: Deck<f64> = deck![1.0, 2.0, 3.0];
+    let b: Deck<f64> = deck![10.0, 20.0, 30.0];
+    let out_handle = math_plugin.alloc_deck(OrcTypeId {
+        primitive_id: ORC_F64,
+        opaque_id: 0,
+    });
+    let inputs: &[OrcHandle] = &[handle_from_deck(&a, 0), handle_from_deck(&b, 1)];
+    let mut outputs: [OrcHandle; 1] = [out_handle];
+    unsafe {
+        add_fn(
+            0,
+            inputs.as_ptr(),
+            inputs.len() as u64,
+            outputs.as_mut_ptr(),
+            outputs.len() as u64,
+        );
     }
 }
