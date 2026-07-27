@@ -1,6 +1,7 @@
 use crate::{
     Error,
     bindings::{OrcHandle, OrcMark},
+    slice_from_ptr,
 };
 use std::{
     fmt::Display,
@@ -793,7 +794,7 @@ impl<'a> Combinations<'a> {
             .iter()
             .zip(input_depths.iter())
             .map(|(i, arg_depth)| {
-                let marks = unsafe { std::slice::from_raw_parts(i.marks, i.n_marks as usize) };
+                let marks = unsafe { slice_from_ptr(i.marks, i.n_marks as usize) };
                 let depth = marks.first().map(|m| m.depth + 1).unwrap_or(0);
                 depth.saturating_sub(*arg_depth)
             })
@@ -809,13 +810,11 @@ impl<'a> Combinations<'a> {
                     // the length of the `strides` slice. Using a helper function for that to make
                     // sure the logic is consistent with the one used in the `Deck` implementation.
                     let (marks, stride_offset, strides) = unsafe {
-                        let marks = std::slice::from_raw_parts(input.marks, input.n_marks as usize);
+                        let marks = slice_from_ptr(input.marks, input.n_marks as usize);
                         let stride_offset =
-                            std::slice::from_raw_parts(input.stride_offset, input.n_marks as usize);
-                        let strides = std::slice::from_raw_parts(
-                            input.strides,
-                            calc_stride_count(marks, stride_offset),
-                        );
+                            slice_from_ptr(input.stride_offset, input.n_marks as usize);
+                        let strides =
+                            slice_from_ptr(input.strides, calc_stride_count(marks, stride_offset));
                         (marks, stride_offset, strides)
                     };
                     let depth = marks.first().map(|m| m.depth + 1).unwrap_or(0);

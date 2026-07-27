@@ -23,4 +23,7 @@ pub use error::Error;
 pub use orc_sdk_derive::{orc_fn, orc_fn_info};
 
 mod util;
-pub use util::{ObjectRegistry, PluginAllocator, handle_from_deck, reset_handle};
+pub use util::{
+    ObjectRegistry, PluginAllocator, handle_from_deck, ptr_from_slice, reset_handle,
+    slice_from_ptr, slice_from_ptr_mut,
+};

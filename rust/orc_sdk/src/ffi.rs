@@ -42,7 +42,7 @@ macro_rules! orc_plugin {
                 proxy.type_id.primitive_id == orc_sdk::ORC_PROXY,
                 "Invalid proxy deck"
             );
-            let inputs = std::slice::from_raw_parts(inputs, n_inputs as usize);
+            let inputs = orc_sdk::slice_from_ptr(inputs, n_inputs as usize);
             let out = &mut *out;
             assert!(!inputs.is_empty(), "orc_deck_from_proxy: no inputs");
             let type_id = inputs[0].type_id;
@@ -57,12 +57,12 @@ macro_rules! orc_plugin {
                 _ => panic!("Invalid proxy type."),
             };
             let proxies: &[OrcItemProxy] = if proxy.n_items > 0 && !proxy.items.is_null() {
-                std::slice::from_raw_parts(proxy.items.cast(), proxy.n_items as usize)
+                orc_sdk::slice_from_ptr(proxy.items.cast(), proxy.n_items as usize)
             } else {
                 &[]
             };
             let marks: &[OrcMark] = if proxy.n_marks > 0 && !proxy.marks.is_null() {
-                std::slice::from_raw_parts(proxy.marks, proxy.n_marks as usize)
+                orc_sdk::slice_from_ptr(proxy.marks, proxy.n_marks as usize)
             } else {
                 &[]
             };
