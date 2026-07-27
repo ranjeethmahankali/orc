@@ -27,7 +27,6 @@ const DECK_FROM_PROXY_FN_NAME: &str = "orc_deck_from_proxy";
 impl Plugin {
     fn load(path: &Path) -> Result<Self, String> {
         let lib = unsafe { Library::new(path) }.map_err(|e| format!("cannot load library: {e}"))?;
-
         let (init, deck_alloc, deck_free, deck_from_proxy): (
             PluginInitFn,
             DeckAllocFn,
@@ -49,10 +48,8 @@ impl Plugin {
                     .map_err(|_| format!("missing symbol '{DECK_FROM_PROXY_FN_NAME}'"))?,
             )
         };
-
         // let deck_free: DeckFreeFn = unsafe { get_sym(&lib, b)? };
         // let deck_from_proxy: DeckFromProxyFn = unsafe { get_sym(&lib, b"orc_deck_from_proxy")? };
-
         let host = OrcHost {
             memory_api: OrcHostMemoryAPI {
                 alloc: None,
@@ -65,10 +62,8 @@ impl Plugin {
                 check_cancellation: None,
             },
         };
-
         let mut plugin_data = unsafe { std::mem::zeroed::<OrcPlugin>() };
         unsafe { init(&host, &mut plugin_data) };
-
         Ok(Plugin {
             _lib: lib,
             deck_alloc,
@@ -109,7 +104,6 @@ fn load_plugins(dir: &Path) -> Vec<Plugin> {
             return Vec::new();
         }
     };
-
     let mut plugins = Vec::new();
     for entry in entries.flatten() {
         let path = entry.path();
