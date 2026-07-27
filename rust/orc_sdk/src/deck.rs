@@ -328,17 +328,15 @@ where
     T: Default + Display,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if self.marks.is_empty() {
+        if self.items.is_empty() && self.marks.is_empty() {
             return writeln!(f, "<empty_deck>");
         }
+        const TAB_WIDTH: usize = 3;
         let dmax = self.max_depth();
-        for (mi, m) in self.marks.iter().enumerate() {
-            let next_pos = self
-                .marks
-                .get(mi + 1)
-                .map(|m| m.pos)
-                .unwrap_or(self.items.len() as u64);
-            const TAB_WIDTH: usize = 3;
+        let n_items = self.items.len() as u64;
+        let mut tail_start = 0u64;
+        for w in self.marks.windows(2) {
+            let (m, next_pos) = (&w[0], w[1].pos);
             write!(
                 f,
                 "{lp:>width$}",
@@ -354,7 +352,7 @@ where
                 rw = (d_current as usize) * TAB_WIDTH
             )?;
             if m.pos < next_pos {
-                let end = next_pos.min(self.items.len() as u64);
+                let end = next_pos.min(n_items);
                 let mut iter = m.pos..end;
                 if let Some(i) = iter.next() {
                     writeln!(f, " {}", self.items[i as usize])?;
@@ -371,6 +369,53 @@ where
             } else {
                 writeln!(f)?;
             }
+            tail_start = next_pos;
+        }
+        if let Some(last) = self.marks.last() {
+            let next_pos = n_items;
+            write!(
+                f,
+                "{lp:>width$}",
+                lp = "",
+                width = ((dmax - last.depth) as usize) * TAB_WIDTH
+            )?;
+            let d_current = last.depth + 1;
+            write!(
+                f,
+                "{d:>3} {rp:─>rw$}",
+                d = d_current,
+                rp = "┤",
+                rw = (d_current as usize) * TAB_WIDTH
+            )?;
+            if last.pos < next_pos {
+                let end = next_pos.min(n_items);
+                let mut iter = last.pos..end;
+                if let Some(i) = iter.next() {
+                    writeln!(f, " {}", self.items[i as usize])?;
+                }
+                for i in iter {
+                    writeln!(
+                        f,
+                        "{lp:>width$}   ┤ {}",
+                        self.items[i as usize],
+                        lp = "",
+                        width = (dmax as usize + 1) * TAB_WIDTH
+                    )?;
+                }
+            } else {
+                writeln!(f)?;
+            }
+            tail_start = n_items;
+        }
+        // Items after the last mark (or all items if no marks).
+        for i in tail_start as usize..self.items.len() {
+            writeln!(
+                f,
+                "{lp:>width$}   ┤ {}",
+                self.items[i],
+                lp = "",
+                width = (dmax as usize + 1) * TAB_WIDTH
+            )?;
         }
         Ok(())
     }
@@ -2034,6 +2079,10 @@ mod test {
 "
             .trim()
         );
+        // Single item, no marks.
+        let deck: Deck<i32> = Deck::from_raw_data(&[42], &[]);
+        println!("{}", deck);
+        assert_eq!(deck.to_string().trim(), "┤ 42");
     }
 
     #[test]
