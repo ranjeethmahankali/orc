@@ -963,12 +963,9 @@ impl<'a> Combinations<'a> {
         }
     }
 
-    pub fn get_input<T: Default>(&self, deck: &'a Deck<T>, index: usize) -> DeckView<'a, T> {
+    pub fn get_input<T: Default>(&self, items: &'a [T], index: usize) -> DeckView<'a, T> {
         let cursor = self.input_cursors[(index + 1) * self.stack_depth - 1].clone();
-        DeckView {
-            items: deck.items(),
-            cursor,
-        }
+        DeckView { items, cursor }
     }
 
     pub fn get_output<'o, T: Default>(
@@ -2032,8 +2029,8 @@ mod test {
                         .expect("Failed to create combinations helper struct");
                 // List processing iterations.
                 loop {
-                    let list_view = comb.get_input(&lists, 0);
-                    let index_view = comb.get_input(&indices, 1);
+                    let list_view = comb.get_input(&lists.items, 0);
+                    let index_view = comb.get_input(&indices.items, 1);
                     let mut item_view = comb.get_output(&mut items, 0);
                     assert_eq!(list_view.depth(), 1);
                     assert_eq!(index_view.depth(), 0);
@@ -2070,8 +2067,8 @@ mod test {
                         .expect("Failed to create combinations helper struct");
                 // List processing iterations.
                 loop {
-                    let list_view = comb.get_input(&lists, 0);
-                    let index_view = comb.get_input(&indices, 1);
+                    let list_view = comb.get_input(&lists.items, 0);
+                    let index_view = comb.get_input(&indices.items, 1);
                     let mut item_view = comb.get_output(&mut items, 0);
                     assert_eq!(list_view.depth(), 1);
                     assert_eq!(index_view.depth(), 0);
@@ -2108,8 +2105,8 @@ mod test {
                         .expect("Failed to create combinations helper struct");
                 // List processing iterations.
                 loop {
-                    let list_view = comb.get_input(&lists, 0);
-                    let index_view = comb.get_input(&indices, 1);
+                    let list_view = comb.get_input(&lists.items, 0);
+                    let index_view = comb.get_input(&indices.items, 1);
                     let mut item_view = comb.get_output(&mut items, 0);
                     assert_eq!(list_view.depth(), 1);
                     assert_eq!(index_view.depth(), 0);
@@ -2144,8 +2141,8 @@ mod test {
                 let mut comb = Combinations::from_handles(&[a_handle, b_handle], &[0, 0], &[0])
                     .expect("Failed to create combinations helper struct");
                 loop {
-                    let a_view = comb.get_input(&a, 0);
-                    let b_view = comb.get_input(&b, 1);
+                    let a_view = comb.get_input(&a.items, 0);
+                    let b_view = comb.get_input(&b.items, 1);
                     let mut out_view = comb.get_output(&mut out, 0);
                     assert_eq!(a_view.depth(), 0);
                     assert_eq!(b_view.depth(), 0);
@@ -2171,8 +2168,8 @@ mod test {
                 let mut comb = Combinations::from_handles(&[a_handle, b_handle], &[0, 0], &[0])
                     .expect("Failed to create combinations helper struct");
                 loop {
-                    let a_view = comb.get_input(&a, 0);
-                    let b_view = comb.get_input(&b, 1);
+                    let a_view = comb.get_input(&a.items, 0);
+                    let b_view = comb.get_input(&b.items, 1);
                     let mut out_view = comb.get_output(&mut out, 0);
                     assert_eq!(a_view.depth(), 0);
                     assert_eq!(b_view.depth(), 0);
@@ -2199,8 +2196,8 @@ mod test {
                 let mut comb = Combinations::from_handles(&[a_handle, b_handle], &[0, 0], &[0])
                     .expect("Failed to create combinations helper struct");
                 loop {
-                    let a_view = comb.get_input(&a, 0);
-                    let b_view = comb.get_input(&b, 1);
+                    let a_view = comb.get_input(&a.items, 0);
+                    let b_view = comb.get_input(&b.items, 1);
                     let mut out_view = comb.get_output(&mut out, 0);
                     assert_eq!(a_view.depth(), 0);
                     assert_eq!(b_view.depth(), 0);
@@ -2225,8 +2222,8 @@ mod test {
                 let mut comb = Combinations::from_handles(&[a_handle, b_handle], &[0, 0], &[0])
                     .expect("Failed to create combinations helper struct");
                 loop {
-                    let a_view = comb.get_input(&a, 0);
-                    let b_view = comb.get_input(&b, 1);
+                    let a_view = comb.get_input(&a.items, 0);
+                    let b_view = comb.get_input(&b.items, 1);
                     let mut out_view = comb.get_output(&mut out, 0);
                     assert_eq!(a_view.depth(), 0);
                     assert_eq!(b_view.depth(), 0);
@@ -2253,7 +2250,7 @@ mod test {
                 let mut comb = Combinations::from_handles(&[in_handle], &[1], &[0])
                     .expect("Failed to create combinations helper struct");
                 loop {
-                    let list_view = comb.get_input(&input, 0);
+                    let list_view = comb.get_input(&input.items, 0);
                     let mut out_view = comb.get_output(&mut out, 0);
                     assert_eq!(list_view.depth(), 1);
                     assert_eq!(out_view.depth(), 0);
@@ -2276,7 +2273,7 @@ mod test {
                 let mut comb = Combinations::from_handles(&[in_handle], &[1], &[0])
                     .expect("Failed to create combinations helper struct");
                 loop {
-                    let list_view = comb.get_input(&input, 0);
+                    let list_view = comb.get_input(&input.items, 0);
                     let mut out_view = comb.get_output(&mut out, 0);
                     assert_eq!(list_view.depth(), 1);
                     assert_eq!(out_view.depth(), 0);
@@ -2303,7 +2300,7 @@ mod test {
                 let mut comb = Combinations::from_handles(&[in_handle], &[0], &[0, 0])
                     .expect("Failed to create combinations helper struct");
                 loop {
-                    let in_view = comb.get_input(&input, 0);
+                    let in_view = comb.get_input(&input.items, 0);
                     let mut sq_view = comb.get_output(&mut sq, 0);
                     let mut cb_view = comb.get_output(&mut cb, 1);
                     assert_eq!(in_view.depth(), 0);
@@ -2336,8 +2333,8 @@ mod test {
                 let mut comb = Combinations::from_handles(&[a_handle, b_handle], &[0, 0], &[0, 0])
                     .expect("Failed to create combinations helper struct");
                 loop {
-                    let a_view = comb.get_input(&a, 0);
-                    let b_view = comb.get_input(&b, 1);
+                    let a_view = comb.get_input(&a.items, 0);
+                    let b_view = comb.get_input(&b.items, 1);
                     let mut sum_view = comb.get_output(&mut sum, 0);
                     let mut prod_view = comb.get_output(&mut prod, 1);
                     assert_eq!(a_view.depth(), 0);
@@ -2374,8 +2371,8 @@ mod test {
                 let mut comb = Combinations::from_handles(&[a_handle, b_handle], &[1, 1], &[0])
                     .expect("Failed to create combinations helper struct");
                 loop {
-                    let a_view = comb.get_input(&a, 0);
-                    let b_view = comb.get_input(&b, 1);
+                    let a_view = comb.get_input(&a.items, 0);
+                    let b_view = comb.get_input(&b.items, 1);
                     let mut out_view = comb.get_output(&mut out, 0);
                     assert_eq!(a_view.depth(), 1);
                     assert_eq!(b_view.depth(), 1);
@@ -2401,8 +2398,8 @@ mod test {
                 let mut comb = Combinations::from_handles(&[a_handle, b_handle], &[1, 1], &[0])
                     .expect("Failed to create combinations helper struct");
                 loop {
-                    let a_view = comb.get_input(&a, 0);
-                    let b_view = comb.get_input(&b, 1);
+                    let a_view = comb.get_input(&a.items, 0);
+                    let b_view = comb.get_input(&b.items, 1);
                     let mut out_view = comb.get_output(&mut out, 0);
                     assert_eq!(a_view.depth(), 1);
                     assert_eq!(b_view.depth(), 1);
