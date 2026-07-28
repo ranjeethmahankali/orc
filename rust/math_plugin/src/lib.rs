@@ -75,29 +75,30 @@ unsafe extern "C" fn plugin_fn_add(
     n_outputs: u64,
 ) {
     assert!(n_outputs == 1, "This function only supports one output");
+    assert!(n_inputs == 2, "This function only supports two inputs");
     let (inputs, outputs) = unsafe {
         (
             slice_from_ptr(inputs, n_inputs as usize),
             slice_from_ptr_mut(outputs, n_outputs as usize),
         )
     };
-    {
-        // Ensure the types are all the same. Otherwise addition doesn't work.
-        let type_id: OrcTypeId = match inputs.first() {
-            Some(first) => first.type_id,
-            None => return, // No inputs were provided. Bail immediately.
-        };
-        if inputs.iter().skip(1).any(|input| input.type_id != type_id)
-            || outputs[0].type_id != type_id
-        {
-            panic!("Type mismatch");
-        }
+    // Output and input types must be the same, and must match one of the supported types.
+    let type_id = outputs[0].type_id;
+    if inputs[0].type_id != type_id || inputs[1].type_id != type_id {
+        panic!("Type mismatch");
     }
+    // List processing setup.
     let input_depths = vec![0u8; inputs.len()];
     const OUTPUT_DEPTHS: &[u8] = &[0];
     let mut comb = Combinations::from_handles(inputs, &input_depths, OUTPUT_DEPTHS)
         .expect("Cannot initialize combinations from the provide inputs");
     // TODO: I am hardcoding f64 for now, later I need to check the input types, and dispatch to different functions.
+    let (input_slice_lhs, input_slice_rhs) = unsafe {
+        (
+            slice_from_ptr(inputs[0].items.cast::<f64>(), inputs[0].n_items as usize),
+            slice_from_ptr(inputs[1].items.cast::<f64>(), inputs[1].n_items as usize),
+        )
+    };
     let result = REGISTRY.with_mut(
         &[outputs[0].handle],
         |out_decks| -> Result<(), orc_sdk::Error> {
@@ -108,21 +109,11 @@ unsafe extern "C" fn plugin_fn_add(
             loop {
                 let mut out_view = comb.get_output(out_deck, 0);
                 let output = out_view.push_default_mut();
-                let input_views = (0..inputs.len()).map(|i| {
-                    comb.get_input(
-                        unsafe {
-                            slice_from_ptr(
-                                inputs[i].items.cast::<f64>(),
-                                inputs[i].n_items as usize,
-                            )
-                        },
-                        i,
-                    )
-                });
-                *output = 0.0;
-                for input_view in input_views {
-                    *output += *input_view.as_ref();
-                }
+                let lhs = comb.get_input(input_slice_lhs, 0);
+                let rhs = comb.get_input(input_slice_rhs, 1);
+                // The actual addition happens here.
+                *output = lhs.as_ref() + rhs.as_ref();
+                // Advance to the next list processing iteration.
                 if !comb.advance() {
                     break;
                 }
