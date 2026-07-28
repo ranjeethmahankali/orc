@@ -71,22 +71,41 @@
   was trivial to implement in GH. Trying to do the same in Kratos turned into a
   dumpster fire. That is what makes this a good litmus test.
 
-* TODO Unit System
-  :PROPERTIES:
-  :CREATED:  2026-06-06 Sat 19:20
-  :END:
-
-  I awkwardly shoved the unit system in the DeckHandle. This needs a lot of
-  thought and needs to be done properly.
-
-* TODO Rendering API
+* CLOSED Rendering Geometry
+  CLOSED: [2026-07-28 Tue 09:16]
   :PROPERTIES:
   :CREATED:  2026-06-06 Sat 19:21
+  :END:
+  :LOGBOOK:
+  - State "CLOSED"     from "TODO"       [2026-07-28 Tue 09:16]
   :END:
 
   The current rendering API in [[file:c/src/orc_ffi.h::rendering_api][the current ffi]] is just a stub. While supporting
   static rendering primitives is simple, supporting implicit rendering requires
   a lot more thought.
+
+  <2026-07-28 Tue 09:14> I changed my mind about this. I realized each host application will have
+  very specialized rendering needs, and those needs cannot be met by a single API. So we're better
+  off going the Parasolid route. Just expose functions that return data in a form that the host can
+  render. E.g. meshes should return triangles, and implicit bodies should return a handle to some
+  type of evaluator that can be used fill up voxel grids. In theory, should plug in to a system like
+  Aether just fine. I will close this for now.
+
+* DONE Unit System
+  CLOSED: [2026-07-28 Tue 09:13]
+  :PROPERTIES:
+  :CREATED:  2026-06-06 Sat 19:20
+  :END:
+  :LOGBOOK:
+  - State "DONE"       from "TODO"       [2026-07-28 Tue 09:13]
+  :END:
+
+  I awkwardly shoved the unit system in the DeckHandle. This needs a lot of
+  thought and needs to be done properly.
+
+  <2026-07-28 Tue 09:12> I tweaked this as I went along. It is now in a decent shape. Unless some
+  very specific requirements come up, the current state is good enough to replace what we have in
+  Kratos.
 
 * DONE tgp7lf - Plugin Architecture
   CLOSED: [2026-07-27 Mon 08:45]
