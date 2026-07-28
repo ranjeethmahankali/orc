@@ -71,6 +71,15 @@
   was trivial to implement in GH. Trying to do the same in Kratos turned into a
   dumpster fire. That is what makes this a good litmus test.
 
+* TODO tiwkbm - Create Toy Demo Apps
+  :PROPERTIES:
+  :CREATED:  2026-07-28 Tue 16:45
+  :END:
+
+  Not that the plugin architecture is fleshed out, I can build a few toy host applications, and toy
+  plugins, and demonstrate the flexibility and power of this design to both Product / Customer
+  facing side as well as the engineering side.
+
 * CLOSED Rendering Geometry
   CLOSED: [2026-07-28 Tue 09:16]
   :PROPERTIES:

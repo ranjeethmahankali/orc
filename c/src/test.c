@@ -41,17 +41,13 @@ void test_arr_index_boundary_conditions(void)
   // Single element array
   REQUIRE(arr_swap_remove(arr, 0) == OK);
   REQUIRE(arr_len(arr) == 0);
-  // Empty array
-  REQUIRE(arr_swap_remove(arr, 0) == OUT_OF_BOUNDS);
+  REQUIRE(arr_swap_remove(arr, 0) == OUT_OF_BOUNDS);  // Empty array
   // Add elements back
   arr_push(arr, 1.0);
   arr_push(arr, 2.0);
-  // One past end
-  REQUIRE(arr_swap_remove(arr, arr_len(arr)) == OUT_OF_BOUNDS);
-  // Way past end
-  REQUIRE(arr_swap_remove(arr, arr_len(arr) + 10) == OUT_OF_BOUNDS);
-  // Huge index
-  REQUIRE(arr_swap_remove(arr, SIZE_MAX) == OUT_OF_BOUNDS);
+  REQUIRE(arr_swap_remove(arr, arr_len(arr)) == OUT_OF_BOUNDS);       // One past end
+  REQUIRE(arr_swap_remove(arr, arr_len(arr) + 10) == OUT_OF_BOUNDS);  // Way past end
+  REQUIRE(arr_swap_remove(arr, SIZE_MAX) == OUT_OF_BOUNDS);           // Huge index
   arr_free(arr);
 }
 

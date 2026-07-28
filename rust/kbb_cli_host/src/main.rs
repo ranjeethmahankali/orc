@@ -1,7 +1,7 @@
 use libloading::Library;
 use orc_sdk::{
-    Deck, ORC_F64, OrcHandle, OrcHost, OrcHostCallbackAPI, OrcHostMemoryAPI, OrcItemProxy, OrcMark,
-    OrcPlugin, OrcTypeId, PluginInfo, deck, handle_from_deck, slice_from_ptr,
+    Deck, ORC_F64, OrcHandle, OrcHost, OrcHostCallbackAPI, OrcHostMemoryAPI, OrcItemProxy,
+    OrcPlugin, OrcTypeId, PluginInfo, deck, handle_from_deck,
 };
 use std::path::Path;
 
