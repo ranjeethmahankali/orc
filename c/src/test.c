@@ -3052,8 +3052,6 @@ void _plugin_function_add_mul(OrcHandle const *a_handle,
   }
 }
 
-// This simulates a function that takes two depth=1 lists of F64 and outputs
-// first(a)+first(b).
 void _plugin_function_first_add(OrcHandle const *a_handle,
                                 OrcHandle const *b_handle,
                                 OrcHandle       *out_handle)
