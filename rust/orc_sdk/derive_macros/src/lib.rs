@@ -140,6 +140,20 @@ fn validate_orc_fn(
             input_params.push(pat_ty.clone());
         }
     }
+    // Const generics are not supported.
+    if let Some(const_param) = run_fn
+        .sig
+        .generics
+        .params
+        .iter()
+        .find(|p| matches!(p, syn::GenericParam::Const(_)))
+    {
+        return Err(
+            syn::Error::new_spanned(const_param, "const generics are not supported in fn run")
+                .to_compile_error(),
+        );
+    }
+
     // If run_fn has type generics, Types must be defined with matching arity.
     let generic_count = run_fn
         .sig
