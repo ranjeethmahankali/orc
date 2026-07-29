@@ -20,6 +20,13 @@
 // All custom opaque types defined by a plugin.
 #define ORC_OPAQUE 0xffffffffu
 
+// Message levels
+#define ORC_MSG_LEVEL_DEBUG 1u
+#define ORC_MSG_LEVEL_INFO 2u
+#define ORC_MSG_LEVEL_WARN 3u
+#define ORC_MSG_LEVEL_ERROR 4u
+#define ORC_MSG_LEVEL_FATAL 5u
+
 typedef struct
 {
   uint32_t primitive_id;
@@ -64,10 +71,9 @@ typedef struct
 typedef struct
 {
   void (*report_progress)(uint64_t const ctx, double progress);
-  void (*report_error)(uint64_t const ctx, char const *error);
-  void (*report_warning)(uint64_t const ctx, char const *warning);
+  void (*report_message)(uint64_t const ctx, uint32_t const level, char const *msg);
   bool (*check_cancellation)(uint64_t const ctx);
-  void (*report_intermediate_output)(OrcHandle const *handle);
+  void (*report_intermediate_output)(uint64_t const ctx, OrcHandle const *handle);
 } OrcHostCallbackAPI;
 
 typedef struct OrcHost

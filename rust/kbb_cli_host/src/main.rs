@@ -54,8 +54,7 @@ impl Plugin {
             },
             callbacks: OrcHostCallbackAPI {
                 report_progress: None,
-                report_error: None,
-                report_warning: None,
+                report_message: None,
                 check_cancellation: None,
                 report_intermediate_output: None,
             },

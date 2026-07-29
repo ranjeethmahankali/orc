@@ -1,20 +1,34 @@
 use orc_sdk::{
-    Combinations, Deck, ORC_F32, ORC_F64, ORC_I8, ORC_I16, ORC_I32, ORC_I64, ORC_U8, ORC_U16,
-    ORC_U32, ORC_U64, ObjectRegistry, OrcFuncInfo, OrcHandle, OrcHost, OrcItemProxy, OrcMark,
-    OrcPlugin, OrcTypeId, ProxyType, TOrcData, TOrcPluginAdaptor, handle_from_deck, orc_fn_info,
-    orc_generate_fn_info, orc_plugin, reset_handle, slice_from_ptr, slice_from_ptr_mut,
+    Combinations, Deck, HostCallbacks, ORC_F32, ORC_F64, ORC_I8, ORC_I16, ORC_I32, ORC_I64, ORC_U8,
+    ORC_U16, ORC_U32, ORC_U64, ObjectRegistry, OrcFuncInfo, OrcHandle, OrcHost, OrcItemProxy,
+    OrcMark, OrcPlugin, OrcTypeId, ProxyType, TOrcData, TOrcPluginAdaptor, handle_from_deck,
+    orc_assert_return, orc_fn_info, orc_generate_fn_info, orc_plugin, reset_handle, slice_from_ptr,
+    slice_from_ptr_mut,
 };
-use std::sync::LazyLock;
+use std::sync::{LazyLock, OnceLock};
 
 #[global_allocator]
 static ALLOCATOR: orc_sdk::PluginAllocator = orc_sdk::PluginAllocator::new();
 
 static REGISTRY: LazyLock<ObjectRegistry> = LazyLock::new(ObjectRegistry::new);
 
+static HOST: OnceLock<HostCallbacks> = OnceLock::new();
+
+fn host() -> &'static HostCallbacks {
+    HOST.get().unwrap_or(&HostCallbacks::DUMMY)
+}
+
 fn alloc_deck<T: TOrcData>() -> OrcHandle {
     let deck = Deck::<T>::default();
     let mut handle = handle_from_deck(&deck, 0);
-    handle.handle = REGISTRY.alloc(deck).expect("Failed to alloc deck");
+    match REGISTRY.alloc(deck) {
+        Ok(h) => handle.handle = h,
+        Err(_) => {
+            // We're not reporting anything to the host, other than zeroing out this handle. For now
+            // that is enough to communicate to the caller that the allocation didn't happen.
+            reset_handle(&mut handle);
+        }
+    };
     handle
 }
 
@@ -24,6 +38,12 @@ impl TOrcPluginAdaptor for Adaptor {
     fn plugin_init(host: &OrcHost, out: &mut OrcPlugin) {
         // Read host capabilities - Set up the allocator first, before any heap allocations happen.
         ALLOCATOR.init_from_host(host);
+        match HOST.set(HostCallbacks {
+            inner: host.callbacks,
+        }) {
+            Ok(_) => {}
+            Err(_) => panic!("Failed to initialize the host callbacks."),
+        }
         // Tell the host about the plugin provided types and functions.
         out.n_types = 0;
         out.types = std::ptr::null();
@@ -43,12 +63,16 @@ impl TOrcPluginAdaptor for Adaptor {
             ORC_I64 => alloc_deck::<i64>(),
             ORC_F32 => alloc_deck::<f32>(),
             ORC_F64 => alloc_deck::<f64>(),
-            _ => panic!("Unsupported type id: {}", id.primitive_id),
+            // We just return an empty handle to the host when the type is not supported. Maybe in
+            // the future we should return some error code.
+            _ => OrcHandle::default(),
         }
     }
 
     fn deck_free(handle: &mut OrcHandle) {
-        REGISTRY.free(handle.handle).expect("Failed to free deck");
+        // We're intentionally ignoring the error for now. Maybe in the future we update the ABI to
+        // allow reporting an error.
+        let _ = REGISTRY.free(handle.handle);
         reset_handle(handle);
     }
 
@@ -68,14 +92,24 @@ orc_plugin!(Adaptor);
 #[orc_generate_fn_info]
 /// Adds the inputs together. This function supports all floating point and integer primitives.
 unsafe extern "C" fn plugin_fn_add(
-    _ctx: u64,
+    ctx: u64,
     inputs: *const OrcHandle,
     n_inputs: u64,
     outputs: *mut OrcHandle,
     n_outputs: u64,
 ) {
-    assert!(n_inputs == 2, "This function only supports two inputs");
-    assert!(n_outputs == 1, "This function only supports one output");
+    orc_assert_return!(
+        host(),
+        ctx,
+        n_inputs == 2,
+        "This function only supports two inputs"
+    );
+    orc_assert_return!(
+        host(),
+        ctx,
+        n_outputs == 1,
+        "This function only supports one output"
+    );
     let (inputs, outputs) = unsafe {
         (
             slice_from_ptr(inputs, n_inputs as usize),
@@ -84,21 +118,36 @@ unsafe extern "C" fn plugin_fn_add(
     };
     // Inputs must be of the same type.
     // Output and input types must be the same, and must match one of the supported types.
-    let type_id = outputs[0].type_id;
-    if type_id != inputs[1].type_id {
-        panic!("Type mismatch");
-    }
+    let type_id = inputs[0].type_id;
+    orc_assert_return!(
+        host(),
+        ctx,
+        type_id == inputs[1].type_id,
+        "Two inputs must be of the same type"
+    );
     // List processing setup.
     let input_depths = vec![0u8; inputs.len()];
     const OUTPUT_DEPTHS: &[u8] = &[0];
-    let mut comb = Combinations::from_handles(inputs, &input_depths, OUTPUT_DEPTHS)
-        .expect("Cannot initialize combinations from the provide inputs");
+    let mut comb = match Combinations::from_handles(inputs, &input_depths, OUTPUT_DEPTHS) {
+        Ok(comb) => comb,
+        Err(e) => {
+            host().error(
+                ctx,
+                &format!("Cannot initialize combinations from the provided inputs. Error: {e:?}"),
+            );
+            return;
+        }
+    };
     // TODO: I am hardcoding f64 for now, later I need to check the input types, and dispatch to different generic functions.
     let registry = &REGISTRY;
     for output in outputs.iter_mut() {
-        registry
-            .ensure_alloc_default::<Deck<f64>>(&mut output.handle)
-            .expect("Unable to allocate output deck");
+        let alloc_result = registry.ensure_alloc_default::<Deck<f64>>(&mut output.handle);
+        orc_assert_return!(
+            host(),
+            ctx,
+            alloc_result.is_ok(),
+            "Unable to allocate output deck"
+        );
     }
     let (input_slice_lhs, input_slice_rhs) = unsafe {
         (
@@ -131,7 +180,10 @@ unsafe extern "C" fn plugin_fn_add(
         },
     );
     if let Err(e) = result {
-        panic!("Failed to run the function with the following error:\n{e:?}");
+        host().error(
+            ctx,
+            &format!("Failed to run the function with the following error:\n{e:?}"),
+        );
     }
 }
 

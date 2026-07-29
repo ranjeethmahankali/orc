@@ -1,6 +1,7 @@
 use crate::{
-    Deck, Error, ORC_NUM_DIMS, OrcFuncInfo, OrcHandle, OrcHost, OrcPlugin, OrcTypeId, OrcTypeInfo,
-    deck::fmt_raw_deck, ffi::TOrcData,
+    Deck, Error, ORC_MSG_LEVEL_DEBUG, ORC_MSG_LEVEL_ERROR, ORC_MSG_LEVEL_FATAL, ORC_MSG_LEVEL_INFO,
+    ORC_MSG_LEVEL_WARN, ORC_NUM_DIMS, OrcFuncInfo, OrcHandle, OrcHost, OrcHostCallbackAPI,
+    OrcPlugin, OrcTypeId, OrcTypeInfo, deck::fmt_raw_deck, ffi::TOrcData,
 };
 use std::{
     alloc::{GlobalAlloc, Layout, System},
@@ -350,4 +351,97 @@ impl OrcHandle {
             _phantom: PhantomData,
         }
     }
+}
+
+// ==================================================
+// ========= Safe wrapper for host callbacks  =======
+// ==================================================
+
+pub struct HostCallbacks {
+    pub inner: OrcHostCallbackAPI,
+}
+
+impl HostCallbacks {
+    pub const DUMMY: Self = Self {
+        inner: OrcHostCallbackAPI {
+            report_progress: None,
+            report_message: None,
+            check_cancellation: None,
+            report_intermediate_output: None,
+        },
+    };
+
+    pub fn assign(&mut self, callbacks: OrcHostCallbackAPI) {
+        self.inner = callbacks;
+    }
+
+    pub fn report_progress(&self, ctx: u64, progress: f64) {
+        if let Some(callback) = self.inner.report_progress {
+            // SAFETY: We just checked to make sure the function is not None.
+            unsafe { callback(ctx, progress) }
+        }
+    }
+
+    pub fn debug(&self, ctx: u64, error: &str) {
+        if let Some(callback) = self.inner.report_message {
+            // SAFETY: We just checked to make sure the function is not None.
+            unsafe { callback(ctx, ORC_MSG_LEVEL_DEBUG, error.as_ptr().cast()) }
+        }
+    }
+
+    pub fn info(&self, ctx: u64, error: &str) {
+        if let Some(callback) = self.inner.report_message {
+            // SAFETY: We just checked to make sure the function is not None.
+            unsafe { callback(ctx, ORC_MSG_LEVEL_INFO, error.as_ptr().cast()) }
+        }
+    }
+
+    pub fn warn(&self, ctx: u64, error: &str) {
+        if let Some(callback) = self.inner.report_message {
+            // SAFETY: We just checked to make sure the function is not None.
+            unsafe { callback(ctx, ORC_MSG_LEVEL_WARN, error.as_ptr().cast()) }
+        }
+    }
+
+    pub fn error(&self, ctx: u64, error: &str) {
+        if let Some(callback) = self.inner.report_message {
+            // SAFETY: We just checked to make sure the function is not None.
+            unsafe { callback(ctx, ORC_MSG_LEVEL_ERROR, error.as_ptr().cast()) }
+        }
+    }
+
+    pub fn fatal(&self, ctx: u64, error: &str) {
+        if let Some(callback) = self.inner.report_message {
+            // SAFETY: We just checked to make sure the function is not None.
+            unsafe { callback(ctx, ORC_MSG_LEVEL_FATAL, error.as_ptr().cast()) }
+        }
+    }
+
+    pub fn check_cancellation(&self, ctx: u64) -> bool {
+        match self.inner.check_cancellation {
+            // SAFETY: We just checked to make sure the function is not None.
+            Some(callback) => unsafe { callback(ctx) },
+            None => false,
+        }
+    }
+
+    pub fn report_intermediate_output(&self, ctx: u64, handle: &OrcHandle) {
+        if let Some(callback) = self.inner.report_intermediate_output {
+            // SAFETY: We just checked to make sure the function is not None.
+            unsafe { callback(ctx, handle) }
+        }
+    }
+}
+
+/// This is meant to be used by the plugin function to check for invairants, report them to the host
+/// if they're not met, and return immediately.
+#[macro_export]
+macro_rules! orc_assert_return {
+    ($host:expr, $ctx:expr, $cond:expr, $($fmt:tt)+) => {{
+        if !($cond) {
+            let message = ::std::format!($($fmt)+);
+            $host.error($ctx, &message);
+            return;
+        }
+    }};
 }
