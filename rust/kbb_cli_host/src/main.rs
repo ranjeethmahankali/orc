@@ -57,6 +57,7 @@ impl Plugin {
                 report_error: None,
                 report_warning: None,
                 check_cancellation: None,
+                report_intermediate_output: None,
             },
         };
         let mut plugin_data = unsafe { std::mem::zeroed::<OrcPlugin>() };

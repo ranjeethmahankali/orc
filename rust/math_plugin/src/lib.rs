@@ -74,17 +74,18 @@ unsafe extern "C" fn plugin_fn_add(
     outputs: *mut OrcHandle,
     n_outputs: u64,
 ) {
-    assert!(n_outputs == 1, "This function only supports one output");
     assert!(n_inputs == 2, "This function only supports two inputs");
+    assert!(n_outputs == 1, "This function only supports one output");
     let (inputs, outputs) = unsafe {
         (
             slice_from_ptr(inputs, n_inputs as usize),
             slice_from_ptr_mut(outputs, n_outputs as usize),
         )
     };
+    // Inputs must be of the same type.
     // Output and input types must be the same, and must match one of the supported types.
     let type_id = outputs[0].type_id;
-    if inputs[0].type_id != type_id || inputs[1].type_id != type_id {
+    if type_id != inputs[1].type_id {
         panic!("Type mismatch");
     }
     // List processing setup.
@@ -93,13 +94,19 @@ unsafe extern "C" fn plugin_fn_add(
     let mut comb = Combinations::from_handles(inputs, &input_depths, OUTPUT_DEPTHS)
         .expect("Cannot initialize combinations from the provide inputs");
     // TODO: I am hardcoding f64 for now, later I need to check the input types, and dispatch to different generic functions.
+    let registry = &REGISTRY;
+    for output in outputs.iter_mut() {
+        registry
+            .ensure_alloc_default::<Deck<f64>>(&mut output.handle)
+            .expect("Unable to allocate output deck");
+    }
     let (input_slice_lhs, input_slice_rhs) = unsafe {
         (
             slice_from_ptr(inputs[0].items.cast::<f64>(), inputs[0].n_items as usize),
             slice_from_ptr(inputs[1].items.cast::<f64>(), inputs[1].n_items as usize),
         )
     };
-    let result = REGISTRY.with_mut(
+    let result = registry.with_mut(
         &[outputs[0].handle],
         |out_decks| -> Result<(), orc_sdk::Error> {
             let out_deck: &mut Deck<f64> = out_decks[0]

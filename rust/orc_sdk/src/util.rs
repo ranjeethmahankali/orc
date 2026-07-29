@@ -6,6 +6,7 @@ use std::{
     alloc::{GlobalAlloc, Layout, System},
     any::Any,
     collections::HashMap,
+    collections::hash_map::Entry,
     ffi::{CStr, c_void},
     fmt::Display,
     marker::PhantomData,
@@ -84,7 +85,8 @@ impl ObjectRegistry {
     pub fn new() -> Self {
         ObjectRegistry {
             handles: RwLock::new(HashMap::new()),
-            counter: AtomicU64::new(0),
+            // Ids start at 1. 0 represents an empty / uninitialized id.
+            counter: AtomicU64::new(1),
         }
     }
 
@@ -109,9 +111,9 @@ impl ObjectRegistry {
         Ok(())
     }
 
-    pub fn with_mut<T, F>(&self, ids: &[u64], callback: F) -> Result<T, Error>
+    pub fn with_mut<TResult, F>(&self, ids: &[u64], callback: F) -> Result<TResult, Error>
     where
-        F: FnOnce(&mut [&mut (dyn Any + Send + Sync)]) -> T,
+        F: FnOnce(&mut [&mut (dyn Any + Send + Sync)]) -> TResult,
     {
         let arcs: Vec<_> = {
             // This can block this thread until write access is available.
@@ -132,6 +134,43 @@ impl ObjectRegistry {
             .map(|guard| guard.as_mut() as &mut (dyn Any + Send + Sync))
             .collect();
         Ok(callback(&mut references))
+    }
+
+    pub fn ensure_alloc_default<T: Default + Any + Send + Sync>(
+        &self,
+        id: &mut u64,
+    ) -> Result<(), Error> {
+        if *id == 0 {
+            // Valid ids start at 1. This is an empty / invalid id. We need to allocate a new deck and overwrite the id.
+            *id = self.alloc(T::default())?;
+            return Ok(());
+        }
+        // Here, the id is valid, so we try to find the previous allocation and reuse it. If it
+        // doesn't match the type, or doesn't exist, we just reallocate. Below line can block this
+        // thread until write access is available.
+        let mut handles = self
+            .handles
+            .write()
+            .map_err(|_e| Error::CannotLockRegistry)?;
+        match handles.entry(*id) {
+            Entry::Occupied(mut occupied) => {
+                let realloc_needed = {
+                    let read_lock = occupied
+                        .get()
+                        .try_read()
+                        .map_err(|_e| Error::DeckBorrowError)?;
+                    read_lock.downcast_ref::<T>().is_none()
+                };
+                if realloc_needed {
+                    // Drop the old object an overwrite it with a new one.
+                    occupied.insert(Arc::new(RwLock::new(Box::new(T::default()))));
+                }
+            }
+            Entry::Vacant(vacant) => {
+                vacant.insert(Arc::new(RwLock::new(Box::new(T::default()))));
+            }
+        };
+        Ok(())
     }
 }
 
