@@ -1,8 +1,8 @@
 use orc_sdk::{
     Combinations, Deck, ORC_F32, ORC_F64, ORC_I8, ORC_I16, ORC_I32, ORC_I64, ORC_U8, ORC_U16,
     ORC_U32, ORC_U64, ObjectRegistry, OrcFuncInfo, OrcHandle, OrcHost, OrcItemProxy, OrcMark,
-    OrcPlugin, OrcTypeId, ProxyType, TOrcData, TOrcPluginAdaptor, handle_from_deck, orc_fn,
-    orc_fn_info, orc_plugin, reset_handle, slice_from_ptr, slice_from_ptr_mut,
+    OrcPlugin, OrcTypeId, ProxyType, TOrcData, TOrcPluginAdaptor, handle_from_deck, orc_fn_info,
+    orc_generate_fn_info, orc_plugin, reset_handle, slice_from_ptr, slice_from_ptr_mut,
 };
 use std::sync::LazyLock;
 
@@ -65,7 +65,7 @@ impl TOrcPluginAdaptor for Adaptor {
 
 orc_plugin!(Adaptor);
 
-#[orc_fn]
+#[orc_generate_fn_info]
 /// Adds the inputs together. This function supports all floating point and integer primitives.
 unsafe extern "C" fn plugin_fn_add(
     _ctx: u64,
@@ -92,7 +92,7 @@ unsafe extern "C" fn plugin_fn_add(
     const OUTPUT_DEPTHS: &[u8] = &[0];
     let mut comb = Combinations::from_handles(inputs, &input_depths, OUTPUT_DEPTHS)
         .expect("Cannot initialize combinations from the provide inputs");
-    // TODO: I am hardcoding f64 for now, later I need to check the input types, and dispatch to different functions.
+    // TODO: I am hardcoding f64 for now, later I need to check the input types, and dispatch to different generic functions.
     let (input_slice_lhs, input_slice_rhs) = unsafe {
         (
             slice_from_ptr(inputs[0].items.cast::<f64>(), inputs[0].n_items as usize),
@@ -128,7 +128,7 @@ unsafe extern "C" fn plugin_fn_add(
     }
 }
 
-#[orc_fn]
+#[orc_generate_fn_info]
 /// Multiplies the inputs together. This function supports all floating point and integer primitives.
 unsafe extern "C" fn plugin_fn_mul(
     _ctx: u64,
