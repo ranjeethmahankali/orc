@@ -39,15 +39,19 @@ pub fn orc_generate_fn_info(attr: TokenStream, item: TokenStream) -> TokenStream
         lit.value()
     };
     let desc = extract_doc(&func);
-    let name_bytes = proc_macro2::Literal::byte_string(format!("{display_name}\0").as_bytes());
-    let desc_bytes = proc_macro2::Literal::byte_string(format!("{desc}\0").as_bytes());
+    let name_lit = proc_macro2::Literal::c_string(
+        &std::ffi::CString::new(display_name).expect("function name contains a null byte"),
+    );
+    let desc_lit = proc_macro2::Literal::c_string(
+        &std::ffi::CString::new(desc).expect("doc comment contains a null byte"),
+    );
     quote! {
-        #func
         const #const_name: orc_sdk::OrcFuncInfo = orc_sdk::OrcFuncInfo {
-            name: #name_bytes.as_ptr().cast(),
-            desc: #desc_bytes.as_ptr().cast(),
+            name: #name_lit.as_ptr(),
+            desc: #desc_lit.as_ptr(),
             func: Some(#fn_name),
         };
+        #func
     }
     .into()
 }
