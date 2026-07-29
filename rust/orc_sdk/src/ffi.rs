@@ -1,3 +1,4 @@
+use crate::Error;
 use crate::bindings::*;
 
 // ===========================================================
@@ -87,16 +88,16 @@ pub enum ProxyType {
 }
 
 pub trait TOrcPluginAdaptor {
-    fn plugin_init(host: &OrcHost, out: &mut OrcPlugin);
-    fn deck_alloc(id: OrcTypeId) -> OrcHandle;
-    fn deck_free(handle: &mut OrcHandle);
+    fn plugin_init(host: &OrcHost, out: &mut OrcPlugin) -> Result<(), Error>;
+    fn deck_alloc(id: OrcTypeId) -> Result<OrcHandle, Error>;
+    fn deck_free(handle: &mut OrcHandle) -> Result<(), Error>;
     fn deck_from_proxy(
         inputs: &[OrcHandle],
         proxy_type: ProxyType,
         proxies: &[OrcItemProxy],
         marks: &[OrcMark],
         out: &mut OrcHandle,
-    );
+    ) -> Result<(), Error>;
 }
 
 pub trait TOrcData: Default + Clone + Send + Sync + 'static {

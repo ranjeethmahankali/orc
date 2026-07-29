@@ -130,15 +130,22 @@ typedef struct
 // Functions meant to be implemented by the plugin.
 // ===========================================================
 
+#define ORC_ERROR_NONE 0u
+#define ORC_ERROR_INVALID_HANDLE 0xff01u
+#define ORC_ERROR_TYPE_MISMATCH 0xff02u
+#define ORC_ERROR_UNKNOWN 0xffffu
+
+typedef uint32_t OrcError;
+
 // Loading the plugin, and register the host with the plugin.
-void orc_plugin_init(OrcHost const *host, OrcPlugin *plugin_data_out);
+OrcError orc_plugin_init(OrcHost const *host, OrcPlugin *plugin_data_out);
 
 // Deck lifetime operations.
-void orc_deck_alloc(OrcTypeId const id, OrcHandle *const out);
-void orc_deck_free(OrcHandle *const handle);
+OrcError orc_deck_alloc(OrcTypeId const id, OrcHandle *const out);
+OrcError orc_deck_free(OrcHandle *const handle);
 
-void orc_deck_from_proxy(OrcHandle const *inputs,
-                         uint64_t const   n_inputs,
-                         uint32_t const   proxy_type,
-                         OrcHandle const *proxy,
-                         OrcHandle       *out);
+OrcError orc_deck_from_proxy(OrcHandle const *inputs,
+                             uint64_t const   n_inputs,
+                             uint32_t const   proxy_type,
+                             OrcHandle const *proxy,
+                             OrcHandle       *out);

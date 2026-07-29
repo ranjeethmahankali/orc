@@ -1,9 +1,9 @@
 use orc_sdk::{
-    Combinations, Deck, HostCallbacks, ORC_F32, ORC_F64, ORC_I8, ORC_I16, ORC_I32, ORC_I64, ORC_U8,
-    ORC_U16, ORC_U32, ORC_U64, ObjectRegistry, OrcFuncInfo, OrcHandle, OrcHost, OrcItemProxy,
-    OrcMark, OrcPlugin, OrcTypeId, ProxyType, TOrcData, TOrcPluginAdaptor, handle_from_deck,
-    orc_assert_return, orc_fn_info, orc_generate_fn_info, orc_plugin, reset_handle, slice_from_ptr,
-    slice_from_ptr_mut,
+    Combinations, Deck, Error, HostCallbacks, ORC_F32, ORC_F64, ORC_I8, ORC_I16, ORC_I32, ORC_I64,
+    ORC_U8, ORC_U16, ORC_U32, ORC_U64, ObjectRegistry, OrcFuncInfo, OrcHandle, OrcHost,
+    OrcItemProxy, OrcMark, OrcPlugin, OrcTypeId, ProxyType, TOrcData, TOrcPluginAdaptor,
+    handle_from_deck, orc_assert_return, orc_fn_info, orc_generate_fn_info, orc_plugin,
+    reset_handle, slice_from_ptr, slice_from_ptr_mut,
 };
 use std::sync::{LazyLock, OnceLock};
 
@@ -18,40 +18,42 @@ fn host() -> &'static HostCallbacks {
     HOST.get().unwrap_or(&HostCallbacks::DUMMY)
 }
 
-fn alloc_deck<T: TOrcData>() -> OrcHandle {
+fn alloc_deck<T: TOrcData>() -> Result<OrcHandle, Error> {
     let deck = Deck::<T>::default();
     let mut handle = handle_from_deck(&deck, 0);
     match REGISTRY.alloc(deck) {
         Ok(h) => handle.handle = h,
-        Err(_) => {
+        Err(e) => {
             // We're not reporting anything to the host, other than zeroing out this handle. For now
             // that is enough to communicate to the caller that the allocation didn't happen.
             reset_handle(&mut handle);
+            return Err(e);
         }
     };
-    handle
+    Ok(handle)
 }
 
 struct Adaptor;
 
 impl TOrcPluginAdaptor for Adaptor {
-    fn plugin_init(host: &OrcHost, out: &mut OrcPlugin) {
+    fn plugin_init(host: &OrcHost, out: &mut OrcPlugin) -> Result<(), Error> {
         // Read host capabilities - Set up the allocator first, before any heap allocations happen.
         ALLOCATOR.init_from_host(host);
         match HOST.set(HostCallbacks {
             inner: host.callbacks,
         }) {
             Ok(_) => {}
-            Err(_) => panic!("Failed to initialize the host callbacks."),
+            Err(_) => return Err(Error::PluginInitError),
         }
         // Tell the host about the plugin provided types and functions.
         out.n_types = 0;
         out.types = std::ptr::null();
         out.n_functions = ORC_EXPORTED_FUNCTIONS.len() as u64;
         out.functions = ORC_EXPORTED_FUNCTIONS.as_ptr();
+        Ok(())
     }
 
-    fn deck_alloc(id: OrcTypeId) -> OrcHandle {
+    fn deck_alloc(id: OrcTypeId) -> Result<OrcHandle, Error> {
         match id.primitive_id {
             ORC_U8 => alloc_deck::<u8>(),
             ORC_U16 => alloc_deck::<u16>(),
@@ -65,15 +67,14 @@ impl TOrcPluginAdaptor for Adaptor {
             ORC_F64 => alloc_deck::<f64>(),
             // We just return an empty handle to the host when the type is not supported. Maybe in
             // the future we should return some error code.
-            _ => OrcHandle::default(),
+            _ => Err(Error::DeckTypeMismatch),
         }
     }
 
-    fn deck_free(handle: &mut OrcHandle) {
+    fn deck_free(handle: &mut OrcHandle) -> Result<(), Error> {
         // We're intentionally ignoring the error for now. Maybe in the future we update the ABI to
         // allow reporting an error.
-        let _ = REGISTRY.free(handle.handle);
-        reset_handle(handle);
+        REGISTRY.free(handle.handle)
     }
 
     fn deck_from_proxy(
@@ -82,7 +83,7 @@ impl TOrcPluginAdaptor for Adaptor {
         _proxies: &[OrcItemProxy],
         _marks: &[OrcMark],
         _out: &mut OrcHandle,
-    ) {
+    ) -> Result<(), Error> {
         todo!()
     }
 }
