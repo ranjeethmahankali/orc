@@ -256,9 +256,7 @@ fn validate_orc_fn(
     }
     // Validate dims_fn if present.
     if let Some(dims) = dims_fn {
-        if let Some(value) = validate_dims_fn(dims, input_params.len(), output_params.len()) {
-            return value;
-        }
+        validate_dims_fn(dims, input_params.len(), output_params.len())?;
     }
     Ok(ValidatedParams {
         input_params: input_params.into_boxed_slice(),
@@ -270,7 +268,8 @@ fn validate_dims_fn(
     dims: &ItemFn,
     n_inputs: usize,
     n_outputs: usize,
-) -> Option<Result<ValidatedParams, proc_macro2::TokenStream>> {
+) -> Result<(), proc_macro2::TokenStream> {
+    // First parameter must be `ctx: u64`, matching fn run.
     let ctx_ok = matches!(
         dims.sig.inputs.first(),
         Some(syn::FnArg::Typed(pt))
@@ -278,71 +277,69 @@ fn validate_dims_fn(
                 && matches!(pt.ty.as_ref(), syn::Type::Path(p) if p.path.is_ident("u64"))
     );
     if !ctx_ok {
-        return Some(Err(syn::Error::new_spanned(
+        return Err(syn::Error::new_spanned(
             &dims.sig,
             "first parameter of fn dims must be `ctx: u64`",
         )
-        .to_compile_error()));
+        .to_compile_error());
     }
     let expected_total = 1 + n_inputs + n_outputs;
     let dims_args: Vec<_> = dims.sig.inputs.iter().collect();
     if dims_args.len() != expected_total {
-        return Some(Err(syn::Error::new_spanned(
+        return Err(syn::Error::new_spanned(
             &dims.sig,
             format!(
                 "fn dims must have {expected_total} parameter(s) (ctx + {n_inputs} input(s) + {n_outputs} output(s)) to match fn run"
             ),
         )
-        .to_compile_error()));
+        .to_compile_error());
     }
-    // First parameter must be `ctx: u64`, matching fn run.
     for (i, arg) in dims_args.iter().skip(1).enumerate() {
         let pat_ty = match arg {
             syn::FnArg::Typed(pt) => pt,
             syn::FnArg::Receiver(r) => {
-                return Some(Err(syn::Error::new_spanned(
-                    r,
-                    "dims must not have a self parameter",
-                )
-                .to_compile_error()));
+                return Err(
+                    syn::Error::new_spanned(r, "dims must not have a self parameter")
+                        .to_compile_error(),
+                );
             }
         };
         let is_input = i < n_inputs;
         match pat_ty.ty.as_ref() {
             syn::Type::Reference(r) => {
                 if is_input && r.mutability.is_some() {
-                    return Some(Err(syn::Error::new_spanned(
+                    return Err(syn::Error::new_spanned(
                         pat_ty,
                         "dims input parameters must be immutable references (&OrcDims)",
                     )
-                    .to_compile_error()));
+                    .to_compile_error());
                 }
                 if !is_input && r.mutability.is_none() {
-                    return Some(Err(syn::Error::new_spanned(
+                    return Err(syn::Error::new_spanned(
                         pat_ty,
                         "dims output parameters must be mutable references (&mut OrcDims)",
                     )
-                    .to_compile_error()));
+                    .to_compile_error());
                 }
                 if !matches!(r.elem.as_ref(), syn::Type::Path(p) if p.path.segments.last().map_or(false, |s| s.ident == "OrcDims"))
                 {
-                    return Some(Err(syn::Error::new_spanned(
+                    return Err(syn::Error::new_spanned(
                         r.elem.as_ref(),
                         "dims parameters must reference OrcDims",
                     )
-                    .to_compile_error()));
+                    .to_compile_error());
                 }
             }
             other => {
-                return Some(Err(syn::Error::new_spanned(
+                return Err(syn::Error::new_spanned(
                     other,
                     "dims parameters must be references to OrcDims",
                 )
-                .to_compile_error()));
+                .to_compile_error());
             }
         }
     }
-    None
+    Ok(())
 }
 
 /// Expands `orc_fn! name { ... }` into a full FFI function + OrcFuncInfo const.
@@ -549,7 +546,7 @@ pub fn orc_fn(input: TokenStream) -> TokenStream {
         }
     };
 
-    let _validated = match validate_orc_fn(
+    let validated_params = match validate_orc_fn(
         &run_fn,
         dims_fn.as_ref(),
         types.as_ref(),
@@ -561,6 +558,6 @@ pub fn orc_fn(input: TokenStream) -> TokenStream {
         Err(e) => return e.into(),
     };
 
-    let _ = (name, docs, user_items);
+    let _ = (name, docs, user_items, validated_params);
     todo!()
 }
