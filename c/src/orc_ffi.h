@@ -67,6 +67,7 @@ typedef struct
   void (*report_error)(uint64_t const ctx, char const *error);
   void (*report_warning)(uint64_t const ctx, char const *warning);
   bool (*check_cancellation)(uint64_t const ctx);
+  void (*report_intermediate_output)(OrcHandle const *handle);
 } OrcHostCallbackAPI;
 
 typedef struct OrcHost
