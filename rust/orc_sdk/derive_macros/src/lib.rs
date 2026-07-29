@@ -342,6 +342,21 @@ fn validate_dims_fn(
     Ok(())
 }
 
+fn generate_orc_fn(
+    name: &proc_macro2::Ident,
+    docs: &str,
+    run_fn: &syn::ItemFn,
+    dims_fn: Option<&syn::ItemFn>,
+    types: Option<&syn::Type>,
+    registry: Option<&syn::Expr>,
+    input_depths: Option<&syn::ExprArray>,
+    output_depths: Option<&syn::ExprArray>,
+    user_items: &[proc_macro2::TokenStream],
+    params: &ValidatedParams,
+) -> proc_macro2::TokenStream {
+    todo!()
+}
+
 /// Expands `orc_fn! name { ... }` into a full FFI function + OrcFuncInfo const.
 #[proc_macro]
 pub fn orc_fn(input: TokenStream) -> TokenStream {
@@ -545,7 +560,7 @@ pub fn orc_fn(input: TokenStream) -> TokenStream {
             .into();
         }
     };
-
+    // Validate the rest.
     let validated_params = match validate_orc_fn(
         &run_fn,
         dims_fn.as_ref(),
@@ -557,7 +572,18 @@ pub fn orc_fn(input: TokenStream) -> TokenStream {
         Ok(v) => v,
         Err(e) => return e.into(),
     };
-
-    let _ = (name, docs, user_items, validated_params);
-    todo!()
+    // Now that we validated everything, we can generate the code for this orc_fn.
+    generate_orc_fn(
+        &name,
+        &docs,
+        &run_fn,
+        dims_fn.as_ref(),
+        types.as_ref(),
+        registry.as_ref(),
+        input_depths.as_ref(),
+        output_depths.as_ref(),
+        &user_items,
+        &validated_params,
+    )
+    .into()
 }
