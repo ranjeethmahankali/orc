@@ -347,14 +347,46 @@ fn generate_orc_fn(
     docs: &str,
     run_fn: &syn::ItemFn,
     dims_fn: Option<&syn::ItemFn>,
-    types: Option<&syn::Type>,
-    registry: Option<&syn::Expr>,
-    input_depths: Option<&syn::ExprArray>,
-    output_depths: Option<&syn::ExprArray>,
+    _types: Option<&syn::Type>,
+    _registry: Option<&syn::Expr>,
+    _input_depths: Option<&syn::ExprArray>,
+    _output_depths: Option<&syn::ExprArray>,
     user_items: &[proc_macro2::TokenStream],
     params: &ValidatedParams,
 ) -> proc_macro2::TokenStream {
-    todo!()
+    let info_name = info_const_name(&name.to_string());
+    let n_inputs = params.input_params.len();
+    let n_outputs = params.output_params.len();
+    let name_lit = proc_macro2::Literal::c_string(
+        &std::ffi::CString::new(name.to_string()).expect("name contains null byte"),
+    );
+    let desc_lit = proc_macro2::Literal::c_string(
+        &std::ffi::CString::new(docs).expect("docs contains null byte"),
+    );
+    let dims_ts = dims_fn.map(|d| quote! { #d }).unwrap_or_default();
+    quote! {
+        const #info_name: orc_sdk::OrcFuncInfo = orc_sdk::OrcFuncInfo {
+            name: #name_lit.as_ptr(),
+            desc: #desc_lit.as_ptr(),
+            func: Some(#name),
+        };
+        unsafe extern "C" fn #name(
+            ctx: u64,
+            inputs: *const orc_sdk::OrcHandle,
+            n_inputs: u64,
+            outputs: *mut orc_sdk::OrcHandle,
+            n_outputs: u64,
+        ) {
+            #(#user_items)*
+            #run_fn
+            #dims_ts
+            assert_eq!(n_inputs, #n_inputs as u64);
+            assert_eq!(n_outputs, #n_outputs as u64);
+            let inputs = unsafe { orc_sdk::slice_from_ptr(inputs, #n_inputs) };
+            let outputs = unsafe { orc_sdk::slice_from_ptr_mut(outputs, #n_outputs) };
+            todo!("dispatch to run")
+        }
+    }
 }
 
 /// Expands `orc_fn! name { ... }` into a full FFI function + OrcFuncInfo const.
