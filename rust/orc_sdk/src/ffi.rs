@@ -100,128 +100,108 @@ pub trait TOrcPluginAdaptor {
 }
 
 pub trait TOrcData: Default + Clone + Send + Sync + 'static {
-    fn type_info() -> OrcTypeInfo;
+    const TYPE_INFO: OrcTypeInfo;
 }
 
 impl TOrcData for u8 {
-    fn type_info() -> OrcTypeInfo {
-        OrcTypeInfo {
-            type_id: OrcTypeId {
-                primitive_id: ORC_U8,
-                opaque_id: 0,
-            },
-            name: c"u8".as_ptr(),
-            desc: c"Unsigned 8 bit integer".as_ptr(),
-        }
-    }
+    const TYPE_INFO: OrcTypeInfo = OrcTypeInfo {
+        type_id: OrcTypeId {
+            primitive_id: ORC_U8,
+            opaque_id: 0,
+        },
+        name: c"u8".as_ptr(),
+        desc: c"Unsigned 8 bit integer".as_ptr(),
+    };
 }
 impl TOrcData for u16 {
-    fn type_info() -> OrcTypeInfo {
-        OrcTypeInfo {
-            type_id: OrcTypeId {
-                primitive_id: ORC_U16,
-                opaque_id: 0,
-            },
-            name: c"u16".as_ptr(),
-            desc: c"Unsigned 16 bit integer".as_ptr(),
-        }
-    }
+    const TYPE_INFO: OrcTypeInfo = OrcTypeInfo {
+        type_id: OrcTypeId {
+            primitive_id: ORC_U16,
+            opaque_id: 0,
+        },
+        name: c"u16".as_ptr(),
+        desc: c"Unsigned 16 bit integer".as_ptr(),
+    };
 }
 impl TOrcData for u32 {
-    fn type_info() -> OrcTypeInfo {
-        OrcTypeInfo {
-            type_id: OrcTypeId {
-                primitive_id: ORC_U32,
-                opaque_id: 0,
-            },
-            name: c"u32".as_ptr(),
-            desc: c"Unsigned 32 bit integer".as_ptr(),
-        }
-    }
+    const TYPE_INFO: OrcTypeInfo = OrcTypeInfo {
+        type_id: OrcTypeId {
+            primitive_id: ORC_U32,
+            opaque_id: 0,
+        },
+        name: c"u32".as_ptr(),
+        desc: c"Unsigned 32 bit integer".as_ptr(),
+    };
 }
 impl TOrcData for u64 {
-    fn type_info() -> OrcTypeInfo {
-        OrcTypeInfo {
-            type_id: OrcTypeId {
-                primitive_id: ORC_U64,
-                opaque_id: 0,
-            },
-            name: c"u64".as_ptr(),
-            desc: c"Unsigned 64 bit integer".as_ptr(),
-        }
-    }
+    const TYPE_INFO: OrcTypeInfo = OrcTypeInfo {
+        type_id: OrcTypeId {
+            primitive_id: ORC_U64,
+            opaque_id: 0,
+        },
+        name: c"u64".as_ptr(),
+        desc: c"Unsigned 64 bit integer".as_ptr(),
+    };
 }
 impl TOrcData for f32 {
-    fn type_info() -> OrcTypeInfo {
-        OrcTypeInfo {
-            type_id: OrcTypeId {
-                primitive_id: ORC_F32,
-                opaque_id: 0,
-            },
-            name: c"f32".as_ptr(),
-            desc: c"32 bit floating point scalar".as_ptr(),
-        }
-    }
+    const TYPE_INFO: OrcTypeInfo = OrcTypeInfo {
+        type_id: OrcTypeId {
+            primitive_id: ORC_F32,
+            opaque_id: 0,
+        },
+        name: c"f32".as_ptr(),
+        desc: c"32 bit floating point scalar".as_ptr(),
+    };
 }
 impl TOrcData for f64 {
-    fn type_info() -> OrcTypeInfo {
-        OrcTypeInfo {
-            type_id: OrcTypeId {
-                primitive_id: ORC_F64,
-                opaque_id: 0,
-            },
-            name: c"f64".as_ptr(),
-            desc: c"64 bit floating point scalar".as_ptr(),
-        }
-    }
+    const TYPE_INFO: OrcTypeInfo = OrcTypeInfo {
+        type_id: OrcTypeId {
+            primitive_id: ORC_F64,
+            opaque_id: 0,
+        },
+        name: c"f64".as_ptr(),
+        desc: c"64 bit floating point scalar".as_ptr(),
+    };
 }
 impl TOrcData for i8 {
-    fn type_info() -> OrcTypeInfo {
-        OrcTypeInfo {
-            type_id: OrcTypeId {
-                primitive_id: ORC_I8,
-                opaque_id: 0,
-            },
-            name: c"i8".as_ptr(),
-            desc: c"Signed 8 bit integer".as_ptr(),
-        }
-    }
+    const TYPE_INFO: OrcTypeInfo = OrcTypeInfo {
+        type_id: OrcTypeId {
+            primitive_id: ORC_I8,
+            opaque_id: 0,
+        },
+        name: c"i8".as_ptr(),
+        desc: c"Signed 8 bit integer".as_ptr(),
+    };
 }
 impl TOrcData for i16 {
-    fn type_info() -> OrcTypeInfo {
-        OrcTypeInfo {
-            type_id: OrcTypeId {
-                primitive_id: ORC_I16,
-                opaque_id: 0,
-            },
-            name: c"i16".as_ptr(),
-            desc: c"Signed 16 bit integer".as_ptr(),
-        }
-    }
+    const TYPE_INFO: OrcTypeInfo = OrcTypeInfo {
+        type_id: OrcTypeId {
+            primitive_id: ORC_I16,
+            opaque_id: 0,
+        },
+        name: c"i16".as_ptr(),
+        desc: c"Signed 16 bit integer".as_ptr(),
+    };
 }
 impl TOrcData for i32 {
-    fn type_info() -> OrcTypeInfo {
-        OrcTypeInfo {
-            type_id: OrcTypeId {
-                primitive_id: ORC_I32,
-                opaque_id: 0,
-            },
-            name: c"i32".as_ptr(),
-            desc: c"Signed 32 bit integer".as_ptr(),
-        }
-    }
+    const TYPE_INFO: OrcTypeInfo = OrcTypeInfo {
+        type_id: OrcTypeId {
+            primitive_id: ORC_I32,
+            opaque_id: 0,
+        },
+        name: c"i32".as_ptr(),
+        desc: c"Signed 32 bit integer".as_ptr(),
+    };
 }
 impl TOrcData for i64 {
-    fn type_info() -> OrcTypeInfo {
-        OrcTypeInfo {
-            type_id: OrcTypeId {
-                primitive_id: ORC_I64,
-                opaque_id: 0,
-            },
-            name: c"i64".as_ptr(),
-            desc: c"Signed 64 bit integer".as_ptr(),
-        }
-    }
+    const TYPE_INFO: OrcTypeInfo = OrcTypeInfo {
+        type_id: OrcTypeId {
+            primitive_id: ORC_I64,
+            opaque_id: 0,
+        },
+        name: c"i64".as_ptr(),
+        desc: c"Signed 64 bit integer".as_ptr(),
+    };
 }
 
 // ==================== Dims helper functions ====================

@@ -41,7 +41,6 @@ pub unsafe fn slice_from_ptr_mut<'a, T>(ptr: *mut T, len: usize) -> &'a mut [T] 
 }
 
 pub fn handle_from_deck<T: TOrcData>(deck: &Deck<T>, id: u64) -> OrcHandle {
-    let type_info = T::type_info();
     let (items, marks, (stride_offset, strides)) = (deck.items(), deck.marks(), deck.stride_info());
     debug_assert_eq!(
         marks.len(),
@@ -57,7 +56,7 @@ pub fn handle_from_deck<T: TOrcData>(deck: &Deck<T>, id: u64) -> OrcHandle {
         stride_offset: ptr_from_slice(stride_offset),
         n_marks: marks.len() as u64,
         strides: ptr_from_slice(strides),
-        type_id: type_info.type_id,
+        type_id: T::TYPE_INFO.type_id,
         dims: [0; ORC_NUM_DIMS as usize],
     }
 }
