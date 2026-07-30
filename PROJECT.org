@@ -71,14 +71,21 @@
   was trivial to implement in GH. Trying to do the same in Kratos turned into a
   dumpster fire. That is what makes this a good litmus test.
 
-* TODO tiwkbm - Create Toy Demo Apps
+* NEXT tiwkbm - Create Toy Demo Apps
   :PROPERTIES:
   :CREATED:  2026-07-28 Tue 16:45
+  :END:
+  :LOGBOOK:
+  - State "NEXT"       from "TODO"       [2026-07-30 Thu 18:36]
   :END:
 
   Not that the plugin architecture is fleshed out, I can build a few toy host applications, and toy
   plugins, and demonstrate the flexibility and power of this design to both Product / Customer
   facing side as well as the engineering side.
+
+  <2026-07-30 Thu 18:35> Made quite some progress with the orc_fn macro to make it easier to
+  implement simple blocks. The macro is now able to handle templated Rust functions too, but still
+  requires some more testing before I feel confident about it.
 
 * CLOSED Rendering Geometry
   CLOSED: [2026-07-28 Tue 09:16]
