@@ -6,7 +6,7 @@ use orc_sdk::{
     orc_generate_fn_info, orc_plugin, reset_handle, slice_from_ptr, slice_from_ptr_mut,
 };
 use std::{
-    ops::Mul,
+    ops::{Div, Mul},
     sync::{LazyLock, OnceLock},
 };
 
@@ -219,6 +219,21 @@ orc_fn!(plugin_fn_mul, {
             return Err(Error::InvalidDimensions);
         }
         *out = *lhs;
+        Ok(())
+    }
+});
+
+orc_fn!(plugin_fn_div, {
+    let host_callbacks: &HostCallbacks = host_callbacks();
+    let registry: &ObjectRegistry = &REGISTRY;
+
+    type Types = (Case<f32>, Case<f64>);
+
+    fn run<T>(_host: &HostCallbacks, lhs: &T, rhs: &T, out: &mut T) -> Result<(), Error>
+    where
+        T: TOrcData + Div<Output = T> + Copy,
+    {
+        *out = *lhs / *rhs;
         Ok(())
     }
 });

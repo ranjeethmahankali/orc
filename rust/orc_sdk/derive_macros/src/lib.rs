@@ -263,11 +263,10 @@ fn validate_orc_fn(
         syn::ReturnType::Default => false,
     };
     if !returns_result {
-        return Err(syn::Error::new_spanned(
-            &run_fn.sig,
-            "fn run must return `Result<(), Error>`",
-        )
-        .to_compile_error());
+        return Err(
+            syn::Error::new_spanned(&run_fn.sig, "fn run must return `Result<(), Error>`")
+                .to_compile_error(),
+        );
     }
     // Classify remaining params (skip host).
     let mut input_params: Vec<syn::PatType> = Vec::new();
@@ -573,7 +572,7 @@ fn generate_type_dispatch(
                 errors.push(
                     syn::Error::new_spanned(
                         ty,
-                        "duplicate Case: same input type signature as a previous Case",
+                        r"This Case produces the same input type signature as a previous one when applied to `fn run`'s input parameters — likely because the generic type  parameters substituted by this Case do not appear in any input parameter, making it indistinguishable from another Case at dispatch time. This can also happen if the Case itself is duplicated.",
                     )
                     .to_compile_error(),
                 );
