@@ -90,13 +90,14 @@ fn is_deck_type(ty: &syn::Type) -> bool {
         if p.path.segments.last().map_or(false, |s| s.ident == "DeckView" || s.ident == "DeckWriter"))
 }
 
-fn infer_depth(ty: &syn::Type) -> u8 {
+fn infer_depth(ty: &syn::Type) -> Option<u8> {
     match ty {
         syn::Type::Reference(r) => match r.elem.as_ref() {
-            syn::Type::Slice(_) => 1,
-            _ => 0,
+            syn::Type::Slice(_) => Some(1),
+            _ => Some(0),
         },
-        _ => 0,
+        _ if is_deck_type(ty) => None,
+        _ => Some(0),
     }
 }
 
@@ -120,97 +121,77 @@ fn is_output_param(ty: &syn::Type) -> Result<bool, proc_macro2::TokenStream> {
     }
 }
 
-/// Returns `Ok` if `generic` doesn't appear in `ty`, or appears only in an allowed position.
-///
-/// Allowed forms (where `T` is the generic):
-/// ```text
-/// T              — value input
-/// &T             — shared-reference input
-/// &mut T         — mutable-reference output
-/// &[T]           — slice input (depth-1 list)
-/// DeckView<T>    — higher-depth list input
-/// DeckWriter<T>  — higher-depth list output
-/// ```
-///
-/// Anything else that contains `T` is rejected:
-/// ```text
-/// &mut [T]       — error (use DeckWriter<T> for list outputs)
-/// Box<T>         — error
-/// Vec<T>         — error
-/// Option<T>      — error
-/// (T, T)         — error
-/// ```
-fn check_generic_in_param(
-    ty: &syn::Type,
-    generic: &syn::Ident,
-) -> Result<(), proc_macro2::TokenStream> {
-    match ty {
-        syn::Type::Path(p) if p.path.is_ident(generic) => return Ok(()),
-        syn::Type::Reference(r) => match r.elem.as_ref() {
-            syn::Type::Path(p) if p.path.is_ident(generic) => return Ok(()),
-            // &[T] is allowed (immutable slice input). &mut [T] is not — use DeckWriter<T> instead.
-            syn::Type::Slice(s)
-                if r.mutability.is_none()
-                    && matches!(s.elem.as_ref(), syn::Type::Path(p) if p.path.is_ident(generic)) =>
-            {
-                return Ok(());
+fn resolve_depths(
+    explicit: Option<&syn::ExprArray>,
+    params: &[syn::PatType],
+    array_name: &str,
+    param_kind: &str,
+) -> Result<Box<[u8]>, proc_macro2::TokenStream> {
+    let inferred: Vec<Option<u8>> = params.iter().map(|p| infer_depth(p.ty.as_ref())).collect();
+    match explicit {
+        Some(arr) => {
+            if arr.elems.len() != params.len() {
+                return Err(syn::Error::new_spanned(
+                    arr,
+                    format!(
+                        "{array_name} has {} element(s) but fn run has {} {param_kind}(s)",
+                        arr.elems.len(),
+                        params.len()
+                    ),
+                )
+                .to_compile_error());
             }
-            _ => {}
-        },
-        syn::Type::Path(p) => {
-            if let Some(seg) = p.path.segments.last() {
-                if seg.ident == "DeckView" || seg.ident == "DeckWriter" {
-                    if let syn::PathArguments::AngleBracketed(args) = &seg.arguments {
-                        if args.args.len() == 1 {
-                            if let Some(syn::GenericArgument::Type(inner)) = args.args.first() {
-                                if matches!(inner, syn::Type::Path(p) if p.path.is_ident(generic)) {
-                                    return Ok(());
-                                }
-                            }
+            let mut result = Vec::with_capacity(params.len());
+            for (i, e) in arr.elems.iter().enumerate() {
+                let provided = match e {
+                    syn::Expr::Lit(syn::ExprLit {
+                        lit: syn::Lit::Int(i),
+                        ..
+                    }) => match i.base10_parse::<u8>() {
+                        Ok(v) => v,
+                        Err(_) => {
+                            return Err(syn::Error::new_spanned(
+                                i,
+                                format!("{array_name} values must be u8 literals"),
+                            )
+                            .to_compile_error());
                         }
+                    },
+                    _ => {
+                        return Err(syn::Error::new_spanned(
+                            e,
+                            format!("{array_name} values must be u8 literals"),
+                        )
+                        .to_compile_error());
+                    }
+                };
+                if let Some(inf) = inferred[i] {
+                    if provided != inf {
+                        return Err(syn::Error::new_spanned(
+                            e,
+                            format!(
+                                "{array_name}[{i}] is {provided} but the parameter type implies depth {inf}, which does not match the provided depth {provided}"
+                            ),
+                        )
+                        .to_compile_error());
                     }
                 }
+                result.push(provided);
             }
+            Ok(result.into_boxed_slice())
         }
-        _ => {}
-    }
-    // Type didn't match any allowed pattern. Error only if the generic appears inside it.
-    if generic_appears_in(ty, generic) {
-        Err(syn::Error::new_spanned(
-            ty,
-            format!(
-                "generic `{generic}` may only appear as `{generic}`, `&{generic}`, `&mut {generic}`, \
-                 `&[{generic}]`, `DeckView<{generic}>`, or `DeckWriter<{generic}>`"
-            ),
-        )
-        .to_compile_error())
-    } else {
-        Ok(())
-    }
-}
-
-fn generic_appears_in(ty: &syn::Type, generic: &syn::Ident) -> bool {
-    match ty {
-        syn::Type::Path(p) => {
-            p.path.is_ident(generic)
-                || p.path.segments.iter().any(|seg| {
-                    if let syn::PathArguments::AngleBracketed(args) = &seg.arguments {
-                        args.args.iter().any(|arg| {
-                            if let syn::GenericArgument::Type(t) = arg {
-                                generic_appears_in(t, generic)
-                            } else {
-                                false
-                            }
-                        })
-                    } else {
-                        false
-                    }
-                })
+        None => {
+            if let Some(i) = inferred.iter().position(|d| d.is_none()) {
+                return Err(syn::Error::new_spanned(
+                    &params[i],
+                    format!(
+                        "{array_name} must be specified; depth cannot be inferred for this parameter"
+                    ),
+                )
+                .to_compile_error());
+            }
+            Ok(inferred.into_iter().map(|d| d.unwrap()).collect())
         }
-        syn::Type::Reference(r) => generic_appears_in(r.elem.as_ref(), generic),
-        syn::Type::Slice(s) => generic_appears_in(s.elem.as_ref(), generic),
-        syn::Type::Tuple(t) => t.elems.iter().any(|e| generic_appears_in(e, generic)),
-        _ => false,
     }
 }
 
@@ -309,84 +290,14 @@ fn validate_orc_fn(
         )
         .to_compile_error());
     }
-    // Resolve depth arrays: use explicitly provided values, or auto-infer from parameter types.
-    // Auto-inference is not possible for DeckView/DeckWriter params — those require explicit depths.
-    let computed_input_depths: Box<[u8]> = match input_depths {
-        Some(arr) => {
-            if arr.elems.len() != input_params.len() {
-                return Err(syn::Error::new_spanned(
-                    arr,
-                    format!(
-                        "INPUT_DEPTHS has {} element(s) but fn run has {} input(s)",
-                        arr.elems.len(),
-                        input_params.len()
-                    ),
-                )
-                .to_compile_error());
-            }
-            arr.elems
-                .iter()
-                .map(|e| match e {
-                    syn::Expr::Lit(syn::ExprLit {
-                        lit: syn::Lit::Int(i),
-                        ..
-                    }) => i.base10_parse::<u8>().unwrap_or(0),
-                    _ => 0,
-                })
-                .collect()
-        }
-        None => {
-            if let Some(p) = input_params.iter().find(|p| is_deck_type(p.ty.as_ref())) {
-                return Err(syn::Error::new_spanned(
-                    p,
-                    "INPUT_DEPTHS must be defined when any input uses DeckView",
-                )
-                .to_compile_error());
-            }
-            input_params
-                .iter()
-                .map(|p| infer_depth(p.ty.as_ref()))
-                .collect()
-        }
-    };
-    let computed_output_depths: Box<[u8]> = match output_depths {
-        Some(arr) => {
-            if arr.elems.len() != output_params.len() {
-                return Err(syn::Error::new_spanned(
-                    arr,
-                    format!(
-                        "OUTPUT_DEPTHS has {} element(s) but fn run has {} output(s)",
-                        arr.elems.len(),
-                        output_params.len()
-                    ),
-                )
-                .to_compile_error());
-            }
-            arr.elems
-                .iter()
-                .map(|e| match e {
-                    syn::Expr::Lit(syn::ExprLit {
-                        lit: syn::Lit::Int(i),
-                        ..
-                    }) => i.base10_parse::<u8>().unwrap_or(0),
-                    _ => 0,
-                })
-                .collect()
-        }
-        None => {
-            if let Some(p) = output_params.iter().find(|p| is_deck_type(p.ty.as_ref())) {
-                return Err(syn::Error::new_spanned(
-                    p,
-                    "OUTPUT_DEPTHS must be defined when any output uses DeckWriter",
-                )
-                .to_compile_error());
-            }
-            output_params
-                .iter()
-                .map(|p| infer_depth(p.ty.as_ref()))
-                .collect()
-        }
-    };
+    // Resolve depth arrays. First infer depths from parameter types (None = cannot infer).
+    // If all depths are inferrable, the user may omit the explicit array.
+    // If any are None (DeckView/DeckWriter), the user must provide explicit depths.
+    // When explicit depths are provided alongside inferrable ones, they must agree.
+    let computed_input_depths =
+        resolve_depths(input_depths, &input_params, "INPUT_DEPTHS", "input")?;
+    let computed_output_depths =
+        resolve_depths(output_depths, &output_params, "OUTPUT_DEPTHS", "output")?;
     // Validate dims_fn if present.
     if let Some(dims) = dims_fn {
         validate_dims_fn(dims, input_params.len(), output_params.len())?;
