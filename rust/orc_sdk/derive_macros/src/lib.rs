@@ -300,15 +300,6 @@ fn validate_orc_fn(
                 }
             }
         }
-        // Each generic must only appear in allowed positions across all params.
-        let all_params = input_params.iter().chain(output_params.iter());
-        for param in all_params {
-            for generic_param in run_fn.sig.generics.params.iter() {
-                if let syn::GenericParam::Type(tp) = generic_param {
-                    check_generic_in_param(param.ty.as_ref(), &tp.ident)?;
-                }
-            }
-        }
     }
     // Outputs require a registry.
     if !output_params.is_empty() && registry.is_none() {
@@ -669,9 +660,12 @@ pub fn orc_fn(input: TokenStream) -> TokenStream {
                 let outer = match t.ty.as_ref() {
                     syn::Type::Tuple(tup) => tup,
                     _ => {
-                        return syn::Error::new_spanned(&t.ty, "Types must be a tuple of Case<...>")
-                            .to_compile_error()
-                            .into();
+                        return syn::Error::new_spanned(
+                            &t.ty,
+                            "Types must be a tuple of Case<...>",
+                        )
+                        .to_compile_error()
+                        .into();
                     }
                 };
                 if outer.elems.is_empty() {
