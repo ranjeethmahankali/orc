@@ -71,6 +71,20 @@ struct ValidatedParams {
     output_depths: Box<[u8]>,
 }
 
+/// Returns the number of args in `Case<...>`, or `None` if the type is not `Case<...>`.
+fn sig_arg_count(ty: &syn::Type) -> Option<usize> {
+    if let syn::Type::Path(p) = ty {
+        if let Some(seg) = p.path.segments.last() {
+            if seg.ident == "Case" {
+                if let syn::PathArguments::AngleBracketed(args) = &seg.arguments {
+                    return Some(args.args.len());
+                }
+            }
+        }
+    }
+    None
+}
+
 fn is_deck_type(ty: &syn::Type) -> bool {
     matches!(ty, syn::Type::Path(p)
         if p.path.segments.last().map_or(false, |s| s.ident == "DeckView" || s.ident == "DeckWriter"))
@@ -229,10 +243,11 @@ fn validate_orc_fn(
         let pat_ty = match arg {
             syn::FnArg::Typed(pt) => pt,
             syn::FnArg::Receiver(r) => {
-                return Err(
-                    syn::Error::new_spanned(r, "run must not have a self parameter")
-                        .to_compile_error(),
-                );
+                return Err(syn::Error::new_spanned(
+                    r,
+                    "`run` function must not have a self parameter",
+                )
+                .to_compile_error());
             }
         };
         let is_out = is_output_param(pat_ty.ty.as_ref())?;
@@ -243,34 +258,20 @@ fn validate_orc_fn(
             if saw_output {
                 return Err(syn::Error::new_spanned(
                     pat_ty,
-                    "all inputs must precede all outputs in `fn run`",
+                    "All inputs must precede all outputs in `fn run`",
                 )
                 .to_compile_error());
             }
             input_params.push(pat_ty.clone());
         }
     }
-    // Const generics are not supported.
-    if let Some(const_param) = run_fn
-        .sig
-        .generics
-        .params
-        .iter()
-        .find(|p| matches!(p, syn::GenericParam::Const(_)))
-    {
-        return Err(syn::Error::new_spanned(
-            const_param,
-            "const generics are not supported in fn run",
-        )
-        .to_compile_error());
-    }
-    // If run_fn has type generics, Types must be defined with matching arity.
+    // If run_fn has generics (type or const), Types must be defined with matching arity.
     let generic_count = run_fn
         .sig
         .generics
         .params
         .iter()
-        .filter(|p| matches!(p, syn::GenericParam::Type(_)))
+        .filter(|p| matches!(p, syn::GenericParam::Type(_) | syn::GenericParam::Const(_)))
         .count();
     if generic_count > 0 {
         match types {
@@ -283,18 +284,16 @@ fn validate_orc_fn(
             }
             Some(ty) => {
                 let arity = match ty {
-                    syn::Type::Tuple(outer) => match outer.elems.first() {
-                        Some(syn::Type::Tuple(inner)) => inner.elems.len(),
-                        Some(_) => 1,
-                        None => 0,
-                    },
+                    syn::Type::Tuple(outer) => {
+                        outer.elems.first().and_then(sig_arg_count).unwrap_or(0)
+                    }
                     _ => 0,
                 };
                 if arity != generic_count {
                     return Err(syn::Error::new_spanned(
                         ty,
                         format!(
-                            "Types arity ({arity}) must match the number of type parameters in fn run ({generic_count})"
+                            "Each Case<...> in Types must have {generic_count} argument(s) to match fn run's generics, found {arity}"
                         ),
                     )
                     .to_compile_error());
@@ -670,50 +669,47 @@ pub fn orc_fn(input: TokenStream) -> TokenStream {
                 let outer = match t.ty.as_ref() {
                     syn::Type::Tuple(tup) => tup,
                     _ => {
-                        return syn::Error::new_spanned(&t.ty, "Types must be a tuple")
+                        return syn::Error::new_spanned(&t.ty, "Types must be a tuple of Case<...>")
                             .to_compile_error()
                             .into();
                     }
                 };
-                // Shape is determined by the first element: if it's a tuple of N types,
-                // all others must also be N-tuples. If it's a plain type, all must be plain.
-                let first_inner_len: Option<usize> = match outer.elems.first() {
+                if outer.elems.is_empty() {
+                    return syn::Error::new_spanned(&t.ty, "Types cannot be an empty tuple")
+                        .to_compile_error()
+                        .into();
+                }
+                // All elements must be Case<...> with the same number of args.
+                let first_arity = match sig_arg_count(outer.elems.first().unwrap()) {
+                    Some(n) => n,
                     None => {
-                        return syn::Error::new_spanned(&t.ty, "Types cannot be an empty tuple")
-                            .to_compile_error()
-                            .into();
+                        return syn::Error::new_spanned(
+                            outer.elems.first().unwrap(),
+                            "each element of Types must be `Case<T, U, ...>`",
+                        )
+                        .to_compile_error()
+                        .into();
                     }
-                    Some(syn::Type::Tuple(inner)) => Some(inner.elems.len()),
-                    Some(_) => None,
                 };
                 for elem in outer.elems.iter().skip(1) {
-                    match (first_inner_len, elem) {
-                        (Some(n), syn::Type::Tuple(inner)) if inner.elems.len() == n => {}
-                        (Some(n), syn::Type::Tuple(inner)) => {
+                    match sig_arg_count(elem) {
+                        Some(n) if n == first_arity => {}
+                        Some(n) => {
                             return syn::Error::new_spanned(
                                 elem,
-                                format!(
-                                    "expected a {n}-tuple; all rows of Types must have the same length, found {}",
-                                    inner.elems.len()
-                                ),
+                                format!("expected Case with {first_arity} argument(s), found {n}"),
                             )
                             .to_compile_error()
                             .into();
                         }
-                        (Some(n), _) => {
-                            return syn::Error::new_spanned(elem, format!("expected a {n}-tuple"))
-                                .to_compile_error()
-                                .into();
-                        }
-                        (None, syn::Type::Tuple(_)) => {
+                        None => {
                             return syn::Error::new_spanned(
                                 elem,
-                                "all elements of Types must match the shape of the first element",
+                                "each element of Types must be `Case<T, U, ...>`",
                             )
                             .to_compile_error()
                             .into();
                         }
-                        (None, _) => {} // Both plain types — valid.
                     }
                 }
                 types = Some(*t.ty.clone());

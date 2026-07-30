@@ -195,7 +195,8 @@ orc_fn! { plugin_fn_mul {
     let host: &HostCallbacks = host();
     let registry: &ObjectRegistry = &REGISTRY;
 
-    type Types = (f32, f64, u8, u16, u32, u64, i8, i16, i32, i64);
+    type Types = (Case<f32>, Case<f64>, Case<u8>, Case<u16>, Case<u32>,
+                  Case<u64>, Case<i8>, Case<i16>, Case<i32>, Case<i64>);
     fn run<T: TOrcData + Mul<Output=T>>(_ctx: u64, lhs: T, rhs: T, out: &mut T) {
         // *out = lhs * rhs;
     }
