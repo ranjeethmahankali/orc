@@ -328,16 +328,6 @@ fn validate_orc_fn(
     let computed_output_depths =
         resolve_depths(output_depths, &output_params, "OUTPUT_DEPTHS", "output")?;
 
-    // Inner type of each input/output param (depth wrapper stripped).
-    let input_inner_types: Box<[syn::Type]> = input_params
-        .iter()
-        .map(|p| inner_type(p.ty.as_ref()).clone())
-        .collect();
-    let output_inner_types: Box<[syn::Type]> = output_params
-        .iter()
-        .map(|p| inner_type(p.ty.as_ref()).clone())
-        .collect();
-
     // Validate dims_fn if present.
     if let Some(dims) = dims_fn {
         validate_dims_fn(dims, input_params.len(), output_params.len())?;
@@ -346,21 +336,25 @@ fn validate_orc_fn(
         inputs: input_params
             .into_iter()
             .zip(computed_input_depths)
-            .zip(input_inner_types)
-            .map(|((param, depth), inner_type)| ParamInfo {
-                param,
-                depth,
-                inner_type,
+            .map(|(param, depth)| {
+                let inner_type = inner_type(param.ty.as_ref()).clone();
+                ParamInfo {
+                    param,
+                    depth,
+                    inner_type,
+                }
             })
             .collect(),
         outputs: output_params
             .into_iter()
             .zip(computed_output_depths)
-            .zip(output_inner_types)
-            .map(|((param, depth), inner_type)| ParamInfo {
-                param,
-                depth,
-                inner_type,
+            .map(|(param, depth)| {
+                let inner_type = inner_type(param.ty.as_ref()).clone();
+                ParamInfo {
+                    param,
+                    depth,
+                    inner_type,
+                }
             })
             .collect(),
     })
