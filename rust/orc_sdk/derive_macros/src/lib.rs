@@ -64,13 +64,15 @@ pub fn orc_fn_info(input: TokenStream) -> TokenStream {
     quote! { #const_name }.into()
 }
 
+struct ParamInfo {
+    param: syn::PatType,
+    depth: u8,
+    inner_type: syn::Type,
+}
+
 struct ValidatedParams {
-    input_params: Box<[syn::PatType]>,
-    output_params: Box<[syn::PatType]>,
-    input_depths: Box<[u8]>,
-    output_depths: Box<[u8]>,
-    input_inner_types: Box<[syn::Type]>,
-    output_inner_types: Box<[syn::Type]>,
+    inputs: Box<[ParamInfo]>,
+    outputs: Box<[ParamInfo]>,
 }
 
 /// Returns the number of args in `Case<...>`, or `None` if the type is not `Case<...>`.
@@ -341,12 +343,26 @@ fn validate_orc_fn(
         validate_dims_fn(dims, input_params.len(), output_params.len())?;
     }
     Ok(ValidatedParams {
-        input_params: input_params.into_boxed_slice(),
-        output_params: output_params.into_boxed_slice(),
-        input_depths: computed_input_depths,
-        output_depths: computed_output_depths,
-        input_inner_types,
-        output_inner_types,
+        inputs: input_params
+            .into_iter()
+            .zip(computed_input_depths)
+            .zip(input_inner_types)
+            .map(|((param, depth), inner_type)| ParamInfo {
+                param,
+                depth,
+                inner_type,
+            })
+            .collect(),
+        outputs: output_params
+            .into_iter()
+            .zip(computed_output_depths)
+            .zip(output_inner_types)
+            .map(|((param, depth), inner_type)| ParamInfo {
+                param,
+                depth,
+                inner_type,
+            })
+            .collect(),
     })
 }
 
@@ -441,8 +457,8 @@ fn generate_orc_fn(
     params: &ValidatedParams,
 ) -> proc_macro2::TokenStream {
     let info_name = info_const_name(&name.to_string());
-    let n_inputs = params.input_params.len();
-    let n_outputs = params.output_params.len();
+    let n_inputs = params.inputs.len();
+    let n_outputs = params.outputs.len();
     let name_lit = proc_macro2::Literal::c_string(
         &std::ffi::CString::new(name.to_string()).expect("name contains null byte"),
     );
