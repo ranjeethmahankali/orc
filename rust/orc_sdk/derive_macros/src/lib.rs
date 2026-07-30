@@ -349,7 +349,7 @@ fn validate_orc_fn(
             if let Some(p) = input_params.iter().find(|p| is_deck_type(p.ty.as_ref())) {
                 return Err(syn::Error::new_spanned(
                     p,
-                    "INPUT_DEPTHS must be defined when any input uses DeckView or DeckWriter",
+                    "INPUT_DEPTHS must be defined when any input uses DeckView",
                 )
                 .to_compile_error());
             }
@@ -387,7 +387,7 @@ fn validate_orc_fn(
             if let Some(p) = output_params.iter().find(|p| is_deck_type(p.ty.as_ref())) {
                 return Err(syn::Error::new_spanned(
                     p,
-                    "OUTPUT_DEPTHS must be defined when any output uses DeckView or DeckWriter",
+                    "OUTPUT_DEPTHS must be defined when any output uses DeckWriter",
                 )
                 .to_compile_error());
             }
