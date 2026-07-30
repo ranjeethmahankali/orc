@@ -185,24 +185,35 @@ unsafe extern "C" fn plugin_fn_add(
     }
 }
 
-orc_fn! { plugin_fn_mul {
-    /// Multiplies two inputs values. This function supports any integer or floating point scalar
-    /// types. The two inputs must be of the same type. The output produced will be of the same type
-    /// also.
-
+orc_fn!(plugin_fn_mul, {
     let host_callbacks: &HostCallbacks = host_callbacks();
     let registry: &ObjectRegistry = &REGISTRY;
 
-    type Types = (Case<f32>, Case<f64>, Case<u8>, Case<u16>, Case<u32>,
-                  Case<u64>, Case<i8>, Case<i16>, Case<i32>, Case<i64>);
+    type Types = (
+        Case<f32>,
+        Case<f64>,
+        Case<u8>,
+        Case<u16>,
+        Case<u32>,
+        Case<u64>,
+        Case<i8>,
+        Case<i16>,
+        Case<i32>,
+        Case<i64>,
+    );
 
+    /// Multiplies two inputs values. This function supports any integer or floating point scalar
+    /// types. The two inputs must be of the same type. The output produced will be of the same type
+    /// also.
     fn run<T>(_host: &HostCallbacks, lhs: &T, rhs: &T, out: &mut T) -> Result<(), Error>
-    where T: TOrcData + Mul<Output=T> + Copy
+    where
+        T: TOrcData + Mul<Output = T> + Copy,
     {
         *out = *lhs * *rhs;
         Ok(())
     }
 
+    /// The dimensions of both inputs must be the same. The output dimensions will match that.
     fn dims(lhs: &OrcDims, rhs: &OrcDims, out: &mut OrcDims) -> Result<(), Error> {
         if rhs != lhs {
             return Err(Error::InvalidDimensions);
@@ -210,7 +221,7 @@ orc_fn! { plugin_fn_mul {
         *out = *lhs;
         Ok(())
     }
-}}
+});
 
 const ORC_EXPORTED_FUNCTIONS: &[OrcFuncInfo] =
     &[orc_fn_info!(plugin_fn_add), orc_fn_info!(plugin_fn_mul)];

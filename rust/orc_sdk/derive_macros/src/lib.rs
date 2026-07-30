@@ -835,7 +835,7 @@ fn generate_orc_fn(
     }
 }
 
-/// Expands `orc_fn! name { ... }` into a full FFI function + OrcFuncInfo const.
+/// Expands `orc_fn!(name, { ... })` into a full FFI function + OrcFuncInfo const.
 #[proc_macro]
 pub fn orc_fn(input: TokenStream) -> TokenStream {
     use proc_macro2::TokenTree;
@@ -853,6 +853,20 @@ pub fn orc_fn(input: TokenStream) -> TokenStream {
             .into();
         }
     };
+    // Consume the comma separating name from body.
+    match iter.next() {
+        Some(TokenTree::Punct(p)) if p.as_char() == ',' => {}
+        other => {
+            return syn::Error::new(
+                other
+                    .map(|t| t.span())
+                    .unwrap_or(proc_macro2::Span::call_site()),
+                "expected `,` after function name",
+            )
+            .to_compile_error()
+            .into();
+        }
+    }
     let body = match iter.next() {
         Some(TokenTree::Group(g)) if g.delimiter() == proc_macro2::Delimiter::Brace => g,
         other => {
@@ -860,7 +874,7 @@ pub fn orc_fn(input: TokenStream) -> TokenStream {
                 other
                     .map(|t| t.span())
                     .unwrap_or(proc_macro2::Span::call_site()),
-                "expected `{` after function name",
+                "expected `{` after `,`",
             )
             .to_compile_error()
             .into();
