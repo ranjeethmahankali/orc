@@ -69,6 +69,8 @@ struct ValidatedParams {
     output_params: Box<[syn::PatType]>,
     input_depths: Box<[u8]>,
     output_depths: Box<[u8]>,
+    input_inner_types: Box<[syn::Type]>,
+    output_inner_types: Box<[syn::Type]>,
 }
 
 /// Returns the number of args in `Case<...>`, or `None` if the type is not `Case<...>`.
@@ -118,6 +120,31 @@ fn is_output_param(ty: &syn::Type) -> Result<bool, proc_macro2::TokenStream> {
             "run parameter must be a value, &T, &mut T, DeckView<T>, or DeckWriter<T>",
         )
         .to_compile_error()),
+    }
+}
+
+/// Strips depth wrappers and returns the inner element type:
+/// `&[T]` → `T`, `&T` → `T`, `&mut T` → `T`,
+/// `DeckView<T>` → `T`, `DeckWriter<T>` → `T`, anything else → itself.
+fn inner_type(ty: &syn::Type) -> &syn::Type {
+    match ty {
+        syn::Type::Reference(r) => match r.elem.as_ref() {
+            syn::Type::Slice(s) => s.elem.as_ref(),
+            inner => inner,
+        },
+        syn::Type::Path(p) => {
+            if let Some(seg) = p.path.segments.last() {
+                if seg.ident == "DeckView" || seg.ident == "DeckWriter" {
+                    if let syn::PathArguments::AngleBracketed(args) = &seg.arguments {
+                        if let Some(syn::GenericArgument::Type(t)) = args.args.first() {
+                            return t;
+                        }
+                    }
+                }
+            }
+            ty
+        }
+        _ => ty,
     }
 }
 
@@ -298,6 +325,17 @@ fn validate_orc_fn(
         resolve_depths(input_depths, &input_params, "INPUT_DEPTHS", "input")?;
     let computed_output_depths =
         resolve_depths(output_depths, &output_params, "OUTPUT_DEPTHS", "output")?;
+
+    // Inner type of each input/output param (depth wrapper stripped).
+    let input_inner_types: Box<[syn::Type]> = input_params
+        .iter()
+        .map(|p| inner_type(p.ty.as_ref()).clone())
+        .collect();
+    let output_inner_types: Box<[syn::Type]> = output_params
+        .iter()
+        .map(|p| inner_type(p.ty.as_ref()).clone())
+        .collect();
+
     // Validate dims_fn if present.
     if let Some(dims) = dims_fn {
         validate_dims_fn(dims, input_params.len(), output_params.len())?;
@@ -307,6 +345,8 @@ fn validate_orc_fn(
         output_params: output_params.into_boxed_slice(),
         input_depths: computed_input_depths,
         output_depths: computed_output_depths,
+        input_inner_types,
+        output_inner_types,
     })
 }
 
