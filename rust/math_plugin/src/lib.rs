@@ -159,30 +159,32 @@ unsafe extern "C" fn plugin_fn_add(
             slice_from_ptr(inputs[1].items.cast::<f64>(), inputs[1].n_items as usize),
         )
     };
-    let result = registry.with_mut(
-        &[outputs[0].handle],
-        |out_decks| -> Result<(), orc_sdk::Error> {
-            let out_deck: &mut Deck<f64> = out_decks[0]
-                .downcast_mut()
-                .ok_or(orc_sdk::Error::DeckTypeMismatch)?;
-            // List processing iterations.
-            loop {
-                let mut out_view = comb.get_output(out_deck, 0);
-                let output = out_view.push_default_mut();
-                let lhs = comb.get_input(input_slice_lhs, 0);
-                let rhs = comb.get_input(input_slice_rhs, 1);
-                // The actual addition happens here.
-                *output = lhs.as_ref() + rhs.as_ref();
-                // Advance to the next list processing iteration.
-                if !comb.advance() {
-                    break;
+    let result = registry
+        .with_mut(
+            &[outputs[0].handle],
+            |out_decks| -> Result<(), orc_sdk::Error> {
+                let out_deck: &mut Deck<f64> = out_decks[0]
+                    .downcast_mut()
+                    .ok_or(orc_sdk::Error::DeckTypeMismatch)?;
+                // List processing iterations.
+                loop {
+                    let mut out_view = comb.get_output(out_deck, 0);
+                    let output = out_view.push_default_mut();
+                    let lhs = comb.get_input(input_slice_lhs, 0);
+                    let rhs = comb.get_input(input_slice_rhs, 1);
+                    // The actual addition happens here.
+                    *output = lhs.as_ref() + rhs.as_ref();
+                    // Advance to the next list processing iteration.
+                    if !comb.advance() {
+                        break;
+                    }
                 }
-            }
-            let out_id = outputs[0].handle;
-            outputs[0] = handle_from_deck(out_deck, out_id);
-            Ok(())
-        },
-    );
+                let out_id = outputs[0].handle;
+                outputs[0] = handle_from_deck(out_deck, out_id);
+                Ok(())
+            },
+        )
+        .flatten();
     if let Err(e) = result {
         host().error(
             ctx,
