@@ -121,18 +121,16 @@ fn main() {
         .parent()
         .expect("Executable has no parent directory")
         .to_path_buf();
-
     println!("Loading plugins from {}", exe_dir.display());
     let plugins = load_plugins(&exe_dir);
     println!("Loaded {} plugin(s)\n", plugins.len());
-
+    // Print the loaded plugins and functions.
     for plugin in &plugins {
         println!("{} function(s):", plugin.info.functions.len());
         for func in plugin.info.functions.iter() {
             println!("  - {}\n    {}", func.name, func.desc);
         }
     }
-
     // Test the add function.
     let math_plugin = &plugins[0];
     let add_fn = math_plugin.info.functions[0].func;
@@ -146,8 +144,6 @@ fn main() {
     unsafe {
         add_fn(0, inputs.as_ptr(), inputs.len() as u64, &mut out_handle, 1);
     }
-    {
-        // Print the output data.
-        println!("Output deck: \n{}", out_handle.display::<f64>());
-    }
+    // Print the output data.
+    println!("Output deck: \n{}", out_handle.display::<f64>());
 }
