@@ -2,10 +2,13 @@ use orc_sdk::{
     Combinations, Deck, Error, HostCallbacks, ORC_F32, ORC_F64, ORC_I8, ORC_I16, ORC_I32, ORC_I64,
     ORC_U8, ORC_U16, ORC_U32, ORC_U64, ObjectRegistry, OrcFuncInfo, OrcHandle, OrcHost,
     OrcItemProxy, OrcMark, OrcPlugin, OrcTypeId, ProxyType, TOrcData, TOrcPluginAdaptor,
-    handle_from_deck, orc_assert_return, orc_fn_info, orc_generate_fn_info, orc_plugin,
+    handle_from_deck, orc_assert_return, orc_fn, orc_fn_info, orc_generate_fn_info, orc_plugin,
     reset_handle, slice_from_ptr, slice_from_ptr_mut,
 };
-use std::sync::{LazyLock, OnceLock};
+use std::{
+    ops::Mul,
+    sync::{LazyLock, OnceLock},
+};
 
 #[global_allocator]
 static ALLOCATOR: orc_sdk::PluginAllocator = orc_sdk::PluginAllocator::new();
@@ -188,21 +191,15 @@ unsafe extern "C" fn plugin_fn_add(
     }
 }
 
-#[orc_generate_fn_info]
-/// Multiplies the inputs together. This function supports all floating point and integer primitives.
-unsafe extern "C" fn plugin_fn_mul(
-    _ctx: u64,
-    _inputs: *const OrcHandle,
-    _n_inputs: u64,
-    _outputs: *mut OrcHandle,
-    _n_outputs: u64,
-) {
-    todo!(
-        "
-Implement a generic multiply function that supports any number of inputs, of any scalar or integer type,
-as long as all the inputs and the one output handle are of the same type"
-    );
-}
+orc_fn! { plugin_fn_mul {
+    let host: &HostCallbacks = host();
+    let registry: &ObjectRegistry = &REGISTRY;
+
+    type Types = (f32, f64, u8, u16, u32, u64, i8, i16, i32, i64);
+    fn run<T: TOrcData + Mul<Output=T>>(_ctx: u64, lhs: T, rhs: T, out: &mut T) {
+        // *out = lhs * rhs;
+    }
+}}
 
 const ORC_EXPORTED_FUNCTIONS: &[OrcFuncInfo] =
     &[orc_fn_info!(plugin_fn_add), orc_fn_info!(plugin_fn_mul)];

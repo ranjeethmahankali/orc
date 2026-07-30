@@ -67,6 +67,23 @@ pub fn orc_fn_info(input: TokenStream) -> TokenStream {
 struct ValidatedParams {
     input_params: Box<[syn::PatType]>,
     output_params: Box<[syn::PatType]>,
+    input_depths: Box<[u8]>,
+    output_depths: Box<[u8]>,
+}
+
+fn is_deck_type(ty: &syn::Type) -> bool {
+    matches!(ty, syn::Type::Path(p)
+        if p.path.segments.last().map_or(false, |s| s.ident == "DeckView" || s.ident == "DeckWriter"))
+}
+
+fn infer_depth(ty: &syn::Type) -> u8 {
+    match ty {
+        syn::Type::Reference(r) => match r.elem.as_ref() {
+            syn::Type::Slice(_) => 1,
+            _ => 0,
+        },
+        _ => 0,
+    }
 }
 
 fn is_output_param(ty: &syn::Type) -> Result<bool, proc_macro2::TokenStream> {
@@ -89,6 +106,100 @@ fn is_output_param(ty: &syn::Type) -> Result<bool, proc_macro2::TokenStream> {
     }
 }
 
+/// Returns `Ok` if `generic` doesn't appear in `ty`, or appears only in an allowed position.
+///
+/// Allowed forms (where `T` is the generic):
+/// ```text
+/// T              — value input
+/// &T             — shared-reference input
+/// &mut T         — mutable-reference output
+/// &[T]           — slice input (depth-1 list)
+/// DeckView<T>    — higher-depth list input
+/// DeckWriter<T>  — higher-depth list output
+/// ```
+///
+/// Anything else that contains `T` is rejected:
+/// ```text
+/// &mut [T]       — error (use DeckWriter<T> for list outputs)
+/// Box<T>         — error
+/// Vec<T>         — error
+/// Option<T>      — error
+/// (T, T)         — error
+/// ```
+fn check_generic_in_param(
+    ty: &syn::Type,
+    generic: &syn::Ident,
+) -> Result<(), proc_macro2::TokenStream> {
+    match ty {
+        syn::Type::Path(p) if p.path.is_ident(generic) => return Ok(()),
+        syn::Type::Reference(r) => match r.elem.as_ref() {
+            syn::Type::Path(p) if p.path.is_ident(generic) => return Ok(()),
+            // &[T] is allowed (immutable slice input). &mut [T] is not — use DeckWriter<T> instead.
+            syn::Type::Slice(s)
+                if r.mutability.is_none()
+                    && matches!(s.elem.as_ref(), syn::Type::Path(p) if p.path.is_ident(generic)) =>
+            {
+                return Ok(());
+            }
+            _ => {}
+        },
+        syn::Type::Path(p) => {
+            if let Some(seg) = p.path.segments.last() {
+                if seg.ident == "DeckView" || seg.ident == "DeckWriter" {
+                    if let syn::PathArguments::AngleBracketed(args) = &seg.arguments {
+                        if args.args.len() == 1 {
+                            if let Some(syn::GenericArgument::Type(inner)) = args.args.first() {
+                                if matches!(inner, syn::Type::Path(p) if p.path.is_ident(generic)) {
+                                    return Ok(());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        _ => {}
+    }
+    // Type didn't match any allowed pattern. Error only if the generic appears inside it.
+    if generic_appears_in(ty, generic) {
+        Err(syn::Error::new_spanned(
+            ty,
+            format!(
+                "generic `{generic}` may only appear as `{generic}`, `&{generic}`, `&mut {generic}`, \
+                 `&[{generic}]`, `DeckView<{generic}>`, or `DeckWriter<{generic}>`"
+            ),
+        )
+        .to_compile_error())
+    } else {
+        Ok(())
+    }
+}
+
+fn generic_appears_in(ty: &syn::Type, generic: &syn::Ident) -> bool {
+    match ty {
+        syn::Type::Path(p) => {
+            p.path.is_ident(generic)
+                || p.path.segments.iter().any(|seg| {
+                    if let syn::PathArguments::AngleBracketed(args) = &seg.arguments {
+                        args.args.iter().any(|arg| {
+                            if let syn::GenericArgument::Type(t) = arg {
+                                generic_appears_in(t, generic)
+                            } else {
+                                false
+                            }
+                        })
+                    } else {
+                        false
+                    }
+                })
+        }
+        syn::Type::Reference(r) => generic_appears_in(r.elem.as_ref(), generic),
+        syn::Type::Slice(s) => generic_appears_in(s.elem.as_ref(), generic),
+        syn::Type::Tuple(t) => t.elems.iter().any(|e| generic_appears_in(e, generic)),
+        _ => false,
+    }
+}
+
 fn validate_orc_fn(
     run_fn: &syn::ItemFn,
     dims_fn: Option<&syn::ItemFn>,
@@ -97,17 +208,16 @@ fn validate_orc_fn(
     input_depths: Option<&syn::ExprArray>,
     output_depths: Option<&syn::ExprArray>,
 ) -> Result<ValidatedParams, proc_macro2::TokenStream> {
-    // First parameter must be `ctx: u64`.
+    // First parameter must be `u64` (the context handle).
     let ctx_ok = matches!(
         run_fn.sig.inputs.first(),
         Some(syn::FnArg::Typed(pt))
-            if matches!(pt.pat.as_ref(), syn::Pat::Ident(pi) if pi.ident == "ctx")
-                && matches!(pt.ty.as_ref(), syn::Type::Path(p) if p.path.is_ident("u64"))
+            if matches!(pt.ty.as_ref(), syn::Type::Path(p) if p.path.is_ident("u64"))
     );
     if !ctx_ok {
         return Err(syn::Error::new_spanned(
             &run_fn.sig,
-            "first parameter of fn run must be `ctx: u64`",
+            "first parameter of fn run must be of type `u64` (the context handle)",
         )
         .to_compile_error());
     }
@@ -154,7 +264,6 @@ fn validate_orc_fn(
         )
         .to_compile_error());
     }
-
     // If run_fn has type generics, Types must be defined with matching arity.
     let generic_count = run_fn
         .sig
@@ -192,6 +301,15 @@ fn validate_orc_fn(
                 }
             }
         }
+        // Each generic must only appear in allowed positions across all params.
+        let all_params = input_params.iter().chain(output_params.iter());
+        for param in all_params {
+            for generic_param in run_fn.sig.generics.params.iter() {
+                if let syn::GenericParam::Type(tp) = generic_param {
+                    check_generic_in_param(param.ty.as_ref(), &tp.ident)?;
+                }
+            }
+        }
     }
     // Outputs require a registry.
     if !output_params.is_empty() && registry.is_none() {
@@ -201,20 +319,11 @@ fn validate_orc_fn(
         )
         .to_compile_error());
     }
-    // Depth arrays must be defined and match argument counts when count > 0.
-    if !input_params.is_empty() {
-        match input_depths {
-            None => {
-                return Err(syn::Error::new_spanned(
-                    &run_fn.sig,
-                    format!(
-                        "INPUT_DEPTHS must be defined with {} element(s) to match fn run inputs",
-                        input_params.len()
-                    ),
-                )
-                .to_compile_error());
-            }
-            Some(arr) if arr.elems.len() != input_params.len() => {
+    // Resolve depth arrays: use explicitly provided values, or auto-infer from parameter types.
+    // Auto-inference is not possible for DeckView/DeckWriter params — those require explicit depths.
+    let computed_input_depths: Box<[u8]> = match input_depths {
+        Some(arr) => {
+            if arr.elems.len() != input_params.len() {
                 return Err(syn::Error::new_spanned(
                     arr,
                     format!(
@@ -225,22 +334,34 @@ fn validate_orc_fn(
                 )
                 .to_compile_error());
             }
-            _ => {}
+            arr.elems
+                .iter()
+                .map(|e| match e {
+                    syn::Expr::Lit(syn::ExprLit {
+                        lit: syn::Lit::Int(i),
+                        ..
+                    }) => i.base10_parse::<u8>().unwrap_or(0),
+                    _ => 0,
+                })
+                .collect()
         }
-    }
-    if !output_params.is_empty() {
-        match output_depths {
-            None => {
+        None => {
+            if let Some(p) = input_params.iter().find(|p| is_deck_type(p.ty.as_ref())) {
                 return Err(syn::Error::new_spanned(
-                    &run_fn.sig,
-                    format!(
-                        "OUTPUT_DEPTHS must be defined with {} element(s) to match fn run outputs",
-                        output_params.len()
-                    ),
+                    p,
+                    "INPUT_DEPTHS must be defined when any input uses DeckView or DeckWriter",
                 )
                 .to_compile_error());
             }
-            Some(arr) if arr.elems.len() != output_params.len() => {
+            input_params
+                .iter()
+                .map(|p| infer_depth(p.ty.as_ref()))
+                .collect()
+        }
+    };
+    let computed_output_depths: Box<[u8]> = match output_depths {
+        Some(arr) => {
+            if arr.elems.len() != output_params.len() {
                 return Err(syn::Error::new_spanned(
                     arr,
                     format!(
@@ -251,9 +372,31 @@ fn validate_orc_fn(
                 )
                 .to_compile_error());
             }
-            _ => {}
+            arr.elems
+                .iter()
+                .map(|e| match e {
+                    syn::Expr::Lit(syn::ExprLit {
+                        lit: syn::Lit::Int(i),
+                        ..
+                    }) => i.base10_parse::<u8>().unwrap_or(0),
+                    _ => 0,
+                })
+                .collect()
         }
-    }
+        None => {
+            if let Some(p) = output_params.iter().find(|p| is_deck_type(p.ty.as_ref())) {
+                return Err(syn::Error::new_spanned(
+                    p,
+                    "OUTPUT_DEPTHS must be defined when any output uses DeckView or DeckWriter",
+                )
+                .to_compile_error());
+            }
+            output_params
+                .iter()
+                .map(|p| infer_depth(p.ty.as_ref()))
+                .collect()
+        }
+    };
     // Validate dims_fn if present.
     if let Some(dims) = dims_fn {
         validate_dims_fn(dims, input_params.len(), output_params.len())?;
@@ -261,6 +404,8 @@ fn validate_orc_fn(
     Ok(ValidatedParams {
         input_params: input_params.into_boxed_slice(),
         output_params: output_params.into_boxed_slice(),
+        input_depths: computed_input_depths,
+        output_depths: computed_output_depths,
     })
 }
 
@@ -269,17 +414,16 @@ fn validate_dims_fn(
     n_inputs: usize,
     n_outputs: usize,
 ) -> Result<(), proc_macro2::TokenStream> {
-    // First parameter must be `ctx: u64`, matching fn run.
+    // First parameter must be `u64` (the context handle), matching fn run.
     let ctx_ok = matches!(
         dims.sig.inputs.first(),
         Some(syn::FnArg::Typed(pt))
-            if matches!(pt.pat.as_ref(), syn::Pat::Ident(pi) if pi.ident == "ctx")
-                && matches!(pt.ty.as_ref(), syn::Type::Path(p) if p.path.is_ident("u64"))
+            if matches!(pt.ty.as_ref(), syn::Type::Path(p) if p.path.is_ident("u64"))
     );
     if !ctx_ok {
         return Err(syn::Error::new_spanned(
             &dims.sig,
-            "first parameter of fn dims must be `ctx: u64`",
+            "first parameter of fn dims must be of type `u64` (the context handle)",
         )
         .to_compile_error());
     }
@@ -349,6 +493,7 @@ fn generate_orc_fn(
     dims_fn: Option<&syn::ItemFn>,
     _types: Option<&syn::Type>,
     _registry: Option<&syn::Expr>,
+    host_expr: &syn::Expr,
     _input_depths: Option<&syn::ExprArray>,
     _output_depths: Option<&syn::ExprArray>,
     user_items: &[proc_macro2::TokenStream],
@@ -363,7 +508,7 @@ fn generate_orc_fn(
     let desc_lit = proc_macro2::Literal::c_string(
         &std::ffi::CString::new(docs).expect("docs contains null byte"),
     );
-    let dims_ts = dims_fn.map(|d| quote! { #d }).unwrap_or_default();
+    let dims_fn_tokens = dims_fn.map(|d| quote! { #d }).unwrap_or_default();
     quote! {
         const #info_name: orc_sdk::OrcFuncInfo = orc_sdk::OrcFuncInfo {
             name: #name_lit.as_ptr(),
@@ -379,9 +524,25 @@ fn generate_orc_fn(
         ) {
             #(#user_items)*
             #run_fn
-            #dims_ts
-            assert_eq!(n_inputs, #n_inputs as u64);
-            assert_eq!(n_outputs, #n_outputs as u64);
+            #dims_fn_tokens
+            // Check the number of inputs.
+            orc_sdk::orc_assert_return!(
+                #host_expr,
+                ctx,
+                n_inputs == #n_inputs as u64,
+                "Expected {} inputs, got {}",
+                #n_inputs,
+                n_inputs
+            );
+            // Check the number of outputs.
+            orc_sdk::orc_assert_return!(
+                #host_expr,
+                ctx,
+                n_outputs == #n_outputs as u64,
+                "Expected {} outputs, got {}",
+                #n_outputs,
+                n_outputs
+            );
             let inputs = unsafe { orc_sdk::slice_from_ptr(inputs, #n_inputs) };
             let outputs = unsafe { orc_sdk::slice_from_ptr_mut(outputs, #n_outputs) };
             todo!("dispatch to run")
@@ -448,6 +609,8 @@ pub fn orc_fn(input: TokenStream) -> TokenStream {
     let mut types: Option<syn::Type> = None;
     // let registry: &ObjectRegistry = &MY_REGISTRY;
     let mut registry: Option<syn::Expr> = None;
+    // let host: &HostCallbacks = host();
+    let mut host: Option<syn::Expr> = None;
     // Anything unrecognized is collected here and pasted verbatim into the function body.
     let mut user_items: Vec<proc_macro2::TokenStream> = Vec::new();
     for stmt in &stmts {
@@ -569,6 +732,11 @@ pub fn orc_fn(input: TokenStream) -> TokenStream {
                                 registry = Some(*init.expr.clone());
                                 recognized = true;
                             }
+                        } else if pi.ident == "host" {
+                            if let Some(init) = &local.init {
+                                host = Some(*init.expr.clone());
+                                recognized = true;
+                            }
                         }
                     }
                 }
@@ -580,6 +748,18 @@ pub fn orc_fn(input: TokenStream) -> TokenStream {
         }
     }
 
+    // host is required.
+    let host = match host {
+        Some(e) => e,
+        None => {
+            return syn::Error::new(
+                proc_macro2::Span::call_site(),
+                "orc_fn! requires `let host: &HostCallbacks = ...`",
+            )
+            .to_compile_error()
+            .into();
+        }
+    };
     // run_fn is required.
     let run_fn = match run_fn {
         Some(f) => f,
@@ -612,6 +792,7 @@ pub fn orc_fn(input: TokenStream) -> TokenStream {
         dims_fn.as_ref(),
         types.as_ref(),
         registry.as_ref(),
+        &host,
         input_depths.as_ref(),
         output_depths.as_ref(),
         &user_items,
