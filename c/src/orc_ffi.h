@@ -132,7 +132,8 @@ typedef struct
 
 #define ORC_ERROR_NONE 0u
 #define ORC_ERROR_INVALID_HANDLE 0xff01u
-#define ORC_ERROR_TYPE_MISMATCH 0xff02u
+#define ORC_ERROR_INVALID_DIMENSIONS 0xff02u
+#define ORC_ERROR_TYPE_MISMATCH 0xff03u
 #define ORC_ERROR_UNKNOWN 0xffffu
 
 typedef uint32_t OrcError;

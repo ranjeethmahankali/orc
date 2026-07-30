@@ -210,8 +210,12 @@ orc_fn! { plugin_fn_mul {
         *out = *lhs * *rhs;
     }
 
-    fn dims(_ctx: u64, lhs: &OrcDims, _rhs: &OrcDims, out: &mut OrcDims) {
+    fn dims(lhs: &OrcDims, rhs: &OrcDims, out: &mut OrcDims) -> Result<(), Error> {
+        if rhs != lhs {
+            return Err(Error::InvalidDimensions);
+        }
         *out = *lhs;
+        Ok(())
     }
 }}
 

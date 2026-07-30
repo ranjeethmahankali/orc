@@ -372,31 +372,34 @@ fn validate_dims_fn(
     n_inputs: usize,
     n_outputs: usize,
 ) -> Result<(), proc_macro2::TokenStream> {
-    // First parameter must be `u64` (the context handle), matching fn run.
-    let ctx_ok = matches!(
-        dims.sig.inputs.first(),
-        Some(syn::FnArg::Typed(pt))
-            if matches!(pt.ty.as_ref(), syn::Type::Path(p) if p.path.is_ident("u64"))
-    );
-    if !ctx_ok {
+    // fn dims must return Result<_, _>.
+    let returns_result = match &dims.sig.output {
+        syn::ReturnType::Type(_, ty) => matches!(
+            ty.as_ref(),
+            syn::Type::Path(p)
+                if p.path.segments.last().map_or(false, |s| s.ident == "Result")
+        ),
+        syn::ReturnType::Default => false,
+    };
+    if !returns_result {
         return Err(syn::Error::new_spanned(
             &dims.sig,
-            "first parameter of fn dims must be of type `u64` (the context handle)",
+            "fn dims must return `Result<(), Error>`",
         )
         .to_compile_error());
     }
-    let expected_total = 1 + n_inputs + n_outputs;
+    let expected_total = n_inputs + n_outputs;
     let dims_args: Vec<_> = dims.sig.inputs.iter().collect();
     if dims_args.len() != expected_total {
         return Err(syn::Error::new_spanned(
             &dims.sig,
             format!(
-                "fn dims must have {expected_total} parameter(s) (ctx + {n_inputs} input(s) + {n_outputs} output(s)) to match fn run"
+                "fn dims must have {expected_total} parameter(s) ({n_inputs} input(s) + {n_outputs} output(s)) to match fn run"
             ),
         )
         .to_compile_error());
     }
-    for (i, arg) in dims_args.iter().skip(1).enumerate() {
+    for (i, arg) in dims_args.iter().enumerate() {
         let pat_ty = match arg {
             syn::FnArg::Typed(pt) => pt,
             syn::FnArg::Receiver(r) => {
@@ -760,7 +763,14 @@ fn generate_orc_fn(
         let out_args: Vec<proc_macro2::TokenStream> = (0..n_outputs)
             .map(|j| quote! { &mut outputs[#j].dims })
             .collect();
-        quote! { dims(ctx, #(#in_args,)* #(#out_args),*); }
+        quote! {
+            orc_sdk::orc_assert_return!(
+                #host_expr,
+                ctx,
+                dims(#(#in_args,)* #(#out_args),*).is_ok(),
+                "dims computation failed"
+            );
+        }
     } else {
         quote! {}
     };
