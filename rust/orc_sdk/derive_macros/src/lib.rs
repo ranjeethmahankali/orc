@@ -240,20 +240,36 @@ fn validate_orc_fn(
     input_depths: Option<&syn::ExprArray>,
     output_depths: Option<&syn::ExprArray>,
 ) -> Result<ValidatedParams, proc_macro2::TokenStream> {
-    // First parameter must be `u64` (the context handle).
-    let ctx_ok = matches!(
+    // First parameter must be a reference to the host callbacks.
+    let host_ok = matches!(
         run_fn.sig.inputs.first(),
         Some(syn::FnArg::Typed(pt))
-            if matches!(pt.ty.as_ref(), syn::Type::Path(p) if p.path.is_ident("u64"))
+            if matches!(pt.ty.as_ref(), syn::Type::Reference(_))
     );
-    if !ctx_ok {
+    if !host_ok {
         return Err(syn::Error::new_spanned(
             &run_fn.sig,
-            "first parameter of fn run must be of type `u64` (the context handle)",
+            "first parameter of fn run must be a reference to the host callbacks",
         )
         .to_compile_error());
     }
-    // Classify remaining params (skip ctx).
+    // fn run must return Result<_, _>.
+    let returns_result = match &run_fn.sig.output {
+        syn::ReturnType::Type(_, ty) => matches!(
+            ty.as_ref(),
+            syn::Type::Path(p)
+                if p.path.segments.last().map_or(false, |s| s.ident == "Result")
+        ),
+        syn::ReturnType::Default => false,
+    };
+    if !returns_result {
+        return Err(syn::Error::new_spanned(
+            &run_fn.sig,
+            "fn run must return `Result<(), Error>`",
+        )
+        .to_compile_error());
+    }
+    // Classify remaining params (skip host).
     let mut input_params: Vec<syn::PatType> = Vec::new();
     let mut output_params: Vec<syn::PatType> = Vec::new();
     let mut saw_output = false;
@@ -382,11 +398,10 @@ fn validate_dims_fn(
         syn::ReturnType::Default => false,
     };
     if !returns_result {
-        return Err(syn::Error::new_spanned(
-            &dims.sig,
-            "fn dims must return `Result<(), Error>`",
-        )
-        .to_compile_error());
+        return Err(
+            syn::Error::new_spanned(&dims.sig, "fn dims must return `Result<(), Error>`")
+                .to_compile_error(),
+        );
     }
     let expected_total = n_inputs + n_outputs;
     let dims_args: Vec<_> = dims.sig.inputs.iter().collect();
@@ -475,7 +490,6 @@ fn generate_type_dispatch(
     types: Option<&syn::Type>,
     params: &ValidatedParams,
     registry_expr: &proc_macro2::TokenStream,
-    host_expr: &syn::Expr,
 ) -> proc_macro2::TokenStream {
     let n_inputs = params.inputs.len();
     let scrutinee_elems: Vec<proc_macro2::TokenStream> = (0..n_inputs)
@@ -574,7 +588,7 @@ fn generate_type_dispatch(
         };
 
         arms.push(quote! {
-            (#(#pattern_idents),*) => __dispatch #turbofish (ctx, #registry_expr, inputs, outputs),
+            (#(#pattern_idents),*) => __dispatch #turbofish (&host, #registry_expr, inputs, outputs),
         });
     }
 
@@ -596,7 +610,7 @@ fn generate_type_dispatch(
             _ => Err(orc_sdk::Error::DeckTypeMismatch),
         };
         if let Err(e) = __result {
-            #host_expr.error(ctx, &::std::format!("Failed to run: {e:?}"));
+            host.error(&::std::format!("Failed to run: {e:?}"));
         }
     }
 }
@@ -705,7 +719,7 @@ fn generate_dispatch_fn(
     let output_depths_vals: Vec<u8> = params.outputs.iter().map(|p| p.depth).collect();
     quote! {
         fn __dispatch #run_generics (
-            ctx: u64,
+            host: &orc_sdk::HostCallbacks,
             registry: &orc_sdk::ObjectRegistry,
             inputs: &[orc_sdk::OrcHandle],
             outputs: &mut [orc_sdk::OrcHandle],
@@ -721,7 +735,7 @@ fn generate_dispatch_fn(
                     #(#out_downcasts)*
                     loop {
                         #(#out_view_setup)*
-                        run(ctx, #(#in_call_args,)* #(#out_item_idents),*);
+                        run(host, #(#in_call_args,)* #(#out_item_idents),*)?;
                         if !__comb.advance() { break; }
                     }
                     #(#out_handle_updates)*
@@ -741,7 +755,7 @@ fn generate_orc_fn(
     dims_fn: Option<&syn::ItemFn>,
     types: Option<&syn::Type>,
     registry_expr: Option<&syn::Expr>,
-    host_expr: &syn::Expr,
+    host_callbacks_expr: &syn::Expr,
     _input_depths: Option<&syn::ExprArray>,
     _output_depths: Option<&syn::ExprArray>,
     user_items: &[proc_macro2::TokenStream],
@@ -765,8 +779,7 @@ fn generate_orc_fn(
             .collect();
         quote! {
             orc_sdk::orc_assert_return!(
-                #host_expr,
-                ctx,
+                host,
                 dims(#(#in_args,)* #(#out_args),*).is_ok(),
                 "dims computation failed"
             );
@@ -776,7 +789,7 @@ fn generate_orc_fn(
     };
     let dispatch_fn = generate_dispatch_fn(run_fn, params);
     let registry_expr = registry_expr.map(|r| quote! { #r }).unwrap_or_default();
-    let type_dispatch = generate_type_dispatch(run_fn, types, params, &registry_expr, host_expr);
+    let type_dispatch = generate_type_dispatch(run_fn, types, params, &registry_expr);
     quote! {
         const #info_name: orc_sdk::OrcFuncInfo = orc_sdk::OrcFuncInfo {
             name: #name_lit.as_ptr(),
@@ -790,13 +803,16 @@ fn generate_orc_fn(
             outputs: *mut orc_sdk::OrcHandle,
             n_outputs: u64,
         ) {
+            let host = orc_sdk::HostCallbacks {
+                inner: *(#host_callbacks_expr),
+                context: ctx,
+            };
             #(#user_items)*
             #run_fn
             #dims_fn_tokens
             // Check the number of inputs.
             orc_sdk::orc_assert_return!(
-                #host_expr,
-                ctx,
+                host,
                 n_inputs == #n_inputs as u64,
                 "Expected {} inputs, got {}",
                 #n_inputs,
@@ -804,8 +820,7 @@ fn generate_orc_fn(
             );
             // Check the number of outputs.
             orc_sdk::orc_assert_return!(
-                #host_expr,
-                ctx,
+                host,
                 n_outputs == #n_outputs as u64,
                 "Expected {} outputs, got {}",
                 #n_outputs,
@@ -879,8 +894,8 @@ pub fn orc_fn(input: TokenStream) -> TokenStream {
     let mut types: Option<syn::Type> = None;
     // let registry: &ObjectRegistry = &MY_REGISTRY;
     let mut registry: Option<syn::Expr> = None;
-    // let host: &HostCallbacks = host();
-    let mut host: Option<syn::Expr> = None;
+    // let host_callbacks: &OrcHostCallbackAPI = host_callbacks();
+    let mut host_callbacks_expr: Option<syn::Expr> = None;
     // Anything unrecognized is collected here and pasted verbatim into the function body.
     let mut user_items: Vec<proc_macro2::TokenStream> = Vec::new();
     for stmt in &stmts {
@@ -1002,9 +1017,9 @@ pub fn orc_fn(input: TokenStream) -> TokenStream {
                                 registry = Some(*init.expr.clone());
                                 recognized = true;
                             }
-                        } else if pi.ident == "host" {
+                        } else if pi.ident == "host_callbacks" {
                             if let Some(init) = &local.init {
-                                host = Some(*init.expr.clone());
+                                host_callbacks_expr = Some(*init.expr.clone());
                                 recognized = true;
                             }
                         }
@@ -1018,13 +1033,13 @@ pub fn orc_fn(input: TokenStream) -> TokenStream {
         }
     }
 
-    // host is required.
-    let host = match host {
+    // host_callbacks is required.
+    let host_callbacks_expr = match host_callbacks_expr {
         Some(e) => e,
         None => {
             return syn::Error::new(
                 proc_macro2::Span::call_site(),
-                "orc_fn! requires `let host: &HostCallbacks = ...`",
+                "orc_fn! requires `let host_callbacks: &OrcHostCallbackAPI = ...`",
             )
             .to_compile_error()
             .into();
@@ -1062,7 +1077,7 @@ pub fn orc_fn(input: TokenStream) -> TokenStream {
         dims_fn.as_ref(),
         types.as_ref(),
         registry.as_ref(),
-        &host,
+        &host_callbacks_expr,
         input_depths.as_ref(),
         output_depths.as_ref(),
         &user_items,

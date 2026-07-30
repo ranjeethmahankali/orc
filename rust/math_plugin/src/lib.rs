@@ -1,9 +1,9 @@
 use orc_sdk::{
     Combinations, Deck, Error, HostCallbacks, ORC_F32, ORC_F64, ORC_I8, ORC_I16, ORC_I32, ORC_I64,
     ORC_U8, ORC_U16, ORC_U32, ORC_U64, ObjectRegistry, OrcDims, OrcFuncInfo, OrcHandle, OrcHost,
-    OrcItemProxy, OrcMark, OrcPlugin, OrcTypeId, ProxyType, TOrcData, TOrcPluginAdaptor,
-    handle_from_deck, orc_assert_return, orc_fn, orc_fn_info, orc_generate_fn_info, orc_plugin,
-    reset_handle, slice_from_ptr, slice_from_ptr_mut,
+    OrcHostCallbackAPI, OrcItemProxy, OrcMark, OrcPlugin, OrcTypeId, ProxyType, TOrcData,
+    TOrcPluginAdaptor, handle_from_deck, orc_assert_return, orc_fn, orc_fn_info,
+    orc_generate_fn_info, orc_plugin, reset_handle, slice_from_ptr, slice_from_ptr_mut,
 };
 use std::{
     ops::Mul,
@@ -15,10 +15,10 @@ static ALLOCATOR: orc_sdk::PluginAllocator = orc_sdk::PluginAllocator::new();
 
 static REGISTRY: LazyLock<ObjectRegistry> = LazyLock::new(ObjectRegistry::new);
 
-static HOST: OnceLock<HostCallbacks> = OnceLock::new();
+static HOST: OnceLock<OrcHostCallbackAPI> = OnceLock::new();
 
-fn host() -> &'static HostCallbacks {
-    HOST.get().unwrap_or(&HostCallbacks::DUMMY)
+fn host_callbacks() -> &'static OrcHostCallbackAPI {
+    HOST.get().unwrap_or(&HostCallbacks::DUMMY_CALLBACKS)
 }
 
 fn alloc_deck<T: TOrcData>() -> Result<OrcHandle, Error> {
@@ -42,9 +42,7 @@ impl TOrcPluginAdaptor for Adaptor {
     fn plugin_init(host: &OrcHost, out: &mut OrcPlugin) -> Result<(), Error> {
         // Read host capabilities - Set up the allocator first, before any heap allocations happen.
         ALLOCATOR.init_from_host(host);
-        match HOST.set(HostCallbacks {
-            inner: host.callbacks,
-        }) {
+        match HOST.set(host.callbacks) {
             Ok(_) => {}
             Err(_) => return Err(Error::PluginInitError),
         }
@@ -102,15 +100,17 @@ unsafe extern "C" fn plugin_fn_add(
     outputs: *mut OrcHandle,
     n_outputs: u64,
 ) {
+    let host: HostCallbacks = HostCallbacks {
+        inner: *host_callbacks(),
+        context: ctx,
+    };
     orc_assert_return!(
-        host(),
-        ctx,
+        host,
         n_inputs == 2,
         "This function only supports two inputs"
     );
     orc_assert_return!(
-        host(),
-        ctx,
+        host,
         n_outputs == 1,
         "This function only supports one output"
     );
@@ -124,8 +124,7 @@ unsafe extern "C" fn plugin_fn_add(
     // Output and input types must be the same, and must match one of the supported types.
     let type_id = inputs[0].type_id;
     orc_assert_return!(
-        host(),
-        ctx,
+        host,
         type_id == inputs[1].type_id,
         "Two inputs must be of the same type"
     );
@@ -135,10 +134,9 @@ unsafe extern "C" fn plugin_fn_add(
     let mut comb = match Combinations::from_handles(inputs, &input_depths, OUTPUT_DEPTHS) {
         Ok(comb) => comb,
         Err(e) => {
-            host().error(
-                ctx,
-                &format!("Cannot initialize combinations from the provided inputs. Error: {e:?}"),
-            );
+            host.error(&format!(
+                "Cannot initialize combinations from the provided inputs. Error: {e:?}"
+            ));
             return;
         }
     };
@@ -146,12 +144,7 @@ unsafe extern "C" fn plugin_fn_add(
     // TODO: I am hardcoding f64 for now, later I need to check the input types, and dispatch to different generic functions.
     for output in outputs.iter_mut() {
         let alloc_result = registry.ensure_alloc_default::<Deck<f64>>(&mut output.handle);
-        orc_assert_return!(
-            host(),
-            ctx,
-            alloc_result.is_ok(),
-            "Unable to allocate output deck"
-        );
+        orc_assert_return!(host, alloc_result.is_ok(), "Unable to allocate output deck");
     }
     let (input_slice_lhs, input_slice_rhs) = unsafe {
         (
@@ -186,10 +179,9 @@ unsafe extern "C" fn plugin_fn_add(
         )
         .flatten();
     if let Err(e) = result {
-        host().error(
-            ctx,
-            &format!("Failed to run the function with the following error:\n{e:?}"),
-        );
+        host.error(&format!(
+            "Failed to run the function with the following error:\n{e:?}"
+        ));
     }
 }
 
@@ -198,16 +190,17 @@ orc_fn! { plugin_fn_mul {
     /// types. The two inputs must be of the same type. The output produced will be of the same type
     /// also.
 
-    let host: &HostCallbacks = host();
+    let host_callbacks: &HostCallbacks = host_callbacks();
     let registry: &ObjectRegistry = &REGISTRY;
 
     type Types = (Case<f32>, Case<f64>, Case<u8>, Case<u16>, Case<u32>,
                   Case<u64>, Case<i8>, Case<i16>, Case<i32>, Case<i64>);
 
-    fn run<T>(_ctx: u64, lhs: &T, rhs: &T, out: &mut T)
+    fn run<T>(_host: &HostCallbacks, lhs: &T, rhs: &T, out: &mut T) -> Result<(), Error>
     where T: TOrcData + Mul<Output=T> + Copy
     {
         *out = *lhs * *rhs;
+        Ok(())
     }
 
     fn dims(lhs: &OrcDims, rhs: &OrcDims, out: &mut OrcDims) -> Result<(), Error> {

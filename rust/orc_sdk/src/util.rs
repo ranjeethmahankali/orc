@@ -359,76 +359,75 @@ impl OrcHandle {
 
 pub struct HostCallbacks {
     pub inner: OrcHostCallbackAPI,
+    pub context: u64,
 }
 
 impl HostCallbacks {
-    pub const DUMMY: Self = Self {
-        inner: OrcHostCallbackAPI {
-            report_progress: None,
-            report_message: None,
-            check_cancellation: None,
-            report_intermediate_output: None,
-        },
+    pub const DUMMY_CALLBACKS: OrcHostCallbackAPI = OrcHostCallbackAPI {
+        report_progress: None,
+        report_message: None,
+        check_cancellation: None,
+        report_intermediate_output: None,
     };
 
     pub fn assign(&mut self, callbacks: OrcHostCallbackAPI) {
         self.inner = callbacks;
     }
 
-    pub fn report_progress(&self, ctx: u64, progress: f64) {
+    pub fn report_progress(&self, progress: f64) {
         if let Some(callback) = self.inner.report_progress {
             // SAFETY: We just checked to make sure the function is not None.
-            unsafe { callback(ctx, progress) }
+            unsafe { callback(self.context, progress) }
         }
     }
 
-    pub fn debug(&self, ctx: u64, error: &str) {
+    pub fn debug(&self, error: &str) {
         if let Some(callback) = self.inner.report_message {
             // SAFETY: We just checked to make sure the function is not None.
-            unsafe { callback(ctx, ORC_MSG_LEVEL_DEBUG, error.as_ptr().cast()) }
+            unsafe { callback(self.context, ORC_MSG_LEVEL_DEBUG, error.as_ptr().cast()) }
         }
     }
 
-    pub fn info(&self, ctx: u64, error: &str) {
+    pub fn info(&self, error: &str) {
         if let Some(callback) = self.inner.report_message {
             // SAFETY: We just checked to make sure the function is not None.
-            unsafe { callback(ctx, ORC_MSG_LEVEL_INFO, error.as_ptr().cast()) }
+            unsafe { callback(self.context, ORC_MSG_LEVEL_INFO, error.as_ptr().cast()) }
         }
     }
 
-    pub fn warn(&self, ctx: u64, error: &str) {
+    pub fn warn(&self, error: &str) {
         if let Some(callback) = self.inner.report_message {
             // SAFETY: We just checked to make sure the function is not None.
-            unsafe { callback(ctx, ORC_MSG_LEVEL_WARN, error.as_ptr().cast()) }
+            unsafe { callback(self.context, ORC_MSG_LEVEL_WARN, error.as_ptr().cast()) }
         }
     }
 
-    pub fn error(&self, ctx: u64, error: &str) {
+    pub fn error(&self, error: &str) {
         if let Some(callback) = self.inner.report_message {
             // SAFETY: We just checked to make sure the function is not None.
-            unsafe { callback(ctx, ORC_MSG_LEVEL_ERROR, error.as_ptr().cast()) }
+            unsafe { callback(self.context, ORC_MSG_LEVEL_ERROR, error.as_ptr().cast()) }
         }
     }
 
-    pub fn fatal(&self, ctx: u64, error: &str) {
+    pub fn fatal(&self, error: &str) {
         if let Some(callback) = self.inner.report_message {
             // SAFETY: We just checked to make sure the function is not None.
-            unsafe { callback(ctx, ORC_MSG_LEVEL_FATAL, error.as_ptr().cast()) }
+            unsafe { callback(self.context, ORC_MSG_LEVEL_FATAL, error.as_ptr().cast()) }
         }
     }
 
-    pub fn check_cancellation(&self, ctx: u64) -> bool {
+    pub fn check_cancellation(&self) -> bool {
         match self.inner.check_cancellation {
             // SAFETY: We just checked to make sure the function is not None.
-            Some(callback) => unsafe { callback(ctx) },
+            Some(callback) => unsafe { callback(self.context) },
             None => false,
         }
     }
 
-    pub fn report_intermediate_output(&self, ctx: u64, handle: &OrcHandle) {
+    pub fn report_intermediate_output(&self, handle: &OrcHandle) {
         if let Some(callback) = self.inner.report_intermediate_output {
             // SAFETY: We just checked to make sure the function is not None.
-            unsafe { callback(ctx, handle) }
+            unsafe { callback(self.context, handle) }
         }
     }
 }
@@ -437,10 +436,10 @@ impl HostCallbacks {
 /// if they're not met, and return immediately.
 #[macro_export]
 macro_rules! orc_assert_return {
-    ($host:expr, $ctx:expr, $cond:expr, $($fmt:tt)+) => {{
+    ($host:expr, $cond:expr, $($fmt:tt)+) => {{
         if !($cond) {
             let message = ::std::format!($($fmt)+);
-            $host.error($ctx, &message);
+            $host.error(&message);
             return;
         }
     }};
