@@ -436,6 +436,160 @@ fn validate_dims_fn(
     Ok(())
 }
 
+/// If `ty` is a bare ident matching a type generic, returns the substituted concrete type.
+/// Otherwise returns a clone of `ty` unchanged.
+fn substitute_type(
+    ty: &syn::Type,
+    generics: &[&syn::GenericParam],
+    case_args: &[&syn::GenericArgument],
+) -> syn::Type {
+    if let syn::Type::Path(p) = ty {
+        if let Some(ident) = p.path.get_ident() {
+            for (gp, arg) in generics.iter().zip(case_args.iter()) {
+                if let (syn::GenericParam::Type(tp), syn::GenericArgument::Type(concrete)) =
+                    (gp, arg)
+                {
+                    if tp.ident == *ident {
+                        return concrete.clone();
+                    }
+                }
+            }
+        }
+    }
+    ty.clone()
+}
+
+fn generate_type_dispatch(
+    run_fn: &syn::ItemFn,
+    types: Option<&syn::Type>,
+    params: &ValidatedParams,
+    registry_expr: &proc_macro2::TokenStream,
+    host_expr: &syn::Expr,
+) -> proc_macro2::TokenStream {
+    let n_inputs = params.inputs.len();
+    let scrutinee_elems: Vec<proc_macro2::TokenStream> = (0..n_inputs)
+        .map(|i| quote! { inputs[#i].type_id })
+        .collect();
+    let scrutinee = quote! { (#(#scrutinee_elems),*) };
+
+    let all_generics: Vec<&syn::GenericParam> = run_fn.sig.generics.params.iter().collect();
+
+    // Each entry: (case args, original Case type for error spans).
+    // Non-generic / no Types → one empty case.
+    let cases: Vec<(Vec<&syn::GenericArgument>, Option<&syn::Type>)> = match types {
+        Some(syn::Type::Tuple(outer)) => outer
+            .elems
+            .iter()
+            .map(|elem| {
+                let args = match elem {
+                    syn::Type::Path(p) => match p.path.segments.last() {
+                        Some(seg) => match &seg.arguments {
+                            syn::PathArguments::AngleBracketed(ab) => ab.args.iter().collect(),
+                            _ => vec![],
+                        },
+                        None => vec![],
+                    },
+                    _ => vec![],
+                };
+                (args, Some(elem))
+            })
+            .collect(),
+        _ => vec![(vec![], None)],
+    };
+
+    // Track unique types → their const ident.
+    let mut type_to_const: std::collections::HashMap<String, proc_macro2::Ident> =
+        std::collections::HashMap::new();
+    // Ordered for deterministic const emission.
+    let mut type_consts: Vec<(proc_macro2::Ident, syn::Type)> = Vec::new();
+
+    let mut get_or_insert = |ty: &syn::Type| -> proc_macro2::Ident {
+        let key = quote! { #ty }.to_string();
+        if let Some(ident) = type_to_const.get(&key) {
+            return ident.clone();
+        }
+        let mangled = key
+            .replace("::", "_")
+            .replace(" ", "")
+            .replace("<", "_")
+            .replace(">", "")
+            .replace(",", "_")
+            .to_uppercase();
+        let ident = format_ident!("__ORC_TYPE_ID_{mangled}");
+        type_to_const.insert(key, ident.clone());
+        type_consts.push((ident.clone(), ty.clone()));
+        ident
+    };
+
+    let mut seen_patterns: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut errors: Vec<proc_macro2::TokenStream> = Vec::new();
+    let mut arms: Vec<proc_macro2::TokenStream> = Vec::new();
+
+    for (case_args, case_ty) in &cases {
+        let mono_input_types: Vec<syn::Type> = params
+            .inputs
+            .iter()
+            .map(|p| substitute_type(&p.inner_type, &all_generics, case_args))
+            .collect();
+
+        let pattern_idents: Vec<proc_macro2::Ident> = mono_input_types
+            .iter()
+            .map(|ty| get_or_insert(ty))
+            .collect();
+
+        let pattern_key = pattern_idents
+            .iter()
+            .map(|i| i.to_string())
+            .collect::<Vec<_>>()
+            .join(",");
+
+        if !seen_patterns.insert(pattern_key) {
+            if let Some(ty) = case_ty {
+                errors.push(
+                    syn::Error::new_spanned(
+                        ty,
+                        "duplicate Case: same input type signature as a previous Case",
+                    )
+                    .to_compile_error(),
+                );
+            }
+            continue;
+        }
+
+        let turbofish = if all_generics.is_empty() || case_args.is_empty() {
+            quote! {}
+        } else {
+            quote! { ::<#(#case_args),*> }
+        };
+
+        arms.push(quote! {
+            (#(#pattern_idents),*) => __dispatch #turbofish (ctx, #registry_expr, inputs, outputs),
+        });
+    }
+
+    let const_decls: Vec<proc_macro2::TokenStream> = type_consts
+        .iter()
+        .map(|(ident, ty)| {
+            quote! {
+                const #ident: orc_sdk::OrcTypeId =
+                    <#ty as orc_sdk::TOrcData>::TYPE_INFO.type_id;
+            }
+        })
+        .collect();
+
+    quote! {
+        #(#errors)*
+        #(#const_decls)*
+        let __result = match #scrutinee {
+            #(#arms)*
+            _ => Err(orc_sdk::Error::DeckTypeMismatch),
+        };
+        if let Err(e) = __result {
+            #host_expr.error(ctx, &::std::format!("Failed to run: {e:?}"));
+        }
+    }
+}
+
 fn generate_dispatch_fn(
     run_fn: &syn::ItemFn,
     params: &ValidatedParams,
@@ -550,19 +704,21 @@ fn generate_dispatch_fn(
             let mut __comb = orc_sdk::Combinations::from_handles(inputs, __INPUT_DEPTHS, __OUTPUT_DEPTHS)?;
             #(#ensure_output_allocations)*
             #(#input_item_slice_setup)*
-            registry.with_mut(
+            let __result = registry.with_mut(
                 &[#(#out_handle_refs),*],
                 |__out_decks| -> Result<(), orc_sdk::Error> {
                     #(#out_downcasts)*
                     loop {
                         #(#out_view_setup)*
-                        run(ctx, #(#in_call_args,)* #(&#out_item_idents),*);
+                        run(ctx, #(#in_call_args,)* #(#out_item_idents),*);
                         if !__comb.advance() { break; }
                     }
                     #(#out_handle_updates)*
                     Ok(())
                 },
             )
+            .flatten();
+            __result
         }
     }
 }
@@ -572,7 +728,7 @@ fn generate_orc_fn(
     docs: &str,
     run_fn: &syn::ItemFn,
     dims_fn: Option<&syn::ItemFn>,
-    _types: Option<&syn::Type>,
+    types: Option<&syn::Type>,
     registry_expr: Option<&syn::Expr>,
     host_expr: &syn::Expr,
     _input_depths: Option<&syn::ExprArray>,
@@ -592,6 +748,7 @@ fn generate_orc_fn(
     let dims_fn_tokens = dims_fn.map(|d| quote! { #d }).unwrap_or_default();
     let dispatch_fn = generate_dispatch_fn(run_fn, params);
     let registry_expr = registry_expr.map(|r| quote! { #r }).unwrap_or_default();
+    let type_dispatch = generate_type_dispatch(run_fn, types, params, &registry_expr, host_expr);
     quote! {
         const #info_name: orc_sdk::OrcFuncInfo = orc_sdk::OrcFuncInfo {
             name: #name_lit.as_ptr(),
@@ -629,9 +786,7 @@ fn generate_orc_fn(
             let inputs = unsafe { orc_sdk::slice_from_ptr(inputs, #n_inputs) };
             let outputs = unsafe { orc_sdk::slice_from_ptr_mut(outputs, #n_outputs) };
             #dispatch_fn
-            if let Err(e) = __dispatch(ctx, #registry_expr, inputs, outputs) {
-                #host_expr.error(ctx, &::std::format!("Failed to run: {e:?}"));
-            }
+            #type_dispatch
         }
     }
 }
