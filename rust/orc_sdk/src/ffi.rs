@@ -12,24 +12,38 @@ macro_rules! orc_plugin {
         pub unsafe extern "C" fn orc_plugin_init(
             host: *const orc_sdk::OrcHost,
             plugin_data_out: *mut orc_sdk::OrcPlugin,
-        ) {
+        ) -> orc_sdk::OrcError {
             let (host, plugin_data_out) = unsafe { (&*host, &mut *plugin_data_out) };
-            <$plugin as orc_sdk::TOrcPluginAdaptor>::plugin_init(host, plugin_data_out);
+            match <$plugin as orc_sdk::TOrcPluginAdaptor>::plugin_init(host, plugin_data_out) {
+                Ok(()) => orc_sdk::ORC_ERROR_NONE,
+                Err(e) => e.to_orc_error(),
+            }
         }
 
         #[unsafe(no_mangle)]
         pub unsafe extern "C" fn orc_deck_alloc(
             id: orc_sdk::OrcTypeId,
             out: *mut orc_sdk::OrcHandle,
-        ) {
-            unsafe {
-                *out = <$plugin as orc_sdk::TOrcPluginAdaptor>::deck_alloc(id);
+        ) -> orc_sdk::OrcError {
+            match <$plugin as orc_sdk::TOrcPluginAdaptor>::deck_alloc(id) {
+                Ok(handle) => {
+                    unsafe {
+                        *out = handle;
+                    }
+                    orc_sdk::ORC_ERROR_NONE
+                }
+                Err(e) => e.to_orc_error(),
             }
         }
 
         #[unsafe(no_mangle)]
-        pub unsafe extern "C" fn orc_deck_free(handle: *mut orc_sdk::OrcHandle) {
-            <$plugin as orc_sdk::TOrcPluginAdaptor>::deck_free(unsafe { &mut *handle });
+        pub unsafe extern "C" fn orc_deck_free(
+            handle: *mut orc_sdk::OrcHandle,
+        ) -> orc_sdk::OrcError {
+            match <$plugin as orc_sdk::TOrcPluginAdaptor>::deck_free(unsafe { &mut *handle }) {
+                Ok(()) => orc_sdk::ORC_ERROR_NONE,
+                Err(e) => e.to_orc_error(),
+            }
         }
 
         #[unsafe(no_mangle)]
@@ -39,7 +53,7 @@ macro_rules! orc_plugin {
             proxy_type: u32,
             proxy: *const orc_sdk::OrcHandle,
             out: *mut orc_sdk::OrcHandle,
-        ) {
+        ) -> orc_sdk::OrcError {
             // Convert all the FFI pointers to Rust references.
             let (inputs, proxy, out) = unsafe {
                 (
@@ -74,9 +88,12 @@ macro_rules! orc_plugin {
             } else {
                 &[]
             };
-            <$plugin as orc_sdk::TOrcPluginAdaptor>::deck_from_proxy(
+            match <$plugin as orc_sdk::TOrcPluginAdaptor>::deck_from_proxy(
                 inputs, proxy_type, proxies, marks, out,
-            );
+            ) {
+                Ok(()) => orc_sdk::ORC_ERROR_NONE,
+                Err(e) => e.to_orc_error(),
+            }
         }
     };
 }
