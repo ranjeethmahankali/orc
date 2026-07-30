@@ -116,10 +116,18 @@ fn is_output_param(ty: &syn::Type) -> Result<bool, proc_macro2::TokenStream> {
         {
             Ok(true)
         }
-        syn::Type::Reference(_) | syn::Type::Path(_) => Ok(false),
+        syn::Type::Reference(r) if r.mutability.is_none() => Ok(false),
+        syn::Type::Path(p)
+            if p.path
+                .segments
+                .last()
+                .map_or(false, |s| s.ident == "DeckView") =>
+        {
+            Ok(false)
+        }
         other => Err(syn::Error::new_spanned(
             other,
-            "run parameter must be a value, &T, &mut T, DeckView<T>, or DeckWriter<T>",
+            "run parameter must be `&T`, `&[T]`, `&mut T`, `DeckView<T>`, or `DeckWriter<T>`",
         )
         .to_compile_error()),
     }
@@ -624,10 +632,10 @@ fn generate_dispatch_fn(
             let ident = &in_slice_idents[i];
             match p.param.ty.as_ref() {
                 syn::Type::Reference(r) if r.mutability.is_none() => match r.elem.as_ref() {
-                    syn::Type::Slice(_) => quote! { __comb.get_input(#ident, #i) },
+                    syn::Type::Slice(_) => quote! { __comb.get_input(#ident, #i).as_slice() },
                     _ => quote! { __comb.get_input(#ident, #i).as_ref() },
                 },
-                _ => quote! { *__comb.get_input(#ident, #i).as_ref() },
+                _ => quote! { __comb.get_input(#ident, #i) }, // DeckView<T>
             }
         })
         .collect();
