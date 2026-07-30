@@ -754,6 +754,16 @@ fn generate_orc_fn(
         &std::ffi::CString::new(docs).expect("docs contains null byte"),
     );
     let dims_fn_tokens = dims_fn.map(|d| quote! { #d }).unwrap_or_default();
+    let dims_call = if dims_fn.is_some() {
+        let in_args: Vec<proc_macro2::TokenStream> =
+            (0..n_inputs).map(|i| quote! { &inputs[#i].dims }).collect();
+        let out_args: Vec<proc_macro2::TokenStream> = (0..n_outputs)
+            .map(|j| quote! { &mut outputs[#j].dims })
+            .collect();
+        quote! { dims(ctx, #(#in_args,)* #(#out_args),*); }
+    } else {
+        quote! {}
+    };
     let dispatch_fn = generate_dispatch_fn(run_fn, params);
     let registry_expr = registry_expr.map(|r| quote! { #r }).unwrap_or_default();
     let type_dispatch = generate_type_dispatch(run_fn, types, params, &registry_expr, host_expr);
@@ -793,6 +803,7 @@ fn generate_orc_fn(
             );
             let inputs = unsafe { orc_sdk::slice_from_ptr(inputs, #n_inputs) };
             let outputs = unsafe { orc_sdk::slice_from_ptr_mut(outputs, #n_outputs) };
+            #dims_call
             #dispatch_fn
             #type_dispatch
         }

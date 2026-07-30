@@ -1,6 +1,6 @@
 use orc_sdk::{
     Combinations, Deck, Error, HostCallbacks, ORC_F32, ORC_F64, ORC_I8, ORC_I16, ORC_I32, ORC_I64,
-    ORC_U8, ORC_U16, ORC_U32, ORC_U64, ObjectRegistry, OrcFuncInfo, OrcHandle, OrcHost,
+    ORC_U8, ORC_U16, ORC_U32, ORC_U64, ObjectRegistry, OrcDims, OrcFuncInfo, OrcHandle, OrcHost,
     OrcItemProxy, OrcMark, OrcPlugin, OrcTypeId, ProxyType, TOrcData, TOrcPluginAdaptor,
     handle_from_deck, orc_assert_return, orc_fn, orc_fn_info, orc_generate_fn_info, orc_plugin,
     reset_handle, slice_from_ptr, slice_from_ptr_mut,
@@ -208,6 +208,10 @@ orc_fn! { plugin_fn_mul {
     where T: TOrcData + Mul<Output=T> + Copy
     {
         *out = *lhs * *rhs;
+    }
+
+    fn dims(_ctx: u64, lhs: &OrcDims, _rhs: &OrcDims, out: &mut OrcDims) {
+        *out = *lhs;
     }
 }}
 
