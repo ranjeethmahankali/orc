@@ -142,8 +142,8 @@ unsafe extern "C" fn plugin_fn_add(
             return;
         }
     };
-    // TODO: I am hardcoding f64 for now, later I need to check the input types, and dispatch to different generic functions.
     let registry = &REGISTRY;
+    // TODO: I am hardcoding f64 for now, later I need to check the input types, and dispatch to different generic functions.
     for output in outputs.iter_mut() {
         let alloc_result = registry.ensure_alloc_default::<Deck<f64>>(&mut output.handle);
         orc_assert_return!(

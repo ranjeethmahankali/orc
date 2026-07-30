@@ -327,7 +327,6 @@ fn validate_orc_fn(
         resolve_depths(input_depths, &input_params, "INPUT_DEPTHS", "input")?;
     let computed_output_depths =
         resolve_depths(output_depths, &output_params, "OUTPUT_DEPTHS", "output")?;
-
     // Validate dims_fn if present.
     if let Some(dims) = dims_fn {
         validate_dims_fn(dims, input_params.len(), output_params.len())?;
@@ -437,13 +436,144 @@ fn validate_dims_fn(
     Ok(())
 }
 
+fn generate_dispatch_fn(
+    run_fn: &syn::ItemFn,
+    params: &ValidatedParams,
+) -> proc_macro2::TokenStream {
+    let run_generics = &run_fn.sig.generics;
+    let where_clause = &run_fn.sig.generics.where_clause;
+    let n_inputs = params.inputs.len();
+    let n_outputs = params.outputs.len();
+    // Per-input: slice ident, inner type, call-arg expression.
+    let in_slice_idents: Vec<proc_macro2::Ident> = (0..n_inputs)
+        .map(|i| format_ident!("__in_slice_{i}"))
+        .collect();
+    let input_item_slice_setup: Vec<proc_macro2::TokenStream> = params
+        .inputs
+        .iter()
+        .enumerate()
+        .map(|(i, p)| {
+            let ident = &in_slice_idents[i];
+            let inner_ty = &p.inner_type;
+            quote! {
+                let #ident = unsafe {
+                    orc_sdk::slice_from_ptr(inputs[#i].items.cast::<#inner_ty>(), inputs[#i].n_items as usize)
+                };
+            }
+        })
+        .collect();
+    let in_call_args: Vec<proc_macro2::TokenStream> = params
+        .inputs
+        .iter()
+        .enumerate()
+        .map(|(i, p)| {
+            let ident = &in_slice_idents[i];
+            match p.param.ty.as_ref() {
+                syn::Type::Reference(r) if r.mutability.is_none() => match r.elem.as_ref() {
+                    syn::Type::Slice(_) => quote! { __comb.get_input(#ident, #i) },
+                    _ => quote! { __comb.get_input(#ident, #i).as_ref() },
+                },
+                _ => quote! { *__comb.get_input(#ident, #i).as_ref() },
+            }
+        })
+        .collect();
+    // Per-output: deck/view/item idents, inner type.
+    let out_deck_idents: Vec<proc_macro2::Ident> = (0..n_outputs)
+        .map(|j| format_ident!("__out_deck_{j}"))
+        .collect();
+    let out_view_idents: Vec<proc_macro2::Ident> = (0..n_outputs)
+        .map(|j| format_ident!("__out_view_{j}"))
+        .collect();
+    let out_item_idents: Vec<proc_macro2::Ident> = (0..n_outputs)
+        .map(|j| format_ident!("__out_item_{j}"))
+        .collect();
+    let ensure_output_allocations: Vec<proc_macro2::TokenStream> = params
+        .outputs
+        .iter()
+        .enumerate()
+        .map(|(j, p)| {
+            let inner_ty = &p.inner_type;
+            quote! {
+                registry.ensure_alloc_default::<orc_sdk::Deck<#inner_ty>>(&mut outputs[#j].handle)?;
+            }
+        })
+        .collect();
+    let out_downcasts: Vec<proc_macro2::TokenStream> = params
+        .outputs
+        .iter()
+        .enumerate()
+        .map(|(j, p)| {
+            let deck_ident = &out_deck_idents[j];
+            let inner_ty = &p.inner_type;
+            quote! {
+                let #deck_ident: &mut orc_sdk::Deck<#inner_ty> = __out_decks[#j]
+                    .downcast_mut()
+                    .ok_or(orc_sdk::Error::DeckTypeMismatch)?;
+            }
+        })
+        .collect();
+    let out_view_setup: Vec<proc_macro2::TokenStream> = (0..n_outputs)
+        .map(|j| {
+            let view_ident = &out_view_idents[j];
+            let item_ident = &out_item_idents[j];
+            let deck_ident = &out_deck_idents[j];
+            quote! {
+                let mut #view_ident = __comb.get_output(#deck_ident, #j);
+                let #item_ident = #view_ident.push_default_mut();
+            }
+        })
+        .collect();
+    let out_handle_refs: Vec<proc_macro2::TokenStream> = (0..n_outputs)
+        .map(|j| quote! { outputs[#j].handle })
+        .collect();
+    let out_handle_updates: Vec<proc_macro2::TokenStream> = (0..n_outputs)
+        .map(|j| {
+            let deck_ident = &out_deck_idents[j];
+            let id_ident = format_ident!("__out_id_{j}");
+            quote! {
+                let #id_ident = outputs[#j].handle;
+                outputs[#j] = orc_sdk::handle_from_deck(#deck_ident, #id_ident);
+            }
+        })
+        .collect();
+    let input_depths_vals: Vec<u8> = params.inputs.iter().map(|p| p.depth).collect();
+    let output_depths_vals: Vec<u8> = params.outputs.iter().map(|p| p.depth).collect();
+    quote! {
+        fn __dispatch #run_generics (
+            ctx: u64,
+            registry: &orc_sdk::ObjectRegistry,
+            inputs: &[orc_sdk::OrcHandle],
+            outputs: &mut [orc_sdk::OrcHandle],
+        ) -> Result<(), orc_sdk::Error> #where_clause {
+            const __INPUT_DEPTHS: &[u8] = &[#(#input_depths_vals),*];
+            const __OUTPUT_DEPTHS: &[u8] = &[#(#output_depths_vals),*];
+            let mut __comb = orc_sdk::Combinations::from_handles(inputs, __INPUT_DEPTHS, __OUTPUT_DEPTHS)?;
+            #(#ensure_output_allocations)*
+            #(#input_item_slice_setup)*
+            registry.with_mut(
+                &[#(#out_handle_refs),*],
+                |__out_decks| -> Result<(), orc_sdk::Error> {
+                    #(#out_downcasts)*
+                    loop {
+                        #(#out_view_setup)*
+                        run(ctx, #(#in_call_args,)* #(&#out_item_idents),*);
+                        if !__comb.advance() { break; }
+                    }
+                    #(#out_handle_updates)*
+                    Ok(())
+                },
+            )
+        }
+    }
+}
+
 fn generate_orc_fn(
     name: &proc_macro2::Ident,
     docs: &str,
     run_fn: &syn::ItemFn,
     dims_fn: Option<&syn::ItemFn>,
     _types: Option<&syn::Type>,
-    _registry: Option<&syn::Expr>,
+    registry_expr: Option<&syn::Expr>,
     host_expr: &syn::Expr,
     _input_depths: Option<&syn::ExprArray>,
     _output_depths: Option<&syn::ExprArray>,
@@ -460,6 +590,8 @@ fn generate_orc_fn(
         &std::ffi::CString::new(docs).expect("docs contains null byte"),
     );
     let dims_fn_tokens = dims_fn.map(|d| quote! { #d }).unwrap_or_default();
+    let dispatch_fn = generate_dispatch_fn(run_fn, params);
+    let registry_expr = registry_expr.map(|r| quote! { #r }).unwrap_or_default();
     quote! {
         const #info_name: orc_sdk::OrcFuncInfo = orc_sdk::OrcFuncInfo {
             name: #name_lit.as_ptr(),
@@ -496,7 +628,10 @@ fn generate_orc_fn(
             );
             let inputs = unsafe { orc_sdk::slice_from_ptr(inputs, #n_inputs) };
             let outputs = unsafe { orc_sdk::slice_from_ptr_mut(outputs, #n_outputs) };
-            todo!("dispatch to run")
+            #dispatch_fn
+            if let Err(e) = __dispatch(ctx, #registry_expr, inputs, outputs) {
+                #host_expr.error(ctx, &::std::format!("Failed to run: {e:?}"));
+            }
         }
     }
 }
