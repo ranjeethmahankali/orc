@@ -73,11 +73,8 @@ pub fn orc_fn_info(input: TokenStream) -> TokenStream {
     if path.segments.len() == 1 {
         quote! { #const_name }.into()
     } else {
-        let prefix: syn::punctuated::Punctuated<&syn::PathSegment, syn::Token![::]> = path
-            .segments
-            .iter()
-            .take(path.segments.len() - 1)
-            .collect();
+        let prefix: syn::punctuated::Punctuated<&syn::PathSegment, syn::Token![::]> =
+            path.segments.iter().take(path.segments.len() - 1).collect();
         quote! { #prefix::#const_name }.into()
     }
 }
@@ -773,8 +770,6 @@ fn generate_orc_fn(
     types: Option<&syn::Type>,
     registry_expr: Option<&syn::Expr>,
     host_callbacks_expr: &syn::Expr,
-    _input_depths: Option<&syn::ExprArray>,
-    _output_depths: Option<&syn::ExprArray>,
     user_items: &[proc_macro2::TokenStream],
     params: &ValidatedParams,
 ) -> proc_macro2::TokenStream {
@@ -1110,8 +1105,6 @@ pub fn orc_fn(input: TokenStream) -> TokenStream {
         types.as_ref(),
         registry.as_ref(),
         &host_callbacks_expr,
-        input_depths.as_ref(),
-        output_depths.as_ref(),
         &user_items,
         &validated_params,
     )
