@@ -5,7 +5,7 @@ use orc_sdk::{
     TOrcPluginAdaptor, handle_from_deck, orc_fn, orc_fn_info, orc_plugin, reset_handle,
 };
 use std::{
-    ops::{Add, Div, Mul},
+    ops::{Add, Div, Mul, Sub},
     sync::{LazyLock, OnceLock},
 };
 
@@ -166,12 +166,32 @@ orc_fn!(plugin_fn_mul, {
     }
 });
 
+orc_fn!(plugin_fn_sub, {
+    let host_callbacks: &HostCallbacks = host_callbacks();
+    let registry: &ObjectRegistry = &REGISTRY;
+
+    type Types = (Case<f32>, Case<f64>);
+
+    /// Subtracts the second operand from the first, and assigns to the output. The input types must
+    /// be the same, matching the output type. This function supports floating point scalar types.
+    fn run<T>(_host: &HostCallbacks, lhs: &T, rhs: &T, out: &mut T) -> Result<(), Error>
+    where
+        T: TOrcData + Sub<Output = T> + Copy,
+    {
+        *out = *lhs - *rhs;
+        Ok(())
+    }
+});
+
 orc_fn!(plugin_fn_div, {
     let host_callbacks: &HostCallbacks = host_callbacks();
     let registry: &ObjectRegistry = &REGISTRY;
 
     type Types = (Case<f32>, Case<f64>);
 
+    /// Divides the first input with the second input, and assign to the output. All inputs must be
+    /// of the same type, matching the output type. This function supports floating point scalar
+    /// types.
     fn run<T>(_host: &HostCallbacks, lhs: &T, rhs: &T, out: &mut T) -> Result<(), Error>
     where
         T: TOrcData + Div<Output = T> + Copy,
@@ -181,5 +201,9 @@ orc_fn!(plugin_fn_div, {
     }
 });
 
-const ORC_EXPORTED_FUNCTIONS: &[OrcFuncInfo] =
-    &[orc_fn_info!(plugin_fn_add), orc_fn_info!(plugin_fn_mul)];
+const ORC_EXPORTED_FUNCTIONS: &[OrcFuncInfo] = &[
+    orc_fn_info!(plugin_fn_add),
+    orc_fn_info!(plugin_fn_mul),
+    orc_fn_info!(plugin_fn_sub),
+    orc_fn_info!(plugin_fn_div),
+];
