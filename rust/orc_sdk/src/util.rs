@@ -381,38 +381,38 @@ impl HostCallbacks {
         }
     }
 
-    pub fn debug(&self, error: &str) {
+    pub fn debug(&self, message: &str) {
         if let Some(callback) = self.inner.report_message {
             // SAFETY: We just checked to make sure the function is not None.
-            unsafe { callback(self.context, ORC_MSG_LEVEL_DEBUG, error.as_ptr().cast()) }
+            unsafe { callback(self.context, ORC_MSG_LEVEL_DEBUG, message.as_ptr().cast()) }
         }
     }
 
-    pub fn info(&self, error: &str) {
+    pub fn info(&self, message: &str) {
         if let Some(callback) = self.inner.report_message {
             // SAFETY: We just checked to make sure the function is not None.
-            unsafe { callback(self.context, ORC_MSG_LEVEL_INFO, error.as_ptr().cast()) }
+            unsafe { callback(self.context, ORC_MSG_LEVEL_INFO, message.as_ptr().cast()) }
         }
     }
 
-    pub fn warn(&self, error: &str) {
+    pub fn warn(&self, message: &str) {
         if let Some(callback) = self.inner.report_message {
             // SAFETY: We just checked to make sure the function is not None.
-            unsafe { callback(self.context, ORC_MSG_LEVEL_WARN, error.as_ptr().cast()) }
+            unsafe { callback(self.context, ORC_MSG_LEVEL_WARN, message.as_ptr().cast()) }
         }
     }
 
-    pub fn error(&self, error: &str) {
+    pub fn error(&self, message: &str) {
         if let Some(callback) = self.inner.report_message {
             // SAFETY: We just checked to make sure the function is not None.
-            unsafe { callback(self.context, ORC_MSG_LEVEL_ERROR, error.as_ptr().cast()) }
+            unsafe { callback(self.context, ORC_MSG_LEVEL_ERROR, message.as_ptr().cast()) }
         }
     }
 
-    pub fn fatal(&self, error: &str) {
+    pub fn fatal(&self, message: &str) {
         if let Some(callback) = self.inner.report_message {
             // SAFETY: We just checked to make sure the function is not None.
-            unsafe { callback(self.context, ORC_MSG_LEVEL_FATAL, error.as_ptr().cast()) }
+            unsafe { callback(self.context, ORC_MSG_LEVEL_FATAL, message.as_ptr().cast()) }
         }
     }
 
