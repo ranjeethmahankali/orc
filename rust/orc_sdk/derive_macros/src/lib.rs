@@ -46,7 +46,7 @@ pub fn orc_generate_fn_info(attr: TokenStream, item: TokenStream) -> TokenStream
         &std::ffi::CString::new(desc).expect("doc comment contains a null byte"),
     );
     quote! {
-        const #const_name: orc_sdk::OrcFuncInfo = orc_sdk::OrcFuncInfo {
+        pub const #const_name: orc_sdk::OrcFuncInfo = orc_sdk::OrcFuncInfo {
             name: #name_lit.as_ptr(),
             desc: #desc_lit.as_ptr(),
             func: Some(#fn_name),
@@ -57,11 +57,50 @@ pub fn orc_generate_fn_info(attr: TokenStream, item: TokenStream) -> TokenStream
 }
 
 /// `orc_fn_info!(plugin_fn_add)` expands to `ORC_FN_INFO_PLUGIN_FN_ADD`.
+/// `orc_fn_info!(basic, plugin_fn_add)` expands to `basic::ORC_FN_INFO_PLUGIN_FN_ADD`.
 #[proc_macro]
 pub fn orc_fn_info(input: TokenStream) -> TokenStream {
-    let ident = parse_macro_input!(input as syn::Ident);
-    let const_name = info_const_name(&ident.to_string());
-    quote! { #const_name }.into()
+    let input = proc_macro2::TokenStream::from(input);
+    let mut iter = input.into_iter();
+    let first = match iter.next() {
+        Some(proc_macro2::TokenTree::Ident(i)) => i,
+        other => {
+            return syn::Error::new(
+                other
+                    .map(|t| t.span())
+                    .unwrap_or(proc_macro2::Span::call_site()),
+                "expected identifier",
+            )
+            .to_compile_error()
+            .into();
+        }
+    };
+    match iter.next() {
+        None => {
+            let const_name = info_const_name(&first.to_string());
+            quote! { #const_name }.into()
+        }
+        Some(proc_macro2::TokenTree::Punct(p)) if p.as_char() == ',' => {
+            let second = match iter.next() {
+                Some(proc_macro2::TokenTree::Ident(i)) => i,
+                other => {
+                    return syn::Error::new(
+                        other
+                            .map(|t| t.span())
+                            .unwrap_or(proc_macro2::Span::call_site()),
+                        "expected identifier after `,`",
+                    )
+                    .to_compile_error()
+                    .into();
+                }
+            };
+            let const_name = info_const_name(&second.to_string());
+            quote! { #first::#const_name }.into()
+        }
+        Some(other) => syn::Error::new(other.span(), "expected `,` or end of input")
+            .to_compile_error()
+            .into(),
+    }
 }
 
 struct ParamInfo {
@@ -771,8 +810,9 @@ fn generate_orc_fn(
     );
     let dims_fn_tokens = dims_fn.map(|d| quote! { #d }).unwrap_or_default();
     let dims_call = if dims_fn.is_some() {
-        let in_args: Vec<proc_macro2::TokenStream> =
-            (0..n_inputs).map(|i| quote! { &__inputs[#i].dims }).collect();
+        let in_args: Vec<proc_macro2::TokenStream> = (0..n_inputs)
+            .map(|i| quote! { &__inputs[#i].dims })
+            .collect();
         let out_args: Vec<proc_macro2::TokenStream> = (0..n_outputs)
             .map(|j| quote! { &mut __outputs[#j].dims })
             .collect();
@@ -790,7 +830,7 @@ fn generate_orc_fn(
     let registry_expr = registry_expr.map(|r| quote! { #r }).unwrap_or_default();
     let type_dispatch = generate_type_dispatch(run_fn, types, params, &registry_expr);
     quote! {
-        const #info_name: orc_sdk::OrcFuncInfo = orc_sdk::OrcFuncInfo {
+        pub const #info_name: orc_sdk::OrcFuncInfo = orc_sdk::OrcFuncInfo {
             name: #name_lit.as_ptr(),
             desc: #desc_lit.as_ptr(),
             func: Some(#name),

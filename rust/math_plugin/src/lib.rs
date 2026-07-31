@@ -1,13 +1,10 @@
 use orc_sdk::{
     Deck, Error, HostCallbacks, ORC_F32, ORC_F64, ORC_I8, ORC_I16, ORC_I32, ORC_I64, ORC_U8,
-    ORC_U16, ORC_U32, ORC_U64, ObjectRegistry, OrcDims, OrcFuncInfo, OrcHandle, OrcHost,
-    OrcHostCallbackAPI, OrcItemProxy, OrcMark, OrcPlugin, OrcTypeId, ProxyType, TOrcData,
-    TOrcPluginAdaptor, handle_from_deck, orc_fn, orc_fn_info, orc_plugin, reset_handle,
+    ORC_U16, ORC_U32, ORC_U64, ObjectRegistry, OrcFuncInfo, OrcHandle, OrcHost, OrcHostCallbackAPI,
+    OrcItemProxy, OrcMark, OrcPlugin, OrcTypeId, ProxyType, TOrcData, TOrcPluginAdaptor,
+    handle_from_deck, orc_fn_info, orc_plugin, reset_handle,
 };
-use std::{
-    ops::{Add, Div, Mul, Sub},
-    sync::{LazyLock, OnceLock},
-};
+use std::sync::{LazyLock, OnceLock};
 
 #[global_allocator]
 static ALLOCATOR: orc_sdk::PluginAllocator = orc_sdk::PluginAllocator::new();
@@ -16,8 +13,12 @@ static REGISTRY: LazyLock<ObjectRegistry> = LazyLock::new(ObjectRegistry::new);
 
 static HOST: OnceLock<OrcHostCallbackAPI> = OnceLock::new();
 
-fn host_callbacks() -> &'static OrcHostCallbackAPI {
+pub(crate) fn host_callbacks() -> &'static OrcHostCallbackAPI {
     HOST.get().unwrap_or(&HostCallbacks::DUMMY_CALLBACKS)
+}
+
+pub(crate) fn registry() -> &'static ObjectRegistry {
+    &REGISTRY
 }
 
 fn alloc_deck<T: TOrcData>() -> Result<OrcHandle, Error> {
@@ -90,120 +91,11 @@ impl TOrcPluginAdaptor for Adaptor {
 
 orc_plugin!(Adaptor);
 
-orc_fn!(plugin_fn_add, {
-    let host_callbacks: &HostCallbacks = host_callbacks();
-    let registry: &ObjectRegistry = &REGISTRY;
-
-    type Types = (
-        Case<f32>,
-        Case<f64>,
-        Case<u8>,
-        Case<u16>,
-        Case<u32>,
-        Case<u64>,
-        Case<i8>,
-        Case<i16>,
-        Case<i32>,
-        Case<i64>,
-    );
-
-    /// Multiplies two inputs values. This function supports any integer or floating point scalar
-    /// types. The two inputs must be of the same type. The output produced will be of the same type
-    /// also.
-    fn run<T>(_host: &HostCallbacks, lhs: &T, rhs: &T, out: &mut T) -> Result<(), Error>
-    where
-        T: TOrcData + Add<Output = T> + Copy,
-    {
-        *out = *lhs + *rhs;
-        Ok(())
-    }
-
-    /// The dimensions of both inputs must be the same. The output dimensions will match that.
-    fn dims(lhs: &OrcDims, rhs: &OrcDims, out: &mut OrcDims) -> Result<(), Error> {
-        if rhs != lhs {
-            return Err(Error::InvalidDimensions);
-        }
-        *out = *lhs;
-        Ok(())
-    }
-});
-
-orc_fn!(plugin_fn_mul, {
-    let host_callbacks: &HostCallbacks = host_callbacks();
-    let registry: &ObjectRegistry = &REGISTRY;
-
-    type Types = (
-        Case<f32>,
-        Case<f64>,
-        Case<u8>,
-        Case<u16>,
-        Case<u32>,
-        Case<u64>,
-        Case<i8>,
-        Case<i16>,
-        Case<i32>,
-        Case<i64>,
-    );
-
-    /// Adds two inputs values. This function supports any integer or floating point scalar
-    /// types. The two inputs must be of the same type. The output produced will be of the same type
-    /// also.
-    fn run<T>(_host: &HostCallbacks, lhs: &T, rhs: &T, out: &mut T) -> Result<(), Error>
-    where
-        T: TOrcData + Mul<Output = T> + Copy,
-    {
-        *out = *lhs * *rhs;
-        Ok(())
-    }
-
-    /// The dimensions of both inputs must be the same. The output dimensions will match that.
-    fn dims(lhs: &OrcDims, rhs: &OrcDims, out: &mut OrcDims) -> Result<(), Error> {
-        if rhs != lhs {
-            return Err(Error::InvalidDimensions);
-        }
-        *out = *lhs;
-        Ok(())
-    }
-});
-
-orc_fn!(plugin_fn_sub, {
-    let host_callbacks: &HostCallbacks = host_callbacks();
-    let registry: &ObjectRegistry = &REGISTRY;
-
-    type Types = (Case<f32>, Case<f64>);
-
-    /// Subtracts the second operand from the first, and assigns to the output. The input types must
-    /// be the same, matching the output type. This function supports floating point scalar types.
-    fn run<T>(_host: &HostCallbacks, lhs: &T, rhs: &T, out: &mut T) -> Result<(), Error>
-    where
-        T: TOrcData + Sub<Output = T> + Copy,
-    {
-        *out = *lhs - *rhs;
-        Ok(())
-    }
-});
-
-orc_fn!(plugin_fn_div, {
-    let host_callbacks: &HostCallbacks = host_callbacks();
-    let registry: &ObjectRegistry = &REGISTRY;
-
-    type Types = (Case<f32>, Case<f64>);
-
-    /// Divides the first input with the second input, and assign to the output. All inputs must be
-    /// of the same type, matching the output type. This function supports floating point scalar
-    /// types.
-    fn run<T>(_host: &HostCallbacks, lhs: &T, rhs: &T, out: &mut T) -> Result<(), Error>
-    where
-        T: TOrcData + Div<Output = T> + Copy,
-    {
-        *out = *lhs / *rhs;
-        Ok(())
-    }
-});
+mod basic;
 
 const ORC_EXPORTED_FUNCTIONS: &[OrcFuncInfo] = &[
-    orc_fn_info!(plugin_fn_add),
-    orc_fn_info!(plugin_fn_mul),
-    orc_fn_info!(plugin_fn_sub),
-    orc_fn_info!(plugin_fn_div),
+    orc_fn_info!(basic, plugin_fn_add),
+    orc_fn_info!(basic, plugin_fn_mul),
+    orc_fn_info!(basic, plugin_fn_sub),
+    orc_fn_info!(basic, plugin_fn_div),
 ];
