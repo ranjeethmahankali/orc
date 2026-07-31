@@ -6,23 +6,28 @@ fn info_const_name(fn_name: &str) -> syn::Ident {
     format_ident!("ORC_FN_INFO_{}", fn_name.to_uppercase())
 }
 
-fn extract_doc(func: &ItemFn) -> String {
-    func.attrs
+fn docs_from_attrs(attrs: &[syn::Attribute]) -> String {
+    attrs
         .iter()
         .filter(|a| a.path().is_ident("doc"))
-        .filter_map(|a| match &a.meta {
-            syn::Meta::NameValue(nv) => match &nv.value {
-                syn::Expr::Lit(syn::ExprLit {
+        .filter_map(|a| {
+            if let syn::Meta::NameValue(nv) = &a.meta {
+                if let syn::Expr::Lit(syn::ExprLit {
                     lit: syn::Lit::Str(s),
                     ..
-                }) => Some(s.value()),
-                _ => None,
-            },
-            _ => None,
+                }) = &nv.value
+                {
+                    return Some(s.value().trim().to_string());
+                }
+            }
+            None
         })
-        .map(|l| l.trim().to_string())
         .collect::<Vec<_>>()
         .join(" ")
+}
+
+fn extract_doc(func: &ItemFn) -> String {
+    docs_from_attrs(&func.attrs)
 }
 
 /// `#[orc_fn]` or `#[orc_fn(name = "add")]` — generates an `OrcFuncInfo` const alongside the function.
@@ -106,7 +111,7 @@ fn sig_arg_count(ty: &syn::Type) -> Option<usize> {
 
 fn is_deck_type(ty: &syn::Type) -> bool {
     matches!(ty, syn::Type::Path(p)
-        if p.path.segments.last().map_or(false, |s| s.ident == "DeckView" || s.ident == "DeckWriter"))
+        if p.path.segments.last().is_some_and(|s| s.ident == "DeckView" || s.ident == "DeckWriter"))
 }
 
 fn infer_depth(ty: &syn::Type) -> Option<u8> {
@@ -120,14 +125,14 @@ fn infer_depth(ty: &syn::Type) -> Option<u8> {
     }
 }
 
-fn is_output_param(ty: &syn::Type) -> Result<bool, proc_macro2::TokenStream> {
+fn is_output_param(ty: &syn::Type) -> syn::Result<bool> {
     match ty {
         syn::Type::Reference(r) if r.mutability.is_some() => Ok(true),
         syn::Type::Path(p)
             if p.path
                 .segments
                 .last()
-                .map_or(false, |s| s.ident == "DeckWriter") =>
+                .is_some_and(|s| s.ident == "DeckWriter") =>
         {
             Ok(true)
         }
@@ -136,15 +141,14 @@ fn is_output_param(ty: &syn::Type) -> Result<bool, proc_macro2::TokenStream> {
             if p.path
                 .segments
                 .last()
-                .map_or(false, |s| s.ident == "DeckView") =>
+                .is_some_and(|s| s.ident == "DeckView") =>
         {
             Ok(false)
         }
         other => Err(syn::Error::new_spanned(
             other,
             "run parameter must be `&T`, `&[T]`, `&mut T`, `DeckView<T>`, or `DeckWriter<T>`",
-        )
-        .to_compile_error()),
+        )),
     }
 }
 
@@ -178,7 +182,7 @@ fn resolve_depths(
     params: &[syn::PatType],
     array_name: &str,
     param_kind: &str,
-) -> Result<Box<[u8]>, proc_macro2::TokenStream> {
+) -> syn::Result<Box<[u8]>> {
     let inferred: Vec<Option<u8>> = params.iter().map(|p| infer_depth(p.ty.as_ref())).collect();
     match explicit {
         Some(arr) => {
@@ -190,8 +194,7 @@ fn resolve_depths(
                         arr.elems.len(),
                         params.len()
                     ),
-                )
-                .to_compile_error());
+                ));
             }
             let mut result = Vec::with_capacity(params.len());
             for (i, e) in arr.elems.iter().enumerate() {
@@ -205,16 +208,14 @@ fn resolve_depths(
                             return Err(syn::Error::new_spanned(
                                 i,
                                 format!("{array_name} values must be u8 literals"),
-                            )
-                            .to_compile_error());
+                            ));
                         }
                     },
                     _ => {
                         return Err(syn::Error::new_spanned(
                             e,
                             format!("{array_name} values must be u8 literals"),
-                        )
-                        .to_compile_error());
+                        ));
                     }
                 };
                 if let Some(inf) = inferred[i] {
@@ -224,8 +225,7 @@ fn resolve_depths(
                             format!(
                                 "{array_name}[{i}] is {provided} but the parameter type implies depth {inf}, which does not match the provided depth {provided}"
                             ),
-                        )
-                        .to_compile_error());
+                        ));
                     }
                 }
                 result.push(provided);
@@ -239,8 +239,7 @@ fn resolve_depths(
                     format!(
                         "{array_name} must be specified; depth cannot be inferred for this parameter"
                     ),
-                )
-                .to_compile_error());
+                ));
             }
             Ok(inferred.into_iter().map(|d| d.unwrap()).collect())
         }
@@ -254,7 +253,7 @@ fn validate_orc_fn(
     registry: Option<&syn::Expr>,
     input_depths: Option<&syn::ExprArray>,
     output_depths: Option<&syn::ExprArray>,
-) -> Result<ValidatedParams, proc_macro2::TokenStream> {
+) -> syn::Result<ValidatedParams> {
     // First parameter must be a reference to the host callbacks.
     let host_ok = matches!(
         run_fn.sig.inputs.first(),
@@ -265,23 +264,22 @@ fn validate_orc_fn(
         return Err(syn::Error::new_spanned(
             &run_fn.sig,
             "first parameter of fn run must be a reference to the host callbacks",
-        )
-        .to_compile_error());
+        ));
     }
     // fn run must return Result<_, _>.
     let returns_result = match &run_fn.sig.output {
         syn::ReturnType::Type(_, ty) => matches!(
             ty.as_ref(),
             syn::Type::Path(p)
-                if p.path.segments.last().map_or(false, |s| s.ident == "Result")
+                if p.path.segments.last().is_some_and(|s| s.ident == "Result")
         ),
         syn::ReturnType::Default => false,
     };
     if !returns_result {
-        return Err(
-            syn::Error::new_spanned(&run_fn.sig, "fn run must return `Result<(), Error>`")
-                .to_compile_error(),
-        );
+        return Err(syn::Error::new_spanned(
+            &run_fn.sig,
+            "fn run must return `Result<(), Error>`",
+        ));
     }
     // Classify remaining params (skip host).
     let mut input_params: Vec<syn::PatType> = Vec::new();
@@ -294,8 +292,7 @@ fn validate_orc_fn(
                 return Err(syn::Error::new_spanned(
                     r,
                     "`run` function must not have a self parameter",
-                )
-                .to_compile_error());
+                ));
             }
         };
         let is_out = is_output_param(pat_ty.ty.as_ref())?;
@@ -307,8 +304,7 @@ fn validate_orc_fn(
                 return Err(syn::Error::new_spanned(
                     pat_ty,
                     "All inputs must precede all outputs in `fn run`",
-                )
-                .to_compile_error());
+                ));
             }
             input_params.push(pat_ty.clone());
         }
@@ -327,8 +323,7 @@ fn validate_orc_fn(
                 return Err(syn::Error::new_spanned(
                     &run_fn.sig,
                     "fn run is generic; Types must be defined",
-                )
-                .to_compile_error());
+                ));
             }
             Some(ty) => {
                 let arity = match ty {
@@ -343,8 +338,7 @@ fn validate_orc_fn(
                         format!(
                             "Each Case<...> in Types must have {generic_count} argument(s) to match fn run's generics, found {arity}"
                         ),
-                    )
-                    .to_compile_error());
+                    ));
                 }
             }
         }
@@ -354,8 +348,7 @@ fn validate_orc_fn(
         return Err(syn::Error::new_spanned(
             &run_fn.sig,
             "fn run has output parameters; `let registry: &ObjectRegistry = ...` must be defined",
-        )
-        .to_compile_error());
+        ));
     }
     // Resolve depth arrays. First infer depths from parameter types (None = cannot infer).
     // If all depths are inferrable, the user may omit the explicit array.
@@ -397,25 +390,21 @@ fn validate_orc_fn(
     })
 }
 
-fn validate_dims_fn(
-    dims: &ItemFn,
-    n_inputs: usize,
-    n_outputs: usize,
-) -> Result<(), proc_macro2::TokenStream> {
+fn validate_dims_fn(dims: &ItemFn, n_inputs: usize, n_outputs: usize) -> syn::Result<()> {
     // fn dims must return Result<_, _>.
     let returns_result = match &dims.sig.output {
         syn::ReturnType::Type(_, ty) => matches!(
             ty.as_ref(),
             syn::Type::Path(p)
-                if p.path.segments.last().map_or(false, |s| s.ident == "Result")
+                if p.path.segments.last().is_some_and(|s| s.ident == "Result")
         ),
         syn::ReturnType::Default => false,
     };
     if !returns_result {
-        return Err(
-            syn::Error::new_spanned(&dims.sig, "fn dims must return `Result<(), Error>`")
-                .to_compile_error(),
-        );
+        return Err(syn::Error::new_spanned(
+            &dims.sig,
+            "fn dims must return `Result<(), Error>`",
+        ));
     }
     let expected_total = n_inputs + n_outputs;
     let dims_args: Vec<_> = dims.sig.inputs.iter().collect();
@@ -425,17 +414,16 @@ fn validate_dims_fn(
             format!(
                 "fn dims must have {expected_total} parameter(s) ({n_inputs} input(s) + {n_outputs} output(s)) to match fn run"
             ),
-        )
-        .to_compile_error());
+        ));
     }
     for (i, arg) in dims_args.iter().enumerate() {
         let pat_ty = match arg {
             syn::FnArg::Typed(pt) => pt,
             syn::FnArg::Receiver(r) => {
-                return Err(
-                    syn::Error::new_spanned(r, "dims must not have a self parameter")
-                        .to_compile_error(),
-                );
+                return Err(syn::Error::new_spanned(
+                    r,
+                    "dims must not have a self parameter",
+                ));
             }
         };
         let is_input = i < n_inputs;
@@ -445,31 +433,27 @@ fn validate_dims_fn(
                     return Err(syn::Error::new_spanned(
                         pat_ty,
                         "dims input parameters must be immutable references (&OrcDims)",
-                    )
-                    .to_compile_error());
+                    ));
                 }
                 if !is_input && r.mutability.is_none() {
                     return Err(syn::Error::new_spanned(
                         pat_ty,
                         "dims output parameters must be mutable references (&mut OrcDims)",
-                    )
-                    .to_compile_error());
+                    ));
                 }
-                if !matches!(r.elem.as_ref(), syn::Type::Path(p) if p.path.segments.last().map_or(false, |s| s.ident == "OrcDims"))
+                if !matches!(r.elem.as_ref(), syn::Type::Path(p) if p.path.segments.last().is_some_and(|s| s.ident == "OrcDims"))
                 {
                     return Err(syn::Error::new_spanned(
                         r.elem.as_ref(),
                         "dims parameters must reference OrcDims",
-                    )
-                    .to_compile_error());
+                    ));
                 }
             }
             other => {
                 return Err(syn::Error::new_spanned(
                     other,
                     "dims parameters must be references to OrcDims",
-                )
-                .to_compile_error());
+                ));
             }
         }
     }
@@ -782,23 +766,26 @@ fn generate_orc_fn(
     let desc_lit = proc_macro2::Literal::c_string(
         &std::ffi::CString::new(docs).expect("docs contains null byte"),
     );
-    let dims_fn_tokens = dims_fn.map(|d| quote! { #d }).unwrap_or_default();
-    let dims_call = if dims_fn.is_some() {
-        let in_args: Vec<proc_macro2::TokenStream> = (0..n_inputs)
-            .map(|i| quote! { &__inputs[#i].dims })
-            .collect();
-        let out_args: Vec<proc_macro2::TokenStream> = (0..n_outputs)
-            .map(|j| quote! { &mut __outputs[#j].dims })
-            .collect();
-        quote! {
-            orc_sdk::orc_assert_return!(
-                __host,
-                dims(#(#in_args,)* #(#out_args),*).is_ok(),
-                "dims computation failed"
-            );
+    let (dims_fn_tokens, dims_call) = match dims_fn {
+        Some(d) => {
+            let in_args: Vec<proc_macro2::TokenStream> = (0..n_inputs)
+                .map(|i| quote! { &__inputs[#i].dims })
+                .collect();
+            let out_args: Vec<proc_macro2::TokenStream> = (0..n_outputs)
+                .map(|j| quote! { &mut __outputs[#j].dims })
+                .collect();
+            (
+                quote! { #d },
+                quote! {
+                    orc_sdk::orc_assert_return!(
+                        __host,
+                        dims(#(#in_args,)* #(#out_args),*).is_ok(),
+                        "dims computation failed"
+                    );
+                },
+            )
         }
-    } else {
-        quote! {}
+        None => (quote! {}, quote! {}),
     };
     let dispatch_fn = generate_dispatch_fn(run_fn, params);
     let registry_expr = registry_expr.map(|r| quote! { #r }).unwrap_or_default();
@@ -848,66 +835,29 @@ fn generate_orc_fn(
     }
 }
 
+struct FnMacroArgs {
+    name: proc_macro2::Ident,
+    stmts: Vec<syn::Stmt>,
+}
+
+impl syn::parse::Parse for FnMacroArgs {
+    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        let name = input.parse()?;
+        input.parse::<syn::Token![,]>()?;
+        let content;
+        syn::braced!(content in input);
+        let mut stmts = Vec::new();
+        while !content.is_empty() {
+            stmts.push(content.parse()?);
+        }
+        Ok(FnMacroArgs { name, stmts })
+    }
+}
+
 /// Expands `orc_fn!(name, { ... })` into a full FFI function + OrcFuncInfo const.
 #[proc_macro]
 pub fn orc_fn(input: TokenStream) -> TokenStream {
-    use proc_macro2::TokenTree;
-    let mut iter = proc_macro2::TokenStream::from(input).into_iter();
-    let name = match iter.next() {
-        Some(TokenTree::Ident(i)) => i,
-        other => {
-            return syn::Error::new(
-                other
-                    .map(|t| t.span())
-                    .unwrap_or(proc_macro2::Span::call_site()),
-                "expected function name",
-            )
-            .to_compile_error()
-            .into();
-        }
-    };
-    // Consume the comma separating name from body.
-    match iter.next() {
-        Some(TokenTree::Punct(p)) if p.as_char() == ',' => {}
-        other => {
-            return syn::Error::new(
-                other
-                    .map(|t| t.span())
-                    .unwrap_or(proc_macro2::Span::call_site()),
-                "expected `,` after function name",
-            )
-            .to_compile_error()
-            .into();
-        }
-    }
-    let body = match iter.next() {
-        Some(TokenTree::Group(g)) if g.delimiter() == proc_macro2::Delimiter::Brace => g,
-        other => {
-            return syn::Error::new(
-                other
-                    .map(|t| t.span())
-                    .unwrap_or(proc_macro2::Span::call_site()),
-                "expected `{` after `,`",
-            )
-            .to_compile_error()
-            .into();
-        }
-    };
-    // Parse the body as a sequence of Rust statements and items.
-    let stmts = syn::parse::Parser::parse2(
-        |input: syn::parse::ParseStream| {
-            let mut v = Vec::new();
-            while !input.is_empty() {
-                v.push(input.parse::<syn::Stmt>()?);
-            }
-            Ok(v)
-        },
-        body.stream(),
-    );
-    let stmts = match stmts {
-        Ok(v) => v,
-        Err(e) => return e.to_compile_error().into(),
-    };
+    let FnMacroArgs { name, stmts } = parse_macro_input!(input as FnMacroArgs);
     let mut docs = String::new();
     // fn run(ctx: u64, <inputs...>, <outputs...>) { ... }  — required.
     let mut run_fn: Option<syn::ItemFn> = None;
@@ -937,21 +887,12 @@ pub fn orc_fn(input: TokenStream) -> TokenStream {
             syn::Stmt::Local(l) => &l.attrs,
             _ => &[],
         };
-        for attr in attrs {
-            if attr.path().is_ident("doc") {
-                if let syn::Meta::NameValue(nv) = &attr.meta {
-                    if let syn::Expr::Lit(syn::ExprLit {
-                        lit: syn::Lit::Str(s),
-                        ..
-                    }) = &nv.value
-                    {
-                        if !docs.is_empty() {
-                            docs.push(' ');
-                        }
-                        docs.push_str(s.value().trim());
-                    }
-                }
+        let stmt_docs = docs_from_attrs(attrs);
+        if !stmt_docs.is_empty() {
+            if !docs.is_empty() {
+                docs.push(' ');
             }
+            docs.push_str(&stmt_docs);
         }
         match stmt {
             syn::Stmt::Item(syn::Item::Const(c)) => match c.ident.to_string().as_str() {
@@ -1094,7 +1035,7 @@ pub fn orc_fn(input: TokenStream) -> TokenStream {
         output_depths.as_ref(),
     ) {
         Ok(v) => v,
-        Err(e) => return e.into(),
+        Err(e) => return e.to_compile_error().into(),
     };
     // Now that we validated everything, we can generate the code for this orc_fn.
     generate_orc_fn(
