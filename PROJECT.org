@@ -27,6 +27,24 @@
    :CREATED:  2026-06-06 Sat 19:28
    :END:
 
+* NEXT ABI / DLL Versioning
+  :PROPERTIES:
+  :CREATED:  2026-07-31 Fri 18:58
+  :END:
+  :LOGBOOK:
+  - State "NEXT"       from "TODO"       [2026-07-31 Fri 19:29]
+  :END:
+
+  ABI itself should be protected from changes as much as possible. When it changes, all binaries,
+  plugins, and DLLs must be recompiled. Some minor changes like adding a new function might not
+  require this, but we need a water tight strategy to avoid loading running binaries that target a
+  different ABI than the host. That can cause crashes.
+
+  My first idea is to include a version integer in the header. That integer can pack all three
+  values of a semantic version number in the bits of a 64 bit integer.
+
+  <2026-07-31 Fri 19:29> Trying to take a crack at this whole prototyping demo apps.
+
 * TODO Deferred failures in niche scenarios
   :PROPERTIES:
   :CREATED:  2026-06-07 Sun 07:55
