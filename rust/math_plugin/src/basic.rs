@@ -2,7 +2,7 @@ use crate::{host_callbacks, registry};
 use orc_sdk::{Error, HostCallbacks, OrcDims, TOrcData, orc_fn};
 use std::ops::{Add, Div, Mul, Sub};
 
-orc_fn!(plugin_fn_add, {
+orc_fn!(add, {
     let host_callbacks: &HostCallbacks = host_callbacks();
     let registry: &ObjectRegistry = registry();
 
@@ -40,7 +40,7 @@ orc_fn!(plugin_fn_add, {
     }
 });
 
-orc_fn!(plugin_fn_mul, {
+orc_fn!(mul, {
     let host_callbacks: &HostCallbacks = host_callbacks();
     let registry: &ObjectRegistry = registry();
 
@@ -78,7 +78,7 @@ orc_fn!(plugin_fn_mul, {
     }
 });
 
-orc_fn!(plugin_fn_sub, {
+orc_fn!(sub, {
     let host_callbacks: &HostCallbacks = host_callbacks();
     let registry: &ObjectRegistry = registry();
 
@@ -95,7 +95,7 @@ orc_fn!(plugin_fn_sub, {
     }
 });
 
-orc_fn!(plugin_fn_div, {
+orc_fn!(div, {
     let host_callbacks: &HostCallbacks = host_callbacks();
     let registry: &ObjectRegistry = registry();
 

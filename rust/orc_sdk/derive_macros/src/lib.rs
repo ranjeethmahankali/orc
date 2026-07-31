@@ -56,50 +56,29 @@ pub fn orc_generate_fn_info(attr: TokenStream, item: TokenStream) -> TokenStream
     .into()
 }
 
-/// `orc_fn_info!(plugin_fn_add)` expands to `ORC_FN_INFO_PLUGIN_FN_ADD`.
-/// `orc_fn_info!(basic, plugin_fn_add)` expands to `basic::ORC_FN_INFO_PLUGIN_FN_ADD`.
+/// `orc_fn_info!(add)` expands to `ORC_FN_INFO_ADD`.
+/// `orc_fn_info!(basic::add)` expands to `basic::ORC_FN_INFO_ADD`.
 #[proc_macro]
 pub fn orc_fn_info(input: TokenStream) -> TokenStream {
-    let input = proc_macro2::TokenStream::from(input);
-    let mut iter = input.into_iter();
-    let first = match iter.next() {
-        Some(proc_macro2::TokenTree::Ident(i)) => i,
-        other => {
-            return syn::Error::new(
-                other
-                    .map(|t| t.span())
-                    .unwrap_or(proc_macro2::Span::call_site()),
-                "expected identifier",
-            )
-            .to_compile_error()
-            .into();
+    let path = parse_macro_input!(input as syn::Path);
+    let last = match path.segments.last() {
+        Some(seg) => seg,
+        None => {
+            return syn::Error::new(proc_macro2::Span::call_site(), "expected a path")
+                .to_compile_error()
+                .into();
         }
     };
-    match iter.next() {
-        None => {
-            let const_name = info_const_name(&first.to_string());
-            quote! { #const_name }.into()
-        }
-        Some(proc_macro2::TokenTree::Punct(p)) if p.as_char() == ',' => {
-            let second = match iter.next() {
-                Some(proc_macro2::TokenTree::Ident(i)) => i,
-                other => {
-                    return syn::Error::new(
-                        other
-                            .map(|t| t.span())
-                            .unwrap_or(proc_macro2::Span::call_site()),
-                        "expected identifier after `,`",
-                    )
-                    .to_compile_error()
-                    .into();
-                }
-            };
-            let const_name = info_const_name(&second.to_string());
-            quote! { #first::#const_name }.into()
-        }
-        Some(other) => syn::Error::new(other.span(), "expected `,` or end of input")
-            .to_compile_error()
-            .into(),
+    let const_name = info_const_name(&last.ident.to_string());
+    if path.segments.len() == 1 {
+        quote! { #const_name }.into()
+    } else {
+        let prefix: syn::punctuated::Punctuated<&syn::PathSegment, syn::Token![::]> = path
+            .segments
+            .iter()
+            .take(path.segments.len() - 1)
+            .collect();
+        quote! { #prefix::#const_name }.into()
     }
 }
 

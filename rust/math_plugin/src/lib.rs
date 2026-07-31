@@ -94,8 +94,8 @@ orc_plugin!(Adaptor);
 mod basic;
 
 const ORC_EXPORTED_FUNCTIONS: &[OrcFuncInfo] = &[
-    orc_fn_info!(basic, plugin_fn_add),
-    orc_fn_info!(basic, plugin_fn_mul),
-    orc_fn_info!(basic, plugin_fn_sub),
-    orc_fn_info!(basic, plugin_fn_div),
+    orc_fn_info!(basic::add),
+    orc_fn_info!(basic::mul),
+    orc_fn_info!(basic::sub),
+    orc_fn_info!(basic::div),
 ];
