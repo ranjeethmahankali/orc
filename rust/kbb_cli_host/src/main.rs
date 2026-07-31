@@ -3,7 +3,7 @@ use orc_sdk::{
     Deck, ORC_F64, OrcHandle, OrcHost, OrcHostCallbackAPI, OrcHostMemoryAPI, OrcItemProxy,
     OrcPlugin, OrcTypeId, PluginInfo, deck, handle_from_deck,
 };
-use std::path::Path;
+use std::{ffi::CStr, path::Path};
 
 type PluginInitFn = unsafe extern "C" fn(*const OrcHost, *mut OrcPlugin);
 type DeckAllocFn = unsafe extern "C" fn(OrcTypeId, *mut OrcHandle);
@@ -22,6 +22,27 @@ const PLUGIN_INIT_FN_NAME: &str = "orc_plugin_init";
 const DECK_ALLOC_FN_NAME: &str = "orc_deck_alloc";
 const DECK_FREE_FN_NAME: &str = "orc_deck_free";
 const DECK_FROM_PROXY_FN_NAME: &str = "orc_deck_from_proxy";
+
+unsafe extern "C" fn report_message(ctx: u64, level: u32, msg: *const ::std::os::raw::c_char) {
+    let msg = if msg.is_null() {
+        ""
+    } else {
+        &unsafe { CStr::from_ptr(msg) }.to_string_lossy()
+    };
+    println!(
+        "[{}][{}] {}",
+        match level {
+            orc_sdk::ORC_MSG_LEVEL_DEBUG => "DEBUG",
+            orc_sdk::ORC_MSG_LEVEL_INFO => "INFO",
+            orc_sdk::ORC_MSG_LEVEL_WARN => "WARN",
+            orc_sdk::ORC_MSG_LEVEL_ERROR => "ERROR",
+            orc_sdk::ORC_MSG_LEVEL_FATAL => "FATAL",
+            _ => "FATAL",
+        },
+        ctx,
+        msg
+    );
+}
 
 impl Plugin {
     fn load(path: &Path) -> Result<Self, String> {
@@ -54,7 +75,7 @@ impl Plugin {
             },
             callbacks: OrcHostCallbackAPI {
                 report_progress: None,
-                report_message: None,
+                report_message: Some(report_message),
                 check_cancellation: None,
                 report_intermediate_output: None,
             },
