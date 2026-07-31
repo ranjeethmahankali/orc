@@ -2,6 +2,19 @@
 #include <stddef.h>
 #include <stdint.h>
 
+// ==============================
+// ABI version management
+// ==============================
+
+#define ORC_VERSION_PACK(major, minor, patch) \
+  ((((uint64_t)(major)) << 42) | (((uint64_t)(minor)) << 21) | ((uint64_t)(patch)))
+
+static const uint64_t ORC_ABI_VERSION = ORC_VERSION_PACK(0, 0, 1);
+
+// ==============================
+// Types and Functions.
+// ==============================
+
 // Unsigned integers.
 #define ORC_U8 0x01u
 #define ORC_U16 0x02u
@@ -56,6 +69,9 @@ typedef struct
 
 typedef struct
 {
+  uint64_t           abi_version;
+  char const        *name;
+  char const        *desc;
   OrcTypeInfo const *types;
   uint64_t           n_types;
   OrcFuncInfo const *functions;
@@ -78,6 +94,7 @@ typedef struct
 
 typedef struct OrcHost
 {
+  uint64_t           abi_version;
   OrcHostMemoryAPI   memory_api;
   OrcHostCallbackAPI callbacks;
 } OrcHost;
@@ -131,9 +148,10 @@ typedef struct
 // ===========================================================
 
 #define ORC_ERROR_NONE 0u
-#define ORC_ERROR_INVALID_HANDLE 0xff01u
-#define ORC_ERROR_INVALID_DIMENSIONS 0xff02u
-#define ORC_ERROR_TYPE_MISMATCH 0xff03u
+#define ORC_ERROR_ABI_VERSION_MISMATCH 0xff01u
+#define ORC_ERROR_INVALID_HANDLE 0xff02u
+#define ORC_ERROR_INVALID_DIMENSIONS 0xff03u
+#define ORC_ERROR_TYPE_MISMATCH 0xff04u
 #define ORC_ERROR_UNKNOWN 0xffffu
 
 typedef uint32_t OrcError;
