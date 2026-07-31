@@ -1,12 +1,11 @@
 use orc_sdk::{
-    Combinations, Deck, Error, HostCallbacks, ORC_F32, ORC_F64, ORC_I8, ORC_I16, ORC_I32, ORC_I64,
-    ORC_U8, ORC_U16, ORC_U32, ORC_U64, ObjectRegistry, OrcDims, OrcFuncInfo, OrcHandle, OrcHost,
+    Deck, Error, HostCallbacks, ORC_F32, ORC_F64, ORC_I8, ORC_I16, ORC_I32, ORC_I64, ORC_U8,
+    ORC_U16, ORC_U32, ORC_U64, ObjectRegistry, OrcDims, OrcFuncInfo, OrcHandle, OrcHost,
     OrcHostCallbackAPI, OrcItemProxy, OrcMark, OrcPlugin, OrcTypeId, ProxyType, TOrcData,
-    TOrcPluginAdaptor, handle_from_deck, orc_assert_return, orc_fn, orc_fn_info,
-    orc_generate_fn_info, orc_plugin, reset_handle, slice_from_ptr, slice_from_ptr_mut,
+    TOrcPluginAdaptor, handle_from_deck, orc_fn, orc_fn_info, orc_plugin, reset_handle,
 };
 use std::{
-    ops::{Div, Mul},
+    ops::{Add, Div, Mul},
     sync::{LazyLock, OnceLock},
 };
 
@@ -113,9 +112,9 @@ orc_fn!(plugin_fn_add, {
     /// also.
     fn run<T>(_host: &HostCallbacks, lhs: &T, rhs: &T, out: &mut T) -> Result<(), Error>
     where
-        T: TOrcData + Mul<Output = T> + Copy,
+        T: TOrcData + Add<Output = T> + Copy,
     {
-        *out = *lhs * *rhs;
+        *out = *lhs + *rhs;
         Ok(())
     }
 
