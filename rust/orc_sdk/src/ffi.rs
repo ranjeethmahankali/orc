@@ -98,6 +98,23 @@ macro_rules! orc_plugin {
     };
 }
 
+pub type PluginInitFn = unsafe extern "C" fn(*const OrcHost, *mut OrcPlugin) -> OrcError;
+pub type DeckAllocFn = unsafe extern "C" fn(OrcTypeId, *mut OrcHandle) -> OrcError;
+pub type DeckFreeFn = unsafe extern "C" fn(*mut OrcHandle) -> OrcError;
+pub type DeckFromProxyFn = unsafe extern "C" fn(
+    inputs: *const OrcHandle,
+    n_inputs: u64,
+    proxy_type: u32,
+    proxy: *const OrcHandle,
+    out: *mut OrcHandle,
+) -> OrcError;
+
+// Compile-time checks to keep these type aliases in sync with the bindings.
+const _: PluginInitFn = orc_plugin_init;
+const _: DeckAllocFn = orc_deck_alloc;
+const _: DeckFreeFn = orc_deck_free;
+const _: DeckFromProxyFn = orc_deck_from_proxy;
+
 pub enum ProxyType {
     CopyAll,
     CopyItems,

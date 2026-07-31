@@ -1,15 +1,10 @@
 use libloading::Library;
 use orc_sdk::{
-    Deck, ORC_F64, OrcHandle, OrcHost, OrcHostCallbackAPI, OrcHostMemoryAPI, OrcItemProxy,
-    OrcPlugin, OrcTypeId, PluginInfo, deck, handle_from_deck,
+    Deck, DeckAllocFn, DeckFreeFn, DeckFromProxyFn, ORC_ABI_VERSION, ORC_ERROR_NONE, ORC_F64,
+    OrcError, OrcHandle, OrcHost, OrcHostCallbackAPI, OrcHostMemoryAPI, OrcItemProxy, OrcPlugin,
+    OrcTypeId, PluginInfo, PluginInitFn, deck, handle_from_deck,
 };
 use std::{ffi::CStr, path::Path};
-
-type PluginInitFn = unsafe extern "C" fn(*const OrcHost, *mut OrcPlugin);
-type DeckAllocFn = unsafe extern "C" fn(OrcTypeId, *mut OrcHandle);
-type DeckFreeFn = unsafe extern "C" fn(*mut OrcHandle);
-type DeckFromProxyFn =
-    unsafe extern "C" fn(*const OrcHandle, u64, u32, *const OrcItemProxy, *mut OrcHandle);
 
 struct Plugin {
     _lib: Library,
