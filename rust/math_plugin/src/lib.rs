@@ -91,99 +91,43 @@ impl TOrcPluginAdaptor for Adaptor {
 
 orc_plugin!(Adaptor);
 
-#[orc_generate_fn_info]
-/// Adds the inputs together. This function supports all floating point and integer primitives.
-unsafe extern "C" fn plugin_fn_add(
-    ctx: u64,
-    inputs: *const OrcHandle,
-    n_inputs: u64,
-    outputs: *mut OrcHandle,
-    n_outputs: u64,
-) {
-    let host: HostCallbacks = HostCallbacks {
-        inner: *host_callbacks(),
-        context: ctx,
-    };
-    orc_assert_return!(
-        host,
-        n_inputs == 2,
-        "This function only supports two inputs"
+orc_fn!(plugin_fn_add, {
+    let host_callbacks: &HostCallbacks = host_callbacks();
+    let registry: &ObjectRegistry = &REGISTRY;
+
+    type Types = (
+        Case<f32>,
+        Case<f64>,
+        Case<u8>,
+        Case<u16>,
+        Case<u32>,
+        Case<u64>,
+        Case<i8>,
+        Case<i16>,
+        Case<i32>,
+        Case<i64>,
     );
-    orc_assert_return!(
-        host,
-        n_outputs == 1,
-        "This function only supports one output"
-    );
-    let (inputs, outputs) = unsafe {
-        (
-            slice_from_ptr(inputs, n_inputs as usize),
-            slice_from_ptr_mut(outputs, n_outputs as usize),
-        )
-    };
-    // Inputs must be of the same type.
-    // Output and input types must be the same, and must match one of the supported types.
-    let type_id = inputs[0].type_id;
-    orc_assert_return!(
-        host,
-        type_id == inputs[1].type_id,
-        "Two inputs must be of the same type"
-    );
-    // List processing setup.
-    let input_depths = vec![0u8; inputs.len()];
-    const OUTPUT_DEPTHS: &[u8] = &[0];
-    let mut comb = match Combinations::from_handles(inputs, &input_depths, OUTPUT_DEPTHS) {
-        Ok(comb) => comb,
-        Err(e) => {
-            host.error(&format!(
-                "Cannot initialize combinations from the provided inputs. Error: {e:?}"
-            ));
-            return;
+
+    /// Multiplies two inputs values. This function supports any integer or floating point scalar
+    /// types. The two inputs must be of the same type. The output produced will be of the same type
+    /// also.
+    fn run<T>(_host: &HostCallbacks, lhs: &T, rhs: &T, out: &mut T) -> Result<(), Error>
+    where
+        T: TOrcData + Mul<Output = T> + Copy,
+    {
+        *out = *lhs * *rhs;
+        Ok(())
+    }
+
+    /// The dimensions of both inputs must be the same. The output dimensions will match that.
+    fn dims(lhs: &OrcDims, rhs: &OrcDims, out: &mut OrcDims) -> Result<(), Error> {
+        if rhs != lhs {
+            return Err(Error::InvalidDimensions);
         }
-    };
-    let registry = &REGISTRY;
-    // TODO: I am hardcoding f64 for now, later I need to check the input types, and dispatch to different generic functions.
-    for output in outputs.iter_mut() {
-        let alloc_result = registry.ensure_alloc_default::<Deck<f64>>(&mut output.handle);
-        orc_assert_return!(host, alloc_result.is_ok(), "Unable to allocate output deck");
+        *out = *lhs;
+        Ok(())
     }
-    let (input_slice_lhs, input_slice_rhs) = unsafe {
-        (
-            slice_from_ptr(inputs[0].items.cast::<f64>(), inputs[0].n_items as usize),
-            slice_from_ptr(inputs[1].items.cast::<f64>(), inputs[1].n_items as usize),
-        )
-    };
-    let result = registry
-        .with_mut(
-            &[outputs[0].handle],
-            |out_decks| -> Result<(), orc_sdk::Error> {
-                let out_deck: &mut Deck<f64> = out_decks[0]
-                    .downcast_mut()
-                    .ok_or(orc_sdk::Error::DeckTypeMismatch)?;
-                // List processing iterations.
-                loop {
-                    let mut out_view = comb.get_output(out_deck, 0);
-                    let output = out_view.push_default_mut();
-                    let lhs = comb.get_input(input_slice_lhs, 0);
-                    let rhs = comb.get_input(input_slice_rhs, 1);
-                    // The actual addition happens here.
-                    *output = lhs.as_ref() + rhs.as_ref();
-                    // Advance to the next list processing iteration.
-                    if !comb.advance() {
-                        break;
-                    }
-                }
-                let out_id = outputs[0].handle;
-                outputs[0] = handle_from_deck(out_deck, out_id);
-                Ok(())
-            },
-        )
-        .flatten();
-    if let Err(e) = result {
-        host.error(&format!(
-            "Failed to run the function with the following error:\n{e:?}"
-        ));
-    }
-}
+});
 
 orc_fn!(plugin_fn_mul, {
     let host_callbacks: &HostCallbacks = host_callbacks();
@@ -202,7 +146,7 @@ orc_fn!(plugin_fn_mul, {
         Case<i64>,
     );
 
-    /// Multiplies two inputs values. This function supports any integer or floating point scalar
+    /// Adds two inputs values. This function supports any integer or floating point scalar
     /// types. The two inputs must be of the same type. The output produced will be of the same type
     /// also.
     fn run<T>(_host: &HostCallbacks, lhs: &T, rhs: &T, out: &mut T) -> Result<(), Error>
