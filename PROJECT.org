@@ -27,24 +27,6 @@
    :CREATED:  2026-06-06 Sat 19:28
    :END:
 
-* NEXT ABI / DLL Versioning
-  :PROPERTIES:
-  :CREATED:  2026-07-31 Fri 18:58
-  :END:
-  :LOGBOOK:
-  - State "NEXT"       from "TODO"       [2026-07-31 Fri 19:29]
-  :END:
-
-  ABI itself should be protected from changes as much as possible. When it changes, all binaries,
-  plugins, and DLLs must be recompiled. Some minor changes like adding a new function might not
-  require this, but we need a water tight strategy to avoid loading running binaries that target a
-  different ABI than the host. That can cause crashes.
-
-  My first idea is to include a version integer in the header. That integer can pack all three
-  values of a semantic version number in the bits of a 64 bit integer.
-
-  <2026-07-31 Fri 19:29> Trying to take a crack at this whole prototyping demo apps.
-
 * TODO Deferred failures in niche scenarios
   :PROPERTIES:
   :CREATED:  2026-06-07 Sun 07:55
@@ -89,13 +71,39 @@
   was trivial to implement in GH. Trying to do the same in Kratos turned into a
   dumpster fire. That is what makes this a good litmus test.
 
-* TODO tj2fch - OrcHandle type_id rework
+* NEXT tj2fch - OrcHandle type_id rework
   :PROPERTIES:
   :CREATED:  2026-07-31 Fri 20:43
+  :END:
+  :LOGBOOK:
+  - State "NEXT"       from "TODO"       [2026-08-01 Sat 17:39]
   :END:
 
   Need something that allows plugins to receive the host side type id, and allows plugins to receive
   handles containing data from other plugins.
+
+** DONE ABI / DLL Versioning
+   CLOSED: [2026-08-01 Sat 17:40]
+   :PROPERTIES:
+   :CREATED:  2026-07-31 Fri 18:58
+   :END:
+   :LOGBOOK:
+   - State "DONE"       from "NEXT"       [2026-08-01 Sat 17:40]
+   - State "NEXT"       from "TODO"       [2026-07-31 Fri 19:29]
+   :END:
+
+   ABI itself should be protected from changes as much as possible. When it changes, all binaries,
+   plugins, and DLLs must be recompiled. Some minor changes like adding a new function might not
+   require this, but we need a water tight strategy to avoid loading running binaries that target a
+   different ABI than the host. That can cause crashes.
+
+   My first idea is to include a version integer in the header. That integer can pack all three
+   values of a semantic version number in the bits of a 64 bit integer.
+
+   <2026-07-31 Fri 19:29> Trying to take a crack at this whole prototyping demo apps.
+
+   <2026-08-01 Sat 17:39> Turning this into a subtask, because it will get merged as part of another
+   task. Marking it done. The design I have on this branch seems good enough for now.
 
 * TODO tj2fe7 - Proxy decks through the ABI
   :PROPERTIES:
