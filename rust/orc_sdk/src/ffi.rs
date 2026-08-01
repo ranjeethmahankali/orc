@@ -25,6 +25,9 @@ macro_rules! orc_plugin {
             id: orc_sdk::OrcTypeId,
             out: *mut orc_sdk::OrcHandle,
         ) -> orc_sdk::OrcError {
+            if out.is_null() {
+                return orc_sdk::ORC_ERROR_INVALID_HANDLE;
+            }
             match <$plugin as orc_sdk::TOrcPluginAdaptor>::deck_alloc(id) {
                 Ok(handle) => {
                     unsafe {
@@ -62,21 +65,18 @@ macro_rules! orc_plugin {
                     &mut *out,
                 )
             };
-            assert!(
-                proxy.type_id.primitive_id == orc_sdk::ORC_PROXY,
-                "Invalid proxy deck"
-            );
-            assert!(!inputs.is_empty(), "orc_deck_from_proxy: no inputs");
+            if proxy.type_id.primitive_id != orc_sdk::ORC_PROXY || inputs.is_empty() {
+                return orc_sdk::ORC_ERROR_INVALID_PROXY;
+            }
             let type_id = inputs[0].type_id;
-            assert!(
-                inputs.iter().all(|i| i.type_id == type_id),
-                "orc_deck_from_proxy: all input handles must have the same type_id"
-            );
+            if !inputs.iter().all(|i| i.type_id == type_id) {
+                return orc_sdk::ORC_ERROR_INVALID_PROXY;
+            }
             let proxy_type = match proxy_type {
                 orc_sdk::ORC_DECK_PROXY_COPY_ALL => ProxyType::CopyAll,
                 orc_sdk::ORC_DECK_PROXY_COPY_ITEMS => ProxyType::CopyItems,
                 orc_sdk::ORC_DECK_PROXY_SHUFFLE => ProxyType::Shuffle,
-                _ => panic!("Invalid proxy type."),
+                _ => return orc_sdk::ORC_ERROR_INVALID_PROXY,
             };
             let proxies: &[OrcItemProxy] = if proxy.n_items > 0 && !proxy.items.is_null() {
                 unsafe { orc_sdk::slice_from_ptr(proxy.items.cast(), proxy.n_items as usize) }

@@ -109,8 +109,9 @@ impl Plugin {
         Error::from_raw(err).map(|_| handle)
     }
 
-    fn free_deck(&self, handle: &mut OrcHandle) {
-        unsafe { (self.deck_free)(handle) };
+    fn free_deck(&self, handle: &mut OrcHandle) -> Result<(), Error> {
+        let err = unsafe { (self.deck_free)(handle) };
+        Error::from_raw(err)
     }
 }
 
