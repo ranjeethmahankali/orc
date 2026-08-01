@@ -70,6 +70,12 @@ pub struct ObjectRegistry {
     counter: AtomicU64,
 }
 
+impl Default for ObjectRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ObjectRegistry {
     pub fn new() -> Self {
         ObjectRegistry {
@@ -187,6 +193,12 @@ unsafe extern "C" fn system_dealloc(ptr: *mut c_void, size: u64, alignment: u64)
 pub struct PluginAllocator {
     alloc_fn: AtomicPtr<()>,
     dealloc_fn: AtomicPtr<()>,
+}
+
+impl Default for PluginAllocator {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl PluginAllocator {

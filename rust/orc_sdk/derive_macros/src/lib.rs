@@ -11,15 +11,14 @@ fn docs_from_attrs(attrs: &[syn::Attribute]) -> String {
         .iter()
         .filter(|a| a.path().is_ident("doc"))
         .filter_map(|a| {
-            if let syn::Meta::NameValue(nv) = &a.meta {
-                if let syn::Expr::Lit(syn::ExprLit {
+            if let syn::Meta::NameValue(nv) = &a.meta
+                && let syn::Expr::Lit(syn::ExprLit {
                     lit: syn::Lit::Str(s),
                     ..
                 }) = &nv.value
                 {
                     return Some(s.value().trim().to_string());
                 }
-            }
             None
         })
         .collect::<Vec<_>>()
@@ -97,15 +96,12 @@ struct ValidatedParams {
 
 /// Returns the number of args in `Case<...>`, or `None` if the type is not `Case<...>`.
 fn sig_arg_count(ty: &syn::Type) -> Option<usize> {
-    if let syn::Type::Path(p) = ty {
-        if let Some(seg) = p.path.segments.last() {
-            if seg.ident == "Case" {
-                if let syn::PathArguments::AngleBracketed(args) = &seg.arguments {
+    if let syn::Type::Path(p) = ty
+        && let Some(seg) = p.path.segments.last()
+            && seg.ident == "Case"
+                && let syn::PathArguments::AngleBracketed(args) = &seg.arguments {
                     return Some(args.args.len());
                 }
-            }
-        }
-    }
     None
 }
 
@@ -163,13 +159,11 @@ fn inner_type(ty: &syn::Type) -> &syn::Type {
         },
         syn::Type::Path(p) => {
             if let Some(seg) = p.path.segments.last() {
-                if seg.ident == "DeckView" || seg.ident == "DeckWriter" {
-                    if let syn::PathArguments::AngleBracketed(args) = &seg.arguments {
-                        if let Some(syn::GenericArgument::Type(t)) = args.args.first() {
+                if (seg.ident == "DeckView" || seg.ident == "DeckWriter")
+                    && let syn::PathArguments::AngleBracketed(args) = &seg.arguments
+                        && let Some(syn::GenericArgument::Type(t)) = args.args.first() {
                             return t;
                         }
-                    }
-                }
             }
             ty
         }
@@ -218,8 +212,8 @@ fn resolve_depths(
                         ));
                     }
                 };
-                if let Some(inf) = inferred[i] {
-                    if provided != inf {
+                if let Some(inf) = inferred[i]
+                    && provided != inf {
                         return Err(syn::Error::new_spanned(
                             e,
                             format!(
@@ -227,7 +221,6 @@ fn resolve_depths(
                             ),
                         ));
                     }
-                }
                 result.push(provided);
             }
             Ok(result.into_boxed_slice())
@@ -467,19 +460,16 @@ fn substitute_type(
     generics: &[&syn::GenericParam],
     case_args: &[&syn::GenericArgument],
 ) -> syn::Type {
-    if let syn::Type::Path(p) = ty {
-        if let Some(ident) = p.path.get_ident() {
+    if let syn::Type::Path(p) = ty
+        && let Some(ident) = p.path.get_ident() {
             for (gp, arg) in generics.iter().zip(case_args.iter()) {
                 if let (syn::GenericParam::Type(tp), syn::GenericArgument::Type(concrete)) =
                     (gp, arg)
-                {
-                    if tp.ident == *ident {
+                    && tp.ident == *ident {
                         return concrete.clone();
                     }
-                }
             }
         }
-    }
     ty.clone()
 }
 
@@ -557,7 +547,7 @@ fn generate_type_dispatch(
 
         let pattern_idents: Vec<proc_macro2::Ident> = mono_input_types
             .iter()
-            .map(|ty| get_or_insert(ty))
+            .map(&mut get_or_insert)
             .collect();
 
         let pattern_key = pattern_idents
@@ -993,12 +983,11 @@ pub fn orc_fn(input: TokenStream) -> TokenStream {
                             registry = Some(*init.expr.clone());
                             recognized = true;
                         }
-                    } else if ident == "host_callbacks" {
-                        if let Some(init) = &local.init {
+                    } else if ident == "host_callbacks"
+                        && let Some(init) = &local.init {
                             host_callbacks_expr = Some(*init.expr.clone());
                             recognized = true;
                         }
-                    }
                 }
                 if !recognized {
                     user_items.push(quote::quote!(#local));
