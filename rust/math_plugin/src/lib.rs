@@ -51,6 +51,8 @@ impl TOrcPluginAdaptor for Adaptor {
         }
         // Tell the host about the plugin provided types and functions
         out.abi_version = ORC_ABI_VERSION;
+        out.name = c"toy_plugin".as_ptr();
+        out.desc = c"Toy plugin to test and flesh out the SDK".as_ptr();
         out.n_types = 0;
         out.types = std::ptr::null();
         out.n_functions = ORC_EXPORTED_FUNCTIONS.len() as u64;
