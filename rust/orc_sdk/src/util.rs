@@ -1,7 +1,7 @@
 use crate::{
     Deck, Error, ORC_MSG_LEVEL_DEBUG, ORC_MSG_LEVEL_ERROR, ORC_MSG_LEVEL_FATAL, ORC_MSG_LEVEL_INFO,
     ORC_MSG_LEVEL_WARN, ORC_NUM_DIMS, OrcFuncInfo, OrcHandle, OrcHost, OrcHostCallbackAPI,
-    OrcPlugin, OrcTypeId, OrcTypeInfo, deck::fmt_raw_deck, ffi::TOrcData,
+    OrcTypeId, OrcTypeInfo, deck::fmt_raw_deck, ffi::TOrcData,
 };
 use std::{
     alloc::{GlobalAlloc, Layout, System},
@@ -281,33 +281,6 @@ impl From<&OrcFuncInfo> for FuncInfo {
                 .into_owned(),
             func: info.func.expect("NULL function pointer"),
         }
-    }
-}
-
-pub struct PluginInfo {
-    pub types: Box<[TypeInfo]>,
-    pub functions: Box<[FuncInfo]>,
-}
-
-impl From<&OrcPlugin> for PluginInfo {
-    fn from(plugin: &OrcPlugin) -> Self {
-        let types = if plugin.n_types == 0 || plugin.types.is_null() {
-            Box::default()
-        } else {
-            unsafe { std::slice::from_raw_parts(plugin.types, plugin.n_types as usize) }
-                .iter()
-                .map(TypeInfo::from)
-                .collect()
-        };
-        let functions = if plugin.n_functions == 0 || plugin.functions.is_null() {
-            Box::default()
-        } else {
-            unsafe { std::slice::from_raw_parts(plugin.functions, plugin.n_functions as usize) }
-                .iter()
-                .map(FuncInfo::from)
-                .collect()
-        };
-        Self { types, functions }
     }
 }
 

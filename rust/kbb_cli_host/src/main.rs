@@ -1,138 +1,5 @@
-use libloading::Library;
-use orc_sdk::{
-    Deck, DeckAllocFn, DeckFreeFn, DeckFromProxyFn, Error, ORC_ABI_VERSION,
-    ORC_DECK_PROXY_COPY_ALL, ORC_DECK_PROXY_COPY_ITEMS, ORC_DECK_PROXY_SHUFFLE,
-    ORC_ERROR_ABI_VERSION_MISMATCH, ORC_ERROR_NONE, ORC_F64, OrcHandle, OrcHost,
-    OrcHostCallbackAPI, OrcHostMemoryAPI, OrcPlugin, OrcTypeId, PluginInfo, PluginInitFn,
-    ProxyType, deck, handle_from_deck,
-};
-use std::{ffi::CStr, path::Path};
-
-struct Plugin {
-    _lib: Library,
-    deck_alloc: DeckAllocFn,
-    deck_free: DeckFreeFn,
-    deck_from_proxy: DeckFromProxyFn,
-    info: PluginInfo,
-}
-const PLUGIN_INIT_FN_NAME: &str = "orc_plugin_init";
-const DECK_ALLOC_FN_NAME: &str = "orc_deck_alloc";
-const DECK_FREE_FN_NAME: &str = "orc_deck_free";
-const DECK_FROM_PROXY_FN_NAME: &str = "orc_deck_from_proxy";
-
-unsafe extern "C" fn report_message(ctx: u64, level: u32, msg: *const std::ffi::c_char) {
-    let msg = if msg.is_null() {
-        ""
-    } else {
-        &unsafe { CStr::from_ptr(msg) }.to_string_lossy()
-    };
-    println!(
-        "[{}][{}] {}",
-        match level {
-            orc_sdk::ORC_MSG_LEVEL_DEBUG => "DEBUG",
-            orc_sdk::ORC_MSG_LEVEL_INFO => "INFO",
-            orc_sdk::ORC_MSG_LEVEL_WARN => "WARN",
-            orc_sdk::ORC_MSG_LEVEL_ERROR => "ERROR",
-            orc_sdk::ORC_MSG_LEVEL_FATAL => "FATAL",
-            _ => "FATAL",
-        },
-        ctx,
-        msg
-    );
-}
-
-impl Plugin {
-    fn load(path: &Path) -> Result<Self, String> {
-        let lib = unsafe { Library::new(path) }.map_err(|e| format!("cannot load library: {e}"))?;
-        let (init, deck_alloc, deck_free, deck_from_proxy): (
-            PluginInitFn,
-            DeckAllocFn,
-            DeckFreeFn,
-            DeckFromProxyFn,
-        ) = unsafe {
-            (
-                lib.get(PLUGIN_INIT_FN_NAME.as_bytes())
-                    .map(|s| *s)
-                    .map_err(|_| format!("missing symbol '{PLUGIN_INIT_FN_NAME}'"))?,
-                lib.get(DECK_ALLOC_FN_NAME.as_bytes())
-                    .map(|s| *s)
-                    .map_err(|_| format!("missing symbol '{DECK_ALLOC_FN_NAME}'"))?,
-                lib.get(DECK_FREE_FN_NAME.as_bytes())
-                    .map(|s| *s)
-                    .map_err(|_| format!("missing symbol '{DECK_FREE_FN_NAME}'"))?,
-                lib.get(DECK_FROM_PROXY_FN_NAME.as_bytes())
-                    .map(|s| *s)
-                    .map_err(|_| format!("missing symbol '{DECK_FROM_PROXY_FN_NAME}'"))?,
-            )
-        };
-        let host = OrcHost {
-            abi_version: ORC_ABI_VERSION,
-            memory_api: OrcHostMemoryAPI {
-                alloc: None,
-                dealloc: None,
-            },
-            callbacks: OrcHostCallbackAPI {
-                report_progress: None,
-                report_message: Some(report_message),
-                check_cancellation: None,
-                report_intermediate_output: None,
-            },
-        };
-        let mut plugin_data = OrcPlugin::default();
-        let err = unsafe { init(&host, &mut plugin_data) };
-        match err {
-            ORC_ERROR_NONE => {} // Do nothing.
-            ORC_ERROR_ABI_VERSION_MISMATCH => {
-                return Err(format!(
-                    "Unable to load the plugin because of ABI version mismatch."
-                ));
-            }
-            _ => return Err(format!("Unable to load the plugin. Error code: {err}")),
-        }
-        if plugin_data.abi_version != ORC_ABI_VERSION {
-            return Err(format!(
-                "Unable to load the plugin because of ABI version mismatch."
-            ));
-        }
-        let info = PluginInfo::from(&plugin_data);
-        Ok(Plugin {
-            _lib: lib,
-            deck_alloc,
-            deck_free,
-            deck_from_proxy,
-            info,
-        })
-    }
-
-    fn alloc_deck(&self, type_id: OrcTypeId) -> Result<OrcHandle, Error> {
-        let mut handle = OrcHandle::default();
-        let err = unsafe { (self.deck_alloc)(type_id, &mut handle) };
-        Error::from_raw(err).map(|_| handle)
-    }
-
-    fn free_deck(&self, handle: &mut OrcHandle) -> Result<(), Error> {
-        let err = unsafe { (self.deck_free)(handle) };
-        Error::from_raw(err)
-    }
-
-    fn create_proxy_deck(
-        &self,
-        inputs: &[OrcHandle],
-        proxy_type: ProxyType,
-        proxy: &OrcHandle,
-    ) -> Result<OrcHandle, Error> {
-        let mut out = OrcHandle::default();
-        let ptype = match proxy_type {
-            ProxyType::CopyAll => ORC_DECK_PROXY_COPY_ALL,
-            ProxyType::CopyItems => ORC_DECK_PROXY_COPY_ITEMS,
-            ProxyType::Shuffle => ORC_DECK_PROXY_SHUFFLE,
-        };
-        let err = unsafe {
-            (self.deck_from_proxy)(inputs.as_ptr(), inputs.len() as u64, ptype, proxy, &mut out)
-        };
-        Error::from_raw(err).map(|_| out)
-    }
-}
+use orc_sdk::{Deck, Error, ORC_F64, OrcHandle, OrcTypeId, Plugin, deck, handle_from_deck};
+use std::path::Path;
 
 fn load_plugins(dir: &Path) -> Box<[Plugin]> {
     let entries = match std::fs::read_dir(dir) {
@@ -178,14 +45,14 @@ fn main() -> Result<(), Error> {
     println!("Loaded {} plugin(s)\n", plugins.len());
     // Print the loaded plugins and functions.
     for plugin in &plugins {
-        println!("{} function(s):", plugin.info.functions.len());
-        for func in plugin.info.functions.iter() {
+        println!("{} function(s):", plugin.functions().len());
+        for func in plugin.functions().iter() {
             println!("  - {}\n    {}", func.name, func.desc);
         }
     }
     // Test the add function.
     let math_plugin = &plugins[0];
-    let add_fn = math_plugin.info.functions[0].func;
+    let add_fn = math_plugin.functions()[0].func;
     let a: Deck<f64> = deck![1.0, 2.0, 3.0];
     let b: Deck<f64> = deck![10.0, 20.0, 30.0];
     let mut out_handle = math_plugin.alloc_deck(OrcTypeId {

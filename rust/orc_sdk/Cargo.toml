@@ -5,9 +5,11 @@ edition = "2024"
 
 [features]
 derive = ["orc_sdk_derive"]
+host = ["libloading"]
 
 [dependencies]
 orc_sdk_derive = { path = "derive_macros", optional = true }
+libloading = { version = "0.8", optional = true }
 
 [build-dependencies]
 bindgen = "0.72"
