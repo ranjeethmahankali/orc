@@ -71,16 +71,21 @@
   was trivial to implement in GH. Trying to do the same in Kratos turned into a
   dumpster fire. That is what makes this a good litmus test.
 
-* NEXT tj2fch - OrcHandle type_id rework
+* DONE tj2fch - OrcHandle type_id rework
+  CLOSED: [2026-08-01 Sat 18:36]
   :PROPERTIES:
   :CREATED:  2026-07-31 Fri 20:43
   :END:
   :LOGBOOK:
+  - State "DONE"       from "NEXT"       [2026-08-01 Sat 18:36]
   - State "NEXT"       from "TODO"       [2026-08-01 Sat 17:39]
   :END:
 
   Need something that allows plugins to receive the host side type id, and allows plugins to receive
   handles containing data from other plugins.
+
+  <2026-08-01 Sat 18:35> Needs more testing as I build more plugins. In as good of a shape as it can
+  be at this early stage. Preparing to merge.
 
 ** DONE ABI / DLL Versioning
    CLOSED: [2026-08-01 Sat 17:40]
