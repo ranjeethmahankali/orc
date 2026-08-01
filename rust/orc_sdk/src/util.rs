@@ -6,9 +6,8 @@ use crate::{
 use std::{
     alloc::{GlobalAlloc, Layout, System},
     any::Any,
-    collections::HashMap,
-    collections::hash_map::Entry,
-    ffi::{CStr, c_void},
+    collections::{HashMap, hash_map::Entry},
+    ffi::{CStr, CString, c_void},
     fmt::Display,
     marker::PhantomData,
     sync::{
@@ -383,36 +382,41 @@ impl HostCallbacks {
 
     pub fn debug(&self, message: &str) {
         if let Some(callback) = self.inner.report_message {
+            let cstr = CString::new(message).unwrap_or_default();
             // SAFETY: We just checked to make sure the function is not None.
-            unsafe { callback(self.context, ORC_MSG_LEVEL_DEBUG, message.as_ptr().cast()) }
+            unsafe { callback(self.context, ORC_MSG_LEVEL_DEBUG, cstr.as_ptr()) }
         }
     }
 
     pub fn info(&self, message: &str) {
         if let Some(callback) = self.inner.report_message {
+            let cstr = CString::new(message).unwrap_or_default();
             // SAFETY: We just checked to make sure the function is not None.
-            unsafe { callback(self.context, ORC_MSG_LEVEL_INFO, message.as_ptr().cast()) }
+            unsafe { callback(self.context, ORC_MSG_LEVEL_INFO, cstr.as_ptr()) }
         }
     }
 
     pub fn warn(&self, message: &str) {
         if let Some(callback) = self.inner.report_message {
+            let cstr = CString::new(message).unwrap_or_default();
             // SAFETY: We just checked to make sure the function is not None.
-            unsafe { callback(self.context, ORC_MSG_LEVEL_WARN, message.as_ptr().cast()) }
+            unsafe { callback(self.context, ORC_MSG_LEVEL_WARN, cstr.as_ptr()) }
         }
     }
 
     pub fn error(&self, message: &str) {
         if let Some(callback) = self.inner.report_message {
+            let cstr = CString::new(message).unwrap_or_default();
             // SAFETY: We just checked to make sure the function is not None.
-            unsafe { callback(self.context, ORC_MSG_LEVEL_ERROR, message.as_ptr().cast()) }
+            unsafe { callback(self.context, ORC_MSG_LEVEL_ERROR, cstr.as_ptr()) }
         }
     }
 
     pub fn fatal(&self, message: &str) {
         if let Some(callback) = self.inner.report_message {
+            let cstr = CString::new(message).unwrap_or_default();
             // SAFETY: We just checked to make sure the function is not None.
-            unsafe { callback(self.context, ORC_MSG_LEVEL_FATAL, message.as_ptr().cast()) }
+            unsafe { callback(self.context, ORC_MSG_LEVEL_FATAL, cstr.as_ptr()) }
         }
     }
 
