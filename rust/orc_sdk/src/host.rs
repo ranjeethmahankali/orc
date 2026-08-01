@@ -51,16 +51,14 @@ impl Plugin {
         match err {
             crate::ORC_ERROR_NONE => {} // Do nothing.
             crate::ORC_ERROR_ABI_VERSION_MISMATCH => {
-                return Err(format!(
-                    "Unable to load the plugin because of ABI version mismatch."
-                ));
+                return Err(
+                    "Unable to load the plugin because of ABI version mismatch.".to_string()
+                );
             }
             _ => return Err(format!("Unable to load the plugin. Error code: {err}")),
         }
         if plugin_data.abi_version != ORC_ABI_VERSION {
-            return Err(format!(
-                "Unable to load the plugin because of ABI version mismatch."
-            ));
+            return Err("Unable to load the plugin because of ABI version mismatch.".to_string());
         }
         Ok(Plugin {
             _lib: lib,
