@@ -1478,12 +1478,38 @@ OrcError orc_deck_alloc(OrcTypeId const id, OrcHandle *const out)
   return ORC_ERROR_NONE;
 }
 
+static bool _is_value_type(OrcTypeId const type_id)
+{
+  switch (type_id) {
+  case ORC_TYPE_U8:
+  case ORC_TYPE_U16:
+  case ORC_TYPE_U32:
+  case ORC_TYPE_U64:
+    // Scalars.
+  case ORC_TYPE_F32:
+  case ORC_TYPE_F64:
+    // Signed integers.
+  case ORC_TYPE_I8:
+  case ORC_TYPE_I16:
+  case ORC_TYPE_I32:
+  case ORC_TYPE_I64:
+    // Proxy for an item in a tree.
+  case ORC_TYPE_PROXY:
+    return true;
+  default:
+    return false;
+  }
+}
+
 static void _free_deck_item(void *data, OrcTypeId const type_id)
 {
+  if (_is_value_type(type_id)) {
+    // Nothing to free.
+    return;
+  }
   (void)data;
-  (void)type_id;
   TODO(
-    "This should be implemented for specific opaque types defined inside a plugin. For "
+    "This should be implemented for custom types defined inside a plugin. For "
     "example, type_id could refer to a MESH type. Then the plugin casts the data pointer "
     "into a mesh pointer and frees it properly.");
 }
@@ -1504,16 +1530,17 @@ OrcError orc_deck_free(OrcHandle *const handle)
   return ORC_ERROR_NONE;
 }
 
-void _copy_items_opaque(OrcTypeId const type_id,
-                        void const     *src,
-                        void           *dst,
-                        size_t const    n_items)
+void _copy_items(OrcTypeId const type_id,
+                 void const     *src,
+                 void           *dst,
+                 size_t const    item_size,
+                 size_t const    n_items)
 {
-  (void)type_id;
-  (void)src;
-  (void)dst;
-  (void)n_items;
-  TODO("The plugin has to implement the copy operation for its type");
+  if (_is_value_type(type_id)) {
+    memcpy(dst, src, item_size * n_items);
+    return;
+  }
+  TODO("The plugin has to implement the copy operation for its custom types");
 }
 
 OrcError orc_deck_from_proxy(OrcHandle const   *inputs,
@@ -1558,7 +1585,7 @@ OrcError orc_deck_from_proxy(OrcHandle const   *inputs,
     out->type_id = id;
     {  // Copy the data.
       memset(deck, 0, item_size * n_items);
-      _copy_items_opaque(id, inputs[0].items, deck, n_items);
+      _copy_items(id, inputs[0].items, deck, item_size, n_items);
     }
     h->count = n_items;
     // Copy the marks.
@@ -1584,7 +1611,7 @@ OrcError orc_deck_from_proxy(OrcHandle const   *inputs,
     out->type_id = id;
     {  // Copy the data.
       memset(deck, 0, item_size * n_items);
-      _copy_items_opaque(id, inputs[0].items, deck, n_items);
+      _copy_items(id, inputs[0].items, deck, item_size, n_items);
     }
     h->count = n_items;
     // Copy the marks from the proxy, NOT the input.
@@ -1611,7 +1638,7 @@ OrcError orc_deck_from_proxy(OrcHandle const   *inputs,
       void *src =
         (char *)inputs[proxies[h->count].tree].items + item_size * proxies[h->count].item;
       void *dst = (char *)deck + item_size * h->count;
-      _copy_items_opaque(id, src, dst, 1);
+      _copy_items(id, src, dst, item_size, 1);
       ++h->count;
     }
     // Copy the marks from the proxy, NOT the input.
