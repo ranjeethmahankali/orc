@@ -89,11 +89,28 @@
   was trivial to implement in GH. Trying to do the same in Kratos turned into a
   dumpster fire. That is what makes this a good litmus test.
 
-* NEXT tiwkbm - Create Toy Demo Apps
+* TODO tj2fch - OrcHandle type_id rework
+  :PROPERTIES:
+  :CREATED:  2026-07-31 Fri 20:43
+  :END:
+
+  Need something that allows plugins to receive the host side type id, and allows plugins to receive
+  handles containing data from other plugins.
+
+* TODO tj2fe7 - Proxy decks through the ABI
+  :PROPERTIES:
+  :CREATED:  2026-07-31 Fri 20:44
+  :END:
+
+  Currently proxy deck stuff is not fully fleshed out through the ABI. Requires a bit more thought
+  and [[*tj2fch - OrcHandle type_id rework][type_id rework]] needs to happen before this.
+
+* TODO tiwkbm - Create Toy Demo Apps
   :PROPERTIES:
   :CREATED:  2026-07-28 Tue 16:45
   :END:
   :LOGBOOK:
+  - State "TODO"       from "NEXT"       [2026-07-31 Fri 20:46]
   - State "NEXT"       from "TODO"       [2026-07-30 Thu 18:36]
   :END:
 
@@ -112,6 +129,9 @@
   cannot just communicate OrcTypeId. It needs to have a unique integer id that the host assigns to
   that type, after loading all the plugins, and the plugins need to know that mapped id for their
   own types after plugin_init.... It will get a bit more complicated than it currently is.
+
+  <2026-07-31 Fri 20:45> Trying to temporarily stop on this task, and finish a few other smaller
+  tasks before continuing.
 
 * CLOSED Rendering Geometry
   CLOSED: [2026-07-28 Tue 09:16]
