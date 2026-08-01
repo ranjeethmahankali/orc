@@ -18,29 +18,29 @@ static const uint64_t ORC_ABI_VERSION = ORC_VERSION_PACK(0, 0, 1);
 typedef uint64_t OrcTypeId;
 
 // Unsigned integers.
-#define ORC_TYPE_U8 0x01
-#define ORC_TYPE_U16 0x02
-#define ORC_TYPE_U32 0x03
-#define ORC_TYPE_U64 0x04
+#define ORC_TYPE_U8 0x01u
+#define ORC_TYPE_U16 0x02u
+#define ORC_TYPE_U32 0x03u
+#define ORC_TYPE_U64 0x04u
 // Scalars.
-#define ORC_TYPE_F32 0x11
-#define ORC_TYPE_F64 0x12
+#define ORC_TYPE_F32 0x11u
+#define ORC_TYPE_F64 0x12u
 // Signed integers.
-#define ORC_TYPE_I8 0x21
-#define ORC_TYPE_I16 0x22
-#define ORC_TYPE_I32 0x23
-#define ORC_TYPE_I64 0x24
+#define ORC_TYPE_I8 0x21u
+#define ORC_TYPE_I16 0x22u
+#define ORC_TYPE_I32 0x23u
+#define ORC_TYPE_I64 0x24u
 // Proxy for an item in a tree.
-#define ORC_TYPE_PROXY 0x30
+#define ORC_TYPE_PROXY 0x30u
 
 // Message levels
 typedef uint8_t OrcMessageLevel;
 
-#define ORC_MSG_LEVEL_DEBUG 1
-#define ORC_MSG_LEVEL_INFO 2
-#define ORC_MSG_LEVEL_WARN 3
-#define ORC_MSG_LEVEL_ERROR 4
-#define ORC_MSG_LEVEL_FATAL 5
+#define ORC_MSG_LEVEL_DEBUG 1u
+#define ORC_MSG_LEVEL_INFO 2u
+#define ORC_MSG_LEVEL_WARN 3u
+#define ORC_MSG_LEVEL_ERROR 4u
+#define ORC_MSG_LEVEL_FATAL 5u
 
 typedef struct OrcHandle OrcHandle;
 
@@ -139,9 +139,9 @@ typedef struct
 
 typedef uint8_t OrcProxyType;
 
-#define ORC_DECK_PROXY_COPY_ALL 0x01
-#define ORC_DECK_PROXY_COPY_ITEMS 0x02
-#define ORC_DECK_PROXY_SHUFFLE 0x03
+#define ORC_DECK_PROXY_COPY_ALL 0x01u
+#define ORC_DECK_PROXY_COPY_ITEMS 0x02u
+#define ORC_DECK_PROXY_SHUFFLE 0x03u
 
 // ===========================================================
 // Functions meant to be implemented by the plugin.
@@ -149,16 +149,16 @@ typedef uint8_t OrcProxyType;
 
 typedef uint32_t OrcError;
 
-#define ORC_ERROR_NONE 0
-#define ORC_ERROR_ABI_VERSION_MISMATCH 0xff01
-#define ORC_ERROR_INVALID_HANDLE 0xff02
-#define ORC_ERROR_INVALID_DIMENSIONS 0xff03
-#define ORC_ERROR_TYPE_MISMATCH 0xff04
-#define ORC_ERROR_INVALID_COMBINATIONS 0xff05
-#define ORC_ERROR_PLUGIN_ALREADY_INITIALIZED 0xff06
-#define ORC_ERROR_CONCURRENCY_PROBLEM 0xff07
-#define ORC_ERROR_INVALID_PROXY 0xff08
-#define ORC_ERROR_UNKNOWN 0xffff
+#define ORC_ERROR_NONE 0u
+#define ORC_ERROR_ABI_VERSION_MISMATCH 0xff01u
+#define ORC_ERROR_INVALID_HANDLE 0xff02u
+#define ORC_ERROR_INVALID_DIMENSIONS 0xff03u
+#define ORC_ERROR_TYPE_MISMATCH 0xff04u
+#define ORC_ERROR_INVALID_COMBINATIONS 0xff05u
+#define ORC_ERROR_PLUGIN_ALREADY_INITIALIZED 0xff06u
+#define ORC_ERROR_CONCURRENCY_PROBLEM 0xff07u
+#define ORC_ERROR_INVALID_PROXY 0xff08u
+#define ORC_ERROR_UNKNOWN 0xffffu
 
 // Loading the plugin, and register the host with the plugin.
 OrcError orc_plugin_init(OrcHost const *host, OrcPlugin *plugin_data_out);
