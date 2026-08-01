@@ -19,7 +19,7 @@ const DECK_ALLOC_FN_NAME: &str = "orc_deck_alloc";
 const DECK_FREE_FN_NAME: &str = "orc_deck_free";
 const DECK_FROM_PROXY_FN_NAME: &str = "orc_deck_from_proxy";
 
-unsafe extern "C" fn report_message(ctx: u64, level: u32, msg: *const ::std::os::raw::c_char) {
+unsafe extern "C" fn report_message(ctx: u64, level: u32, msg: *const std::ffi::c_char) {
     let msg = if msg.is_null() {
         ""
     } else {
