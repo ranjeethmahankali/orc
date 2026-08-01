@@ -43,6 +43,9 @@ macro_rules! orc_plugin {
         pub unsafe extern "C" fn orc_deck_free(
             handle: *mut orc_sdk::OrcHandle,
         ) -> orc_sdk::OrcError {
+            if handle.is_null() {
+                return orc_sdk::ORC_ERROR_NONE; // Nothing to free.
+            }
             match <$plugin as orc_sdk::TOrcPluginAdaptor>::deck_free(unsafe { &mut *handle }) {
                 Ok(()) => orc_sdk::ORC_ERROR_NONE,
                 Err(e) => e.into(),
@@ -57,6 +60,9 @@ macro_rules! orc_plugin {
             proxy: *const orc_sdk::OrcHandle,
             out: *mut orc_sdk::OrcHandle,
         ) -> orc_sdk::OrcError {
+            if proxy.is_null() || out.is_null() {
+                return orc_sdk::ORC_ERROR_INVALID_HANDLE;
+            }
             // Convert all the FFI pointers to Rust references.
             let (inputs, proxy, out) = unsafe {
                 (
