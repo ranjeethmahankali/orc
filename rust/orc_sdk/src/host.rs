@@ -1,14 +1,14 @@
 use libloading::Library;
 use std::{
     collections::{HashMap, hash_map::Entry},
-    ffi::CStr,
     path::Path,
 };
 
 use crate::{
-    DeckAllocFn, DeckFreeFn, DeckFromProxyFn, Error, FuncInfo, HostCallbacks, ORC_ABI_VERSION,
-    ORC_DECK_PROXY_COPY_ALL, ORC_DECK_PROXY_COPY_ITEMS, ORC_DECK_PROXY_SHUFFLE, OrcHandle, OrcHost,
-    OrcPlugin, OrcTypeId, PluginInitFn, ProxyType, TypeInfo, slice_from_ptr,
+    BUILTIN_TYPES, DeckAllocFn, DeckFreeFn, DeckFromProxyFn, Error, FuncInfo, HostCallbacks,
+    ORC_ABI_VERSION, ORC_DECK_PROXY_COPY_ALL, ORC_DECK_PROXY_COPY_ITEMS, ORC_DECK_PROXY_SHUFFLE,
+    OrcHandle, OrcHost, OrcPlugin, OrcTypeId, PluginInitFn, ProxyType, TypeInfo, slice_from_ptr,
+    util::string_from_ffi,
 };
 
 /// This is to store the info, handles etc. for a loaded plugin.
@@ -68,12 +68,8 @@ impl Plugin {
         }
         Ok(Plugin {
             _lib: lib,
-            name: unsafe { CStr::from_ptr(plugin_data.name) }
-                .to_string_lossy()
-                .into_owned(),
-            desc: unsafe { CStr::from_ptr(plugin_data.desc) }
-                .to_string_lossy()
-                .into_owned(),
+            name: string_from_ffi(plugin_data.name.cast()),
+            desc: string_from_ffi(plugin_data.desc.cast()),
             types: unsafe {
                 slice_from_ptr(plugin_data.types, plugin_data.n_types as usize)
                     .iter()
@@ -151,29 +147,34 @@ pub fn load_plugins(dir: &Path, host: &OrcHost) -> Result<Box<[Plugin]>, Error> 
     #[cfg(not(any(target_os = "windows", target_os = "macos")))]
     const PLUGIN_EXT: &str = "so";
     // We're going to load the plugins one at a time, and accumulate the type_ids in this hashmap.
-    let mut type_map = HashMap::<OrcTypeId, (usize, usize)>::new();
+    let mut type_map =
+        HashMap::<OrcTypeId, (String, String)>::from_iter(BUILTIN_TYPES.iter().map(|ti| {
+            (
+                ti.type_id,
+                ("built-in".to_string(), string_from_ffi(ti.name.cast())),
+            )
+        }));
     let mut plugins = Vec::<Plugin>::new();
     for entry in entries.into_iter().flatten() {
         let path = entry.path();
         match path.extension() {
             Some(ext) if ext == PLUGIN_EXT => match Plugin::load(&path, host) {
                 Ok(plugin) => {
-                    let current_plugin_index = plugins.len();
                     // Ensure the types in this new plugin don't conflict with the types already loaded.
-                    for (ti, type_info) in plugin.types().iter().enumerate() {
+                    for type_info in plugin.types() {
                         match type_map.entry(type_info.type_id) {
                             Entry::Occupied(occupied) => {
-                                let (plugin_index, type_index) = *occupied.get();
+                                let (plugin_name, type_name) = occupied.get();
                                 callbacks.error(&format!(
                                     "The id of type {} from plugin {} conflicts with that of {} from {}.",
-                                    plugins[plugin_index].types()[type_index].name,
-                                    plugins[plugin_index].name,
+                                    type_name,
+                                    plugin_name,
                                     type_info.name,
                                     plugin.name));
                                 return Err(Error::CannotLoadPlugins);
                             }
                             Entry::Vacant(vacant) => {
-                                vacant.insert((current_plugin_index, ti));
+                                vacant.insert((plugin.name.clone(), type_info.name.clone()));
                             }
                         }
                     }

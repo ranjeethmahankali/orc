@@ -50,6 +50,16 @@ pub unsafe fn slice_from_ptr_mut<'a, T>(ptr: *mut T, len: usize) -> &'a mut [T] 
     }
 }
 
+pub fn string_from_ffi(ptr: *const std::ffi::c_char) -> String {
+    if ptr.is_null() {
+        String::default()
+    } else {
+        unsafe { CStr::from_ptr(ptr) }
+            .to_string_lossy()
+            .into_owned()
+    }
+}
+
 pub fn handle_from_deck<T: TOrcData>(deck: &Deck<T>, id: u64) -> OrcHandle {
     let (items, marks, (stride_offset, strides)) = (deck.items(), deck.marks(), deck.stride_info());
     debug_assert_eq!(
@@ -272,12 +282,8 @@ impl From<&OrcTypeInfo> for TypeInfo {
     fn from(info: &OrcTypeInfo) -> Self {
         Self {
             type_id: info.type_id,
-            name: unsafe { CStr::from_ptr(info.name) }
-                .to_string_lossy()
-                .into_owned(),
-            desc: unsafe { CStr::from_ptr(info.desc) }
-                .to_string_lossy()
-                .into_owned(),
+            name: string_from_ffi(info.name.cast()),
+            desc: string_from_ffi(info.desc.cast()),
         }
     }
 }
@@ -297,12 +303,8 @@ pub struct FuncInfo {
 impl From<&OrcFuncInfo> for FuncInfo {
     fn from(info: &OrcFuncInfo) -> Self {
         Self {
-            name: unsafe { CStr::from_ptr(info.name) }
-                .to_string_lossy()
-                .into_owned(),
-            desc: unsafe { CStr::from_ptr(info.desc) }
-                .to_string_lossy()
-                .into_owned(),
+            name: string_from_ffi(info.name.cast()),
+            desc: string_from_ffi(info.desc.cast()),
             func: info.func.expect("NULL function pointer"),
         }
     }
@@ -443,3 +445,17 @@ macro_rules! orc_check_warn {
         }
     }};
 }
+
+/// Helper to quickly access all the built_in_types.
+pub const BUILTIN_TYPES: &[OrcTypeInfo] = &[
+    u8::TYPE_INFO,
+    u16::TYPE_INFO,
+    u32::TYPE_INFO,
+    u64::TYPE_INFO,
+    f32::TYPE_INFO,
+    f64::TYPE_INFO,
+    i8::TYPE_INFO,
+    i16::TYPE_INFO,
+    i32::TYPE_INFO,
+    i64::TYPE_INFO,
+];
