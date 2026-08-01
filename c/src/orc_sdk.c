@@ -592,8 +592,8 @@ void deck_clear(void const *ptr)
 
 void *_deck_grow_capacity(void *ptr, size_t const itemsize, size_t const n)
 {
-  // Handle the special case where ptr is NULL and nelems is 0
-  // No allocation needed, just return the NULL ptr
+  // Handle the special case where ptr is NULL and n is 0 No allocation needed, just
+  // return the NULL ptr
   if (ptr == NULL && n == 0) {
     return ptr;  // Return NULL, which is valid for an empty array
   }
@@ -1348,136 +1348,117 @@ DeckWriter *comb_get_output(void *ptr, size_t const index)
 
 static OrcTypeInfo _orc_type_info_u8(void)
 {
-  return (OrcTypeInfo) {.type_id = {.primitive_id = ORC_U8, .opaque_id = 0},
-                        .name    = "u8",
-                        .desc    = "Unsigned 8 bit integer"};
+  return (OrcTypeInfo) {
+    .type_id = ORC_TYPE_U8, .name = "u8", .desc = "Unsigned 8 bit integer"};
 }
 static OrcTypeInfo _orc_type_info_u16(void)
 {
-  return (OrcTypeInfo) {.type_id = {.primitive_id = ORC_U16, .opaque_id = 0},
-                        .name    = "u16",
-                        .desc    = "Unsigned 16 bit integer"};
+  return (OrcTypeInfo) {
+    .type_id = ORC_TYPE_U16, .name = "u16", .desc = "Unsigned 16 bit integer"};
 }
 static OrcTypeInfo _orc_type_info_u32(void)
 {
-  return (OrcTypeInfo) {.type_id = {.primitive_id = ORC_U32, .opaque_id = 0},
-                        .name    = "u32",
-                        .desc    = "Unsigned 32 bit integer"};
+  return (OrcTypeInfo) {
+    .type_id = ORC_TYPE_U32, .name = "u32", .desc = "Unsigned 32 bit integer"};
 }
 static OrcTypeInfo _orc_type_info_u64(void)
 {
-  return (OrcTypeInfo) {.type_id = {.primitive_id = ORC_U64, .opaque_id = 0},
-                        .name    = "u64",
-                        .desc    = "Unsigned 64 bit integer"};
+  return (OrcTypeInfo) {
+    .type_id = ORC_TYPE_U64, .name = "u64", .desc = "Unsigned 64 bit integer"};
 }
 static OrcTypeInfo _orc_type_info_f32(void)
 {
-  return (OrcTypeInfo) {.type_id = {.primitive_id = ORC_F32, .opaque_id = 0},
-                        .name    = "f32",
-                        .desc    = "32 bit floating point scalar"};
+  return (OrcTypeInfo) {
+    .type_id = ORC_TYPE_F32, .name = "f32", .desc = "32 bit floating point scalar"};
 }
 static OrcTypeInfo _orc_type_info_f64(void)
 {
-  return (OrcTypeInfo) {.type_id = {.primitive_id = ORC_F64, .opaque_id = 0},
-                        .name    = "f64",
-                        .desc    = "64 bit floating point scalar"};
+  return (OrcTypeInfo) {
+    .type_id = ORC_TYPE_F64, .name = "f64", .desc = "64 bit floating point scalar"};
 }
 static OrcTypeInfo _orc_type_info_i8(void)
 {
-  return (OrcTypeInfo) {.type_id = {.primitive_id = ORC_I8, .opaque_id = 0},
-                        .name    = "i8",
-                        .desc    = "Signed 8 bit integer"};
+  return (OrcTypeInfo) {
+    .type_id = ORC_TYPE_I8, .name = "i8", .desc = "Signed 8 bit integer"};
 }
 static OrcTypeInfo _orc_type_info_i16(void)
 {
-  return (OrcTypeInfo) {.type_id = {.primitive_id = ORC_I16, .opaque_id = 0},
-                        .name    = "i16",
-                        .desc    = "Signed 16 bit integer"};
+  return (OrcTypeInfo) {
+    .type_id = ORC_TYPE_I16, .name = "i16", .desc = "Signed 16 bit integer"};
 }
 static OrcTypeInfo _orc_type_info_i32(void)
 {
-  return (OrcTypeInfo) {.type_id = {.primitive_id = ORC_I32, .opaque_id = 0},
-                        .name    = "i32",
-                        .desc    = "Signed 32 bit integer"};
+  return (OrcTypeInfo) {
+    .type_id = ORC_TYPE_I32, .name = "i32", .desc = "Signed 32 bit integer"};
 }
 static OrcTypeInfo _orc_type_info_i64(void)
 {
-  return (OrcTypeInfo) {.type_id = {.primitive_id = ORC_I64, .opaque_id = 0},
-                        .name    = "i64",
-                        .desc    = "Signed 64 bit integer"};
+  return (OrcTypeInfo) {
+    .type_id = ORC_TYPE_I64, .name = "i64", .desc = "Signed 64 bit integer"};
 }
 
 // ========== Plugin - Host IO ==========
 
-void orc_plugin_init(OrcHost const *host, OrcPlugin *plugin_data_out)
+OrcError orc_plugin_init(OrcHost const *host, OrcPlugin *plugin_data_out)
 {
   (void)host;
   (void)plugin_data_out;
   TODO("Not implemented");
 }
 
-void orc_plugin_data_free(OrcPlugin *plugin_data)
-{
-  (void)plugin_data;
-  TODO("Not implemented");
-}
-
-// ========== Deck Allocations ==========
-
-void orc_deck_alloc(OrcTypeId const id, OrcHandle *const out)
+OrcError orc_deck_alloc(OrcTypeId const id, OrcHandle *const out)
 {
   if (out == NULL) {
-    return;
+    return ORC_ERROR_INVALID_HANDLE;
   }
   out->item_size = 0;
-  switch (id.primitive_id) {
+  switch (id) {
     // Unsigned integers.
-  case ORC_U8:
+  case ORC_TYPE_U8:
     out->item_size = sizeof(uint8_t);
     out->type_id   = _orc_type_info_u8().type_id;
     break;
-  case ORC_U16:
+  case ORC_TYPE_U16:
     out->item_size = sizeof(uint16_t);
     out->type_id   = _orc_type_info_u16().type_id;
     break;
-  case ORC_U32:
+  case ORC_TYPE_U32:
     out->item_size = sizeof(uint32_t);
     out->type_id   = _orc_type_info_u32().type_id;
     break;
-  case ORC_U64:
+  case ORC_TYPE_U64:
     out->item_size = sizeof(uint64_t);
     out->type_id   = _orc_type_info_u64().type_id;
     break;
     // Scalars.
-  case ORC_F32:
+  case ORC_TYPE_F32:
     out->item_size = sizeof(float);
     out->type_id   = _orc_type_info_f32().type_id;
     break;
-  case ORC_F64:
+  case ORC_TYPE_F64:
     out->item_size = sizeof(double);
     out->type_id   = _orc_type_info_f64().type_id;
     break;
     // Signed integers.
-  case ORC_I8:
+  case ORC_TYPE_I8:
     out->item_size = sizeof(int8_t);
     out->type_id   = _orc_type_info_i8().type_id;
     break;
-  case ORC_I16:
+  case ORC_TYPE_I16:
     out->item_size = sizeof(int16_t);
     out->type_id   = _orc_type_info_i16().type_id;
     break;
-  case ORC_I32:
+  case ORC_TYPE_I32:
     out->item_size = sizeof(int32_t);
     out->type_id   = _orc_type_info_i32().type_id;
     break;
-  case ORC_I64:
+  case ORC_TYPE_I64:
     out->item_size = sizeof(int64_t);
     out->type_id   = _orc_type_info_i64().type_id;
     break;
-  case ORC_OPAQUE:
-    TODO("The plugin should handle its own types here");
   default:
-    REQUIRE_WITH_MSG(false, "Unhandled type id. Should never happen.");
+    TODO("The plugin should handle its own types here");
+    return ORC_ERROR_TYPE_MISMATCH;
   }
   REQUIRE_WITH_MSG(out->item_size != 0, "Item size cannot be inferred from the type id.");
   size_t const INIT_SIZE = 1;
@@ -1494,87 +1475,117 @@ void orc_deck_alloc(OrcTypeId const id, OrcHandle *const out)
   REQUIRE_WITH_MSG(n_marks == 0, "New deck must have no marks");
   out->n_marks = n_marks;
   out->strides = h->strides;
+  return ORC_ERROR_NONE;
 }
 
-static void _free_deck_item(void *data, uint32_t const type_id)
+static bool _is_value_type(OrcTypeId const type_id)
 {
+  switch (type_id) {
+  case ORC_TYPE_U8:
+  case ORC_TYPE_U16:
+  case ORC_TYPE_U32:
+  case ORC_TYPE_U64:
+    // Scalars.
+  case ORC_TYPE_F32:
+  case ORC_TYPE_F64:
+    // Signed integers.
+  case ORC_TYPE_I8:
+  case ORC_TYPE_I16:
+  case ORC_TYPE_I32:
+  case ORC_TYPE_I64:
+    // Proxy for an item in a tree.
+  case ORC_TYPE_PROXY:
+    return true;
+  default:
+    return false;
+  }
+}
+
+static void _free_deck_item(void *data, OrcTypeId const type_id)
+{
+  if (_is_value_type(type_id)) {
+    // Nothing to free.
+    return;
+  }
   (void)data;
-  (void)type_id;
   TODO(
-    "This should be implemented for specific opaque types defined inside a plugin. For "
+    "This should be implemented for custom types defined inside a plugin. For "
     "example, type_id could refer to a MESH type. Then the plugin casts the data pointer "
     "into a mesh pointer and frees it properly.");
 }
 
-void orc_deck_free(OrcHandle *const handle)
+OrcError orc_deck_free(OrcHandle *const handle)
 {
   REQUIRE_WITH_MSG(handle->handle == (uint64_t)handle->items,
                    "In this implementation the handle is just the pointer.");
-  if (handle->type_id.primitive_id == ORC_OPAQUE) {
-    // This is a custom type defined inside the plugin. The contents of the deck must be
-    // freed first.
+  {  // Free the individual items from the deck before freeing the Deck container itself.
     size_t const count = deck_len(handle->items);
     char        *data  = (char *)handle->items;
     for (size_t i = 0; i < count; ++i, data += handle->item_size) {
-      _free_deck_item(data, handle->type_id.opaque_id);
+      _free_deck_item(data, handle->type_id);
     }
   }
   _deck_free_impl((void *)handle->items);  // Now we can free the deck container.
   memset(handle, 0, sizeof(OrcHandle));
+  return ORC_ERROR_NONE;
 }
 
-static bool _orc_type_id_eq(OrcTypeId const a, OrcTypeId const b)
+void _copy_items(OrcTypeId const type_id,
+                 void const     *src,
+                 void           *dst,
+                 size_t const    item_size,
+                 size_t const    n_items)
 {
-  return a.primitive_id == b.primitive_id && a.opaque_id == b.opaque_id;
+  if (_is_value_type(type_id)) {
+    memcpy(dst, src, item_size * n_items);
+    return;
+  }
+  TODO("The plugin has to implement the copy operation for its custom types");
 }
 
-void _copy_items_opaque(uint32_t     opaque_type_id,
-                        void const  *src,
-                        void        *dst,
-                        size_t const n_items)
-{
-  (void)opaque_type_id;
-  (void)src;
-  (void)dst;
-  (void)n_items;
-  TODO("The plugin has to implement the copy operation for it's type");
-}
-
-void orc_deck_from_proxy(OrcHandle const *inputs,
-                         uint64_t const   n_inputs,
-                         uint32_t const   proxy_type,
-                         OrcHandle const *proxy,
-                         OrcHandle       *out)
+OrcError orc_deck_from_proxy(OrcHandle const   *inputs,
+                             uint64_t const     n_inputs,
+                             OrcProxyType const proxy_type,
+                             OrcHandle const   *proxy,
+                             OrcHandle         *out)
 {
   if (n_inputs == 0) {
-    return;  // Nothing to do.
+    return ORC_ERROR_NONE;  // Nothing to do.
   }
-  REQUIRE_WITH_MSG(proxy->type_id.primitive_id == ORC_PROXY, "Invalid proxy deck");
+  if (proxy->type_id != ORC_TYPE_PROXY) {
+    // Invalid proxy deck
+    return ORC_ERROR_INVALID_PROXY;
+  }
   OrcTypeId const id        = inputs[0].type_id;
   size_t const    item_size = inputs[0].item_size;
   for (size_t i = 1; i < n_inputs; ++i) {
-    REQUIRE_WITH_MSG(_orc_type_id_eq(id, inputs[i].type_id),
-                     "All input decks must be of the same type");
+    if (id != inputs[i].type_id) {
+      // All input decks must be of the same type
+      return ORC_ERROR_TYPE_MISMATCH;
+    }
   }
-  orc_deck_alloc(id, out);
+  OrcError const err = orc_deck_alloc(id, out);
+  if (err != ORC_ERROR_NONE) {
+    return err;
+  }
   REQUIRE_WITH_MSG(out->handle == (uint64_t)out->items,
                    "In this implementation the handle is just the pointer.");
   switch (proxy_type) {
   case ORC_DECK_PROXY_COPY_ALL: {
-    REQUIRE_WITH_MSG(n_inputs == 1, "COPY_ALL is only valid with a single input.");
+    if (n_inputs != 1) {
+      // COPY_ALL is only valid with a single input.
+      orc_deck_free(out);
+      return ORC_ERROR_INVALID_PROXY;
+    }
     size_t const n_items = inputs[0].n_items;
     void        *deck    = _deck_grow_capacity((void *)out->items, item_size, n_items);
     _DeckHeader *h       = _deck_header(deck);
     h->item_size         = item_size;
     memcpy(out->dims, inputs[0].dims, sizeof(OrcDims));
     out->type_id = id;
-    // Copy the data.
-    if (id.primitive_id == ORC_OPAQUE) {
+    {  // Copy the data.
       memset(deck, 0, item_size * n_items);
-      _copy_items_opaque(id.opaque_id, inputs[0].items, deck, n_items);
-    }
-    else {
-      memcpy(deck, inputs[0].items, n_items * item_size);
+      _copy_items(id, inputs[0].items, deck, item_size, n_items);
     }
     h->count = n_items;
     // Copy the marks.
@@ -1587,20 +1598,20 @@ void orc_deck_from_proxy(OrcHandle const *inputs,
     oh_update(out);
   } break;
   case ORC_DECK_PROXY_COPY_ITEMS: {
-    REQUIRE_WITH_MSG(n_inputs == 1, "COPY_ITEMS is only valid with a single input.");
+    if (n_inputs != 1) {
+      // COPY_ITEMS is only valid with a single input.
+      orc_deck_free(out);
+      return ORC_ERROR_INVALID_PROXY;
+    }
     size_t const n_items = inputs[0].n_items;
     void        *deck    = _deck_grow_capacity((void *)out->items, item_size, n_items);
     _DeckHeader *h       = _deck_header(deck);
     h->item_size         = item_size;
     memcpy(out->dims, inputs[0].dims, sizeof(OrcDims));
     out->type_id = id;
-    // Copy the data.
-    if (id.primitive_id == ORC_OPAQUE) {
+    {  // Copy the data.
       memset(deck, 0, item_size * n_items);
-      _copy_items_opaque(id.opaque_id, inputs[0].items, deck, n_items);
-    }
-    else {
-      memcpy(deck, inputs[0].items, n_items * item_size);
+      _copy_items(id, inputs[0].items, deck, item_size, n_items);
     }
     h->count = n_items;
     // Copy the marks from the proxy, NOT the input.
@@ -1621,27 +1632,14 @@ void orc_deck_from_proxy(OrcHandle const *inputs,
     out->type_id = id;
     // Copy the data one at a time from by iterating over the proxy.
     OrcItemProxy *proxies = (OrcItemProxy *)proxy->items;
-    if (id.primitive_id == ORC_OPAQUE) {
-      while (h->count < n_items) {
-        REQUIRE_WITH_MSG(h->count < proxy->n_items && proxies[h->count].tree < n_inputs,
-                         "Index out of bounds");
-        void *src = (char *)inputs[proxies[h->count].tree].items +
-                    item_size * proxies[h->count].item;
-        void *dst = (char *)deck + item_size * h->count;
-        _copy_items_opaque(id.opaque_id, src, dst, 1);
-        ++h->count;
-      }
-    }
-    else {
-      while (h->count < n_items) {
-        REQUIRE_WITH_MSG(h->count < proxy->n_items && proxies[h->count].tree < n_inputs,
-                         "Index out of bounds");
-        void *src = (char *)inputs[proxies[h->count].tree].items +
-                    item_size * proxies[h->count].item;
-        void *dst = (char *)deck + item_size * h->count;
-        memcpy(dst, src, item_size);
-        ++h->count;
-      }
+    while (h->count < n_items) {
+      REQUIRE_WITH_MSG(h->count < proxy->n_items && proxies[h->count].tree < n_inputs,
+                       "Index out of bounds");
+      void *src =
+        (char *)inputs[proxies[h->count].tree].items + item_size * proxies[h->count].item;
+      void *dst = (char *)deck + item_size * h->count;
+      _copy_items(id, src, dst, item_size, 1);
+      ++h->count;
     }
     // Copy the marks from the proxy, NOT the input.
     size_t const n_marks = proxy->n_marks;
@@ -1653,7 +1651,8 @@ void orc_deck_from_proxy(OrcHandle const *inputs,
     oh_update(out);
   } break;
   default:
-    REQUIRE_WITH_MSG(false, "Invalid proxy type");
-    break;
+    orc_deck_free(out);
+    return ORC_ERROR_INVALID_PROXY;
   }
+  return ORC_ERROR_NONE;
 }

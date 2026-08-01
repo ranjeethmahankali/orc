@@ -408,11 +408,11 @@ pub fn fmt_raw_deck<T: Default + Display>(
         tail_start = n_items;
     }
     // Items after the last mark (or all items if no marks).
-    for i in tail_start as usize..items.len() {
+    for item in items.iter().skip(tail_start as usize) {
         writeln!(
             f,
             "{lp:>width$}   ┤ {}",
-            items[i],
+            item,
             lp = "",
             width = (dmax as usize + 1) * TAB_WIDTH
         )?;
@@ -593,6 +593,19 @@ impl<'a> ReadCursor<'a> {
     }
 }
 
+impl<'a, T> AsRef<T> for DeckView<'a, T>
+where
+    T: Default,
+{
+    fn as_ref(&self) -> &T {
+        if self.cursor.depth == 0 {
+            &self.items[self.cursor.start]
+        } else {
+            &self.items[self.cursor.marks[self.cursor.start].pos as usize]
+        }
+    }
+}
+
 impl<'a, T> DeckView<'a, T>
 where
     T: Default,
@@ -605,16 +618,12 @@ where
         self.cursor.len()
     }
 
-    pub fn as_slice(&self) -> &[T] {
-        &self.items[self.cursor.range()]
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 
-    pub fn as_ref(&self) -> &T {
-        if self.cursor.depth == 0 {
-            &self.items[self.cursor.start]
-        } else {
-            &self.items[self.cursor.marks[self.cursor.start].pos as usize]
-        }
+    pub fn as_slice(&self) -> &[T] {
+        &self.items[self.cursor.range()]
     }
 
     pub fn child(&self) -> DeckView<'a, T> {
@@ -740,6 +749,10 @@ where
         self.deck.len() - self.start
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     pub fn as_slice(&self) -> &[T] {
         &self.deck.items[self.start..]
     }
@@ -860,11 +873,11 @@ impl<'a> Combinations<'a> {
         output_depths: &[u8],
     ) -> Result<Self, Error> {
         if input_depths.len() != inputs.len() {
-            return Err(Error::ArrayLengthMismatch(input_depths.len(), inputs.len()));
+            return Err(Error::InvalidCombinations);
         }
         let n_outputs = output_depths.len();
         if output_depths.len() != n_outputs {
-            return Err(Error::ArrayLengthMismatch(output_depths.len(), n_outputs));
+            return Err(Error::InvalidCombinations);
         }
         let max_delta = inputs
             .iter()
@@ -918,8 +931,7 @@ impl<'a> Combinations<'a> {
                     )
                 });
         let mut output_cursors = Vec::with_capacity(n_outputs * stack_depth);
-        for i in 0..n_outputs {
-            let arg_depth = output_depths[i];
+        for arg_depth in output_depths {
             let depth = arg_depth + max_delta;
             output_cursors.push(WriteCursor {
                 depth,
@@ -2097,8 +2109,7 @@ mod test {
     fn t_test_list_item_combinations() {
         {
             // Order 2 list, single index.
-            let lists: Deck<f64> =
-                deck![[3.14, 6.28, 9.42], [1.11, 2.21, 3.31], [4.45, 3.35, 2.25]];
+            let lists: Deck<f64> = deck![[3.1, 6.2, 9.42], [1.11, 2.21, 3.31], [4.45, 3.35, 2.25]];
             let indices: Deck<u64> = deck![2];
             let mut items: Deck<f64> = Deck::default();
             {
@@ -2135,8 +2146,7 @@ mod test {
         }
         {
             // Order 2 list with order 1 index.
-            let lists: Deck<f64> =
-                deck![[3.14, 6.28, 9.42], [1.11, 2.21, 3.31], [4.45, 3.35, 2.25]];
+            let lists: Deck<f64> = deck![[3.1, 6.2, 9.42], [1.11, 2.21, 3.31], [4.45, 3.35, 2.25]];
             let indices: Deck<u64> = deck![1, 2, 0];
             let mut items: Deck<f64> = Deck::default();
             {
@@ -2169,12 +2179,11 @@ mod test {
             // Input had 3 lists, so the output should have 3 items.
             assert_eq!(items.len(), 3);
             // The index is 2, so we should have item #2 from each list.
-            assert_eq!(items.items(), &[6.28, 3.31, 4.45]);
+            assert_eq!(items.items(), &[6.2, 3.31, 4.45]);
         }
         {
             // Order 2 list with order 1 index.
-            let lists: Deck<f64> =
-                deck![[3.14, 6.28, 9.42], [1.11, 2.21, 3.31], [4.45, 3.35, 2.25]];
+            let lists: Deck<f64> = deck![[3.1, 6.2, 9.42], [1.11, 2.21, 3.31], [4.45, 3.35, 2.25]];
             let indices: Deck<u64> = deck![[1, 2, 0], [1, 1, 1]];
             let mut items: Deck<f64> = Deck::default();
             {
@@ -2204,7 +2213,7 @@ mod test {
                 }
             }
             // Check the outputs.
-            assert_eq!(items, deck![[6.28, 3.31, 4.45], [6.28, 2.21, 3.35]]);
+            assert_eq!(items, deck![[6.2, 3.31, 4.45], [6.2, 2.21, 3.35]]);
         }
     }
 

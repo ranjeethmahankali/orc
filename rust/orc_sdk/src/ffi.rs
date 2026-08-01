@@ -1,3 +1,4 @@
+use crate::Error;
 use crate::bindings::*;
 
 // ===========================================================
@@ -11,34 +12,57 @@ macro_rules! orc_plugin {
         pub unsafe extern "C" fn orc_plugin_init(
             host: *const orc_sdk::OrcHost,
             plugin_data_out: *mut orc_sdk::OrcPlugin,
-        ) {
+        ) -> orc_sdk::OrcError {
             let (host, plugin_data_out) = unsafe { (&*host, &mut *plugin_data_out) };
-            <$plugin as orc_sdk::TOrcPluginAdaptor>::plugin_init(host, plugin_data_out);
+            match <$plugin as orc_sdk::TOrcPluginAdaptor>::plugin_init(host, plugin_data_out) {
+                Ok(()) => orc_sdk::ORC_ERROR_NONE,
+                Err(e) => e.into(),
+            }
         }
 
         #[unsafe(no_mangle)]
         pub unsafe extern "C" fn orc_deck_alloc(
             id: orc_sdk::OrcTypeId,
             out: *mut orc_sdk::OrcHandle,
-        ) {
-            unsafe {
-                *out = <$plugin as orc_sdk::TOrcPluginAdaptor>::deck_alloc(id);
+        ) -> orc_sdk::OrcError {
+            if out.is_null() {
+                return orc_sdk::ORC_ERROR_INVALID_HANDLE;
+            }
+            match <$plugin as orc_sdk::TOrcPluginAdaptor>::deck_alloc(id) {
+                Ok(handle) => {
+                    unsafe {
+                        *out = handle;
+                    }
+                    orc_sdk::ORC_ERROR_NONE
+                }
+                Err(e) => e.into(),
             }
         }
 
         #[unsafe(no_mangle)]
-        pub unsafe extern "C" fn orc_deck_free(handle: *mut orc_sdk::OrcHandle) {
-            <$plugin as orc_sdk::TOrcPluginAdaptor>::deck_free(unsafe { &mut *handle });
+        pub unsafe extern "C" fn orc_deck_free(
+            handle: *mut orc_sdk::OrcHandle,
+        ) -> orc_sdk::OrcError {
+            if handle.is_null() {
+                return orc_sdk::ORC_ERROR_NONE; // Nothing to free.
+            }
+            match <$plugin as orc_sdk::TOrcPluginAdaptor>::deck_free(unsafe { &mut *handle }) {
+                Ok(()) => orc_sdk::ORC_ERROR_NONE,
+                Err(e) => e.into(),
+            }
         }
 
         #[unsafe(no_mangle)]
         pub unsafe extern "C" fn orc_deck_from_proxy(
             inputs: *const orc_sdk::OrcHandle,
             n_inputs: u64,
-            proxy_type: u32,
+            proxy_type: orc_sdk::OrcProxyType,
             proxy: *const orc_sdk::OrcHandle,
             out: *mut orc_sdk::OrcHandle,
-        ) {
+        ) -> orc_sdk::OrcError {
+            if proxy.is_null() || out.is_null() {
+                return orc_sdk::ORC_ERROR_INVALID_HANDLE;
+            }
             // Convert all the FFI pointers to Rust references.
             let (inputs, proxy, out) = unsafe {
                 (
@@ -47,38 +71,48 @@ macro_rules! orc_plugin {
                     &mut *out,
                 )
             };
-            assert!(
-                proxy.type_id.primitive_id == orc_sdk::ORC_PROXY,
-                "Invalid proxy deck"
-            );
-            assert!(!inputs.is_empty(), "orc_deck_from_proxy: no inputs");
+            if proxy.type_id != orc_sdk::ORC_TYPE_PROXY || inputs.is_empty() {
+                return orc_sdk::ORC_ERROR_INVALID_PROXY;
+            }
             let type_id = inputs[0].type_id;
-            assert!(
-                inputs.iter().all(|i| i.type_id == type_id),
-                "orc_deck_from_proxy: all input handles must have the same type_id"
-            );
+            if !inputs.iter().all(|i| i.type_id == type_id) {
+                return orc_sdk::ORC_ERROR_INVALID_PROXY;
+            }
             let proxy_type = match proxy_type {
                 orc_sdk::ORC_DECK_PROXY_COPY_ALL => ProxyType::CopyAll,
                 orc_sdk::ORC_DECK_PROXY_COPY_ITEMS => ProxyType::CopyItems,
                 orc_sdk::ORC_DECK_PROXY_SHUFFLE => ProxyType::Shuffle,
-                _ => panic!("Invalid proxy type."),
+                _ => return orc_sdk::ORC_ERROR_INVALID_PROXY,
             };
-            let proxies: &[OrcItemProxy] = if proxy.n_items > 0 && !proxy.items.is_null() {
-                unsafe { orc_sdk::slice_from_ptr(proxy.items.cast(), proxy.n_items as usize) }
-            } else {
-                &[]
-            };
-            let marks: &[OrcMark] = if proxy.n_marks > 0 && !proxy.marks.is_null() {
-                unsafe { orc_sdk::slice_from_ptr(proxy.marks, proxy.n_marks as usize) }
-            } else {
-                &[]
-            };
-            <$plugin as orc_sdk::TOrcPluginAdaptor>::deck_from_proxy(
-                inputs, proxy_type, proxies, marks, out,
-            );
+            match <$plugin as orc_sdk::TOrcPluginAdaptor>::deck_from_proxy(
+                inputs, proxy_type, proxy,
+            ) {
+                Ok(handle) => {
+                    *out = handle;
+                    orc_sdk::ORC_ERROR_NONE
+                }
+                Err(e) => e.into(),
+            }
         }
     };
 }
+
+pub type PluginInitFn = unsafe extern "C" fn(*const OrcHost, *mut OrcPlugin) -> OrcError;
+pub type DeckAllocFn = unsafe extern "C" fn(OrcTypeId, *mut OrcHandle) -> OrcError;
+pub type DeckFreeFn = unsafe extern "C" fn(*mut OrcHandle) -> OrcError;
+pub type DeckFromProxyFn = unsafe extern "C" fn(
+    inputs: *const OrcHandle,
+    n_inputs: u64,
+    proxy_type: OrcProxyType,
+    proxy: *const OrcHandle,
+    out: *mut OrcHandle,
+) -> OrcError;
+
+// Compile-time checks to keep these type aliases in sync with the bindings.
+const _: PluginInitFn = orc_plugin_init;
+const _: DeckAllocFn = orc_deck_alloc;
+const _: DeckFreeFn = orc_deck_free;
+const _: DeckFromProxyFn = orc_deck_from_proxy;
 
 pub enum ProxyType {
     CopyAll,
@@ -87,141 +121,89 @@ pub enum ProxyType {
 }
 
 pub trait TOrcPluginAdaptor {
-    fn plugin_init(host: &OrcHost, out: &mut OrcPlugin);
-    fn deck_alloc(id: OrcTypeId) -> OrcHandle;
-    fn deck_free(handle: &mut OrcHandle);
+    fn plugin_init(host: &OrcHost, out: &mut OrcPlugin) -> Result<(), Error>;
+    fn deck_alloc(id: OrcTypeId) -> Result<OrcHandle, Error>;
+    fn deck_free(handle: &mut OrcHandle) -> Result<(), Error>;
     fn deck_from_proxy(
         inputs: &[OrcHandle],
         proxy_type: ProxyType,
-        proxies: &[OrcItemProxy],
-        marks: &[OrcMark],
-        out: &mut OrcHandle,
-    );
+        proxy: &OrcHandle,
+    ) -> Result<OrcHandle, Error>;
 }
 
 pub trait TOrcData: Default + Clone + Send + Sync + 'static {
-    fn type_info() -> OrcTypeInfo;
+    const TYPE_INFO: OrcTypeInfo;
 }
 
 impl TOrcData for u8 {
-    fn type_info() -> OrcTypeInfo {
-        OrcTypeInfo {
-            type_id: OrcTypeId {
-                primitive_id: ORC_U8,
-                opaque_id: 0,
-            },
-            name: c"u8".as_ptr(),
-            desc: c"Unsigned 8 bit integer".as_ptr(),
-        }
-    }
+    const TYPE_INFO: OrcTypeInfo = OrcTypeInfo {
+        type_id: crate::ORC_TYPE_U8,
+        name: c"u8".as_ptr(),
+        desc: c"Unsigned 8 bit integer".as_ptr(),
+    };
 }
 impl TOrcData for u16 {
-    fn type_info() -> OrcTypeInfo {
-        OrcTypeInfo {
-            type_id: OrcTypeId {
-                primitive_id: ORC_U16,
-                opaque_id: 0,
-            },
-            name: c"u16".as_ptr(),
-            desc: c"Unsigned 16 bit integer".as_ptr(),
-        }
-    }
+    const TYPE_INFO: OrcTypeInfo = OrcTypeInfo {
+        type_id: crate::ORC_TYPE_U16,
+        name: c"u16".as_ptr(),
+        desc: c"Unsigned 16 bit integer".as_ptr(),
+    };
 }
 impl TOrcData for u32 {
-    fn type_info() -> OrcTypeInfo {
-        OrcTypeInfo {
-            type_id: OrcTypeId {
-                primitive_id: ORC_U32,
-                opaque_id: 0,
-            },
-            name: c"u32".as_ptr(),
-            desc: c"Unsigned 32 bit integer".as_ptr(),
-        }
-    }
+    const TYPE_INFO: OrcTypeInfo = OrcTypeInfo {
+        type_id: crate::ORC_TYPE_U32,
+        name: c"u32".as_ptr(),
+        desc: c"Unsigned 32 bit integer".as_ptr(),
+    };
 }
 impl TOrcData for u64 {
-    fn type_info() -> OrcTypeInfo {
-        OrcTypeInfo {
-            type_id: OrcTypeId {
-                primitive_id: ORC_U64,
-                opaque_id: 0,
-            },
-            name: c"u64".as_ptr(),
-            desc: c"Unsigned 64 bit integer".as_ptr(),
-        }
-    }
+    const TYPE_INFO: OrcTypeInfo = OrcTypeInfo {
+        type_id: crate::ORC_TYPE_U64,
+        name: c"u64".as_ptr(),
+        desc: c"Unsigned 64 bit integer".as_ptr(),
+    };
 }
 impl TOrcData for f32 {
-    fn type_info() -> OrcTypeInfo {
-        OrcTypeInfo {
-            type_id: OrcTypeId {
-                primitive_id: ORC_F32,
-                opaque_id: 0,
-            },
-            name: c"f32".as_ptr(),
-            desc: c"32 bit floating point scalar".as_ptr(),
-        }
-    }
+    const TYPE_INFO: OrcTypeInfo = OrcTypeInfo {
+        type_id: crate::ORC_TYPE_F32,
+        name: c"f32".as_ptr(),
+        desc: c"32 bit floating point scalar".as_ptr(),
+    };
 }
 impl TOrcData for f64 {
-    fn type_info() -> OrcTypeInfo {
-        OrcTypeInfo {
-            type_id: OrcTypeId {
-                primitive_id: ORC_F64,
-                opaque_id: 0,
-            },
-            name: c"f64".as_ptr(),
-            desc: c"64 bit floating point scalar".as_ptr(),
-        }
-    }
+    const TYPE_INFO: OrcTypeInfo = OrcTypeInfo {
+        type_id: crate::ORC_TYPE_F64,
+        name: c"f64".as_ptr(),
+        desc: c"64 bit floating point scalar".as_ptr(),
+    };
 }
 impl TOrcData for i8 {
-    fn type_info() -> OrcTypeInfo {
-        OrcTypeInfo {
-            type_id: OrcTypeId {
-                primitive_id: ORC_I8,
-                opaque_id: 0,
-            },
-            name: c"i8".as_ptr(),
-            desc: c"Signed 8 bit integer".as_ptr(),
-        }
-    }
+    const TYPE_INFO: OrcTypeInfo = OrcTypeInfo {
+        type_id: crate::ORC_TYPE_I8,
+        name: c"i8".as_ptr(),
+        desc: c"Signed 8 bit integer".as_ptr(),
+    };
 }
 impl TOrcData for i16 {
-    fn type_info() -> OrcTypeInfo {
-        OrcTypeInfo {
-            type_id: OrcTypeId {
-                primitive_id: ORC_I16,
-                opaque_id: 0,
-            },
-            name: c"i16".as_ptr(),
-            desc: c"Signed 16 bit integer".as_ptr(),
-        }
-    }
+    const TYPE_INFO: OrcTypeInfo = OrcTypeInfo {
+        type_id: crate::ORC_TYPE_I16,
+        name: c"i16".as_ptr(),
+        desc: c"Signed 16 bit integer".as_ptr(),
+    };
 }
 impl TOrcData for i32 {
-    fn type_info() -> OrcTypeInfo {
-        OrcTypeInfo {
-            type_id: OrcTypeId {
-                primitive_id: ORC_I32,
-                opaque_id: 0,
-            },
-            name: c"i32".as_ptr(),
-            desc: c"Signed 32 bit integer".as_ptr(),
-        }
-    }
+    const TYPE_INFO: OrcTypeInfo = OrcTypeInfo {
+        type_id: crate::ORC_TYPE_I32,
+        name: c"i32".as_ptr(),
+        desc: c"Signed 32 bit integer".as_ptr(),
+    };
 }
 impl TOrcData for i64 {
-    fn type_info() -> OrcTypeInfo {
-        OrcTypeInfo {
-            type_id: OrcTypeId {
-                primitive_id: ORC_I64,
-                opaque_id: 0,
-            },
-            name: c"i64".as_ptr(),
-            desc: c"Signed 64 bit integer".as_ptr(),
-        }
-    }
+    const TYPE_INFO: OrcTypeInfo = OrcTypeInfo {
+        type_id: crate::ORC_TYPE_I64,
+        name: c"i64".as_ptr(),
+        desc: c"Signed 64 bit integer".as_ptr(),
+    };
 }
 
 // ==================== Dims helper functions ====================
