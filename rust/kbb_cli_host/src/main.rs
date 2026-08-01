@@ -1,6 +1,6 @@
 use orc_sdk::{
-    Deck, ORC_ABI_VERSION, ORC_F64, OrcHandle, OrcHost, OrcHostCallbackAPI, OrcHostMemoryAPI,
-    OrcTypeId, deck, handle_from_deck,
+    Deck, ORC_ABI_VERSION, OrcHandle, OrcHost, OrcHostCallbackAPI, OrcHostMemoryAPI, deck,
+    handle_from_deck,
 };
 use std::ffi::CStr;
 
@@ -18,7 +18,11 @@ const HOST: OrcHost = OrcHost {
     },
 };
 
-unsafe extern "C" fn report_message(ctx: u64, level: u32, msg: *const std::ffi::c_char) {
+unsafe extern "C" fn report_message(
+    ctx: u64,
+    level: orc_sdk::OrcMessageLevel,
+    msg: *const std::ffi::c_char,
+) {
     let msg = if msg.is_null() {
         ""
     } else {
@@ -60,10 +64,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let add_fn = math_plugin.functions()[0].func;
     let a: Deck<f64> = deck![1.0, 2.0, 3.0];
     let b: Deck<f64> = deck![10.0, 20.0, 30.0];
-    let mut out_handle = math_plugin.alloc_deck(OrcTypeId {
-        primitive_id: ORC_F64,
-        opaque_id: 0,
-    })?;
+    let mut out_handle = math_plugin.alloc_deck(orc_sdk::ORC_TYPE_F64)?;
     let inputs: &[OrcHandle] = &[handle_from_deck(&a, 0), handle_from_deck(&b, 1)];
     unsafe {
         add_fn(0, inputs.as_ptr(), inputs.len() as u64, &mut out_handle, 1);

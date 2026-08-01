@@ -1,8 +1,9 @@
 use orc_sdk::{
-    Deck, Error, HostCallbacks, ORC_ABI_VERSION, ORC_F32, ORC_F64, ORC_I8, ORC_I16, ORC_I32,
-    ORC_I64, ORC_U8, ORC_U16, ORC_U32, ORC_U64, ObjectRegistry, OrcFuncInfo, OrcHandle, OrcHost,
-    OrcHostCallbackAPI, OrcPlugin, OrcTypeId, ProxyType, TOrcData, TOrcPluginAdaptor,
-    handle_from_deck, orc_fn_info, orc_plugin, reset_handle,
+    Deck, Error, HostCallbacks, ORC_ABI_VERSION, ORC_TYPE_F32, ORC_TYPE_F64, ORC_TYPE_I8,
+    ORC_TYPE_I16, ORC_TYPE_I32, ORC_TYPE_I64, ORC_TYPE_U8, ORC_TYPE_U16, ORC_TYPE_U32,
+    ORC_TYPE_U64, ObjectRegistry, OrcFuncInfo, OrcHandle, OrcHost, OrcHostCallbackAPI, OrcPlugin,
+    OrcTypeId, ProxyType, TOrcData, TOrcPluginAdaptor, handle_from_deck, orc_fn_info, orc_plugin,
+    reset_handle,
 };
 use std::sync::{LazyLock, OnceLock};
 
@@ -61,17 +62,17 @@ impl TOrcPluginAdaptor for Adaptor {
     }
 
     fn deck_alloc(id: OrcTypeId) -> Result<OrcHandle, Error> {
-        match id.primitive_id {
-            ORC_U8 => alloc_deck::<u8>(),
-            ORC_U16 => alloc_deck::<u16>(),
-            ORC_U32 => alloc_deck::<u32>(),
-            ORC_U64 => alloc_deck::<u64>(),
-            ORC_I8 => alloc_deck::<i8>(),
-            ORC_I16 => alloc_deck::<i16>(),
-            ORC_I32 => alloc_deck::<i32>(),
-            ORC_I64 => alloc_deck::<i64>(),
-            ORC_F32 => alloc_deck::<f32>(),
-            ORC_F64 => alloc_deck::<f64>(),
+        match id {
+            ORC_TYPE_U8 => alloc_deck::<u8>(),
+            ORC_TYPE_U16 => alloc_deck::<u16>(),
+            ORC_TYPE_U32 => alloc_deck::<u32>(),
+            ORC_TYPE_U64 => alloc_deck::<u64>(),
+            ORC_TYPE_I8 => alloc_deck::<i8>(),
+            ORC_TYPE_I16 => alloc_deck::<i16>(),
+            ORC_TYPE_I32 => alloc_deck::<i32>(),
+            ORC_TYPE_I64 => alloc_deck::<i64>(),
+            ORC_TYPE_F32 => alloc_deck::<f32>(),
+            ORC_TYPE_F64 => alloc_deck::<f64>(),
             // We just return an empty handle to the host when the type is not supported. Maybe in
             // the future we should return some error code.
             _ => Err(Error::DeckTypeMismatch),

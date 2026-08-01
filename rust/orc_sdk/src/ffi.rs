@@ -53,7 +53,7 @@ macro_rules! orc_plugin {
         pub unsafe extern "C" fn orc_deck_from_proxy(
             inputs: *const orc_sdk::OrcHandle,
             n_inputs: u64,
-            proxy_type: u32,
+            proxy_type: orc_sdk::OrcProxyType,
             proxy: *const orc_sdk::OrcHandle,
             out: *mut orc_sdk::OrcHandle,
         ) -> orc_sdk::OrcError {
@@ -65,7 +65,7 @@ macro_rules! orc_plugin {
                     &mut *out,
                 )
             };
-            if proxy.type_id.primitive_id != orc_sdk::ORC_PROXY || inputs.is_empty() {
+            if proxy.type_id != orc_sdk::ORC_TYPE_PROXY || inputs.is_empty() {
                 return orc_sdk::ORC_ERROR_INVALID_PROXY;
             }
             let type_id = inputs[0].type_id;
@@ -97,7 +97,7 @@ pub type DeckFreeFn = unsafe extern "C" fn(*mut OrcHandle) -> OrcError;
 pub type DeckFromProxyFn = unsafe extern "C" fn(
     inputs: *const OrcHandle,
     n_inputs: u64,
-    proxy_type: u32,
+    proxy_type: OrcProxyType,
     proxy: *const OrcHandle,
     out: *mut OrcHandle,
 ) -> OrcError;
@@ -131,100 +131,70 @@ pub trait TOrcData: Default + Clone + Send + Sync + 'static {
 
 impl TOrcData for u8 {
     const TYPE_INFO: OrcTypeInfo = OrcTypeInfo {
-        type_id: OrcTypeId {
-            primitive_id: ORC_U8,
-            opaque_id: 0,
-        },
+        type_id: crate::ORC_TYPE_U8,
         name: c"u8".as_ptr(),
         desc: c"Unsigned 8 bit integer".as_ptr(),
     };
 }
 impl TOrcData for u16 {
     const TYPE_INFO: OrcTypeInfo = OrcTypeInfo {
-        type_id: OrcTypeId {
-            primitive_id: ORC_U16,
-            opaque_id: 0,
-        },
+        type_id: crate::ORC_TYPE_U16,
         name: c"u16".as_ptr(),
         desc: c"Unsigned 16 bit integer".as_ptr(),
     };
 }
 impl TOrcData for u32 {
     const TYPE_INFO: OrcTypeInfo = OrcTypeInfo {
-        type_id: OrcTypeId {
-            primitive_id: ORC_U32,
-            opaque_id: 0,
-        },
+        type_id: crate::ORC_TYPE_U32,
         name: c"u32".as_ptr(),
         desc: c"Unsigned 32 bit integer".as_ptr(),
     };
 }
 impl TOrcData for u64 {
     const TYPE_INFO: OrcTypeInfo = OrcTypeInfo {
-        type_id: OrcTypeId {
-            primitive_id: ORC_U64,
-            opaque_id: 0,
-        },
+        type_id: crate::ORC_TYPE_U64,
         name: c"u64".as_ptr(),
         desc: c"Unsigned 64 bit integer".as_ptr(),
     };
 }
 impl TOrcData for f32 {
     const TYPE_INFO: OrcTypeInfo = OrcTypeInfo {
-        type_id: OrcTypeId {
-            primitive_id: ORC_F32,
-            opaque_id: 0,
-        },
+        type_id: crate::ORC_TYPE_F32,
         name: c"f32".as_ptr(),
         desc: c"32 bit floating point scalar".as_ptr(),
     };
 }
 impl TOrcData for f64 {
     const TYPE_INFO: OrcTypeInfo = OrcTypeInfo {
-        type_id: OrcTypeId {
-            primitive_id: ORC_F64,
-            opaque_id: 0,
-        },
+        type_id: crate::ORC_TYPE_F64,
         name: c"f64".as_ptr(),
         desc: c"64 bit floating point scalar".as_ptr(),
     };
 }
 impl TOrcData for i8 {
     const TYPE_INFO: OrcTypeInfo = OrcTypeInfo {
-        type_id: OrcTypeId {
-            primitive_id: ORC_I8,
-            opaque_id: 0,
-        },
+        type_id: crate::ORC_TYPE_I8,
         name: c"i8".as_ptr(),
         desc: c"Signed 8 bit integer".as_ptr(),
     };
 }
 impl TOrcData for i16 {
     const TYPE_INFO: OrcTypeInfo = OrcTypeInfo {
-        type_id: OrcTypeId {
-            primitive_id: ORC_I16,
-            opaque_id: 0,
-        },
+        type_id: crate::ORC_TYPE_I16,
         name: c"i16".as_ptr(),
         desc: c"Signed 16 bit integer".as_ptr(),
     };
 }
 impl TOrcData for i32 {
     const TYPE_INFO: OrcTypeInfo = OrcTypeInfo {
-        type_id: OrcTypeId {
-            primitive_id: ORC_I32,
-            opaque_id: 0,
-        },
+        type_id: crate::ORC_TYPE_I32,
         name: c"i32".as_ptr(),
         desc: c"Signed 32 bit integer".as_ptr(),
     };
 }
 impl TOrcData for i64 {
     const TYPE_INFO: OrcTypeInfo = OrcTypeInfo {
-        type_id: OrcTypeId {
-            primitive_id: ORC_I64,
-            opaque_id: 0,
-        },
+        type_id: crate::ORC_TYPE_I64,
         name: c"i64".as_ptr(),
         desc: c"Signed 64 bit integer".as_ptr(),
     };
