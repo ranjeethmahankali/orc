@@ -95,7 +95,7 @@ impl ObjectRegistry {
         let mut handles = self
             .handles
             .write()
-            .map_err(|_e| Error::CannotLockRegistry)?;
+            .map_err(|_e| Error::ConcurrencyProblem)?;
         let id = self.counter.fetch_add(1, Ordering::Relaxed);
         handles.insert(id, Arc::new(RwLock::new(Box::new(obj))));
         Ok(id)
@@ -106,7 +106,7 @@ impl ObjectRegistry {
         let mut handles = self
             .handles
             .write()
-            .map_err(|_e| Error::CannotLockRegistry)?;
+            .map_err(|_e| Error::ConcurrencyProblem)?;
         handles.remove(&id);
         Ok(())
     }
@@ -120,14 +120,14 @@ impl ObjectRegistry {
             let map = self
                 .handles
                 .read()
-                .map_err(|_e| Error::CannotLockRegistry)?;
+                .map_err(|_e| Error::ConcurrencyProblem)?;
             ids.iter()
                 .map(|id| map.get(id).cloned().ok_or(Error::InvalidHandle))
                 .collect::<Result<_, _>>()?
         };
         let mut guards: Vec<_> = arcs
             .iter()
-            .map(|arc| arc.try_write().map_err(|_e| Error::DeckBorrowError))
+            .map(|arc| arc.try_write().map_err(|_e| Error::ConcurrencyProblem))
             .collect::<Result<_, _>>()?;
         let mut references: Vec<&mut (dyn Any + Send + Sync)> = guards
             .iter_mut()
@@ -151,14 +151,14 @@ impl ObjectRegistry {
         let mut handles = self
             .handles
             .write()
-            .map_err(|_e| Error::CannotLockRegistry)?;
+            .map_err(|_e| Error::ConcurrencyProblem)?;
         match handles.entry(*id) {
             Entry::Occupied(mut occupied) => {
                 let realloc_needed = {
                     let read_lock = occupied
                         .get()
                         .try_read()
-                        .map_err(|_e| Error::DeckBorrowError)?;
+                        .map_err(|_e| Error::ConcurrencyProblem)?;
                     read_lock.downcast_ref::<T>().is_none()
                 };
                 if realloc_needed {

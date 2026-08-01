@@ -1,8 +1,8 @@
 use orc_sdk::{
-    Deck, Error, HostCallbacks, ORC_F32, ORC_F64, ORC_I8, ORC_I16, ORC_I32, ORC_I64, ORC_U8,
-    ORC_U16, ORC_U32, ORC_U64, ObjectRegistry, OrcFuncInfo, OrcHandle, OrcHost, OrcHostCallbackAPI,
-    OrcItemProxy, OrcMark, OrcPlugin, OrcTypeId, ProxyType, TOrcData, TOrcPluginAdaptor,
-    handle_from_deck, orc_fn_info, orc_plugin, reset_handle,
+    Deck, Error, HostCallbacks, ORC_ABI_VERSION, ORC_F32, ORC_F64, ORC_I8, ORC_I16, ORC_I32,
+    ORC_I64, ORC_U8, ORC_U16, ORC_U32, ORC_U64, ObjectRegistry, OrcFuncInfo, OrcHandle, OrcHost,
+    OrcHostCallbackAPI, OrcItemProxy, OrcMark, OrcPlugin, OrcTypeId, ProxyType, TOrcData,
+    TOrcPluginAdaptor, handle_from_deck, orc_fn_info, orc_plugin, reset_handle,
 };
 use std::sync::{LazyLock, OnceLock};
 
@@ -40,13 +40,17 @@ struct Adaptor;
 
 impl TOrcPluginAdaptor for Adaptor {
     fn plugin_init(host: &OrcHost, out: &mut OrcPlugin) -> Result<(), Error> {
+        if host.abi_version != ORC_ABI_VERSION {
+            return Err(Error::ABIVersionMismatch);
+        }
         // Read host capabilities - Set up the allocator first, before any heap allocations happen.
         ALLOCATOR.init_from_host(host);
         match HOST.set(host.callbacks) {
             Ok(_) => {}
-            Err(_) => return Err(Error::PluginInitError),
+            Err(_) => return Err(Error::PluginAlreadyInitialized),
         }
-        // Tell the host about the plugin provided types and functions.
+        // Tell the host about the plugin provided types and functions
+        out.abi_version = ORC_ABI_VERSION;
         out.n_types = 0;
         out.types = std::ptr::null();
         out.n_functions = ORC_EXPORTED_FUNCTIONS.len() as u64;

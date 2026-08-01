@@ -1,8 +1,9 @@
 use libloading::Library;
 use orc_sdk::{
-    Deck, DeckAllocFn, DeckFreeFn, DeckFromProxyFn, ORC_ABI_VERSION, ORC_ERROR_NONE, ORC_F64,
-    OrcError, OrcHandle, OrcHost, OrcHostCallbackAPI, OrcHostMemoryAPI, OrcItemProxy, OrcPlugin,
-    OrcTypeId, PluginInfo, PluginInitFn, deck, handle_from_deck,
+    Deck, DeckAllocFn, DeckFreeFn, DeckFromProxyFn, Error, ORC_ABI_VERSION,
+    ORC_ERROR_ABI_VERSION_MISMATCH, ORC_ERROR_NONE, ORC_F64, OrcHandle, OrcHost,
+    OrcHostCallbackAPI, OrcHostMemoryAPI, OrcPlugin, OrcTypeId, PluginInfo, PluginInitFn, deck,
+    handle_from_deck,
 };
 use std::{ffi::CStr, path::Path};
 
@@ -64,6 +65,7 @@ impl Plugin {
             )
         };
         let host = OrcHost {
+            abi_version: ORC_ABI_VERSION,
             memory_api: OrcHostMemoryAPI {
                 alloc: None,
                 dealloc: None,
@@ -75,8 +77,22 @@ impl Plugin {
                 report_intermediate_output: None,
             },
         };
-        let mut plugin_data = unsafe { std::mem::zeroed::<OrcPlugin>() };
-        unsafe { init(&host, &mut plugin_data) };
+        let mut plugin_data = OrcPlugin::default();
+        let err = unsafe { init(&host, &mut plugin_data) };
+        match err {
+            ORC_ERROR_NONE => {} // Do nothing.
+            ORC_ERROR_ABI_VERSION_MISMATCH => {
+                return Err(format!(
+                    "Unable to load the plugin because of ABI version mismatch."
+                ));
+            }
+            _ if plugin_data.abi_version != ORC_ABI_VERSION => {
+                return Err(format!(
+                    "Unable to load the plugin because of ABI version mismatch."
+                ));
+            }
+            _ => return Err(format!("Unable to load the plugin. Error code: {err}")),
+        }
         let info = PluginInfo::from(&plugin_data);
         Ok(Plugin {
             _lib: lib,
@@ -87,10 +103,10 @@ impl Plugin {
         })
     }
 
-    fn alloc_deck(&self, type_id: OrcTypeId) -> OrcHandle {
-        let mut handle = unsafe { std::mem::zeroed::<OrcHandle>() };
-        unsafe { (self.deck_alloc)(type_id, &mut handle) };
-        handle
+    fn alloc_deck(&self, type_id: OrcTypeId) -> Result<OrcHandle, Error> {
+        let mut handle = OrcHandle::default();
+        let err = unsafe { (self.deck_alloc)(type_id, &mut handle) };
+        Error::from_raw(err).map(|_| handle)
     }
 
     fn free_deck(&self, handle: &mut OrcHandle) {
@@ -131,7 +147,7 @@ fn load_plugins(dir: &Path) -> Box<[Plugin]> {
         .collect()
 }
 
-fn main() {
+fn main() -> Result<(), Error> {
     let exe_dir = std::env::current_exe()
         .expect("Cannot determine executable path")
         .parent()
@@ -155,11 +171,13 @@ fn main() {
     let mut out_handle = math_plugin.alloc_deck(OrcTypeId {
         primitive_id: ORC_F64,
         opaque_id: 0,
-    });
+    })?;
     let inputs: &[OrcHandle] = &[handle_from_deck(&a, 0), handle_from_deck(&b, 1)];
     unsafe {
         add_fn(0, inputs.as_ptr(), inputs.len() as u64, &mut out_handle, 1);
     }
     // Print the output data.
     println!("Output deck: \n{}", out_handle.display::<f64>());
+    math_plugin.free_deck(&mut out_handle);
+    Ok(())
 }

@@ -16,7 +16,7 @@ macro_rules! orc_plugin {
             let (host, plugin_data_out) = unsafe { (&*host, &mut *plugin_data_out) };
             match <$plugin as orc_sdk::TOrcPluginAdaptor>::plugin_init(host, plugin_data_out) {
                 Ok(()) => orc_sdk::ORC_ERROR_NONE,
-                Err(e) => e.to_orc_error(),
+                Err(e) => e.into(),
             }
         }
 
@@ -32,7 +32,7 @@ macro_rules! orc_plugin {
                     }
                     orc_sdk::ORC_ERROR_NONE
                 }
-                Err(e) => e.to_orc_error(),
+                Err(e) => e.into(),
             }
         }
 
@@ -42,7 +42,7 @@ macro_rules! orc_plugin {
         ) -> orc_sdk::OrcError {
             match <$plugin as orc_sdk::TOrcPluginAdaptor>::deck_free(unsafe { &mut *handle }) {
                 Ok(()) => orc_sdk::ORC_ERROR_NONE,
-                Err(e) => e.to_orc_error(),
+                Err(e) => e.into(),
             }
         }
 
@@ -92,7 +92,7 @@ macro_rules! orc_plugin {
                 inputs, proxy_type, proxies, marks, out,
             ) {
                 Ok(()) => orc_sdk::ORC_ERROR_NONE,
-                Err(e) => e.to_orc_error(),
+                Err(e) => e.into(),
             }
         }
     };

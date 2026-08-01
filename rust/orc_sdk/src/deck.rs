@@ -860,11 +860,11 @@ impl<'a> Combinations<'a> {
         output_depths: &[u8],
     ) -> Result<Self, Error> {
         if input_depths.len() != inputs.len() {
-            return Err(Error::ArrayLengthMismatch(input_depths.len(), inputs.len()));
+            return Err(Error::InvalidCombinations);
         }
         let n_outputs = output_depths.len();
         if output_depths.len() != n_outputs {
-            return Err(Error::ArrayLengthMismatch(output_depths.len(), n_outputs));
+            return Err(Error::InvalidCombinations);
         }
         let max_delta = inputs
             .iter()
