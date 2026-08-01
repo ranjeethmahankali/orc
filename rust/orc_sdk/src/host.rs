@@ -1,5 +1,5 @@
 use libloading::Library;
-use std::path::Path;
+use std::{ffi::CString, path::Path};
 
 use crate::{
     DeckAllocFn, DeckFreeFn, DeckFromProxyFn, Error, FuncInfo, ORC_ABI_VERSION,
@@ -143,7 +143,11 @@ pub fn load_plugins(dir: &Path, host: &OrcHost) -> Box<[Plugin]> {
                 Some(ext) if ext == PLUGIN_EXT => match Plugin::load(&path, host) {
                     Ok(plugin) => Some(plugin),
                     Err(e) => {
-                        eprintln!("  Skipping {}: {e}", path.display());
+                        if let Some(callback) = host.callbacks.report_message {
+                            let msg = CString::new(format!("  Skipping {}: {e}", path.display()))
+                                .unwrap_or_default();
+                            unsafe { callback(0, crate::ORC_MSG_LEVEL_INFO, msg.as_ptr()) };
+                        }
                         None
                     }
                 },
