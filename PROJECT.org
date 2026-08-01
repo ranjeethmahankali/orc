@@ -85,6 +85,16 @@
   theory with something that resembles a v-table, but not worth it. Very ugly, and likely not useful
   at all. This is possible trivially in C# (Grasshopper), because it is C#.
 
+* TODO tj45qx - C++ SDK
+  :PROPERTIES:
+  :CREATED:  2026-08-01 Sat 18:58
+  :END:
+
+  Given nTop's code is all in C++, this is pretty important. LLMs can easily port the Deck
+  implementation etc. But the abstractions to remove friction in implementing blocks will require
+  some thought. I went with macros as the first pass in Rust. It is not clear to me what I should go
+  with in C++.
+
 * TODO tiwkbm - Create Toy Demo Apps
   :PROPERTIES:
   :CREATED:  2026-07-28 Tue 16:45
