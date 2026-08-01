@@ -16,9 +16,9 @@ fn docs_from_attrs(attrs: &[syn::Attribute]) -> String {
                     lit: syn::Lit::Str(s),
                     ..
                 }) = &nv.value
-                {
-                    return Some(s.value().trim().to_string());
-                }
+            {
+                return Some(s.value().trim().to_string());
+            }
             None
         })
         .collect::<Vec<_>>()
@@ -98,10 +98,11 @@ struct ValidatedParams {
 fn sig_arg_count(ty: &syn::Type) -> Option<usize> {
     if let syn::Type::Path(p) = ty
         && let Some(seg) = p.path.segments.last()
-            && seg.ident == "Case"
-                && let syn::PathArguments::AngleBracketed(args) = &seg.arguments {
-                    return Some(args.args.len());
-                }
+        && seg.ident == "Case"
+        && let syn::PathArguments::AngleBracketed(args) = &seg.arguments
+    {
+        return Some(args.args.len());
+    }
     None
 }
 
@@ -160,10 +161,11 @@ fn inner_type(ty: &syn::Type) -> &syn::Type {
         syn::Type::Path(p) => {
             if let Some(seg) = p.path.segments.last()
                 && (seg.ident == "DeckView" || seg.ident == "DeckWriter")
-                    && let syn::PathArguments::AngleBracketed(args) = &seg.arguments
-                        && let Some(syn::GenericArgument::Type(t)) = args.args.first() {
-                            return t;
-                        }
+                && let syn::PathArguments::AngleBracketed(args) = &seg.arguments
+                && let Some(syn::GenericArgument::Type(t)) = args.args.first()
+            {
+                return t;
+            }
             ty
         }
         _ => ty,
@@ -212,14 +214,15 @@ fn resolve_depths(
                     }
                 };
                 if let Some(inf) = inferred[i]
-                    && provided != inf {
-                        return Err(syn::Error::new_spanned(
-                            e,
-                            format!(
-                                "{array_name}[{i}] is {provided} but the parameter type implies depth {inf}, which does not match the provided depth {provided}"
-                            ),
-                        ));
-                    }
+                    && provided != inf
+                {
+                    return Err(syn::Error::new_spanned(
+                        e,
+                        format!(
+                            "{array_name}[{i}] is {provided} but the parameter type implies depth {inf}, which does not match the provided depth {provided}"
+                        ),
+                    ));
+                }
                 result.push(provided);
             }
             Ok(result.into_boxed_slice())
@@ -460,15 +463,16 @@ fn substitute_type(
     case_args: &[&syn::GenericArgument],
 ) -> syn::Type {
     if let syn::Type::Path(p) = ty
-        && let Some(ident) = p.path.get_ident() {
-            for (gp, arg) in generics.iter().zip(case_args.iter()) {
-                if let (syn::GenericParam::Type(tp), syn::GenericArgument::Type(concrete)) =
-                    (gp, arg)
-                    && tp.ident == *ident {
-                        return concrete.clone();
-                    }
+        && let Some(ident) = p.path.get_ident()
+    {
+        for (gp, arg) in generics.iter().zip(case_args.iter()) {
+            if let (syn::GenericParam::Type(tp), syn::GenericArgument::Type(concrete)) = (gp, arg)
+                && tp.ident == *ident
+            {
+                return concrete.clone();
             }
         }
+    }
     ty.clone()
 }
 
@@ -544,10 +548,8 @@ fn generate_type_dispatch(
             .map(|p| substitute_type(&p.inner_type, &all_generics, case_args))
             .collect();
 
-        let pattern_idents: Vec<proc_macro2::Ident> = mono_input_types
-            .iter()
-            .map(&mut get_or_insert)
-            .collect();
+        let pattern_idents: Vec<proc_macro2::Ident> =
+            mono_input_types.iter().map(&mut get_or_insert).collect();
 
         let pattern_key = pattern_idents
             .iter()
@@ -735,17 +737,30 @@ fn generate_dispatch_fn(
     }
 }
 
-fn generate_orc_fn(
-    name: &proc_macro2::Ident,
-    docs: &str,
-    run_fn: &syn::ItemFn,
-    dims_fn: Option<&syn::ItemFn>,
-    types: Option<&syn::Type>,
-    registry_expr: Option<&syn::Expr>,
-    host_callbacks_expr: &syn::Expr,
-    user_items: &[proc_macro2::TokenStream],
-    params: &ValidatedParams,
-) -> proc_macro2::TokenStream {
+struct FnConfig<'a> {
+    name: &'a proc_macro2::Ident,
+    docs: &'a str,
+    run_fn: &'a syn::ItemFn,
+    dims_fn: Option<&'a syn::ItemFn>,
+    types: Option<&'a syn::Type>,
+    registry_expr: Option<&'a syn::Expr>,
+    host_callbacks_expr: &'a syn::Expr,
+    user_items: &'a [proc_macro2::TokenStream],
+    params: &'a ValidatedParams,
+}
+
+fn generate_orc_fn(cfg: FnConfig<'_>) -> proc_macro2::TokenStream {
+    let FnConfig {
+        name,
+        docs,
+        run_fn,
+        dims_fn,
+        types,
+        registry_expr,
+        host_callbacks_expr,
+        user_items,
+        params,
+    } = cfg;
     let info_name = info_const_name(&name.to_string());
     let n_inputs = params.inputs.len();
     let n_outputs = params.outputs.len();
@@ -983,10 +998,11 @@ pub fn orc_fn(input: TokenStream) -> TokenStream {
                             recognized = true;
                         }
                     } else if ident == "host_callbacks"
-                        && let Some(init) = &local.init {
-                            host_callbacks_expr = Some(*init.expr.clone());
-                            recognized = true;
-                        }
+                        && let Some(init) = &local.init
+                    {
+                        host_callbacks_expr = Some(*init.expr.clone());
+                        recognized = true;
+                    }
                 }
                 if !recognized {
                     user_items.push(quote::quote!(#local));
@@ -1033,16 +1049,16 @@ pub fn orc_fn(input: TokenStream) -> TokenStream {
         Err(e) => return e.to_compile_error().into(),
     };
     // Now that we validated everything, we can generate the code for this orc_fn.
-    generate_orc_fn(
-        &name,
-        &docs,
-        &run_fn,
-        dims_fn.as_ref(),
-        types.as_ref(),
-        registry.as_ref(),
-        &host_callbacks_expr,
-        &user_items,
-        &validated_params,
-    )
+    generate_orc_fn(FnConfig {
+        name: &name,
+        docs: &docs,
+        run_fn: &run_fn,
+        dims_fn: dims_fn.as_ref(),
+        types: types.as_ref(),
+        registry_expr: registry.as_ref(),
+        host_callbacks_expr: &host_callbacks_expr,
+        user_items: &user_items,
+        params: &validated_params,
+    })
     .into()
 }
