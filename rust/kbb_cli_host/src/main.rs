@@ -1,9 +1,10 @@
 use libloading::Library;
 use orc_sdk::{
     Deck, DeckAllocFn, DeckFreeFn, DeckFromProxyFn, Error, ORC_ABI_VERSION,
+    ORC_DECK_PROXY_COPY_ALL, ORC_DECK_PROXY_COPY_ITEMS, ORC_DECK_PROXY_SHUFFLE,
     ORC_ERROR_ABI_VERSION_MISMATCH, ORC_ERROR_NONE, ORC_F64, OrcHandle, OrcHost,
-    OrcHostCallbackAPI, OrcHostMemoryAPI, OrcPlugin, OrcTypeId, PluginInfo, PluginInitFn, deck,
-    handle_from_deck,
+    OrcHostCallbackAPI, OrcHostMemoryAPI, OrcPlugin, OrcTypeId, PluginInfo, PluginInitFn,
+    ProxyType, deck, handle_from_deck,
 };
 use std::{ffi::CStr, path::Path};
 
@@ -112,6 +113,24 @@ impl Plugin {
     fn free_deck(&self, handle: &mut OrcHandle) -> Result<(), Error> {
         let err = unsafe { (self.deck_free)(handle) };
         Error::from_raw(err)
+    }
+
+    fn create_proxy_deck(
+        &self,
+        inputs: &[OrcHandle],
+        proxy_type: ProxyType,
+        proxy: &OrcHandle,
+    ) -> Result<OrcHandle, Error> {
+        let mut out = OrcHandle::default();
+        let ptype = match proxy_type {
+            ProxyType::CopyAll => ORC_DECK_PROXY_COPY_ALL,
+            ProxyType::CopyItems => ORC_DECK_PROXY_COPY_ITEMS,
+            ProxyType::Shuffle => ORC_DECK_PROXY_SHUFFLE,
+        };
+        let err = unsafe {
+            (self.deck_from_proxy)(inputs.as_ptr(), inputs.len() as u64, ptype, proxy, &mut out)
+        };
+        Error::from_raw(err).map(|_| out)
     }
 }
 
