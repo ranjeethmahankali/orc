@@ -1,6 +1,6 @@
 use orc_sdk::{
-    Deck, Error, ORC_ABI_VERSION, ORC_F64, OrcHandle, OrcHost, OrcHostCallbackAPI,
-    OrcHostMemoryAPI, OrcTypeId, deck, handle_from_deck,
+    Deck, ORC_ABI_VERSION, ORC_F64, OrcHandle, OrcHost, OrcHostCallbackAPI, OrcHostMemoryAPI,
+    OrcTypeId, deck, handle_from_deck,
 };
 use std::ffi::CStr;
 
@@ -39,14 +39,14 @@ unsafe extern "C" fn report_message(ctx: u64, level: u32, msg: *const std::ffi::
     );
 }
 
-fn main() -> Result<(), Error> {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     let exe_dir = std::env::current_exe()
         .expect("Cannot determine executable path")
         .parent()
         .expect("Executable has no parent directory")
         .to_path_buf();
     println!("Loading plugins from {}", exe_dir.display());
-    let plugins = orc_sdk::load_plugins(&exe_dir, &HOST);
+    let plugins = orc_sdk::load_plugins(&exe_dir, &HOST)?;
     println!("Loaded {} plugin(s)\n", plugins.len());
     // Print the loaded plugins and functions.
     for plugin in &plugins {

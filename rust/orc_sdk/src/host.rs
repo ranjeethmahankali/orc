@@ -120,14 +120,8 @@ impl Plugin {
     }
 }
 
-pub fn load_plugins(dir: &Path, host: &OrcHost) -> Box<[Plugin]> {
-    let entries = match std::fs::read_dir(dir) {
-        Ok(entries) => entries,
-        Err(e) => {
-            eprintln!("Cannot read plugin directory {}: {e}", dir.display());
-            return Default::default();
-        }
-    };
+pub fn load_plugins(dir: &Path, host: &OrcHost) -> Result<Box<[Plugin]>, std::io::Error> {
+    let entries = std::fs::read_dir(dir)?;
     #[cfg(target_os = "windows")]
     const PLUGIN_EXT: &str = "dll";
     #[cfg(target_os = "macos")]
@@ -135,7 +129,7 @@ pub fn load_plugins(dir: &Path, host: &OrcHost) -> Box<[Plugin]> {
     #[cfg(not(any(target_os = "windows", target_os = "macos")))]
     const PLUGIN_EXT: &str = "so";
 
-    entries
+    Ok(entries
         .flatten()
         .filter_map(|entry| {
             let path = entry.path();
@@ -154,5 +148,5 @@ pub fn load_plugins(dir: &Path, host: &OrcHost) -> Box<[Plugin]> {
                 _ => None,
             }
         })
-        .collect()
+        .collect())
 }

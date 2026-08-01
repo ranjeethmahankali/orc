@@ -30,6 +30,24 @@ impl Error {
     }
 }
 
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Error::InvalidCombinations => write!(f, "invalid combinations"),
+            Error::InvalidHandle => write!(f, "invalid handle"),
+            Error::DeckTypeMismatch => write!(f, "deck type mismatch"),
+            Error::InvalidDimensions => write!(f, "invalid dimensions"),
+            Error::ConcurrencyProblem => write!(f, "concurrency problem"),
+            Error::PluginAlreadyInitialized => write!(f, "plugin already initialized"),
+            Error::ABIVersionMismatch => write!(f, "ABI version mismatch"),
+            Error::InvalidProxy => write!(f, "invalid proxy"),
+            Error::Unknown => write!(f, "unknown error"),
+        }
+    }
+}
+
+impl std::error::Error for Error {}
+
 impl From<Error> for OrcError {
     fn from(value: Error) -> Self {
         match value {
