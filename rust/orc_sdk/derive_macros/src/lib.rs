@@ -571,7 +571,7 @@ fn generate_type_dispatch(
                 errors.push(
                     syn::Error::new_spanned(
                         ty,
-                        r"This Case produces the same input type signature as a previous one when applied to `fn run`'s input parameters — likely because the generic type  parameters substituted by this Case do not appear in any input parameter, making it indistinguishable from another Case at dispatch time. This can also happen if the Case itself is duplicated.",
+                        r"This Case produces the same input type signature as a previous one when applied to `fn run`'s input parameters — likely because the generic type parameters substituted by this Case do not appear in any input parameter, making it indistinguishable from another Case at dispatch time. This can also happen if the Case itself is duplicated.",
                     )
                     .to_compile_error(),
                 );
@@ -868,11 +868,11 @@ pub fn orc_fn(input: TokenStream) -> TokenStream {
     let mut input_depths: Option<syn::ExprArray> = None;
     // const OUTPUT_DEPTHS: [u8; N] = [...];
     let mut output_depths: Option<syn::ExprArray> = None;
-    // type Types = ((f32, f64), (f32, f32), ...);  — optional, one row per monomorphization.
+    // type Types = (Case<f32>, Case<f64>, ...);  — optional, one case per monomorphization.
     let mut types: Option<syn::Type> = None;
     // let registry: &ObjectRegistry = &MY_REGISTRY;
     let mut registry: Option<syn::Expr> = None;
-    // let host_callbacks: &OrcHostCallbackAPI = host_callbacks();
+    // let host_callbacks = host_callbacks();
     let mut host_callbacks_expr: Option<syn::Expr> = None;
     // Anything unrecognized is collected here and pasted verbatim into the function body.
     let mut user_items: Vec<proc_macro2::TokenStream> = Vec::new();

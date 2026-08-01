@@ -132,7 +132,7 @@ struct OrcHandle
 };
 
 // Each plugin has to provide a generic way to construct decks out of a given input deck,
-// for all of it's custom datatypes.
+// for all of its custom datatypes.
 typedef struct
 {
   uint64_t tree;

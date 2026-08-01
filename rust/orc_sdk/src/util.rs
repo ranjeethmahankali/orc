@@ -45,7 +45,7 @@ pub fn handle_from_deck<T: TOrcData>(deck: &Deck<T>, id: u64) -> OrcHandle {
     debug_assert_eq!(
         marks.len(),
         stride_offset.len(),
-        "Malformed deck datastructure"
+        "Malformed deck data structure"
     );
     OrcHandle {
         handle: id,
@@ -151,7 +151,7 @@ impl ObjectRegistry {
                     read_lock.downcast_ref::<T>().is_none()
                 };
                 if realloc_needed {
-                    // Drop the old object an overwrite it with a new one.
+                    // Drop the old object and overwrite it with a new one.
                     occupied.insert(Arc::new(RwLock::new(Box::new(T::default()))));
                 }
             }
@@ -436,7 +436,7 @@ macro_rules! orc_check_return {
 }
 
 /// This is meant to be used by the plugin function to check for invariants, report them to the host
-/// if they're not met, and return immediately.
+/// if they're not met.
 #[macro_export]
 macro_rules! orc_check_warn {
     ($host:expr, $cond:expr, $($fmt:tt)+) => {{
