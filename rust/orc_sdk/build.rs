@@ -15,10 +15,10 @@ fn main() {
         .expect("Unable to generate bindings");
     // Write bindings to the output directory.
     let out_path = std::path::PathBuf::from(std::env::var("OUT_DIR").unwrap());
-    println!(
-        "cargo:warning=bindgen output: {}",
-        out_path.join("bindings.rs").display()
-    );
+    // println!(
+    //     "cargo:warning=bindgen output: {}",
+    //     out_path.join("bindings.rs").display()
+    // );
     bindings
         .write_to_file(out_path.join("bindings.rs"))
         .expect("Couldn't write bindings");
