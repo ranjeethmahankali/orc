@@ -408,11 +408,11 @@ pub fn fmt_raw_deck<T: Default + Display>(
         tail_start = n_items;
     }
     // Items after the last mark (or all items if no marks).
-    for i in tail_start as usize..items.len() {
+    for item in items.iter().skip(tail_start as usize) {
         writeln!(
             f,
             "{lp:>width$}   ┤ {}",
-            items[i],
+            item,
             lp = "",
             width = (dmax as usize + 1) * TAB_WIDTH
         )?;

@@ -158,13 +158,12 @@ fn inner_type(ty: &syn::Type) -> &syn::Type {
             inner => inner,
         },
         syn::Type::Path(p) => {
-            if let Some(seg) = p.path.segments.last() {
-                if (seg.ident == "DeckView" || seg.ident == "DeckWriter")
+            if let Some(seg) = p.path.segments.last()
+                && (seg.ident == "DeckView" || seg.ident == "DeckWriter")
                     && let syn::PathArguments::AngleBracketed(args) = &seg.arguments
                         && let Some(syn::GenericArgument::Type(t)) = args.args.first() {
                             return t;
                         }
-            }
             ty
         }
         _ => ty,
