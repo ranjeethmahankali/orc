@@ -78,20 +78,13 @@ macro_rules! orc_plugin {
                 orc_sdk::ORC_DECK_PROXY_SHUFFLE => ProxyType::Shuffle,
                 _ => return orc_sdk::ORC_ERROR_INVALID_PROXY,
             };
-            let proxies: &[OrcItemProxy] = if proxy.n_items > 0 && !proxy.items.is_null() {
-                unsafe { orc_sdk::slice_from_ptr(proxy.items.cast(), proxy.n_items as usize) }
-            } else {
-                &[]
-            };
-            let marks: &[OrcMark] = if proxy.n_marks > 0 && !proxy.marks.is_null() {
-                unsafe { orc_sdk::slice_from_ptr(proxy.marks, proxy.n_marks as usize) }
-            } else {
-                &[]
-            };
             match <$plugin as orc_sdk::TOrcPluginAdaptor>::deck_from_proxy(
-                inputs, proxy_type, proxies, marks, out,
+                inputs, proxy_type, proxy,
             ) {
-                Ok(()) => orc_sdk::ORC_ERROR_NONE,
+                Ok(handle) => {
+                    *out = handle;
+                    orc_sdk::ORC_ERROR_NONE
+                }
                 Err(e) => e.into(),
             }
         }
@@ -128,10 +121,8 @@ pub trait TOrcPluginAdaptor {
     fn deck_from_proxy(
         inputs: &[OrcHandle],
         proxy_type: ProxyType,
-        proxies: &[OrcItemProxy],
-        marks: &[OrcMark],
-        out: &mut OrcHandle,
-    ) -> Result<(), Error>;
+        proxy: &OrcHandle,
+    ) -> Result<OrcHandle, Error>;
 }
 
 pub trait TOrcData: Default + Clone + Send + Sync + 'static {

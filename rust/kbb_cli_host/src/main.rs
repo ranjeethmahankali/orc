@@ -198,6 +198,6 @@ fn main() -> Result<(), Error> {
     }
     // Print the output data.
     println!("Output deck: \n{}", out_handle.display::<f64>());
-    math_plugin.free_deck(&mut out_handle);
+    math_plugin.free_deck(&mut out_handle)?;
     Ok(())
 }

@@ -1,8 +1,8 @@
 use orc_sdk::{
     Deck, Error, HostCallbacks, ORC_ABI_VERSION, ORC_F32, ORC_F64, ORC_I8, ORC_I16, ORC_I32,
     ORC_I64, ORC_U8, ORC_U16, ORC_U32, ORC_U64, ObjectRegistry, OrcFuncInfo, OrcHandle, OrcHost,
-    OrcHostCallbackAPI, OrcItemProxy, OrcMark, OrcPlugin, OrcTypeId, ProxyType, TOrcData,
-    TOrcPluginAdaptor, handle_from_deck, orc_fn_info, orc_plugin, reset_handle,
+    OrcHostCallbackAPI, OrcPlugin, OrcTypeId, ProxyType, TOrcData, TOrcPluginAdaptor,
+    handle_from_deck, orc_fn_info, orc_plugin, reset_handle,
 };
 use std::sync::{LazyLock, OnceLock};
 
@@ -87,10 +87,8 @@ impl TOrcPluginAdaptor for Adaptor {
     fn deck_from_proxy(
         _inputs: &[OrcHandle],
         _proxy_type: orc_sdk::ProxyType,
-        _proxies: &[OrcItemProxy],
-        _marks: &[OrcMark],
-        _out: &mut OrcHandle,
-    ) -> Result<(), Error> {
+        _proxy: &OrcHandle,
+    ) -> Result<OrcHandle, Error> {
         todo!()
     }
 }
