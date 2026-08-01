@@ -25,7 +25,7 @@ impl Error {
             crate::ORC_ERROR_INVALID_COMBINATIONS => Err(Error::InvalidCombinations),
             crate::ORC_ERROR_CONCURRENCY_PROBLEM => Err(Error::ConcurrencyProblem),
             crate::ORC_ERROR_INVALID_PROXY => Err(Error::InvalidProxy),
-            crate::ORC_ERROR_UNKNOWN | _ => Err(Error::Unknown),
+            _ => Err(Error::Unknown),
         }
     }
 }

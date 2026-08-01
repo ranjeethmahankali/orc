@@ -1663,6 +1663,7 @@ OrcError orc_deck_from_proxy(OrcHandle const *inputs,
     oh_update(out);
   } break;
   default:
+    orc_deck_free(out);
     return ORC_ERROR_INVALID_PROXY;
   }
   return ORC_ERROR_NONE;
