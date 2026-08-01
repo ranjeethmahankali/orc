@@ -860,7 +860,7 @@ impl syn::parse::Parse for FnMacroArgs {
 pub fn orc_fn(input: TokenStream) -> TokenStream {
     let FnMacroArgs { name, stmts } = parse_macro_input!(input as FnMacroArgs);
     let mut docs = String::new();
-    // fn run(ctx: u64, <inputs...>, <outputs...>) { ... }  — required.
+    // fn run(<&HostCallbacks>, <inputs...>, <outputs...>) { ... }  — required.
     let mut run_fn: Option<syn::ItemFn> = None;
     // fn dims(<&OrcDims inputs...>, <&mut OrcDims outputs...>) { ... }  — optional.
     let mut dims_fn: Option<syn::ItemFn> = None;

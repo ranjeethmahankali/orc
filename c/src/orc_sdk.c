@@ -1531,7 +1531,7 @@ void _copy_items_opaque(uint32_t     opaque_type_id,
   (void)src;
   (void)dst;
   (void)n_items;
-  TODO("The plugin has to implement the copy operation for it's type");
+  TODO("The plugin has to implement the copy operation for its type");
 }
 
 OrcError orc_deck_from_proxy(OrcHandle const *inputs,

@@ -105,7 +105,7 @@ impl ObjectRegistry {
         F: FnOnce(&mut [&mut (dyn Any + Send + Sync)]) -> TResult,
     {
         let arcs: Vec<_> = {
-            // This can block this thread until write access is available.
+            // This can block this thread until read access is available.
             let map = self
                 .handles
                 .read()
@@ -135,8 +135,8 @@ impl ObjectRegistry {
             return Ok(());
         }
         // Here, the id is valid, so we try to find the previous allocation and reuse it. If it
-        // doesn't match the type, or doesn't exist, we just reallocate. Below line can block this
-        // thread until write access is available.
+        // doesn't match the type, or doesn't exist, we just reallocate. The line below can block
+        // this thread until write access is available.
         let mut handles = self
             .handles
             .write()
@@ -229,7 +229,7 @@ unsafe impl GlobalAlloc for PluginAllocator {
 }
 
 // ==================================================
-// ========= Rust native types for C types  =========
+// ========= Rust native types for C types =========
 // ==================================================
 //
 // It is nicer to have Rust native types for these things. Using the C types directly may require
