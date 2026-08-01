@@ -1,37 +1,42 @@
-use orc_sdk::{Deck, Error, ORC_F64, OrcHandle, OrcTypeId, Plugin, deck, handle_from_deck};
-use std::path::Path;
+use orc_sdk::{
+    Deck, Error, ORC_ABI_VERSION, ORC_F64, OrcHandle, OrcHost, OrcHostCallbackAPI,
+    OrcHostMemoryAPI, OrcTypeId, deck, handle_from_deck,
+};
+use std::ffi::CStr;
 
-fn load_plugins(dir: &Path) -> Box<[Plugin]> {
-    let entries = match std::fs::read_dir(dir) {
-        Ok(entries) => entries,
-        Err(e) => {
-            eprintln!("Cannot read plugin directory {}: {e}", dir.display());
-            return Default::default();
-        }
+const HOST: OrcHost = OrcHost {
+    abi_version: ORC_ABI_VERSION,
+    memory_api: OrcHostMemoryAPI {
+        alloc: None,
+        dealloc: None,
+    },
+    callbacks: OrcHostCallbackAPI {
+        report_progress: None,
+        report_message: Some(report_message),
+        check_cancellation: None,
+        report_intermediate_output: None,
+    },
+};
+
+unsafe extern "C" fn report_message(ctx: u64, level: u32, msg: *const std::ffi::c_char) {
+    let msg = if msg.is_null() {
+        ""
+    } else {
+        &unsafe { CStr::from_ptr(msg) }.to_string_lossy()
     };
-    #[cfg(target_os = "windows")]
-    const PLUGIN_EXT: &str = "dll";
-    #[cfg(target_os = "macos")]
-    const PLUGIN_EXT: &str = "dylib";
-    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
-    const PLUGIN_EXT: &str = "so";
-
-    entries
-        .flatten()
-        .filter_map(|entry| {
-            let path = entry.path();
-            match path.extension() {
-                Some(ext) if ext == PLUGIN_EXT => match Plugin::load(&path) {
-                    Ok(plugin) => Some(plugin),
-                    Err(e) => {
-                        eprintln!("  Skipping {}: {e}", path.display());
-                        None
-                    }
-                },
-                _ => None,
-            }
-        })
-        .collect()
+    println!(
+        "[{}][{}] {}",
+        match level {
+            orc_sdk::ORC_MSG_LEVEL_DEBUG => "DEBUG",
+            orc_sdk::ORC_MSG_LEVEL_INFO => "INFO",
+            orc_sdk::ORC_MSG_LEVEL_WARN => "WARN",
+            orc_sdk::ORC_MSG_LEVEL_ERROR => "ERROR",
+            orc_sdk::ORC_MSG_LEVEL_FATAL => "FATAL",
+            _ => "FATAL",
+        },
+        ctx,
+        msg
+    );
 }
 
 fn main() -> Result<(), Error> {
@@ -41,7 +46,7 @@ fn main() -> Result<(), Error> {
         .expect("Executable has no parent directory")
         .to_path_buf();
     println!("Loading plugins from {}", exe_dir.display());
-    let plugins = load_plugins(&exe_dir);
+    let plugins = orc_sdk::load_plugins(&exe_dir, &HOST);
     println!("Loaded {} plugin(s)\n", plugins.len());
     // Print the loaded plugins and functions.
     for plugin in &plugins {

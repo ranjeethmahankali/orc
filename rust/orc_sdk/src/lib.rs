@@ -41,4 +41,4 @@ pub use util::{
 mod host;
 
 #[cfg(feature = "host")]
-pub use host::Plugin;
+pub use host::{Plugin, load_plugins};

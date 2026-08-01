@@ -1,12 +1,10 @@
-use std::{ffi::CStr, path::Path};
-
 use libloading::Library;
+use std::path::Path;
 
 use crate::{
     DeckAllocFn, DeckFreeFn, DeckFromProxyFn, Error, FuncInfo, ORC_ABI_VERSION,
     ORC_DECK_PROXY_COPY_ALL, ORC_DECK_PROXY_COPY_ITEMS, ORC_DECK_PROXY_SHUFFLE, OrcHandle, OrcHost,
-    OrcHostCallbackAPI, OrcHostMemoryAPI, OrcPlugin, OrcTypeId, PluginInitFn, ProxyType, TypeInfo,
-    slice_from_ptr,
+    OrcPlugin, OrcTypeId, PluginInitFn, ProxyType, TypeInfo, slice_from_ptr,
 };
 
 /// This is to store the info, handles etc. for a loaded plugin.
@@ -25,28 +23,7 @@ impl Plugin {
     const DECK_FREE_FN_NAME: &str = "orc_deck_free";
     const DECK_FROM_PROXY_FN_NAME: &str = "orc_deck_from_proxy";
 
-    pub fn load(path: &Path) -> Result<Self, String> {
-        unsafe extern "C" fn report_message(ctx: u64, level: u32, msg: *const std::ffi::c_char) {
-            let msg = if msg.is_null() {
-                ""
-            } else {
-                &unsafe { CStr::from_ptr(msg) }.to_string_lossy()
-            };
-            println!(
-                "[{}][{}] {}",
-                match level {
-                    crate::ORC_MSG_LEVEL_DEBUG => "DEBUG",
-                    crate::ORC_MSG_LEVEL_INFO => "INFO",
-                    crate::ORC_MSG_LEVEL_WARN => "WARN",
-                    crate::ORC_MSG_LEVEL_ERROR => "ERROR",
-                    crate::ORC_MSG_LEVEL_FATAL => "FATAL",
-                    _ => "FATAL",
-                },
-                ctx,
-                msg
-            );
-        }
-
+    pub fn load(path: &Path, host: &OrcHost) -> Result<Self, String> {
         let lib = unsafe { Library::new(path) }.map_err(|e| format!("cannot load library: {e}"))?;
         let (init, deck_alloc, deck_free, deck_from_proxy): (
             PluginInitFn,
@@ -69,21 +46,8 @@ impl Plugin {
                     .map_err(|_| format!("missing symbol '{}'", Self::DECK_FROM_PROXY_FN_NAME))?,
             )
         };
-        let host = OrcHost {
-            abi_version: ORC_ABI_VERSION,
-            memory_api: OrcHostMemoryAPI {
-                alloc: None,
-                dealloc: None,
-            },
-            callbacks: OrcHostCallbackAPI {
-                report_progress: None,
-                report_message: Some(report_message),
-                check_cancellation: None,
-                report_intermediate_output: None,
-            },
-        };
         let mut plugin_data = OrcPlugin::default();
-        let err = unsafe { init(&host, &mut plugin_data) };
+        let err = unsafe { init(host, &mut plugin_data) };
         match err {
             crate::ORC_ERROR_NONE => {} // Do nothing.
             crate::ORC_ERROR_ABI_VERSION_MISMATCH => {
@@ -154,4 +118,37 @@ impl Plugin {
         };
         Error::from_raw(err).map(|_| out)
     }
+}
+
+pub fn load_plugins(dir: &Path, host: &OrcHost) -> Box<[Plugin]> {
+    let entries = match std::fs::read_dir(dir) {
+        Ok(entries) => entries,
+        Err(e) => {
+            eprintln!("Cannot read plugin directory {}: {e}", dir.display());
+            return Default::default();
+        }
+    };
+    #[cfg(target_os = "windows")]
+    const PLUGIN_EXT: &str = "dll";
+    #[cfg(target_os = "macos")]
+    const PLUGIN_EXT: &str = "dylib";
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    const PLUGIN_EXT: &str = "so";
+
+    entries
+        .flatten()
+        .filter_map(|entry| {
+            let path = entry.path();
+            match path.extension() {
+                Some(ext) if ext == PLUGIN_EXT => match Plugin::load(&path, host) {
+                    Ok(plugin) => Some(plugin),
+                    Err(e) => {
+                        eprintln!("  Skipping {}: {e}", path.display());
+                        None
+                    }
+                },
+                _ => None,
+            }
+        })
+        .collect()
 }

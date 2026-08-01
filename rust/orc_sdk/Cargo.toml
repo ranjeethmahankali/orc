@@ -5,7 +5,7 @@ edition = "2024"
 
 [features]
 derive = ["orc_sdk_derive"]
-host = ["libloading"]
+host = ["dep:libloading"]
 
 [dependencies]
 orc_sdk_derive = { path = "derive_macros", optional = true }
