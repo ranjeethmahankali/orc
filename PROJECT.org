@@ -71,6 +71,60 @@
   was trivial to implement in GH. Trying to do the same in Kratos turned into a
   dumpster fire. That is what makes this a good litmus test.
 
+  <2026-08-01 Sat 18:42> It seems fairly trivial to do this with built-in types, and with types that
+  are internal to the plugin that is trying to implement this. Just make a generic dictionary type
+  that stores all data in a tagged union, or a heap allocated OOP thing or whatever. And make a
+  block that takes variadic inputs of different types, and names, and outputs a this dictionary. The
+  first input could be a list of names, and the remaining inputs could each represent one member of
+  the object / dictionary. Probably fine to do the usual list processing on such inputs, but
+  requires a bit of thought.
+
+  It seems very unwieldy to try and get this to work with types that are opaque to another
+  plugin. That would require some sort of shared strategy between the plugins, and possible between
+  the host and the plugins, for type erased storage of objects in a container. That can be done in
+  theory with something that resembles a v-table, but not worth it. Very ugly, and likely not useful
+  at all. This is possible trivially in C# (Grasshopper), because it is C#.
+
+* TODO tiwkbm - Create Toy Demo Apps
+  :PROPERTIES:
+  :CREATED:  2026-07-28 Tue 16:45
+  :END:
+  :LOGBOOK:
+  - State "TODO"       from "NEXT"       [2026-07-31 Fri 20:46]
+  - State "NEXT"       from "TODO"       [2026-07-30 Thu 18:36]
+  :END:
+
+  Not that the plugin architecture is fleshed out, I can build a few toy host applications, and toy
+  plugins, and demonstrate the flexibility and power of this design to both Product / Customer
+  facing side as well as the engineering side.
+
+  <2026-07-30 Thu 18:35> Made quite some progress with the orc_fn macro to make it easier to
+  implement simple blocks. The macro is now able to handle templated Rust functions too, but still
+  requires some more testing before I feel confident about it.
+
+  <2026-07-31 Fri 18:22> The orc_fn proc macro mostly took shape. Trying to simplify the code a bit,
+  and maybe add some tests. The proxy deck functions need more thought, and need to be fleshed
+  out. Also the type ids require more thought. Plugins will need the ability to work with arbitrary
+  types defined in other plugins. Which means plugins cannot rely on their own type ids. The handle
+  cannot just communicate OrcTypeId. It needs to have a unique integer id that the host assigns to
+  that type, after loading all the plugins, and the plugins need to know that mapped id for their
+  own types after plugin_init.... It will get a bit more complicated than it currently is.
+
+  <2026-07-31 Fri 20:45> Trying to temporarily stop on this task, and finish a few other smaller
+  tasks before continuing.
+
+* NEXT tj2fe7 - Proxy decks through the ABI - 
+  :PROPERTIES:
+  :CREATED:  2026-07-31 Fri 20:44
+  :END:
+  :LOGBOOK:
+  - State "NEXT"       from "TODO"       [2026-08-01 Sat 18:50]
+  :END:
+
+  Currently proxy deck stuff is not fully fleshed out through the ABI. Requires a bit more thought
+  and [[*tj2fch - OrcHandle type_id rework][type_id rework]] needs to happen before this. I will just flesh this out first in the Rust SDK,
+  and Rust examples. The C SDK has not taken shape yet.
+
 * DONE tj2fch - OrcHandle type_id rework
   CLOSED: [2026-08-01 Sat 18:36]
   :PROPERTIES:
@@ -109,42 +163,6 @@
 
    <2026-08-01 Sat 17:39> Turning this into a subtask, because it will get merged as part of another
    task. Marking it done. The design I have on this branch seems good enough for now.
-
-* TODO tj2fe7 - Proxy decks through the ABI
-  :PROPERTIES:
-  :CREATED:  2026-07-31 Fri 20:44
-  :END:
-
-  Currently proxy deck stuff is not fully fleshed out through the ABI. Requires a bit more thought
-  and [[*tj2fch - OrcHandle type_id rework][type_id rework]] needs to happen before this.
-
-* TODO tiwkbm - Create Toy Demo Apps
-  :PROPERTIES:
-  :CREATED:  2026-07-28 Tue 16:45
-  :END:
-  :LOGBOOK:
-  - State "TODO"       from "NEXT"       [2026-07-31 Fri 20:46]
-  - State "NEXT"       from "TODO"       [2026-07-30 Thu 18:36]
-  :END:
-
-  Not that the plugin architecture is fleshed out, I can build a few toy host applications, and toy
-  plugins, and demonstrate the flexibility and power of this design to both Product / Customer
-  facing side as well as the engineering side.
-
-  <2026-07-30 Thu 18:35> Made quite some progress with the orc_fn macro to make it easier to
-  implement simple blocks. The macro is now able to handle templated Rust functions too, but still
-  requires some more testing before I feel confident about it.
-
-  <2026-07-31 Fri 18:22> The orc_fn proc macro mostly took shape. Trying to simplify the code a bit,
-  and maybe add some tests. The proxy deck functions need more thought, and need to be fleshed
-  out. Also the type ids require more thought. Plugins will need the ability to work with arbitrary
-  types defined in other plugins. Which means plugins cannot rely on their own type ids. The handle
-  cannot just communicate OrcTypeId. It needs to have a unique integer id that the host assigns to
-  that type, after loading all the plugins, and the plugins need to know that mapped id for their
-  own types after plugin_init.... It will get a bit more complicated than it currently is.
-
-  <2026-07-31 Fri 20:45> Trying to temporarily stop on this task, and finish a few other smaller
-  tasks before continuing.
 
 * CLOSED Rendering Geometry
   CLOSED: [2026-07-28 Tue 09:16]
