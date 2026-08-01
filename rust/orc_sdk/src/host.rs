@@ -118,8 +118,8 @@ impl Plugin {
     }
 }
 
-pub fn load_plugins(dir: &Path, host: &OrcHost) -> Result<Box<[Plugin]>, std::io::Error> {
-    let entries = std::fs::read_dir(dir)?;
+pub fn load_plugins(dir: &Path, host: &OrcHost) -> Result<Box<[Plugin]>, Error> {
+    let entries = std::fs::read_dir(dir).map_err(|_e| Error::CannotLoadPlugins)?;
     #[cfg(target_os = "windows")]
     const PLUGIN_EXT: &str = "dll";
     #[cfg(target_os = "macos")]

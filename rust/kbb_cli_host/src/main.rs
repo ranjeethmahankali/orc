@@ -1,5 +1,5 @@
 use orc_sdk::{
-    Deck, ORC_ABI_VERSION, OrcHandle, OrcHost, OrcHostCallbackAPI, OrcHostMemoryAPI, deck,
+    Deck, Error, ORC_ABI_VERSION, OrcHandle, OrcHost, OrcHostCallbackAPI, OrcHostMemoryAPI, deck,
     handle_from_deck,
 };
 use std::ffi::CStr;
@@ -43,7 +43,7 @@ unsafe extern "C" fn report_message(
     );
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() -> Result<(), Error> {
     let exe_dir = std::env::current_exe()
         .expect("Cannot determine executable path")
         .parent()

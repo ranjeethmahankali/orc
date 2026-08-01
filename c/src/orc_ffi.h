@@ -158,6 +158,7 @@ typedef uint32_t OrcError;
 #define ORC_ERROR_PLUGIN_ALREADY_INITIALIZED 0xff06u
 #define ORC_ERROR_CONCURRENCY_PROBLEM 0xff07u
 #define ORC_ERROR_INVALID_PROXY 0xff08u
+#define ORC_ERROR_CANNOT_LOAD_PLUGINS 0xff09u
 #define ORC_ERROR_UNKNOWN 0xffffu
 
 // Loading the plugin, and register the host with the plugin.

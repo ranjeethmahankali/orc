@@ -10,6 +10,7 @@ pub enum Error {
     PluginAlreadyInitialized,
     ABIVersionMismatch,
     InvalidProxy,
+    CannotLoadPlugins,
     Unknown,
 }
 
@@ -25,6 +26,7 @@ impl Error {
             crate::ORC_ERROR_INVALID_COMBINATIONS => Err(Error::InvalidCombinations),
             crate::ORC_ERROR_CONCURRENCY_PROBLEM => Err(Error::ConcurrencyProblem),
             crate::ORC_ERROR_INVALID_PROXY => Err(Error::InvalidProxy),
+            crate::ORC_ERROR_CANNOT_LOAD_PLUGINS => Err(Error::CannotLoadPlugins),
             _ => Err(Error::Unknown),
         }
     }
@@ -33,15 +35,16 @@ impl Error {
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Error::InvalidCombinations => write!(f, "invalid combinations"),
-            Error::InvalidHandle => write!(f, "invalid handle"),
-            Error::DeckTypeMismatch => write!(f, "deck type mismatch"),
-            Error::InvalidDimensions => write!(f, "invalid dimensions"),
-            Error::ConcurrencyProblem => write!(f, "concurrency problem"),
-            Error::PluginAlreadyInitialized => write!(f, "plugin already initialized"),
-            Error::ABIVersionMismatch => write!(f, "ABI version mismatch"),
-            Error::InvalidProxy => write!(f, "invalid proxy"),
-            Error::Unknown => write!(f, "unknown error"),
+            Error::InvalidCombinations => write!(f, "Invalid combinations"),
+            Error::InvalidHandle => write!(f, "Invalid handle"),
+            Error::DeckTypeMismatch => write!(f, "Deck type mismatch"),
+            Error::InvalidDimensions => write!(f, "Invalid dimensions"),
+            Error::ConcurrencyProblem => write!(f, "Concurrency problem"),
+            Error::PluginAlreadyInitialized => write!(f, "Plugin already initialized"),
+            Error::ABIVersionMismatch => write!(f, "Abi version mismatch"),
+            Error::InvalidProxy => write!(f, "Invalid proxy"),
+            Error::CannotLoadPlugins => write!(f, "Cannot load plugins"),
+            Error::Unknown => write!(f, "Unknown error"),
         }
     }
 }
@@ -59,6 +62,7 @@ impl From<Error> for OrcError {
             Error::InvalidCombinations => crate::ORC_ERROR_INVALID_COMBINATIONS,
             Error::ConcurrencyProblem => crate::ORC_ERROR_CONCURRENCY_PROBLEM,
             Error::InvalidProxy => crate::ORC_ERROR_INVALID_PROXY,
+            Error::CannotLoadPlugins => crate::ORC_ERROR_CANNOT_LOAD_PLUGINS,
             Error::Unknown => crate::ORC_ERROR_UNKNOWN,
         }
     }
