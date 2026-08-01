@@ -236,7 +236,7 @@ unsafe impl GlobalAlloc for PluginAllocator {
 // some assumptions about the lifetimes of the raw pointers. And the users of the SDK are still free
 // to use the raw C types if that fits their needs better. But if they prefer Rust types beyond the
 // FFI boundary, types below can help. For example, a host program written in Rust can keep track of
-// various plugins, their types and functions etc. using below Rust types.
+// various plugins, their types and functions etc. using the Rust types below.
 
 pub struct TypeInfo {
     pub type_id: OrcTypeId,
@@ -343,7 +343,7 @@ impl OrcHandle {
 }
 
 // ==================================================
-// ========= Safe wrapper for host callbacks  =======
+// ========= Safe wrapper for host callbacks =======
 // ==================================================
 
 pub struct HostCallbacks {

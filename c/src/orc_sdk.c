@@ -592,8 +592,8 @@ void deck_clear(void const *ptr)
 
 void *_deck_grow_capacity(void *ptr, size_t const itemsize, size_t const n)
 {
-  // Handle the special case where ptr is NULL and nelems is 0
-  // No allocation needed, just return the NULL ptr
+  // Handle the special case where ptr is NULL and n is 0 No allocation needed, just
+  // return the NULL ptr
   if (ptr == NULL && n == 0) {
     return ptr;  // Return NULL, which is valid for an empty array
   }

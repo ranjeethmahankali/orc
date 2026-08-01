@@ -30,7 +30,7 @@ fn extract_doc(func: &ItemFn) -> String {
     docs_from_attrs(&func.attrs)
 }
 
-/// `#[orc_fn]` or `#[orc_fn(name = "add")]` — generates an `OrcFuncInfo` const alongside the function.
+/// `#[orc_generate_fn_info]` or `#[orc_generate_fn_info("add")]` — generates an `OrcFuncInfo` const alongside the function.
 #[proc_macro_attribute]
 pub fn orc_generate_fn_info(attr: TokenStream, item: TokenStream) -> TokenStream {
     let func = parse_macro_input!(item as ItemFn);
