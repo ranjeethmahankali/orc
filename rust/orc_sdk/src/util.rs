@@ -24,6 +24,11 @@ pub fn ptr_from_slice<T>(arr: &[T]) -> *const T {
     }
 }
 
+/// Create a slice from a pointer and length. Meant for working with data coming across the FFI
+/// boundary. Checks for null pointers and empty slices and handles them gracefully.
+///
+/// # SAFETY
+/// The caller must ensure the pointer and the length are valid.
 pub unsafe fn slice_from_ptr<'a, T>(ptr: *const T, len: usize) -> &'a [T] {
     if ptr.is_null() || len == 0 {
         &[]
@@ -32,6 +37,11 @@ pub unsafe fn slice_from_ptr<'a, T>(ptr: *const T, len: usize) -> &'a [T] {
     }
 }
 
+/// Create a mutable slice from a pointer and length. Meant for working with data coming across the
+/// FFI boundary. Checks for null pointers and empty slices and handles them gracefully.
+///
+/// # SAFETY
+/// The caller must ensure the pointer and the length are valid.
 pub unsafe fn slice_from_ptr_mut<'a, T>(ptr: *mut T, len: usize) -> &'a mut [T] {
     if ptr.is_null() || len == 0 {
         &mut []
@@ -65,8 +75,10 @@ pub fn reset_handle(handle: &mut OrcHandle) {
     *handle = OrcHandle::default();
 }
 
+type ObjEntry = Arc<RwLock<Box<dyn Any + Send + Sync>>>;
+
 pub struct ObjectRegistry {
-    handles: RwLock<HashMap<u64, Arc<RwLock<Box<dyn Any + Send + Sync>>>>>,
+    handles: RwLock<HashMap<u64, ObjEntry>>,
     counter: AtomicU64,
 }
 
