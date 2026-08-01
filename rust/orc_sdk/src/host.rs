@@ -1,8 +1,12 @@
 use libloading::Library;
-use std::{ffi::CString, path::Path};
+use std::{
+    collections::{HashMap, hash_map::Entry},
+    ffi::CStr,
+    path::Path,
+};
 
 use crate::{
-    DeckAllocFn, DeckFreeFn, DeckFromProxyFn, Error, FuncInfo, ORC_ABI_VERSION,
+    DeckAllocFn, DeckFreeFn, DeckFromProxyFn, Error, FuncInfo, HostCallbacks, ORC_ABI_VERSION,
     ORC_DECK_PROXY_COPY_ALL, ORC_DECK_PROXY_COPY_ITEMS, ORC_DECK_PROXY_SHUFFLE, OrcHandle, OrcHost,
     OrcPlugin, OrcTypeId, PluginInitFn, ProxyType, TypeInfo, slice_from_ptr,
 };
@@ -10,6 +14,8 @@ use crate::{
 /// This is to store the info, handles etc. for a loaded plugin.
 pub struct Plugin {
     _lib: Library,
+    name: String,
+    desc: String,
     types: Box<[TypeInfo]>,
     functions: Box<[FuncInfo]>,
     deck_alloc: DeckAllocFn,
@@ -62,6 +68,12 @@ impl Plugin {
         }
         Ok(Plugin {
             _lib: lib,
+            name: unsafe { CStr::from_ptr(plugin_data.name) }
+                .to_string_lossy()
+                .into_owned(),
+            desc: unsafe { CStr::from_ptr(plugin_data.desc) }
+                .to_string_lossy()
+                .into_owned(),
             types: unsafe {
                 slice_from_ptr(plugin_data.types, plugin_data.n_types as usize)
                     .iter()
@@ -116,9 +128,21 @@ impl Plugin {
         };
         Error::from_raw(err).map(|_| out)
     }
+
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    pub fn desc(&self) -> &str {
+        &self.desc
+    }
 }
 
 pub fn load_plugins(dir: &Path, host: &OrcHost) -> Result<Box<[Plugin]>, Error> {
+    let callbacks = HostCallbacks {
+        inner: host.callbacks,
+        context: 0,
+    };
     let entries = std::fs::read_dir(dir).map_err(|_e| Error::CannotLoadPlugins)?;
     #[cfg(target_os = "windows")]
     const PLUGIN_EXT: &str = "dll";
@@ -126,32 +150,42 @@ pub fn load_plugins(dir: &Path, host: &OrcHost) -> Result<Box<[Plugin]>, Error> 
     const PLUGIN_EXT: &str = "dylib";
     #[cfg(not(any(target_os = "windows", target_os = "macos")))]
     const PLUGIN_EXT: &str = "so";
-
-    Ok(entries
-        .flatten()
-        .filter_map(|entry| {
-            let path = entry.path();
-            match path.extension() {
-                Some(ext) if ext == PLUGIN_EXT => match Plugin::load(&path, host) {
-                    Ok(plugin) => {
-                        if let Some(callback) = host.callbacks.report_message {
-                            let msg = CString::new(format!("Loaded plugin: {}", path.display()))
-                                .unwrap_or_default();
-                            unsafe { callback(0, crate::ORC_MSG_LEVEL_INFO, msg.as_ptr()) };
+    // We're going to load the plugins one at a time, and accumulate the type_ids in this hashmap.
+    let mut type_map = HashMap::<OrcTypeId, (usize, usize)>::new();
+    let mut plugins = Vec::<Plugin>::new();
+    for entry in entries.into_iter().flatten() {
+        let path = entry.path();
+        match path.extension() {
+            Some(ext) if ext == PLUGIN_EXT => match Plugin::load(&path, host) {
+                Ok(plugin) => {
+                    let current_plugin_index = plugins.len();
+                    // Ensure the types in this new plugin don't conflict with the types already loaded.
+                    for (ti, type_info) in plugin.types().iter().enumerate() {
+                        match type_map.entry(type_info.type_id) {
+                            Entry::Occupied(occupied) => {
+                                let (plugin_index, type_index) = *occupied.get();
+                                callbacks.error(&format!(
+                                    "The id of type {} from plugin {} conflicts with that of {} from {}.",
+                                    plugins[plugin_index].types()[type_index].name,
+                                    plugins[plugin_index].name,
+                                    type_info.name,
+                                    plugin.name));
+                                return Err(Error::CannotLoadPlugins);
+                            }
+                            Entry::Vacant(vacant) => {
+                                vacant.insert((current_plugin_index, ti));
+                            }
                         }
-                        Some(plugin)
                     }
-                    Err(e) => {
-                        if let Some(callback) = host.callbacks.report_message {
-                            let msg = CString::new(format!("Skipping {}: {e}", path.display()))
-                                .unwrap_or_default();
-                            unsafe { callback(0, crate::ORC_MSG_LEVEL_INFO, msg.as_ptr()) };
-                        }
-                        None
-                    }
-                },
-                _ => None,
-            }
-        })
-        .collect())
+                    callbacks.info(&format!("Loaded plugin: {}", path.display()));
+                    plugins.push(plugin);
+                }
+                Err(e) => {
+                    callbacks.info(&format!("Skipping {}: {e}", path.display()));
+                }
+            },
+            _ => {} // Not a shared library.
+        }
+    }
+    Ok(plugins.into())
 }
