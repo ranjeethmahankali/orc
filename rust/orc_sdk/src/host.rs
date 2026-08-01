@@ -133,10 +133,17 @@ pub fn load_plugins(dir: &Path, host: &OrcHost) -> Result<Box<[Plugin]>, std::io
             let path = entry.path();
             match path.extension() {
                 Some(ext) if ext == PLUGIN_EXT => match Plugin::load(&path, host) {
-                    Ok(plugin) => Some(plugin),
+                    Ok(plugin) => {
+                        if let Some(callback) = host.callbacks.report_message {
+                            let msg = CString::new(format!("Loaded plugin: {}", path.display()))
+                                .unwrap_or_default();
+                            unsafe { callback(0, crate::ORC_MSG_LEVEL_INFO, msg.as_ptr()) };
+                        }
+                        Some(plugin)
+                    }
                     Err(e) => {
                         if let Some(callback) = host.callbacks.report_message {
-                            let msg = CString::new(format!("  Skipping {}: {e}", path.display()))
+                            let msg = CString::new(format!("Skipping {}: {e}", path.display()))
                                 .unwrap_or_default();
                             unsafe { callback(0, crate::ORC_MSG_LEVEL_INFO, msg.as_ptr()) };
                         }
