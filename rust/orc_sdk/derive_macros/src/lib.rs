@@ -777,7 +777,7 @@ fn generate_orc_fn(
             (
                 quote! { #d },
                 quote! {
-                    orc_sdk::orc_assert_return!(
+                    orc_sdk::orc_check_return!(
                         __host,
                         dims(#(#in_args,)* #(#out_args),*).is_ok(),
                         "dims computation failed"
@@ -803,15 +803,16 @@ fn generate_orc_fn(
             __outputs_ptr: *mut orc_sdk::OrcHandle,
             __n_outputs: u64,
         ) {
+            let __orc_hc_ref: &orc_sdk::OrcHostCallbackAPI = #host_callbacks_expr;
             let __host = orc_sdk::HostCallbacks {
-                inner: *(#host_callbacks_expr),
+                inner: *__orc_hc_ref,
                 context: __ctx,
             };
             #(#user_items)*
             #run_fn
             #dims_fn_tokens
             // Check the number of inputs.
-            orc_sdk::orc_assert_return!(
+            orc_sdk::orc_check_return!(
                 __host,
                 __n_inputs == #n_inputs as u64,
                 "Expected {} inputs, got {}",
@@ -819,7 +820,7 @@ fn generate_orc_fn(
                 __n_inputs
             );
             // Check the number of outputs.
-            orc_sdk::orc_assert_return!(
+            orc_sdk::orc_check_return!(
                 __host,
                 __n_outputs == #n_outputs as u64,
                 "Expected {} outputs, got {}",
@@ -978,18 +979,24 @@ pub fn orc_fn(input: TokenStream) -> TokenStream {
             },
             syn::Stmt::Local(local) => {
                 let mut recognized = false;
-                if let syn::Pat::Type(pt) = &local.pat {
-                    if let syn::Pat::Ident(pi) = pt.pat.as_ref() {
-                        if pi.ident == "registry" {
-                            if let Some(init) = &local.init {
-                                registry = Some(*init.expr.clone());
-                                recognized = true;
-                            }
-                        } else if pi.ident == "host_callbacks" {
-                            if let Some(init) = &local.init {
-                                host_callbacks_expr = Some(*init.expr.clone());
-                                recognized = true;
-                            }
+                let binding_ident = match &local.pat {
+                    syn::Pat::Ident(pi) => Some(&pi.ident),
+                    syn::Pat::Type(pt) => match pt.pat.as_ref() {
+                        syn::Pat::Ident(pi) => Some(&pi.ident),
+                        _ => None,
+                    },
+                    _ => None,
+                };
+                if let Some(ident) = binding_ident {
+                    if ident == "registry" {
+                        if let Some(init) = &local.init {
+                            registry = Some(*init.expr.clone());
+                            recognized = true;
+                        }
+                    } else if ident == "host_callbacks" {
+                        if let Some(init) = &local.init {
+                            host_callbacks_expr = Some(*init.expr.clone());
+                            recognized = true;
                         }
                     }
                 }
@@ -1007,7 +1014,7 @@ pub fn orc_fn(input: TokenStream) -> TokenStream {
         None => {
             return syn::Error::new(
                 proc_macro2::Span::call_site(),
-                "orc_fn! requires `let host_callbacks: &OrcHostCallbackAPI = ...`",
+                "orc_fn! requires `let host_callbacks = <expr returning &OrcHostCallbackAPI>`",
             )
             .to_compile_error()
             .into();

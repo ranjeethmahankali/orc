@@ -422,15 +422,27 @@ impl HostCallbacks {
     }
 }
 
-/// This is meant to be used by the plugin function to check for invairants, report them to the host
+/// This is meant to be used by the plugin function to check for invariants, report them to the host
 /// if they're not met, and return immediately.
 #[macro_export]
-macro_rules! orc_assert_return {
+macro_rules! orc_check_return {
     ($host:expr, $cond:expr, $($fmt:tt)+) => {{
         if !($cond) {
             let message = ::std::format!($($fmt)+);
             $host.error(&message);
             return;
+        }
+    }};
+}
+
+/// This is meant to be used by the plugin function to check for invariants, report them to the host
+/// if they're not met, and return immediately.
+#[macro_export]
+macro_rules! orc_check_warn {
+    ($host:expr, $cond:expr, $($fmt:tt)+) => {{
+        if !($cond) {
+            let message = ::std::format!($($fmt)+);
+            $host.warn(&message);
         }
     }};
 }

@@ -3,7 +3,7 @@ use orc_sdk::{Error, HostCallbacks, OrcDims, TOrcData, orc_fn};
 use std::ops::{Add, Div, Mul, Sub};
 
 orc_fn!(add, {
-    let host_callbacks: &HostCallbacks = host_callbacks();
+    let host_callbacks = host_callbacks();
     let registry: &ObjectRegistry = registry();
 
     type Types = (
@@ -41,7 +41,7 @@ orc_fn!(add, {
 });
 
 orc_fn!(mul, {
-    let host_callbacks: &HostCallbacks = host_callbacks();
+    let host_callbacks = host_callbacks();
     let registry: &ObjectRegistry = registry();
 
     type Types = (
@@ -79,7 +79,7 @@ orc_fn!(mul, {
 });
 
 orc_fn!(sub, {
-    let host_callbacks: &HostCallbacks = host_callbacks();
+    let host_callbacks = host_callbacks();
     let registry: &ObjectRegistry = registry();
 
     type Types = (Case<f32>, Case<f64>);
@@ -96,7 +96,7 @@ orc_fn!(sub, {
 });
 
 orc_fn!(div, {
-    let host_callbacks: &HostCallbacks = host_callbacks();
+    let host_callbacks = host_callbacks();
     let registry: &ObjectRegistry = registry();
 
     type Types = (Case<f32>, Case<f64>);
