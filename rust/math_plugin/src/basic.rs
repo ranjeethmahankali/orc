@@ -19,9 +19,9 @@ orc_fn!(add, {
         Case<i64>,
     );
 
-    /// Multiplies two inputs values. This function supports any integer or floating point scalar
-    /// types. The two inputs must be of the same type. The output produced will be of the same type
-    /// also.
+    /// Adds two inputs values, assigns result to the output. This function supports any integer or
+    /// floating point scalar types. The two inputs must be of the same type. The output produced
+    /// will be of the same type also.
     fn run<T>(_host: &HostCallbacks, lhs: &T, rhs: &T, out: &mut T) -> Result<(), Error>
     where
         T: TOrcData + Add<Output = T> + Copy,
@@ -57,9 +57,9 @@ orc_fn!(mul, {
         Case<i64>,
     );
 
-    /// Adds two inputs values. This function supports any integer or floating point scalar
-    /// types. The two inputs must be of the same type. The output produced will be of the same type
-    /// also.
+    /// Multiplies two inputs values, and assigns the result to the output. This function supports
+    /// any integer or floating point scalar types. The two inputs must be of the same type. The
+    /// output produced will be of the same type also.
     fn run<T>(_host: &HostCallbacks, lhs: &T, rhs: &T, out: &mut T) -> Result<(), Error>
     where
         T: TOrcData + Mul<Output = T> + Copy,

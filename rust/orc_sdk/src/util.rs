@@ -62,17 +62,7 @@ pub fn handle_from_deck<T: TOrcData>(deck: &Deck<T>, id: u64) -> OrcHandle {
 }
 
 pub fn reset_handle(handle: &mut OrcHandle) {
-    handle.handle = 0;
-    handle.items = std::ptr::null();
-    handle.n_items = 0;
-    handle.item_size = 0;
-    handle.marks = std::ptr::null();
-    handle.stride_offset = std::ptr::null();
-    handle.n_marks = 0;
-    handle.strides = std::ptr::null();
-    handle.type_id.primitive_id = 0;
-    handle.type_id.opaque_id = 0;
-    handle.dims.fill(0);
+    *handle = OrcHandle::default();
 }
 
 pub struct ObjectRegistry {
@@ -368,10 +358,6 @@ impl HostCallbacks {
         check_cancellation: None,
         report_intermediate_output: None,
     };
-
-    pub fn assign(&mut self, callbacks: OrcHostCallbackAPI) {
-        self.inner = callbacks;
-    }
 
     pub fn report_progress(&self, progress: f64) {
         if let Some(callback) = self.inner.report_progress {

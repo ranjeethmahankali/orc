@@ -77,8 +77,6 @@ impl TOrcPluginAdaptor for Adaptor {
     }
 
     fn deck_free(handle: &mut OrcHandle) -> Result<(), Error> {
-        // We're intentionally ignoring the error for now. Maybe in the future we update the ABI to
-        // allow reporting an error.
         let id = handle.handle;
         reset_handle(handle);
         REGISTRY.free(id)

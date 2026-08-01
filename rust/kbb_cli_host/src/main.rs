@@ -86,12 +86,12 @@ impl Plugin {
                     "Unable to load the plugin because of ABI version mismatch."
                 ));
             }
-            _ if plugin_data.abi_version != ORC_ABI_VERSION => {
-                return Err(format!(
-                    "Unable to load the plugin because of ABI version mismatch."
-                ));
-            }
             _ => return Err(format!("Unable to load the plugin. Error code: {err}")),
+        }
+        if plugin_data.abi_version != ORC_ABI_VERSION {
+            return Err(format!(
+                "Unable to load the plugin because of ABI version mismatch."
+            ));
         }
         let info = PluginInfo::from(&plugin_data);
         Ok(Plugin {
