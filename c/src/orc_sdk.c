@@ -1409,25 +1409,17 @@ static OrcTypeInfo _orc_type_info_i64(void)
 
 // ========== Plugin - Host IO ==========
 
-void orc_plugin_init(OrcHost const *host, OrcPlugin *plugin_data_out)
+OrcError orc_plugin_init(OrcHost const *host, OrcPlugin *plugin_data_out)
 {
   (void)host;
   (void)plugin_data_out;
   TODO("Not implemented");
 }
 
-void orc_plugin_data_free(OrcPlugin *plugin_data)
-{
-  (void)plugin_data;
-  TODO("Not implemented");
-}
-
-// ========== Deck Allocations ==========
-
-void orc_deck_alloc(OrcTypeId const id, OrcHandle *const out)
+OrcError orc_deck_alloc(OrcTypeId const id, OrcHandle *const out)
 {
   if (out == NULL) {
-    return;
+    return ORC_ERROR_INVALID_HANDLE;
   }
   out->item_size = 0;
   switch (id.primitive_id) {
@@ -1477,7 +1469,7 @@ void orc_deck_alloc(OrcTypeId const id, OrcHandle *const out)
   case ORC_OPAQUE:
     TODO("The plugin should handle its own types here");
   default:
-    REQUIRE_WITH_MSG(false, "Unhandled type id. Should never happen.");
+    return ORC_ERROR_TYPE_MISMATCH;
   }
   REQUIRE_WITH_MSG(out->item_size != 0, "Item size cannot be inferred from the type id.");
   size_t const INIT_SIZE = 1;
@@ -1494,6 +1486,7 @@ void orc_deck_alloc(OrcTypeId const id, OrcHandle *const out)
   REQUIRE_WITH_MSG(n_marks == 0, "New deck must have no marks");
   out->n_marks = n_marks;
   out->strides = h->strides;
+  return ORC_ERROR_NONE;
 }
 
 static void _free_deck_item(void *data, uint32_t const type_id)
@@ -1506,7 +1499,7 @@ static void _free_deck_item(void *data, uint32_t const type_id)
     "into a mesh pointer and frees it properly.");
 }
 
-void orc_deck_free(OrcHandle *const handle)
+OrcError orc_deck_free(OrcHandle *const handle)
 {
   REQUIRE_WITH_MSG(handle->handle == (uint64_t)handle->items,
                    "In this implementation the handle is just the pointer.");
@@ -1521,6 +1514,7 @@ void orc_deck_free(OrcHandle *const handle)
   }
   _deck_free_impl((void *)handle->items);  // Now we can free the deck container.
   memset(handle, 0, sizeof(OrcHandle));
+  return ORC_ERROR_NONE;
 }
 
 static bool _orc_type_id_eq(OrcTypeId const a, OrcTypeId const b)
@@ -1540,28 +1534,40 @@ void _copy_items_opaque(uint32_t     opaque_type_id,
   TODO("The plugin has to implement the copy operation for it's type");
 }
 
-void orc_deck_from_proxy(OrcHandle const *inputs,
-                         uint64_t const   n_inputs,
-                         uint32_t const   proxy_type,
-                         OrcHandle const *proxy,
-                         OrcHandle       *out)
+OrcError orc_deck_from_proxy(OrcHandle const *inputs,
+                             uint64_t const   n_inputs,
+                             uint32_t const   proxy_type,
+                             OrcHandle const *proxy,
+                             OrcHandle       *out)
 {
   if (n_inputs == 0) {
-    return;  // Nothing to do.
+    return ORC_ERROR_NONE;  // Nothing to do.
   }
-  REQUIRE_WITH_MSG(proxy->type_id.primitive_id == ORC_PROXY, "Invalid proxy deck");
+  if (proxy->type_id.primitive_id != ORC_PROXY) {
+    // Invalid proxy deck
+    return ORC_ERROR_INVALID_PROXY;
+  }
   OrcTypeId const id        = inputs[0].type_id;
   size_t const    item_size = inputs[0].item_size;
   for (size_t i = 1; i < n_inputs; ++i) {
-    REQUIRE_WITH_MSG(_orc_type_id_eq(id, inputs[i].type_id),
-                     "All input decks must be of the same type");
+    if (!_orc_type_id_eq(id, inputs[i].type_id)) {
+      // All input decks must be of the same type
+      return ORC_ERROR_TYPE_MISMATCH;
+    }
   }
-  orc_deck_alloc(id, out);
+  OrcError const err = orc_deck_alloc(id, out);
+  if (err != ORC_ERROR_NONE) {
+    return err;
+  }
   REQUIRE_WITH_MSG(out->handle == (uint64_t)out->items,
                    "In this implementation the handle is just the pointer.");
   switch (proxy_type) {
   case ORC_DECK_PROXY_COPY_ALL: {
-    REQUIRE_WITH_MSG(n_inputs == 1, "COPY_ALL is only valid with a single input.");
+    if (n_inputs != 1) {
+      // COPY_ALL is only valid with a single input.
+      orc_deck_free(out);
+      return ORC_ERROR_INVALID_PROXY;
+    }
     size_t const n_items = inputs[0].n_items;
     void        *deck    = _deck_grow_capacity((void *)out->items, item_size, n_items);
     _DeckHeader *h       = _deck_header(deck);
@@ -1587,7 +1593,11 @@ void orc_deck_from_proxy(OrcHandle const *inputs,
     oh_update(out);
   } break;
   case ORC_DECK_PROXY_COPY_ITEMS: {
-    REQUIRE_WITH_MSG(n_inputs == 1, "COPY_ITEMS is only valid with a single input.");
+    if (n_inputs != 1) {
+      // COPY_ITEMS is only valid with a single input.
+      orc_deck_free(out);
+      return ORC_ERROR_INVALID_PROXY;
+    }
     size_t const n_items = inputs[0].n_items;
     void        *deck    = _deck_grow_capacity((void *)out->items, item_size, n_items);
     _DeckHeader *h       = _deck_header(deck);
@@ -1653,7 +1663,7 @@ void orc_deck_from_proxy(OrcHandle const *inputs,
     oh_update(out);
   } break;
   default:
-    REQUIRE_WITH_MSG(false, "Invalid proxy type");
-    break;
+    return ORC_ERROR_INVALID_PROXY;
   }
+  return ORC_ERROR_NONE;
 }

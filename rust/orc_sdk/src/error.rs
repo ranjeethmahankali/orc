@@ -9,6 +9,7 @@ pub enum Error {
     ConcurrencyProblem,
     PluginAlreadyInitialized,
     ABIVersionMismatch,
+    InvalidProxy,
     Unknown,
 }
 
@@ -23,6 +24,7 @@ impl Error {
             crate::ORC_ERROR_PLUGIN_ALREADY_INITIALIZED => Err(Error::PluginAlreadyInitialized),
             crate::ORC_ERROR_INVALID_COMBINATIONS => Err(Error::InvalidCombinations),
             crate::ORC_ERROR_CONCURRENCY_PROBLEM => Err(Error::ConcurrencyProblem),
+            crate::ORC_ERROR_INVALID_PROXY => Err(Error::InvalidProxy),
             crate::ORC_ERROR_UNKNOWN | _ => Err(Error::Unknown),
         }
     }
@@ -38,6 +40,7 @@ impl From<Error> for OrcError {
             Error::PluginAlreadyInitialized => crate::ORC_ERROR_PLUGIN_ALREADY_INITIALIZED,
             Error::InvalidCombinations => crate::ORC_ERROR_INVALID_COMBINATIONS,
             Error::ConcurrencyProblem => crate::ORC_ERROR_CONCURRENCY_PROBLEM,
+            Error::InvalidProxy => crate::ORC_ERROR_INVALID_PROXY,
             Error::Unknown => crate::ORC_ERROR_UNKNOWN,
         }
     }

@@ -155,6 +155,7 @@ typedef struct
 #define ORC_ERROR_INVALID_COMBINATIONS 0xff05u
 #define ORC_ERROR_PLUGIN_ALREADY_INITIALIZED 0xff06u
 #define ORC_ERROR_CONCURRENCY_PROBLEM 0xff07u
+#define ORC_ERROR_INVALID_PROXY 0xff08u
 #define ORC_ERROR_UNKNOWN 0xffffu
 
 typedef uint32_t OrcError;
