@@ -138,6 +138,8 @@
   those. orc_sdk should provide namespaced equivalents of the things in orc_ffi, and each plugin can
   choose to simply call the orc_sdk functions if they don't want to write their own.
 
+  - [ ] namespace everything in orc_sdk.h with a prefix.
+
 * TODO tiwkbm - Create Toy Demo Apps
   :PROPERTIES:
   :CREATED:  2026-07-28 Tue 16:45
