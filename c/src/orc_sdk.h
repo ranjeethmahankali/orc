@@ -105,7 +105,7 @@ OrcSdk_Status _orc_sdk_arr_remove_impl(void        *ptr,
 /**
  * Push a new value to the end of the array.
  */
-#define orc_sdk_arr_push(ptr, val)                                      \
+#define orc_sdk_arr_push(ptr, val)                              \
   (((ptr) = _orc_sdk_arr_grow(ptr, sizeof *(ptr)))              \
      ? ((ptr)[_orc_sdk_arr_header((ptr))->count++] = (val), OK) \
      : ALLOC_FAILED)
@@ -119,7 +119,7 @@ OrcSdk_Status _orc_sdk_arr_remove_impl(void        *ptr,
  * Removes the element at the index idx from the array. This is faster than
  * orc_sdk_arr_remove, but doesn't preserve the order of the elements.
  */
-#define orc_sdk_arr_swap_remove(ptr, idx)                                        \
+#define orc_sdk_arr_swap_remove(ptr, idx)                                \
   (((ptr) != NULL && (idx) < orc_sdk_arr_len(ptr))                       \
      ? ((ptr)[(idx)] = (ptr)[--(_orc_sdk_arr_header((ptr))->count)], OK) \
      : OUT_OF_BOUNDS)
@@ -129,7 +129,7 @@ void *_orc_sdk_arr_grow_capacity(void *ptr, size_t const elemsize, size_t const 
 /**
  * Reserve memory for the `size` number of elements in the array.
  */
-#define orc_sdk_arr_reserve(ptr, size)                                        \
+#define orc_sdk_arr_reserve(ptr, size)                                \
   (((ptr) = _orc_sdk_arr_grow_capacity((ptr), sizeof *(ptr), (size))) \
      ? OK                                                             \
      : ((size) == 0 ? OK : ALLOC_FAILED))
@@ -142,7 +142,8 @@ void *_orc_sdk_arr_resize_impl(void *ptr, size_t const elemsize, size_t const co
  * is extended, and the newly allocated space is zero'd out. Existing elements remain as
  * they were.
  */
-#define orc_sdk_arr_resize(ptr, size) (ptr) = _orc_sdk_arr_resize_impl((ptr), sizeof *(ptr), (size))
+#define orc_sdk_arr_resize(ptr, size) \
+  (ptr) = _orc_sdk_arr_resize_impl((ptr), sizeof *(ptr), (size))
 
 /**
  * @brief Clear all elements from the array. This doesn't de-allocate the memory.
@@ -152,9 +153,9 @@ void *_orc_sdk_arr_resize_impl(void *ptr, size_t const elemsize, size_t const co
 void orc_sdk_arr_clear(void *ptr);
 
 void _orc_sdk_arr_fill_impl(void             *arr,
-                    void const *const elem,
-                    size_t const      count,
-                    size_t const      elemsize);
+                            void const *const elem,
+                            size_t const      count,
+                            size_t const      elemsize);
 
 #define orc_sdk_arr_fill(ptr, val) \
   _orc_sdk_arr_fill_impl((ptr), &(val), orc_sdk_arr_len((ptr)), sizeof(*ptr))
@@ -220,7 +221,8 @@ char *_orc_str_push_impl(char *, char);
  * happens.
  * @param ch Character to push.
  */
-#define orc_str_push(ptr, ch) (((ptr) = _orc_str_push_impl((ptr), (ch))) ? OK : ALLOC_FAILED)
+#define orc_str_push(ptr, ch) \
+  (((ptr) = _orc_str_push_impl((ptr), (ch))) ? OK : ALLOC_FAILED)
 
 /**
  * @brief Get the pointer past the end of the string.

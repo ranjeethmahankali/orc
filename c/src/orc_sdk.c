@@ -112,9 +112,9 @@ void orc_sdk_arr_clear(void *ptr)
 }
 
 void _orc_sdk_arr_fill_impl(void             *arr,
-                    void const *const elem,
-                    size_t const      count,
-                    size_t const      elemsize)
+                            void const *const elem,
+                            size_t const      count,
+                            size_t const      elemsize)
 {
   if (count == 0)
     return;
@@ -284,8 +284,8 @@ OrcStrView orc_sv_split_at_delim(OrcStrView *sv, char const delim)
     }
     else {
       OrcStrView out = *sv;
-      sv->start   = NULL;
-      sv->end     = NULL;
+      sv->start      = NULL;
+      sv->end        = NULL;
       return out;
     }
   }
