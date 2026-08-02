@@ -453,9 +453,9 @@ bool orc_sv_eq(OrcStrView const a, OrcStrView const b)
 
 // ========== Deck ==========
 
-void _deck_free_impl(void *ptr)
+void _orc_sdk_deck_free_impl(void *ptr)
 {
-  _DeckHeader *h = _deck_header(ptr);
+  _OrcSdk_DeckHeader *h = _orc_sdk_deck_header(ptr);
   if (h) {
     orc_sdk_arr_free(h->marks);
     orc_sdk_arr_free(h->stride_offset);
@@ -465,16 +465,16 @@ void _deck_free_impl(void *ptr)
   }
 }
 
-uint8_t deck_max_depth(void const *deck)
+uint8_t orc_sdk_deck_max_depth(void const *deck)
 {
-  _DeckHeader *h = _deck_header(deck);
+  _OrcSdk_DeckHeader *h = _orc_sdk_deck_header(deck);
   if (h != NULL && !orc_sdk_arr_is_empty(h->marks)) {
     return h->marks[0].depth + 1;
   }
   return 0;
 }
 
-static void _deck_push_mark(_DeckHeader *h, uint8_t depth, size_t const pos)
+static void _orc_sdk_deck_push_mark(_OrcSdk_DeckHeader *h, uint8_t depth, size_t const pos)
 {
   ORC_SDK_REQUIRE_WITH_MSG(h != NULL, "This should not be called with a null pointer");
   size_t const n_marks = orc_sdk_arr_len(h->marks);
@@ -523,9 +523,9 @@ static void _deck_push_mark(_DeckHeader *h, uint8_t depth, size_t const pos)
   orc_sdk_arr_push(h->marks, mark);
 }
 
-void *_deck_push_empty(void *ptr, size_t const itemsize, uint8_t const depth)
+void *_orc_sdk_deck_push_empty(void *ptr, size_t const itemsize, uint8_t const depth)
 {
-  _DeckHeader *h = _deck_header(ptr);
+  _OrcSdk_DeckHeader *h = _orc_sdk_deck_header(ptr);
   if (h == NULL) {
     size_t const bufsize = sizeof *h + itemsize;
     h                    = malloc(bufsize);
@@ -545,24 +545,24 @@ void *_deck_push_empty(void *ptr, size_t const itemsize, uint8_t const depth)
     ptr         = h + 1;
   }
   if (depth)
-    _deck_push_mark(h, depth - 1, h->count);
+    _orc_sdk_deck_push_mark(h, depth - 1, h->count);
   h->count++;
   ORC_SDK_REQUIRE_WITH_MSG(h->count <= h->capacity, "Count cannot exceed capacity");
   return ptr;
 }
 
-void *_deck_push_impl(void *ptr, void *item, size_t const itemsize, uint8_t const depth)
+void *_orc_sdk_deck_push_impl(void *ptr, void *item, size_t const itemsize, uint8_t const depth)
 {
-  ptr            = _deck_push_empty(ptr, itemsize, depth);
-  _DeckHeader *h = _deck_header(ptr);
+  ptr            = _orc_sdk_deck_push_empty(ptr, itemsize, depth);
+  _OrcSdk_DeckHeader *h = _orc_sdk_deck_header(ptr);
   // Write into the last item we just pushed.
   memcpy((char *)ptr + (h->count - 1) * itemsize, item, itemsize);
   return ptr;
 }
 
-void *_deck_start_new_arr(void *ptr, size_t const itemsize, uint8_t const depth)
+void *_orc_sdk_deck_start_new_arr(void *ptr, size_t const itemsize, uint8_t const depth)
 {
-  _DeckHeader *h = _deck_header(ptr);
+  _OrcSdk_DeckHeader *h = _orc_sdk_deck_header(ptr);
   if (h == NULL) {
     size_t const bufsize = sizeof *h + itemsize;
     h                    = malloc(bufsize);
@@ -574,13 +574,13 @@ void *_deck_start_new_arr(void *ptr, size_t const itemsize, uint8_t const depth)
     ptr          = (void *)(h + 1);
   }
   if (depth)
-    _deck_push_mark(h, depth - 1, h->count);
+    _orc_sdk_deck_push_mark(h, depth - 1, h->count);
   return ptr;
 }
 
-void deck_clear(void const *ptr)
+void orc_sdk_deck_clear(void const *ptr)
 {
-  _DeckHeader *h = _deck_header(ptr);
+  _OrcSdk_DeckHeader *h = _orc_sdk_deck_header(ptr);
   if (h == NULL)
     return;
   orc_sdk_arr_clear(h->marks);
@@ -590,14 +590,14 @@ void deck_clear(void const *ptr)
   h->count = 0;
 }
 
-void *_deck_grow_capacity(void *ptr, size_t const itemsize, size_t const n)
+void *_orc_sdk_deck_grow_capacity(void *ptr, size_t const itemsize, size_t const n)
 {
   // Handle the special case where ptr is NULL and n is 0 No allocation needed, just
   // return the NULL ptr
   if (ptr == NULL && n == 0) {
     return ptr;  // Return NULL, which is valid for an empty array
   }
-  _DeckHeader *h = _deck_header(ptr);
+  _OrcSdk_DeckHeader *h = _orc_sdk_deck_header(ptr);
   if (h == NULL) {
     size_t const bufsize = sizeof *h + itemsize * n;
     h                    = malloc(bufsize);
@@ -617,19 +617,19 @@ void *_deck_grow_capacity(void *ptr, size_t const itemsize, size_t const n)
     ptr         = h + 1;
   }
   if (OK != orc_sdk_arr_reserve(h->marks, n)) {
-    _deck_free_impl(ptr);
+    _orc_sdk_deck_free_impl(ptr);
     return NULL;
   }
   if (OK != orc_sdk_arr_reserve(h->stride_offset, n)) {
-    _deck_free_impl(ptr);
+    _orc_sdk_deck_free_impl(ptr);
     return NULL;
   }
   return ptr;
 }
 
-void deck_flatten(void *ptr)
+void orc_sdk_deck_flatten(void *ptr)
 {
-  _DeckHeader *h = _deck_header(ptr);
+  _OrcSdk_DeckHeader *h = _orc_sdk_deck_header(ptr);
   if (h == NULL) {
     return;
   }
@@ -638,11 +638,11 @@ void deck_flatten(void *ptr)
   orc_sdk_arr_clear(h->strides);
   orc_sdk_arr_clear(h->pegs);
   if (h->count > 1) {
-    _deck_push_mark(h, 0, 0);
+    _orc_sdk_deck_push_mark(h, 0, 0);
   }
 }
 
-static void _deck_calc_strides(_DeckHeader *h)
+static void _deck_calc_strides(_OrcSdk_DeckHeader *h)
 {
   if (h == NULL)
     return;
@@ -689,9 +689,9 @@ static void _deck_calc_strides(_DeckHeader *h)
   }
 }
 
-void deck_graft(void *ptr)
+void orc_sdk_deck_graft(void *ptr)
 {
-  _DeckHeader *h = _deck_header(ptr);
+  _OrcSdk_DeckHeader *h = _orc_sdk_deck_header(ptr);
   if (h == NULL)
     return;
   size_t const count         = orc_sdk_arr_len(h->marks);
@@ -722,9 +722,9 @@ void deck_graft(void *ptr)
   _deck_calc_strides(h);
 }
 
-void deck_simplify(void *ptr)
+void orc_sdk_deck_simplify(void *ptr)
 {
-  _DeckHeader *h = _deck_header(ptr);
+  _OrcSdk_DeckHeader *h = _orc_sdk_deck_header(ptr);
   if (h == NULL)
     return;
   uint8_t      remap[UINT8_MAX + 1] = {0};
@@ -753,11 +753,11 @@ void deck_simplify(void *ptr)
   _deck_calc_strides(h);
 }
 
-char *_deck_to_str(void        *ptr,
+char *_orc_sdk_deck_to_str(void        *ptr,
                    size_t const item_size,
                    void (*snprint_item)(void *item, char *dst, size_t len))
 {
-  _DeckHeader *h = _deck_header(ptr);
+  _OrcSdk_DeckHeader *h = _orc_sdk_deck_header(ptr);
   if (h == NULL)
     return NULL;
   char             *output  = NULL;
@@ -863,7 +863,7 @@ static size_t _stride(OrcMark const  *marks,
 
 DeckView _dv_from_deck_impl(void *ptr, size_t const item_size, uint8_t const depth)
 {
-  _DeckHeader *h = _deck_header(ptr);
+  _OrcSdk_DeckHeader *h = _orc_sdk_deck_header(ptr);
   if (h == NULL)
     return (DeckView) {0};
   size_t const n_marks = orc_sdk_arr_len(h->marks);
@@ -1008,14 +1008,14 @@ DeckWriter dw_child(DeckWriter *writer)
     .depth          = writer->depth - 1,
     .has_next_depth = true,
     .next_depth     = depth,
-    .start          = deck_len(*(writer->deck)),
+    .start          = orc_sdk_deck_len(*(writer->deck)),
   };
 }
 
 OrcSdk_Status _dw_push_impl(DeckWriter *writer, void *item)
 {
   *(writer->deck) =
-    _deck_push_impl(*(writer->deck), item, writer->item_size, _dw_next_depth(writer));
+    _orc_sdk_deck_push_impl(*(writer->deck), item, writer->item_size, _dw_next_depth(writer));
   return *(writer->deck) == NULL ? ALLOC_FAILED : OK;
 }
 
@@ -1024,7 +1024,7 @@ OrcSdk_Status dw_close(DeckWriter *writer)
   OrcSdk_Status status = OK;
   if (writer != NULL && writer->has_next_depth) {
     *(writer->deck) =
-      _deck_start_new_arr(*(writer->deck), writer->item_size, writer->next_depth);
+      _orc_sdk_deck_start_new_arr(*(writer->deck), writer->item_size, writer->next_depth);
     if (*(writer->deck) == NULL) {
       status = ALLOC_FAILED;
     }
@@ -1039,22 +1039,22 @@ OrcSdk_Status dw_advance(DeckWriter *writer)
     return NULL_PTR;
   if (writer->has_next_depth) {
     *(writer->deck) =
-      _deck_start_new_arr(*(writer->deck), writer->item_size, writer->next_depth);
+      _orc_sdk_deck_start_new_arr(*(writer->deck), writer->item_size, writer->next_depth);
     if (*(writer->deck) == NULL) {
       return ALLOC_FAILED;
     }
   }
   writer->has_next_depth = true;
   writer->next_depth     = writer->depth;
-  writer->start          = deck_len(*(writer->deck));
+  writer->start          = orc_sdk_deck_len(*(writer->deck));
   return OK;
 }
 
 void *dw_push_empty(DeckWriter *writer)
 {
   *(writer->deck) =
-    _deck_push_empty(*(writer->deck), writer->item_size, _dw_next_depth(writer));
-  _DeckHeader *h = _deck_header(*(writer->deck));
+    _orc_sdk_deck_push_empty(*(writer->deck), writer->item_size, _dw_next_depth(writer));
+  _OrcSdk_DeckHeader *h = _orc_sdk_deck_header(*(writer->deck));
   if (h == NULL) {
     return NULL;
   }
@@ -1182,13 +1182,13 @@ OrcError _handle_free_fn(OrcHandle *const handle)
   FreeFn const free_fn = _deck_item_get_free_fn(handle->type_id);
   if (free_fn) {
     // Free the individual items from the deck before freeing the Deck container itself.
-    size_t const count = deck_len(handle->items);
+    size_t const count = orc_sdk_deck_len(handle->items);
     char        *data  = (char *)handle->items;
     for (size_t i = 0; i < count; ++i, data += handle->item_size) {
       free_fn(data);
     }
   }
-  _deck_free_impl((void *)handle->items);  // Now we can free the deck container.
+  _orc_sdk_deck_free_impl((void *)handle->items);  // Now we can free the deck container.
   memset(handle, 0, sizeof(OrcHandle));
   return ORC_ERROR_NONE;
 }
@@ -1197,7 +1197,7 @@ void oh_update(OrcHandle *handle)
 {
   ORC_SDK_REQUIRE_WITH_MSG(handle != NULL, "Invalid handle");
   ORC_SDK_REQUIRE_WITH_MSG(handle->type_id != 0, "Invalid type id");
-  _DeckHeader *h        = _deck_header(handle->items);
+  _OrcSdk_DeckHeader *h        = _orc_sdk_deck_header(handle->items);
   handle->handle        = (uint64_t)handle->items;
   handle->n_items       = h->count;
   handle->item_size     = h->item_size;
@@ -1268,7 +1268,7 @@ void *comb_init(OrcHandle const **inputs,
       .depth          = arg_depth + max_delta,
       .has_next_depth = true,
       .next_depth     = arg_depth + max_delta,
-      .start          = deck_len(outputs[i]->items),
+      .start          = orc_sdk_deck_len(outputs[i]->items),
     };
     for (size_t d = 1; d < stack_depth; ++d) {
       DeckWriter child = dw_child(dst);
@@ -1444,8 +1444,8 @@ OrcError orc_sdk_handle_alloc(OrcTypeId const id, OrcHandle *const out)
   ORC_SDK_REQUIRE_WITH_MSG(out->item_size != 0,
                            "Item size cannot be inferred from the type id.");
   size_t const INIT_SIZE = 1;
-  void        *deck_ptr  = _deck_grow_capacity(NULL, out->item_size, INIT_SIZE);
-  _DeckHeader *h         = _deck_header(deck_ptr);
+  void        *deck_ptr  = _orc_sdk_deck_grow_capacity(NULL, out->item_size, INIT_SIZE);
+  _OrcSdk_DeckHeader *h         = _orc_sdk_deck_header(deck_ptr);
   // Assign to the output deck.
   out->handle  = (uint64_t)deck_ptr;
   out->items   = deck_ptr;
@@ -1571,8 +1571,8 @@ OrcError orc_sdk_deck_from_proxy(OrcHandle const   *inputs,
       return ORC_ERROR_INVALID_PROXY;
     }
     size_t const n_items = inputs[0].n_items;
-    void        *deck    = _deck_grow_capacity((void *)out->items, item_size, n_items);
-    _DeckHeader *h       = _deck_header(deck);
+    void        *deck    = _orc_sdk_deck_grow_capacity((void *)out->items, item_size, n_items);
+    _OrcSdk_DeckHeader *h       = _orc_sdk_deck_header(deck);
     h->item_size         = item_size;
     memcpy(out->dims, inputs[0].dims, sizeof(OrcDims));
     out->type_id = id;
@@ -1597,8 +1597,8 @@ OrcError orc_sdk_deck_from_proxy(OrcHandle const   *inputs,
       return ORC_ERROR_INVALID_PROXY;
     }
     size_t const n_items = inputs[0].n_items;
-    void        *deck    = _deck_grow_capacity((void *)out->items, item_size, n_items);
-    _DeckHeader *h       = _deck_header(deck);
+    void        *deck    = _orc_sdk_deck_grow_capacity((void *)out->items, item_size, n_items);
+    _OrcSdk_DeckHeader *h       = _orc_sdk_deck_header(deck);
     h->item_size         = item_size;
     memcpy(out->dims, inputs[0].dims, sizeof(OrcDims));
     out->type_id = id;
@@ -1618,8 +1618,8 @@ OrcError orc_sdk_deck_from_proxy(OrcHandle const   *inputs,
   } break;
   case ORC_DECK_PROXY_SHUFFLE: {
     size_t const n_items = proxy->n_items;
-    void        *deck    = _deck_grow_capacity((void *)out->items, item_size, n_items);
-    _DeckHeader *h       = _deck_header(deck);
+    void        *deck    = _orc_sdk_deck_grow_capacity((void *)out->items, item_size, n_items);
+    _OrcSdk_DeckHeader *h       = _orc_sdk_deck_header(deck);
     h->item_size         = item_size;
     memcpy(out->dims, proxy->dims, sizeof(OrcDims));
     out->type_id = id;

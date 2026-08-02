@@ -330,65 +330,65 @@ typedef struct
   size_t    capacity;
   size_t    item_size;
   size_t    _alignment;
-} _DeckHeader;
+} _OrcSdk_DeckHeader;
 
-static inline _DeckHeader *_deck_header(void const *ptr)
+static inline _OrcSdk_DeckHeader *_orc_sdk_deck_header(void const *ptr)
 {
-  _DeckHeader *h = (_DeckHeader *)ptr;
+  _OrcSdk_DeckHeader *h = (_OrcSdk_DeckHeader *)ptr;
   if (h)
     return --h;
   return NULL;
 }
 
-void _deck_free_impl(void *ptr);
+void _orc_sdk_deck_free_impl(void *ptr);
 
-#define deck_free(ptr) (_deck_free_impl((ptr)), (ptr) = NULL)
+#define orc_sdk_deck_free(ptr) (_orc_sdk_deck_free_impl((ptr)), (ptr) = NULL)
 
-uint8_t deck_max_depth(void const *deck);
+uint8_t orc_sdk_deck_max_depth(void const *deck);
 
-static inline size_t deck_len(void const *deck)
+static inline size_t orc_sdk_deck_len(void const *deck)
 {
-  _DeckHeader *h = _deck_header(deck);
+  _OrcSdk_DeckHeader *h = _orc_sdk_deck_header(deck);
   if (h)
     return h->count;
   return 0;
 }
 
-static inline bool deck_is_empty(void *deck)
+static inline bool orc_sdk_deck_is_empty(void *deck)
 {
-  return deck_len(deck) == 0;
+  return orc_sdk_deck_len(deck) == 0;
 }
 
-void *_deck_push_impl(void *ptr, void *item, size_t const itemsize, uint8_t const depth);
+void *_orc_sdk_deck_push_impl(void *ptr, void *item, size_t const itemsize, uint8_t const depth);
 
-#define deck_push(ptr, item, depth) \
-  (((ptr) = _deck_push_impl((ptr), &(item), sizeof(*ptr), (depth))) ? OK : ALLOC_FAILED)
+#define orc_sdk_deck_push(ptr, item, depth) \
+  (((ptr) = _orc_sdk_deck_push_impl((ptr), &(item), sizeof(*ptr), (depth))) ? OK : ALLOC_FAILED)
 
-void *_deck_start_new_arr(void *ptr, size_t const itemsize, uint8_t const depth);
+void *_orc_sdk_deck_start_new_arr(void *ptr, size_t const itemsize, uint8_t const depth);
 
-#define deck_start_arr(ptr, depth) \
-  (((ptr) = _deck_start_new_arr((ptr), sizeof(*(ptr)), (depth))) ? OK : ALLOC_FAILED)
+#define orc_sdk_deck_start_arr(ptr, depth) \
+  (((ptr) = _orc_sdk_deck_start_new_arr((ptr), sizeof(*(ptr)), (depth))) ? OK : ALLOC_FAILED)
 
-void deck_clear(void const *ptr);
+void orc_sdk_deck_clear(void const *ptr);
 
-void *_deck_grow_capacity(void *ptr, size_t const itemsize, size_t const n);
+void *_orc_sdk_deck_grow_capacity(void *ptr, size_t const itemsize, size_t const n);
 
-#define deck_reserve(ptr, size)                                \
-  (((ptr) = _deck_grow_capacity((ptr), sizeof *(ptr), (size))) \
+#define orc_sdk_deck_reserve(ptr, size)                                \
+  (((ptr) = _orc_sdk_deck_grow_capacity((ptr), sizeof *(ptr), (size))) \
      ? OK                                                      \
      : ((size) == 0 ? OK : ALLOC_FAILED))
 
-void deck_flatten(void *ptr);
+void orc_sdk_deck_flatten(void *ptr);
 
-void deck_graft(void *ptr);
+void orc_sdk_deck_graft(void *ptr);
 
-void deck_simplify(void *ptr);
+void orc_sdk_deck_simplify(void *ptr);
 
-char *_deck_to_str(void        *ptr,
+char *_orc_sdk_deck_to_str(void        *ptr,
                    size_t const item_size,
                    void (*snprint_item)(void *item, char *dst, size_t len));
 
-#define deck_to_str(ptr, snprint_item) _deck_to_str((ptr), sizeof(*(ptr)), snprint_item)
+#define orc_sdk_deck_to_str(ptr, snprint_item) _orc_sdk_deck_to_str((ptr), sizeof(*(ptr)), snprint_item)
 
 /* ========== ORC_SDK_DECK_INIT macro ==========
  *
@@ -402,7 +402,7 @@ char *_deck_to_str(void        *ptr,
  *   ORC_SDK_DECK_INIT(d, size_t, (1, 2, 3));                            // depth 1
  *   ORC_SDK_DECK_INIT(d, size_t, ((1, 2, 3), (4, 5, 6), (7, 8, 9)));   // depth 2
  *   ORC_SDK_DECK_INIT(d, size_t, (((1, 2), (3, 4)), ((5, 6), (7, 8)))); // depth 3
- *   deck_free(d);
+ *   orc_sdk_deck_free(d);
  *
  * Supports nesting up to depth 255 (limited by rescan budget: 3^6 = 729).
  */
@@ -453,7 +453,7 @@ char *_deck_to_str(void        *ptr,
   _ORC_SDK_DI_CAT(_ORC_SDK_DI_PC_, _ORC_SDK_DI_CONT(_ORC_SDK_DI_FIRST(__VA_ARGS__))) \
   (ptr, type, depth, __VA_ARGS__)
 #define _ORC_SDK_DI_PC_0(ptr, type, depth, ...) \
-  (void)((ptr) = _deck_start_new_arr((void *)(ptr), sizeof(type), (uint8_t)(depth)));
+  (void)((ptr) = _orc_sdk_deck_start_new_arr((void *)(ptr), sizeof(type), (uint8_t)(depth)));
 #define _ORC_SDK_DI_PC_1(ptr, type, depth, ...)                                          \
   _ORC_SDK_DI_CAT(_ORC_SDK_DI_PP_, _ORC_SDK_DI_IS_PAREN(_ORC_SDK_DI_FIRST(__VA_ARGS__))) \
   (ptr, type, depth, __VA_ARGS__)
@@ -468,12 +468,12 @@ char *_deck_to_str(void        *ptr,
 
 /* --- Push flat values: first gets depth, rest get 0 --- */
 #define _ORC_SDK_DI_PUSH_VALS(ptr, type, depth, first, ...)                          \
-  (void)((ptr) = _deck_push_impl(                                                    \
+  (void)((ptr) = _orc_sdk_deck_push_impl(                                                    \
            (void *)(ptr), &((type) {first}), sizeof(type), (uint8_t)(depth)));       \
   _ORC_SDK_DI_CAT(_ORC_SDK_DI_VT_, _ORC_SDK_DI_CONT(_ORC_SDK_DI_FIRST(__VA_ARGS__))) \
   (ptr, type, __VA_ARGS__)
 #define _ORC_SDK_DI_PUSH_VALS_REST(ptr, type, first, ...)                             \
-  (void)((ptr) = _deck_push_impl((void *)(ptr), &((type) {first}), sizeof(type), 0)); \
+  (void)((ptr) = _orc_sdk_deck_push_impl((void *)(ptr), &((type) {first}), sizeof(type), 0)); \
   _ORC_SDK_DI_CAT(_ORC_SDK_DI_VT_, _ORC_SDK_DI_CONT(_ORC_SDK_DI_FIRST(__VA_ARGS__)))  \
   (ptr, type, __VA_ARGS__)
 #define _ORC_SDK_DI_VT_0(ptr, type, ...)
@@ -500,7 +500,7 @@ char *_deck_to_str(void        *ptr,
 /* --- Entry point --- */
 #define ORC_SDK_DECK_INIT(ptr, type, data)                                         \
   do {                                                                             \
-    deck_clear((void *)(ptr));                                                     \
+    orc_sdk_deck_clear((void *)(ptr));                                                     \
     _ORC_SDK_DI_EVAL(                                                              \
       _ORC_SDK_DI_PUSH((ptr), type, 1, _ORC_SDK_DI_UNWRAP(data), _ORC_SDK_DI_END)) \
   } while (0)
@@ -519,7 +519,7 @@ typedef struct
   uint8_t         depth;
   size_t          start;
   size_t          end;
-} DeckView;
+} OrcSdk_DeckView;
 
 DeckView _dv_from_deck_impl(void *ptr, size_t const item_size, uint8_t const depth);
 
@@ -557,7 +557,7 @@ static inline DeckWriter _dw_from_deck_impl(void        **deck,
     .depth          = depth,
     .has_next_depth = true,
     .next_depth     = depth,
-    .start          = deck_len(*deck),
+    .start          = orc_sdk_deck_len(*deck),
   };
 }
 
@@ -581,7 +581,7 @@ static inline void *deck_item_ptr(DeckWriter *writer)
 
 static inline size_t dw_len(DeckWriter *writer)
 {
-  return deck_len(*(writer->deck)) - writer->start;
+  return orc_sdk_deck_len(*(writer->deck)) - writer->start;
 }
 
 OrcSdk_Status dw_close(DeckWriter *writer);

@@ -1687,10 +1687,10 @@ void test_orc_sv_eq(void)
   ORC_SDK_REQUIRE(orc_sv_eq(sub, match));
 }
 
-void test_deck_header_alignment(void)
+void test_orc_sdk_deck_header_alignment(void)
 {
   ORC_SDK_REQUIRE_WITH_MSG(
-    (sizeof(_DeckHeader) % sizeof(_MaxAlignCompat)) == 0,
+    (sizeof(_OrcSdk_DeckHeader) % sizeof(_MaxAlignCompat)) == 0,
     "Deck header must align with the platform's maximum alignment to be compatible "
     "with arbitrary types inside the container. This doesn't guarantee alignment with "
     "SIMD types. The containers are not meant to be used with SIMD types.");
@@ -1705,7 +1705,7 @@ static size_t *_binary_deck(uint8_t depth)
     uint8_t tz = (i > 0) ? (uint8_t)__builtin_ctzll(i) : depth;
     if (tz > depth)
       tz = depth;
-    ORC_SDK_REQUIRE(deck_push(deck, i, tz) == OK);
+    ORC_SDK_REQUIRE(orc_sdk_deck_push(deck, i, tz) == OK);
   }
   return deck;
 }
@@ -1713,43 +1713,43 @@ static size_t *_binary_deck(uint8_t depth)
 void test_deck_basic_push_and_length(void)
 {
   size_t *deck = NULL;
-  ORC_SDK_REQUIRE(deck_len(deck) == 0);
-  ORC_SDK_REQUIRE(deck_max_depth(deck) == 0);
-  ORC_SDK_REQUIRE(deck_is_empty(deck));
-  ORC_SDK_REQUIRE(deck_push(deck, ((size_t) {7}), 1) == OK);
-  ORC_SDK_REQUIRE(deck_len(deck) == 1);
-  ORC_SDK_REQUIRE(deck_max_depth(deck) == 1);
-  ORC_SDK_REQUIRE(!deck_is_empty(deck));
-  ORC_SDK_REQUIRE(_deck_header(deck)->item_size == sizeof(size_t));
+  ORC_SDK_REQUIRE(orc_sdk_deck_len(deck) == 0);
+  ORC_SDK_REQUIRE(orc_sdk_deck_max_depth(deck) == 0);
+  ORC_SDK_REQUIRE(orc_sdk_deck_is_empty(deck));
+  ORC_SDK_REQUIRE(orc_sdk_deck_push(deck, ((size_t) {7}), 1) == OK);
+  ORC_SDK_REQUIRE(orc_sdk_deck_len(deck) == 1);
+  ORC_SDK_REQUIRE(orc_sdk_deck_max_depth(deck) == 1);
+  ORC_SDK_REQUIRE(!orc_sdk_deck_is_empty(deck));
+  ORC_SDK_REQUIRE(_orc_sdk_deck_header(deck)->item_size == sizeof(size_t));
   ORC_SDK_REQUIRE(deck[0] == 7);
-  ORC_SDK_REQUIRE(deck_push(deck, ((size_t) {8}), 0) == OK);
-  ORC_SDK_REQUIRE(deck_push(deck, ((size_t) {9}), 0) == OK);
-  ORC_SDK_REQUIRE(deck_len(deck) == 3);
-  ORC_SDK_REQUIRE(_deck_header(deck)->item_size == sizeof(size_t));
+  ORC_SDK_REQUIRE(orc_sdk_deck_push(deck, ((size_t) {8}), 0) == OK);
+  ORC_SDK_REQUIRE(orc_sdk_deck_push(deck, ((size_t) {9}), 0) == OK);
+  ORC_SDK_REQUIRE(orc_sdk_deck_len(deck) == 3);
+  ORC_SDK_REQUIRE(_orc_sdk_deck_header(deck)->item_size == sizeof(size_t));
   ORC_SDK_REQUIRE(deck[0] == 7);
   ORC_SDK_REQUIRE(deck[1] == 8);
   ORC_SDK_REQUIRE(deck[2] == 9);
-  deck_free(deck);
+  orc_sdk_deck_free(deck);
 }
 
 void test_deck_binary_deck(void)
 {
   uint8_t const DEPTH = 5;
   size_t       *deck  = _binary_deck(DEPTH);
-  ORC_SDK_REQUIRE(deck_len(deck) == (size_t)(1 << DEPTH));
-  ORC_SDK_REQUIRE(deck_max_depth(deck) == DEPTH);
-  ORC_SDK_REQUIRE(_deck_header(deck)->item_size == sizeof(size_t));
-  for (size_t i = 0; i < deck_len(deck); ++i) {
+  ORC_SDK_REQUIRE(orc_sdk_deck_len(deck) == (size_t)(1 << DEPTH));
+  ORC_SDK_REQUIRE(orc_sdk_deck_max_depth(deck) == DEPTH);
+  ORC_SDK_REQUIRE(_orc_sdk_deck_header(deck)->item_size == sizeof(size_t));
+  for (size_t i = 0; i < orc_sdk_deck_len(deck); ++i) {
     ORC_SDK_REQUIRE(deck[i] == i);
   }
-  deck_free(deck);
+  orc_sdk_deck_free(deck);
 }
 
 void test_deck_mark_structure(void)
 {
   // Depth-3 binary deck: marks at positions 0,2,4,6 with depths 2,0,1,0.
   size_t      *deck = _binary_deck(3);
-  _DeckHeader *h    = _deck_header(deck);
+  _OrcSdk_DeckHeader *h    = _orc_sdk_deck_header(deck);
   ORC_SDK_REQUIRE(h->item_size == sizeof(size_t));
   ORC_SDK_REQUIRE(orc_sdk_arr_len(h->marks) == 4);
   ORC_SDK_REQUIRE(h->marks[0].depth == 2);
@@ -1760,122 +1760,122 @@ void test_deck_mark_structure(void)
   ORC_SDK_REQUIRE(h->marks[1].pos == 2);
   ORC_SDK_REQUIRE(h->marks[2].pos == 4);
   ORC_SDK_REQUIRE(h->marks[3].pos == 6);
-  deck_free(deck);
+  orc_sdk_deck_free(deck);
 }
-void test_deck_clear(void)
+void test_orc_sdk_deck_clear(void)
 {
   size_t *deck = _binary_deck(3);
-  ORC_SDK_REQUIRE(deck_len(deck) == 8);
-  ORC_SDK_REQUIRE(_deck_header(deck)->item_size == sizeof(size_t));
-  deck_clear(deck);
-  ORC_SDK_REQUIRE(deck_len(deck) == 0);
-  ORC_SDK_REQUIRE(deck_max_depth(deck) == 0);
-  ORC_SDK_REQUIRE(_deck_header(deck)->item_size == sizeof(size_t));
+  ORC_SDK_REQUIRE(orc_sdk_deck_len(deck) == 8);
+  ORC_SDK_REQUIRE(_orc_sdk_deck_header(deck)->item_size == sizeof(size_t));
+  orc_sdk_deck_clear(deck);
+  ORC_SDK_REQUIRE(orc_sdk_deck_len(deck) == 0);
+  ORC_SDK_REQUIRE(orc_sdk_deck_max_depth(deck) == 0);
+  ORC_SDK_REQUIRE(_orc_sdk_deck_header(deck)->item_size == sizeof(size_t));
   // Re-use after clear.
-  ORC_SDK_REQUIRE(deck_push(deck, ((size_t) {1}), 1) == OK);
-  ORC_SDK_REQUIRE(deck_push(deck, ((size_t) {2}), 0) == OK);
-  ORC_SDK_REQUIRE(deck_len(deck) == 2);
-  ORC_SDK_REQUIRE(deck_max_depth(deck) == 1);
-  ORC_SDK_REQUIRE(_deck_header(deck)->item_size == sizeof(size_t));
+  ORC_SDK_REQUIRE(orc_sdk_deck_push(deck, ((size_t) {1}), 1) == OK);
+  ORC_SDK_REQUIRE(orc_sdk_deck_push(deck, ((size_t) {2}), 0) == OK);
+  ORC_SDK_REQUIRE(orc_sdk_deck_len(deck) == 2);
+  ORC_SDK_REQUIRE(orc_sdk_deck_max_depth(deck) == 1);
+  ORC_SDK_REQUIRE(_orc_sdk_deck_header(deck)->item_size == sizeof(size_t));
   ORC_SDK_REQUIRE(deck[0] == 1);
   ORC_SDK_REQUIRE(deck[1] == 2);
-  deck_free(deck);
+  orc_sdk_deck_free(deck);
 }
 
-void test_deck_flatten(void)
+void test_orc_sdk_deck_flatten(void)
 {
   size_t *deck = _binary_deck(4);
-  size_t  n    = deck_len(deck);
+  size_t  n    = orc_sdk_deck_len(deck);
   ORC_SDK_REQUIRE(n == 16);
-  ORC_SDK_REQUIRE(_deck_header(deck)->item_size == sizeof(size_t));
-  deck_flatten(deck);
-  ORC_SDK_REQUIRE(deck_max_depth(deck) == 1);
-  ORC_SDK_REQUIRE(_deck_header(deck)->item_size == sizeof(size_t));
+  ORC_SDK_REQUIRE(_orc_sdk_deck_header(deck)->item_size == sizeof(size_t));
+  orc_sdk_deck_flatten(deck);
+  ORC_SDK_REQUIRE(orc_sdk_deck_max_depth(deck) == 1);
+  ORC_SDK_REQUIRE(_orc_sdk_deck_header(deck)->item_size == sizeof(size_t));
   for (size_t i = 0; i < n; ++i) {
     ORC_SDK_REQUIRE(deck[i] == i);
   }
-  _DeckHeader *h = _deck_header(deck);
+  _OrcSdk_DeckHeader *h = _orc_sdk_deck_header(deck);
   ORC_SDK_REQUIRE(orc_sdk_arr_len(h->marks) == 1);
   ORC_SDK_REQUIRE(h->marks[0].depth == 0);
   ORC_SDK_REQUIRE(h->marks[0].pos == 0);
   // Flatten is idempotent.
-  deck_flatten(deck);
-  ORC_SDK_REQUIRE(deck_max_depth(deck) == 1);
+  orc_sdk_deck_flatten(deck);
+  ORC_SDK_REQUIRE(orc_sdk_deck_max_depth(deck) == 1);
   ORC_SDK_REQUIRE(orc_sdk_arr_len(h->marks) == 1);
-  deck_free(deck);
+  orc_sdk_deck_free(deck);
   // Flatten a single-element deck pushed at depth 0: no marks.
   size_t *deck2 = NULL;
-  ORC_SDK_REQUIRE(deck_push(deck2, ((size_t) {5}), 0) == OK);
-  ORC_SDK_REQUIRE(_deck_header(deck2)->item_size == sizeof(size_t));
-  deck_flatten(deck2);
-  ORC_SDK_REQUIRE(deck_max_depth(deck2) == 0);
-  ORC_SDK_REQUIRE(_deck_header(deck2)->item_size == sizeof(size_t));
-  ORC_SDK_REQUIRE(orc_sdk_arr_len(_deck_header(deck2)->marks) == 0);
-  deck_free(deck2);
+  ORC_SDK_REQUIRE(orc_sdk_deck_push(deck2, ((size_t) {5}), 0) == OK);
+  ORC_SDK_REQUIRE(_orc_sdk_deck_header(deck2)->item_size == sizeof(size_t));
+  orc_sdk_deck_flatten(deck2);
+  ORC_SDK_REQUIRE(orc_sdk_deck_max_depth(deck2) == 0);
+  ORC_SDK_REQUIRE(_orc_sdk_deck_header(deck2)->item_size == sizeof(size_t));
+  ORC_SDK_REQUIRE(orc_sdk_arr_len(_orc_sdk_deck_header(deck2)->marks) == 0);
+  orc_sdk_deck_free(deck2);
 }
 
-void test_deck_reserve(void)
+void test_orc_sdk_deck_reserve(void)
 {
   size_t *deck = NULL;
-  ORC_SDK_REQUIRE(deck_reserve(deck, 32) == OK);
+  ORC_SDK_REQUIRE(orc_sdk_deck_reserve(deck, 32) == OK);
   ORC_SDK_REQUIRE(deck != NULL);
-  ORC_SDK_REQUIRE(deck_len(deck) == 0);
-  ORC_SDK_REQUIRE(_deck_header(deck)->item_size == sizeof(size_t));
+  ORC_SDK_REQUIRE(orc_sdk_deck_len(deck) == 0);
+  ORC_SDK_REQUIRE(_orc_sdk_deck_header(deck)->item_size == sizeof(size_t));
   for (size_t i = 0; i < 32; ++i) {
-    ORC_SDK_REQUIRE(deck_push(deck, i, (i == 0) ? 1 : 0) == OK);
+    ORC_SDK_REQUIRE(orc_sdk_deck_push(deck, i, (i == 0) ? 1 : 0) == OK);
   }
-  ORC_SDK_REQUIRE(deck_len(deck) == 32);
-  ORC_SDK_REQUIRE(_deck_header(deck)->item_size == sizeof(size_t));
+  ORC_SDK_REQUIRE(orc_sdk_deck_len(deck) == 32);
+  ORC_SDK_REQUIRE(_orc_sdk_deck_header(deck)->item_size == sizeof(size_t));
   for (size_t i = 0; i < 32; ++i) {
     ORC_SDK_REQUIRE(deck[i] == i);
   }
-  deck_free(deck);
+  orc_sdk_deck_free(deck);
 }
 
 void test_deck_depth_clamping(void)
 {
   // Depth higher than the first mark's depth should be clamped.
   size_t *deck = NULL;
-  ORC_SDK_REQUIRE(deck_push(deck, ((size_t) {0}), 2) ==
+  ORC_SDK_REQUIRE(orc_sdk_deck_push(deck, ((size_t) {0}), 2) ==
                   OK);  // first mark: internal depth 1
-  ORC_SDK_REQUIRE(deck_push(deck, ((size_t) {1}), 0) == OK);
-  ORC_SDK_REQUIRE(deck_push(deck, ((size_t) {2}), 5) == OK);  // should be clamped
-  ORC_SDK_REQUIRE(deck_push(deck, ((size_t) {3}), 0) == OK);
-  ORC_SDK_REQUIRE(deck_len(deck) == 4);
-  ORC_SDK_REQUIRE(deck_max_depth(deck) == 2);
-  _DeckHeader *h = _deck_header(deck);
+  ORC_SDK_REQUIRE(orc_sdk_deck_push(deck, ((size_t) {1}), 0) == OK);
+  ORC_SDK_REQUIRE(orc_sdk_deck_push(deck, ((size_t) {2}), 5) == OK);  // should be clamped
+  ORC_SDK_REQUIRE(orc_sdk_deck_push(deck, ((size_t) {3}), 0) == OK);
+  ORC_SDK_REQUIRE(orc_sdk_deck_len(deck) == 4);
+  ORC_SDK_REQUIRE(orc_sdk_deck_max_depth(deck) == 2);
+  _OrcSdk_DeckHeader *h = _orc_sdk_deck_header(deck);
   ORC_SDK_REQUIRE(h->item_size == sizeof(size_t));
   ORC_SDK_REQUIRE(orc_sdk_arr_len(h->marks) == 2);
   ORC_SDK_REQUIRE(h->marks[0].depth == 1);
   ORC_SDK_REQUIRE(h->marks[1].depth <= h->marks[0].depth);
-  deck_free(deck);
+  orc_sdk_deck_free(deck);
 }
 
 void test_deck_single_element(void)
 {
   // Depth 0: bare leaf, no marks.
   size_t *deck = NULL;
-  ORC_SDK_REQUIRE(deck_push(deck, ((size_t) {42}), 0) == OK);
-  ORC_SDK_REQUIRE(deck_len(deck) == 1);
-  ORC_SDK_REQUIRE(deck_max_depth(deck) == 0);
-  ORC_SDK_REQUIRE(_deck_header(deck)->item_size == sizeof(size_t));
+  ORC_SDK_REQUIRE(orc_sdk_deck_push(deck, ((size_t) {42}), 0) == OK);
+  ORC_SDK_REQUIRE(orc_sdk_deck_len(deck) == 1);
+  ORC_SDK_REQUIRE(orc_sdk_deck_max_depth(deck) == 0);
+  ORC_SDK_REQUIRE(_orc_sdk_deck_header(deck)->item_size == sizeof(size_t));
   ORC_SDK_REQUIRE(deck[0] == 42);
-  ORC_SDK_REQUIRE(orc_sdk_arr_len(_deck_header(deck)->marks) == 0);
-  deck_free(deck);
+  ORC_SDK_REQUIRE(orc_sdk_arr_len(_orc_sdk_deck_header(deck)->marks) == 0);
+  orc_sdk_deck_free(deck);
   // Depth 1.
   size_t *deck2 = NULL;
-  ORC_SDK_REQUIRE(deck_push(deck2, ((size_t) {7}), 1) == OK);
-  ORC_SDK_REQUIRE(deck_len(deck2) == 1);
-  ORC_SDK_REQUIRE(deck_max_depth(deck2) == 1);
-  ORC_SDK_REQUIRE(_deck_header(deck2)->item_size == sizeof(size_t));
+  ORC_SDK_REQUIRE(orc_sdk_deck_push(deck2, ((size_t) {7}), 1) == OK);
+  ORC_SDK_REQUIRE(orc_sdk_deck_len(deck2) == 1);
+  ORC_SDK_REQUIRE(orc_sdk_deck_max_depth(deck2) == 1);
+  ORC_SDK_REQUIRE(_orc_sdk_deck_header(deck2)->item_size == sizeof(size_t));
   ORC_SDK_REQUIRE(deck2[0] == 7);
-  deck_free(deck2);
+  orc_sdk_deck_free(deck2);
 }
 
-void test_deck_free_null(void)
+void test_orc_sdk_deck_free_null(void)
 {
   size_t *deck = NULL;
-  deck_free(deck);
+  orc_sdk_deck_free(deck);
   ORC_SDK_REQUIRE(deck == NULL);
 }
 
@@ -1884,25 +1884,25 @@ void test_deck_many_pushes(void)
   size_t *deck = NULL;
   size_t  n    = 1000;
   for (size_t i = 0; i < n; ++i) {
-    ORC_SDK_REQUIRE(deck_push(deck, i, (i == 0) ? 1 : 0) == OK);
+    ORC_SDK_REQUIRE(orc_sdk_deck_push(deck, i, (i == 0) ? 1 : 0) == OK);
   }
-  ORC_SDK_REQUIRE(deck_len(deck) == n);
-  ORC_SDK_REQUIRE(deck_max_depth(deck) == 1);
-  ORC_SDK_REQUIRE(_deck_header(deck)->item_size == sizeof(size_t));
+  ORC_SDK_REQUIRE(orc_sdk_deck_len(deck) == n);
+  ORC_SDK_REQUIRE(orc_sdk_deck_max_depth(deck) == 1);
+  ORC_SDK_REQUIRE(_orc_sdk_deck_header(deck)->item_size == sizeof(size_t));
   for (size_t i = 0; i < n; ++i) {
     ORC_SDK_REQUIRE(deck[i] == i);
   }
-  deck_free(deck);
+  orc_sdk_deck_free(deck);
 }
 
-void test_deck_graft(void)
+void test_orc_sdk_deck_graft(void)
 {
   // Graft a depth-3 binary deck: depth should increase by 1, items unchanged.
   size_t *deck = _binary_deck(3);
-  ORC_SDK_REQUIRE(_deck_header(deck)->item_size == sizeof(size_t));
-  deck_graft(deck);
-  ORC_SDK_REQUIRE(deck_max_depth(deck) == 4);
-  ORC_SDK_REQUIRE(_deck_header(deck)->item_size == sizeof(size_t));
+  ORC_SDK_REQUIRE(_orc_sdk_deck_header(deck)->item_size == sizeof(size_t));
+  orc_sdk_deck_graft(deck);
+  ORC_SDK_REQUIRE(orc_sdk_deck_max_depth(deck) == 4);
+  ORC_SDK_REQUIRE(_orc_sdk_deck_header(deck)->item_size == sizeof(size_t));
   for (size_t i = 0; i < 8; ++i) {
     ORC_SDK_REQUIRE(deck[i] == i);
   }
@@ -1912,39 +1912,39 @@ void test_deck_graft(void)
   // After graft, we expect 8 marks total (one per item position), with:
   //   pos 0: depth 3, pos 1: depth 0, pos 2: depth 1, pos 3: depth 0,
   //   pos 4: depth 2, pos 5: depth 0, pos 6: depth 1, pos 7: depth 0.
-  _DeckHeader *h = _deck_header(deck);
+  _OrcSdk_DeckHeader *h = _orc_sdk_deck_header(deck);
   ORC_SDK_REQUIRE(orc_sdk_arr_len(h->marks) == 8);
   uint8_t const expected_depths[] = {3, 0, 1, 0, 2, 0, 1, 0};
   for (size_t i = 0; i < 8; ++i) {
     ORC_SDK_REQUIRE(h->marks[i].depth == expected_depths[i]);
     ORC_SDK_REQUIRE(h->marks[i].pos == i);
   }
-  deck_free(deck);
+  orc_sdk_deck_free(deck);
   // Graft then flatten roundtrip: items survive.
   size_t *deck2 = _binary_deck(2);
-  deck_graft(deck2);
-  ORC_SDK_REQUIRE(_deck_header(deck2)->item_size == sizeof(size_t));
-  deck_flatten(deck2);
-  ORC_SDK_REQUIRE(deck_max_depth(deck2) == 1);
-  ORC_SDK_REQUIRE(_deck_header(deck2)->item_size == sizeof(size_t));
-  ORC_SDK_REQUIRE(deck_len(deck2) == 4);
+  orc_sdk_deck_graft(deck2);
+  ORC_SDK_REQUIRE(_orc_sdk_deck_header(deck2)->item_size == sizeof(size_t));
+  orc_sdk_deck_flatten(deck2);
+  ORC_SDK_REQUIRE(orc_sdk_deck_max_depth(deck2) == 1);
+  ORC_SDK_REQUIRE(_orc_sdk_deck_header(deck2)->item_size == sizeof(size_t));
+  ORC_SDK_REQUIRE(orc_sdk_deck_len(deck2) == 4);
   for (size_t i = 0; i < 4; ++i) {
     ORC_SDK_REQUIRE(deck2[i] == i);
   }
-  deck_free(deck2);
+  orc_sdk_deck_free(deck2);
   // Graft a flat (depth-1) deck: each item gets wrapped.
   size_t *deck3 = NULL;
   for (size_t i = 0; i < 3; ++i) {
-    ORC_SDK_REQUIRE(deck_push(deck3, i, (i == 0) ? 1 : 0) == OK);
+    ORC_SDK_REQUIRE(orc_sdk_deck_push(deck3, i, (i == 0) ? 1 : 0) == OK);
   }
-  ORC_SDK_REQUIRE(deck_max_depth(deck3) == 1);
-  deck_graft(deck3);
-  ORC_SDK_REQUIRE(deck_max_depth(deck3) == 2);
-  ORC_SDK_REQUIRE(_deck_header(deck3)->item_size == sizeof(size_t));
-  ORC_SDK_REQUIRE(deck_len(deck3) == 3);
+  ORC_SDK_REQUIRE(orc_sdk_deck_max_depth(deck3) == 1);
+  orc_sdk_deck_graft(deck3);
+  ORC_SDK_REQUIRE(orc_sdk_deck_max_depth(deck3) == 2);
+  ORC_SDK_REQUIRE(_orc_sdk_deck_header(deck3)->item_size == sizeof(size_t));
+  ORC_SDK_REQUIRE(orc_sdk_deck_len(deck3) == 3);
   // Every item should have its own mark at depth 0 (wrapped individually),
   // plus the original depth-0 mark promoted to depth 1.
-  _DeckHeader *h3 = _deck_header(deck3);
+  _OrcSdk_DeckHeader *h3 = _orc_sdk_deck_header(deck3);
   ORC_SDK_REQUIRE(orc_sdk_arr_len(h3->marks) == 3);
   ORC_SDK_REQUIRE(h3->marks[0].depth == 1);
   ORC_SDK_REQUIRE(h3->marks[1].depth == 0);
@@ -1952,47 +1952,47 @@ void test_deck_graft(void)
   for (size_t i = 0; i < 3; ++i) {
     ORC_SDK_REQUIRE(h3->marks[i].pos == i);
   }
-  deck_free(deck3);
+  orc_sdk_deck_free(deck3);
   // Graft an empty deck: should be a no-op.
   size_t *deck4 = NULL;
-  deck_graft(deck4);
-  ORC_SDK_REQUIRE(deck_len(deck4) == 0);
+  orc_sdk_deck_graft(deck4);
+  ORC_SDK_REQUIRE(orc_sdk_deck_len(deck4) == 0);
 }
 
-void test_deck_simplify(void)
+void test_orc_sdk_deck_simplify(void)
 {
   // A deck whose mark depths already use every level is unchanged.
   {
     size_t      *deck = _binary_deck(3);
-    _DeckHeader *h    = _deck_header(deck);
+    _OrcSdk_DeckHeader *h    = _orc_sdk_deck_header(deck);
     ORC_SDK_REQUIRE(h->item_size == sizeof(size_t));
     size_t const n_marks = orc_sdk_arr_len(h->marks);
     uint8_t      depths_before[4];
     for (size_t i = 0; i < n_marks; ++i)
       depths_before[i] = h->marks[i].depth;
-    deck_simplify(deck);
+    orc_sdk_deck_simplify(deck);
     for (size_t i = 0; i < n_marks; ++i) {
       ORC_SDK_REQUIRE(h->marks[i].depth == depths_before[i]);
     }
-    deck_free(deck);
+    orc_sdk_deck_free(deck);
   }
   // A deck with gaps in depth levels: only depths 0 and 4 present.
   // Should be remapped to 0 and 1.
   {
     size_t *deck = NULL;
-    ORC_SDK_REQUIRE(deck_push(deck, ((size_t) {0}), 5) == OK);  // mark depth = 4
-    ORC_SDK_REQUIRE(deck_push(deck, ((size_t) {1}), 0) == OK);
-    ORC_SDK_REQUIRE(deck_push(deck, ((size_t) {2}), 2) == OK);  // mark depth = 1
-    ORC_SDK_REQUIRE(deck_push(deck, ((size_t) {3}), 0) == OK);
-    _DeckHeader *h = _deck_header(deck);
+    ORC_SDK_REQUIRE(orc_sdk_deck_push(deck, ((size_t) {0}), 5) == OK);  // mark depth = 4
+    ORC_SDK_REQUIRE(orc_sdk_deck_push(deck, ((size_t) {1}), 0) == OK);
+    ORC_SDK_REQUIRE(orc_sdk_deck_push(deck, ((size_t) {2}), 2) == OK);  // mark depth = 1
+    ORC_SDK_REQUIRE(orc_sdk_deck_push(deck, ((size_t) {3}), 0) == OK);
+    _OrcSdk_DeckHeader *h = _orc_sdk_deck_header(deck);
     ORC_SDK_REQUIRE(orc_sdk_arr_len(h->marks) == 2);
     // Before simplify: depths are 4 and 1 (clamped from external 5 and 2).
     // Wait — first mark has internal depth 4, second gets clamped to 4.
     // But external 2 -> internal 1, which is <= 4, so no clamping.
     ORC_SDK_REQUIRE(h->marks[0].depth == 4);
     ORC_SDK_REQUIRE(h->marks[1].depth == 1);
-    deck_simplify(deck);
-    ORC_SDK_REQUIRE(deck_max_depth(deck) == 2);
+    orc_sdk_deck_simplify(deck);
+    ORC_SDK_REQUIRE(orc_sdk_deck_max_depth(deck) == 2);
     ORC_SDK_REQUIRE(h->item_size == sizeof(size_t));
     ORC_SDK_REQUIRE(h->marks[0].depth == 1);
     ORC_SDK_REQUIRE(h->marks[1].depth == 0);
@@ -2000,49 +2000,49 @@ void test_deck_simplify(void)
     for (size_t i = 0; i < 4; ++i) {
       ORC_SDK_REQUIRE(deck[i] == i);
     }
-    deck_free(deck);
+    orc_sdk_deck_free(deck);
   }
   // Simplify is idempotent.
   {
     size_t *deck = NULL;
-    ORC_SDK_REQUIRE(deck_push(deck, ((size_t) {0}), 5) == OK);
-    ORC_SDK_REQUIRE(deck_push(deck, ((size_t) {1}), 0) == OK);
-    ORC_SDK_REQUIRE(deck_push(deck, ((size_t) {2}), 2) == OK);
-    ORC_SDK_REQUIRE(deck_push(deck, ((size_t) {3}), 0) == OK);
-    deck_simplify(deck);
-    _DeckHeader  *h  = _deck_header(deck);
+    ORC_SDK_REQUIRE(orc_sdk_deck_push(deck, ((size_t) {0}), 5) == OK);
+    ORC_SDK_REQUIRE(orc_sdk_deck_push(deck, ((size_t) {1}), 0) == OK);
+    ORC_SDK_REQUIRE(orc_sdk_deck_push(deck, ((size_t) {2}), 2) == OK);
+    ORC_SDK_REQUIRE(orc_sdk_deck_push(deck, ((size_t) {3}), 0) == OK);
+    orc_sdk_deck_simplify(deck);
+    _OrcSdk_DeckHeader  *h  = _orc_sdk_deck_header(deck);
     uint8_t const d0 = h->marks[0].depth;
     uint8_t const d1 = h->marks[1].depth;
-    deck_simplify(deck);
+    orc_sdk_deck_simplify(deck);
     ORC_SDK_REQUIRE(h->marks[0].depth == d0);
     ORC_SDK_REQUIRE(h->marks[1].depth == d1);
-    deck_free(deck);
+    orc_sdk_deck_free(deck);
   }
   // Simplify after graft.
   {
     size_t *deck = _binary_deck(3);
-    deck_graft(deck);
-    ORC_SDK_REQUIRE(deck_max_depth(deck) == 4);
+    orc_sdk_deck_graft(deck);
+    ORC_SDK_REQUIRE(orc_sdk_deck_max_depth(deck) == 4);
     // After graft, depths are contiguous (0,1,2,3), so simplify is a no-op.
-    _DeckHeader *h             = _deck_header(deck);
+    _OrcSdk_DeckHeader *h             = _orc_sdk_deck_header(deck);
     size_t const n_marks       = orc_sdk_arr_len(h->marks);
     uint8_t     *depths_before = NULL;
     for (size_t i = 0; i < n_marks; ++i) {
       orc_sdk_arr_push(depths_before, h->marks[i].depth);
     }
-    deck_simplify(deck);
-    ORC_SDK_REQUIRE(deck_max_depth(deck) == 4);
+    orc_sdk_deck_simplify(deck);
+    ORC_SDK_REQUIRE(orc_sdk_deck_max_depth(deck) == 4);
     for (size_t i = 0; i < n_marks; ++i) {
       ORC_SDK_REQUIRE(h->marks[i].depth == depths_before[i]);
     }
     orc_sdk_arr_free(depths_before);
-    deck_free(deck);
+    orc_sdk_deck_free(deck);
   }
   // Simplify on empty/NULL deck is safe.
   {
     size_t *deck = NULL;
-    deck_simplify(deck);
-    ORC_SDK_REQUIRE(deck_len(deck) == 0);
+    orc_sdk_deck_simplify(deck);
+    ORC_SDK_REQUIRE(orc_sdk_deck_len(deck) == 0);
   }
 }
 
@@ -2055,8 +2055,8 @@ void _print_size_t(void *item, char *dst, size_t len)
 void test_deck_printf(void)
 {
   size_t *deck = _binary_deck(5);
-  ORC_SDK_REQUIRE(_deck_header(deck)->item_size == sizeof(size_t));
-  char *output = deck_to_str(deck, _print_size_t);
+  ORC_SDK_REQUIRE(_orc_sdk_deck_header(deck)->item_size == sizeof(size_t));
+  char *output = orc_sdk_deck_to_str(deck, _print_size_t);
   ORC_SDK_REQUIRE(orc_sv_eq(orc_sv_trim(orc_sv_from_str(output)),
                             orc_sv_trim(orc_sv_from_str("  5 ---------------| 0\n"
                                                         "                   | 1\n"
@@ -2093,7 +2093,7 @@ void test_deck_printf(void)
   orc_str_free(output);
   // Depth-2 with empty lists.
   ORC_SDK_DECK_INIT(deck, size_t, ((1, 2, 3), (), (4, 5, 6, 7), (), (8, 9, 10, 11), ()));
-  output = deck_to_str(deck, _print_size_t);
+  output = orc_sdk_deck_to_str(deck, _print_size_t);
   ORC_SDK_REQUIRE(orc_sv_eq(orc_sv_trim(orc_sv_from_str(output)),
                             orc_sv_trim(orc_sv_from_str("  2 ------| 1\n"
                                                         "          | 2\n"
@@ -2112,7 +2112,7 @@ void test_deck_printf(void)
   orc_str_free(output);
   // Depth-1: Flat list.
   ORC_SDK_DECK_INIT(deck, size_t, (10, 20, 30));
-  output = deck_to_str(deck, _print_size_t);
+  output = orc_sdk_deck_to_str(deck, _print_size_t);
   ORC_SDK_REQUIRE(orc_sv_eq(orc_sv_from_str(output),
                             orc_sv_from_str("  1 ---| 10\n"
                                             "       | 20\n"
@@ -2120,24 +2120,24 @@ void test_deck_printf(void)
   orc_str_free(output);
   // List with single element.
   ORC_SDK_DECK_INIT(deck, size_t, (42));
-  output = deck_to_str(deck, _print_size_t);
+  output = orc_sdk_deck_to_str(deck, _print_size_t);
   ORC_SDK_REQUIRE(orc_sv_eq(orc_sv_from_str(output), orc_sv_from_str("  1 ---| 42\n")));
   orc_str_free(output);
   // All empty depth-2.
   ORC_SDK_DECK_INIT(deck, size_t, ((), (), ()));
-  output = deck_to_str(deck, _print_size_t);
+  output = orc_sdk_deck_to_str(deck, _print_size_t);
   ORC_SDK_REQUIRE(orc_sv_eq(orc_sv_from_str(output),
                             orc_sv_from_str("  2 ------|\n"
                                             "     1 ---|\n"
                                             "     1 ---|\n")));
   orc_str_free(output);
   // Empty deck.
-  deck_clear(deck);
-  output = deck_to_str(deck, _print_size_t);
+  orc_sdk_deck_clear(deck);
+  output = orc_sdk_deck_to_str(deck, _print_size_t);
   ORC_SDK_REQUIRE(output == NULL);
   // Depth-3 with nested empty.
   ORC_SDK_DECK_INIT(deck, size_t, (((1, 2), ()), (()), ((3))));
-  output = deck_to_str(deck, _print_size_t);
+  output = orc_sdk_deck_to_str(deck, _print_size_t);
   ORC_SDK_REQUIRE(orc_sv_eq(orc_sv_from_str(output),
                             orc_sv_from_str("  3 ---------| 1\n"
                                             "             | 2\n"
@@ -2149,27 +2149,27 @@ void test_deck_printf(void)
 void test_deck_init(void)
 {
   size_t      *deck = NULL;
-  _DeckHeader *h    = NULL;
+  _OrcSdk_DeckHeader *h    = NULL;
   /* depth 1: flat list */
   ORC_SDK_DECK_INIT(deck, size_t, (10, 20, 30));
-  ORC_SDK_REQUIRE(deck_len(deck) == 3);
-  ORC_SDK_REQUIRE(deck_max_depth(deck) == 1);
-  ORC_SDK_REQUIRE(_deck_header(deck)->item_size == sizeof(size_t));
+  ORC_SDK_REQUIRE(orc_sdk_deck_len(deck) == 3);
+  ORC_SDK_REQUIRE(orc_sdk_deck_max_depth(deck) == 1);
+  ORC_SDK_REQUIRE(_orc_sdk_deck_header(deck)->item_size == sizeof(size_t));
   ORC_SDK_REQUIRE(deck[0] == 10);
   ORC_SDK_REQUIRE(deck[1] == 20);
   ORC_SDK_REQUIRE(deck[2] == 30);
-  h = _deck_header(deck);
+  h = _orc_sdk_deck_header(deck);
   ORC_SDK_REQUIRE(orc_sdk_arr_len(h->marks) == 1);
   ORC_SDK_REQUIRE(h->marks[0].depth == 0);
   ORC_SDK_REQUIRE(h->marks[0].pos == 0);
   /* depth 2: re-init clears existing data */
   ORC_SDK_DECK_INIT(deck, size_t, ((1, 2, 3), (4, 5, 6), (7, 8, 9)));
-  ORC_SDK_REQUIRE(deck_len(deck) == 9);
-  ORC_SDK_REQUIRE(deck_max_depth(deck) == 2);
-  ORC_SDK_REQUIRE(_deck_header(deck)->item_size == sizeof(size_t));
+  ORC_SDK_REQUIRE(orc_sdk_deck_len(deck) == 9);
+  ORC_SDK_REQUIRE(orc_sdk_deck_max_depth(deck) == 2);
+  ORC_SDK_REQUIRE(_orc_sdk_deck_header(deck)->item_size == sizeof(size_t));
   for (size_t i = 0; i < 9; ++i)
     ORC_SDK_REQUIRE(deck[i] == i + 1);
-  h = _deck_header(deck);
+  h = _orc_sdk_deck_header(deck);
   ORC_SDK_REQUIRE(orc_sdk_arr_len(h->marks) == 3);
   ORC_SDK_REQUIRE(h->marks[0].depth == 1);
   ORC_SDK_REQUIRE(h->marks[0].pos == 0);
@@ -2179,12 +2179,12 @@ void test_deck_init(void)
   ORC_SDK_REQUIRE(h->marks[2].pos == 6);
   /* depth 3: ruler sequence depths 2,0,1,0 at positions 0,2,4,6 */
   ORC_SDK_DECK_INIT(deck, size_t, (((1, 2), (3, 4)), ((5, 6), (7, 8))));
-  ORC_SDK_REQUIRE(deck_len(deck) == 8);
-  ORC_SDK_REQUIRE(deck_max_depth(deck) == 3);
-  ORC_SDK_REQUIRE(_deck_header(deck)->item_size == sizeof(size_t));
+  ORC_SDK_REQUIRE(orc_sdk_deck_len(deck) == 8);
+  ORC_SDK_REQUIRE(orc_sdk_deck_max_depth(deck) == 3);
+  ORC_SDK_REQUIRE(_orc_sdk_deck_header(deck)->item_size == sizeof(size_t));
   for (size_t i = 0; i < 8; ++i)
     ORC_SDK_REQUIRE(deck[i] == i + 1);
-  h = _deck_header(deck);
+  h = _orc_sdk_deck_header(deck);
   ORC_SDK_REQUIRE(orc_sdk_arr_len(h->marks) == 4);
   ORC_SDK_REQUIRE(h->marks[0].depth == 2);
   ORC_SDK_REQUIRE(h->marks[0].pos == 0);
@@ -2194,7 +2194,7 @@ void test_deck_init(void)
   ORC_SDK_REQUIRE(h->marks[2].pos == 4);
   ORC_SDK_REQUIRE(h->marks[3].depth == 0);
   ORC_SDK_REQUIRE(h->marks[3].pos == 6);
-  deck_free(deck);
+  orc_sdk_deck_free(deck);
 }
 
 // ========== DeckView ==========
@@ -2230,9 +2230,9 @@ void test_dv_binary_deck(void)
 {
   const uint8_t DEPTH = 5;
   size_t       *deck  = _binary_deck(DEPTH);
-  ORC_SDK_REQUIRE(DEPTH == deck_max_depth(deck));
-  ORC_SDK_REQUIRE((1 << DEPTH) == deck_len(deck));
-  ORC_SDK_REQUIRE(_deck_header(deck)->item_size == sizeof(size_t));
+  ORC_SDK_REQUIRE(DEPTH == orc_sdk_deck_max_depth(deck));
+  ORC_SDK_REQUIRE((1 << DEPTH) == orc_sdk_deck_len(deck));
+  ORC_SDK_REQUIRE(_orc_sdk_deck_header(deck)->item_size == sizeof(size_t));
   {  // Iterate from level 5.
     size_t   counter = 0;
     DeckView v5      = dv_from_deck(deck, 5);
@@ -2343,9 +2343,9 @@ void test_dw_basic_depth2(void)
       ORC_SDK_REQUIRE(dw_len(&c) == 3);
     }
   }
-  ORC_SDK_REQUIRE(deck_len(deck) == 9);
-  ORC_SDK_REQUIRE(deck_max_depth(deck) == 2);
-  ORC_SDK_REQUIRE(_deck_header(deck)->item_size == sizeof(uint32_t));
+  ORC_SDK_REQUIRE(orc_sdk_deck_len(deck) == 9);
+  ORC_SDK_REQUIRE(orc_sdk_deck_max_depth(deck) == 2);
+  ORC_SDK_REQUIRE(_orc_sdk_deck_header(deck)->item_size == sizeof(uint32_t));
   // Read back via DeckView.
   counter     = 0;
   DeckView v2 = dv_from_deck(deck, 2);
@@ -2359,7 +2359,7 @@ void test_dw_basic_depth2(void)
     } while (dv_advance(&v1));
   } while (dv_advance(&v2));
   ORC_SDK_REQUIRE(counter == 9);
-  deck_free(deck);
+  orc_sdk_deck_free(deck);
 }
 
 void test_dw_depth3_nested(void)
@@ -2384,9 +2384,9 @@ void test_dw_depth3_nested(void)
       }
     }
   }
-  ORC_SDK_REQUIRE(deck_len(deck) == 27);
-  ORC_SDK_REQUIRE(deck_max_depth(deck) == 3);
-  ORC_SDK_REQUIRE(_deck_header(deck)->item_size == sizeof(uint32_t));
+  ORC_SDK_REQUIRE(orc_sdk_deck_len(deck) == 27);
+  ORC_SDK_REQUIRE(orc_sdk_deck_max_depth(deck) == 3);
+  ORC_SDK_REQUIRE(_orc_sdk_deck_header(deck)->item_size == sizeof(uint32_t));
   // Read back: iterate depth 3 → 2 → 1 → items.
   counter     = 0;
   DeckView v3 = dv_from_deck(deck, 3);
@@ -2403,7 +2403,7 @@ void test_dw_depth3_nested(void)
     } while (dv_advance(&v2));
   } while (dv_advance(&v3));
   ORC_SDK_REQUIRE(counter == 27);
-  deck_free(deck);
+  orc_sdk_deck_free(deck);
 }
 
 void test_dw_unbalanced_tree(void)
@@ -2436,8 +2436,8 @@ void test_dw_unbalanced_tree(void)
       ORC_SDK_REQUIRE(dw_push(&c, v) == OK);
     }
   }
-  ORC_SDK_REQUIRE(deck_len(deck) == 6);
-  ORC_SDK_REQUIRE(_deck_header(deck)->item_size == sizeof(uint32_t));
+  ORC_SDK_REQUIRE(orc_sdk_deck_len(deck) == 6);
+  ORC_SDK_REQUIRE(_orc_sdk_deck_header(deck)->item_size == sizeof(uint32_t));
   // Verify structure.
   DeckView outer = dv_from_deck(deck, 2);
   DeckView g1    = dv_child(&outer);
@@ -2463,7 +2463,7 @@ void test_dw_unbalanced_tree(void)
     } while (dv_advance(&inner));
   } while (dv_advance(&top));
   ORC_SDK_REQUIRE(idx == 6);
-  deck_free(deck);
+  orc_sdk_deck_free(deck);
 }
 
 void test_dw_empty_groups(void)
@@ -2498,8 +2498,8 @@ void test_dw_empty_groups(void)
       dw_close(&c);  // empty group
     }
   }
-  ORC_SDK_REQUIRE(deck_len(deck) == 3);
-  ORC_SDK_REQUIRE(_deck_header(deck)->item_size == sizeof(uint32_t));
+  ORC_SDK_REQUIRE(orc_sdk_deck_len(deck) == 3);
+  ORC_SDK_REQUIRE(_orc_sdk_deck_header(deck)->item_size == sizeof(uint32_t));
   ORC_SDK_REQUIRE(deck[0] == 1);
   ORC_SDK_REQUIRE(deck[1] == 2);
   ORC_SDK_REQUIRE(deck[2] == 3);
@@ -2514,7 +2514,7 @@ void test_dw_empty_groups(void)
     } while (dv_advance(&inner));
   } while (dv_advance(&top));
   ORC_SDK_REQUIRE(gi == 5);
-  deck_free(deck);
+  orc_sdk_deck_free(deck);
 }
 
 void test_dw_nested_empty(void)
@@ -2554,9 +2554,9 @@ void test_dw_nested_empty(void)
       }
     }
   }
-  ORC_SDK_REQUIRE(deck_len(deck) == 3);
-  ORC_SDK_REQUIRE(deck_max_depth(deck) == 3);
-  ORC_SDK_REQUIRE(_deck_header(deck)->item_size == sizeof(uint32_t));
+  ORC_SDK_REQUIRE(orc_sdk_deck_len(deck) == 3);
+  ORC_SDK_REQUIRE(orc_sdk_deck_max_depth(deck) == 3);
+  ORC_SDK_REQUIRE(_orc_sdk_deck_header(deck)->item_size == sizeof(uint32_t));
   // Verify structure by iterating depth 3 → 2 → 1.
   // Expected: (((), (1,2)), ((3,)), (()))
   DeckView v3 = dv_from_deck(deck, 3);
@@ -2589,7 +2589,7 @@ void test_dw_nested_empty(void)
     ORC_SDK_REQUIRE(!dv_advance(&inner));
   }
   ORC_SDK_REQUIRE(!dv_advance(&mid));
-  deck_free(deck);
+  orc_sdk_deck_free(deck);
 }
 
 void test_dw_single_element_deep(void)
@@ -2605,9 +2605,9 @@ void test_dw_single_element_deep(void)
     uint32_t   v  = 42;
     ORC_SDK_REQUIRE(dw_push(&w1, v) == OK);
   }
-  ORC_SDK_REQUIRE(deck_len(deck) == 1);
-  ORC_SDK_REQUIRE(deck_max_depth(deck) == 5);
-  ORC_SDK_REQUIRE(_deck_header(deck)->item_size == sizeof(uint32_t));
+  ORC_SDK_REQUIRE(orc_sdk_deck_len(deck) == 1);
+  ORC_SDK_REQUIRE(orc_sdk_deck_max_depth(deck) == 5);
+  ORC_SDK_REQUIRE(_orc_sdk_deck_header(deck)->item_size == sizeof(uint32_t));
   ORC_SDK_REQUIRE(deck[0] == 42);
   // Unwrap all the way down.
   DeckView v5 = dv_from_deck(deck, 5);
@@ -2617,7 +2617,7 @@ void test_dw_single_element_deep(void)
   DeckView v1 = dv_child(&v2);
   ORC_SDK_REQUIRE(dv_len(&v1) == 1);
   ORC_SDK_REQUIRE(*(uint32_t *)dv_item_ptr(&v1) == 42);
-  deck_free(deck);
+  orc_sdk_deck_free(deck);
 }
 
 void test_dw_len_tracking(void)
@@ -2662,9 +2662,9 @@ void test_dw_len_tracking(void)
     }
     ORC_SDK_REQUIRE(dw_len(&w3) == 4);
   }
-  ORC_SDK_REQUIRE(deck_len(deck) == 4);
-  ORC_SDK_REQUIRE(_deck_header(deck)->item_size == sizeof(uint32_t));
-  deck_free(deck);
+  ORC_SDK_REQUIRE(orc_sdk_deck_len(deck) == 4);
+  ORC_SDK_REQUIRE(_orc_sdk_deck_header(deck)->item_size == sizeof(uint32_t));
+  orc_sdk_deck_free(deck);
 }
 
 void test_dw_append_to_existing(void)
@@ -2673,15 +2673,15 @@ void test_dw_append_to_existing(void)
   uint32_t *deck = NULL;
   uint32_t  v;
   v = 1;
-  ORC_SDK_REQUIRE(OK == deck_push(deck, v, 2));
+  ORC_SDK_REQUIRE(OK == orc_sdk_deck_push(deck, v, 2));
   v = 2;
-  ORC_SDK_REQUIRE(OK == deck_push(deck, v, 0));
+  ORC_SDK_REQUIRE(OK == orc_sdk_deck_push(deck, v, 0));
   v = 3;
-  ORC_SDK_REQUIRE(OK == deck_push(deck, v, 1));
+  ORC_SDK_REQUIRE(OK == orc_sdk_deck_push(deck, v, 1));
   v = 4;
-  ORC_SDK_REQUIRE(OK == deck_push(deck, v, 0));
-  ORC_SDK_REQUIRE(deck_len(deck) == 4);
-  ORC_SDK_REQUIRE(_deck_header(deck)->item_size == sizeof(uint32_t));
+  ORC_SDK_REQUIRE(OK == orc_sdk_deck_push(deck, v, 0));
+  ORC_SDK_REQUIRE(orc_sdk_deck_len(deck) == 4);
+  ORC_SDK_REQUIRE(_orc_sdk_deck_header(deck)->item_size == sizeof(uint32_t));
   // Append another depth-1 group.
   {
     DeckWriter w = dw_from_deck(deck, 1);
@@ -2690,8 +2690,8 @@ void test_dw_append_to_existing(void)
     v = 6;
     dw_push(&w, v);
   }
-  ORC_SDK_REQUIRE(deck_len(deck) == 6);
-  ORC_SDK_REQUIRE(_deck_header(deck)->item_size == sizeof(uint32_t));
+  ORC_SDK_REQUIRE(orc_sdk_deck_len(deck) == 6);
+  ORC_SDK_REQUIRE(_orc_sdk_deck_header(deck)->item_size == sizeof(uint32_t));
   // Verify: ((1,2),(3,4),(5,6))
   uint32_t counter = 0;
   DeckView top     = dv_from_deck(deck, 2);
@@ -2708,7 +2708,7 @@ void test_dw_append_to_existing(void)
     ORC_SDK_REQUIRE(n * 2 <= 6);  // each group has 2 items
   } while (dv_advance(&top));
   ORC_SDK_REQUIRE(counter == 6);
-  deck_free(deck);
+  orc_sdk_deck_free(deck);
 }
 
 void test_dw_flat_depth1(void)
@@ -2723,9 +2723,9 @@ void test_dw_flat_depth1(void)
     }
     ORC_SDK_REQUIRE(dw_len(&w) == 5);
   }
-  ORC_SDK_REQUIRE(deck_len(deck) == 5);
-  ORC_SDK_REQUIRE(deck_max_depth(deck) == 1);
-  ORC_SDK_REQUIRE(_deck_header(deck)->item_size == sizeof(uint32_t));
+  ORC_SDK_REQUIRE(orc_sdk_deck_len(deck) == 5);
+  ORC_SDK_REQUIRE(orc_sdk_deck_max_depth(deck) == 1);
+  ORC_SDK_REQUIRE(_orc_sdk_deck_header(deck)->item_size == sizeof(uint32_t));
   for (uint32_t i = 0; i < 5; ++i) {
     ORC_SDK_REQUIRE(deck[i] == i * 10);
   }
@@ -2733,7 +2733,7 @@ void test_dw_flat_depth1(void)
   DeckView v1 = dv_from_deck(deck, 1);
   ORC_SDK_REQUIRE(dv_len(&v1) == 5);
   ORC_SDK_REQUIRE(!dv_advance(&v1));
-  deck_free(deck);
+  orc_sdk_deck_free(deck);
 }
 
 void test_dw_deck_item_ptr(void)
@@ -2770,9 +2770,9 @@ void test_dw_deck_item_ptr(void)
       ORC_SDK_REQUIRE(dw_len(&c) == 2);
     }
   }
-  ORC_SDK_REQUIRE(deck_len(deck) == 5);
-  ORC_SDK_REQUIRE(_deck_header(deck)->item_size == sizeof(uint32_t));
-  deck_free(deck);
+  ORC_SDK_REQUIRE(orc_sdk_deck_len(deck) == 5);
+  ORC_SDK_REQUIRE(_orc_sdk_deck_header(deck)->item_size == sizeof(uint32_t));
+  orc_sdk_deck_free(deck);
 }
 
 void test_dw_close_idempotent(void)
@@ -2801,8 +2801,8 @@ void test_dw_close_idempotent(void)
       dw_push(&c, v);
     }
   }
-  ORC_SDK_REQUIRE(deck_len(deck) == 2);
-  ORC_SDK_REQUIRE(_deck_header(deck)->item_size == sizeof(uint32_t));
+  ORC_SDK_REQUIRE(orc_sdk_deck_len(deck) == 2);
+  ORC_SDK_REQUIRE(_orc_sdk_deck_header(deck)->item_size == sizeof(uint32_t));
   // Verify: ((1), (), (2))
   size_t   group_sizes[] = {1, 0, 1};
   size_t   gi            = 0;
@@ -2814,7 +2814,7 @@ void test_dw_close_idempotent(void)
     } while (dv_advance(&inner));
   } while (dv_advance(&top));
   ORC_SDK_REQUIRE(gi == 3);
-  deck_free(deck);
+  orc_sdk_deck_free(deck);
 }
 
 void test_dw_all_empty_depth3(void)
@@ -2842,9 +2842,9 @@ void test_dw_all_empty_depth3(void)
       }
     }
   }
-  ORC_SDK_REQUIRE(deck_len(deck) == 0);
-  ORC_SDK_REQUIRE(deck_max_depth(deck) == 3);
-  ORC_SDK_REQUIRE(_deck_header(deck)->item_size == sizeof(uint32_t));
+  ORC_SDK_REQUIRE(orc_sdk_deck_len(deck) == 0);
+  ORC_SDK_REQUIRE(orc_sdk_deck_max_depth(deck) == 3);
+  ORC_SDK_REQUIRE(_orc_sdk_deck_header(deck)->item_size == sizeof(uint32_t));
   // Verify: one top group, two mid groups, inner groups all empty.
   DeckView v3  = dv_from_deck(deck, 3);
   DeckView mid = dv_child(&v3);
@@ -2864,7 +2864,7 @@ void test_dw_all_empty_depth3(void)
     ORC_SDK_REQUIRE(!dv_advance(&inner));
   }
   ORC_SDK_REQUIRE(!dv_advance(&mid));
-  deck_free(deck);
+  orc_sdk_deck_free(deck);
 }
 
 // ========== Dims (Units) ==========
@@ -3160,17 +3160,17 @@ void test_list_item_combinations(void)
                        (7.7, 8.8, 9.9, 10.1, 3.14159),
                        (11.1, 12.1, 13.1, 14.1, 15.1)));
     oh_update(&lists);
-    ORC_SDK_REQUIRE(deck_len(lists.items) == 18);
+    ORC_SDK_REQUIRE(orc_sdk_deck_len(lists.items) == 18);
     ORC_SDK_DECK_INIT(indices.items, uint32_t, 2);
     oh_update(&indices);
-    ORC_SDK_REQUIRE(deck_len(indices.items) == 1);
+    ORC_SDK_REQUIRE(orc_sdk_deck_len(indices.items) == 1);
     // Run the block - In a real scenario, this function is provided by a plugin DLL.
     _plugin_function_list_element(&lists, &indices, &out_items);
     // Check the outputs. The input had 4 lists, so the output should have 4 items.
     oh_update(&out_items);
-    size_t const count = deck_len(out_items.items);
+    size_t const count = orc_sdk_deck_len(out_items.items);
     ORC_SDK_REQUIRE(count == 4);
-    ORC_SDK_REQUIRE(deck_max_depth(out_items.items) == 1);
+    ORC_SDK_REQUIRE(orc_sdk_deck_max_depth(out_items.items) == 1);
     // Output should contain the #2 item from every input list.
     double const  expected[] = {3.34, 6.6, 9.9, 13.1};
     double *const actual     = (double *)out_items.items;
@@ -3181,14 +3181,14 @@ void test_list_item_combinations(void)
   { /* Same depth 2 lists, with a list of indices. */
     ORC_SDK_DECK_INIT(indices.items, uint32_t, (0, 1, 2));
     oh_update(&indices);
-    deck_clear(out_items.items);  // Clear the outputs.
+    orc_sdk_deck_clear(out_items.items);  // Clear the outputs.
     oh_update(&out_items);
     // Run the block - In a real scenario, this function is provided by a plugin DLL.
     _plugin_function_list_element(&lists, &indices, &out_items);
     oh_update(&out_items);
-    size_t const count = deck_len(out_items.items);
+    size_t const count = orc_sdk_deck_len(out_items.items);
     ORC_SDK_REQUIRE(count == 4);
-    ORC_SDK_REQUIRE(deck_max_depth(out_items.items) == 1);
+    ORC_SDK_REQUIRE(orc_sdk_deck_max_depth(out_items.items) == 1);
     double const  expected[] = {1.1, 5.5, 9.9, 13.1};
     double *const actual     = (double *)out_items.items;
     for (size_t i = 0; i < count; ++i) {
@@ -3198,7 +3198,7 @@ void test_list_item_combinations(void)
   { /* Same depth 2 lists as before, with depth-2 indices. */
     ORC_SDK_DECK_INIT(indices.items, uint32_t, ((0, 1, 2), (1, 2, 3)));
     oh_update(&indices);
-    deck_clear(out_items.items);  // Clear the outputs.
+    orc_sdk_deck_clear(out_items.items);  // Clear the outputs.
     oh_update(&out_items);
     // Run the block - In a real scenario, this function is provided by a plugin DLL.
     _plugin_function_list_element(&lists, &indices, &out_items);
@@ -3206,24 +3206,24 @@ void test_list_item_combinations(void)
     double *actual   = (double *)out_items.items;
     double *expected = NULL;
     ORC_SDK_DECK_INIT(expected, double, ((1.1, 5.5, 9.9, 13.1), (2.23, 6.6, 10.1, 14.1)));
-    ORC_SDK_REQUIRE(deck_max_depth(actual) == deck_max_depth(expected));
+    ORC_SDK_REQUIRE(orc_sdk_deck_max_depth(actual) == orc_sdk_deck_max_depth(expected));
     size_t n_marks = 0;
     {
-      _DeckHeader *h = _deck_header(actual);
+      _OrcSdk_DeckHeader *h = _orc_sdk_deck_header(actual);
       n_marks        = orc_sdk_arr_len(h->marks);
-      ORC_SDK_REQUIRE(orc_sdk_arr_len(_deck_header(expected)->marks) == n_marks);
+      ORC_SDK_REQUIRE(orc_sdk_arr_len(_orc_sdk_deck_header(expected)->marks) == n_marks);
     }
     for (size_t i = 0; i < n_marks; ++i) {
-      OrcMark const m1 = _deck_header(expected)->marks[i];
-      OrcMark const m2 = _deck_header(actual)->marks[i];
+      OrcMark const m1 = _orc_sdk_deck_header(expected)->marks[i];
+      OrcMark const m2 = _orc_sdk_deck_header(actual)->marks[i];
       ORC_SDK_REQUIRE(m1.pos == m2.pos && m1.depth == m2.depth);
     }
-    size_t const count = deck_len(actual);
-    ORC_SDK_REQUIRE(count == deck_len(expected));
+    size_t const count = orc_sdk_deck_len(actual);
+    ORC_SDK_REQUIRE(count == orc_sdk_deck_len(expected));
     for (size_t i = 0; i < count; ++i) {
       ORC_SDK_REQUIRE(actual[i] == expected[i]);
     }
-    deck_free(expected);
+    orc_sdk_deck_free(expected);
   }
   // Clean up decks - In a real scenario, the host program is cleaning up, by calling
   // below functions, which are defined inside a plugin.
@@ -3252,9 +3252,9 @@ void test_add_f64_combinations(void)
     _plugin_function_add_f64(&a, &b, &out);
 
     oh_update(&out);
-    size_t const count = deck_len(out.items);
+    size_t const count = orc_sdk_deck_len(out.items);
     ORC_SDK_REQUIRE(count == 3);
-    ORC_SDK_REQUIRE(deck_max_depth(out.items) == 1);
+    ORC_SDK_REQUIRE(orc_sdk_deck_max_depth(out.items) == 1);
     double const  expected[] = {11.0, 22.0, 33.0};
     double *const actual     = (double *)out.items;
     for (size_t i = 0; i < count; ++i) {
@@ -3266,15 +3266,15 @@ void test_add_f64_combinations(void)
     oh_update(&a);
     ORC_SDK_DECK_INIT(b.items, double, (10.0, 20.0));
     oh_update(&b);
-    deck_clear(out.items);
+    orc_sdk_deck_clear(out.items);
     oh_update(&out);
 
     _plugin_function_add_f64(&a, &b, &out);
 
     oh_update(&out);
-    size_t const count = deck_len(out.items);
+    size_t const count = orc_sdk_deck_len(out.items);
     ORC_SDK_REQUIRE(count == 4);
-    ORC_SDK_REQUIRE(deck_max_depth(out.items) == 1);
+    ORC_SDK_REQUIRE(orc_sdk_deck_max_depth(out.items) == 1);
     // b is exhausted at 20.0 and stays there for the remaining elements of a.
     double const  expected[] = {11.0, 22.0, 23.0, 24.0};
     double *const actual     = (double *)out.items;
@@ -3287,7 +3287,7 @@ void test_add_f64_combinations(void)
     oh_update(&a);
     ORC_SDK_DECK_INIT(b.items, double, ((10.0, 20.0), (30.0, 40.0)));
     oh_update(&b);
-    deck_clear(out.items);
+    orc_sdk_deck_clear(out.items);
     oh_update(&out);
 
     _plugin_function_add_f64(&a, &b, &out);
@@ -3296,24 +3296,24 @@ void test_add_f64_combinations(void)
     double *actual   = (double *)out.items;
     double *expected = NULL;
     ORC_SDK_DECK_INIT(expected, double, ((11.0, 22.0), (33.0, 44.0)));
-    ORC_SDK_REQUIRE(deck_max_depth(actual) == deck_max_depth(expected));
+    ORC_SDK_REQUIRE(orc_sdk_deck_max_depth(actual) == orc_sdk_deck_max_depth(expected));
     size_t n_marks = 0;
     {
-      _DeckHeader *h = _deck_header(actual);
+      _OrcSdk_DeckHeader *h = _orc_sdk_deck_header(actual);
       n_marks        = orc_sdk_arr_len(h->marks);
-      ORC_SDK_REQUIRE(orc_sdk_arr_len(_deck_header(expected)->marks) == n_marks);
+      ORC_SDK_REQUIRE(orc_sdk_arr_len(_orc_sdk_deck_header(expected)->marks) == n_marks);
     }
     for (size_t i = 0; i < n_marks; ++i) {
-      OrcMark const m1 = _deck_header(expected)->marks[i];
-      OrcMark const m2 = _deck_header(actual)->marks[i];
+      OrcMark const m1 = _orc_sdk_deck_header(expected)->marks[i];
+      OrcMark const m2 = _orc_sdk_deck_header(actual)->marks[i];
       ORC_SDK_REQUIRE(m1.pos == m2.pos && m1.depth == m2.depth);
     }
-    size_t const count = deck_len(actual);
-    ORC_SDK_REQUIRE(count == deck_len(expected));
+    size_t const count = orc_sdk_deck_len(actual);
+    ORC_SDK_REQUIRE(count == orc_sdk_deck_len(expected));
     for (size_t i = 0; i < count; ++i) {
       ORC_SDK_REQUIRE(actual[i] == expected[i]);
     }
-    deck_free(expected);
+    orc_sdk_deck_free(expected);
   }
   { /* Depth-2 inputs, broadcast-last at inner-group level: a has 2 groups, b has 1
        (stack_depth=3). */
@@ -3323,7 +3323,7 @@ void test_add_f64_combinations(void)
     // two.
     ORC_SDK_DECK_INIT(b.items, double, (((10.0, 20.0))));
     oh_update(&b);
-    deck_clear(out.items);
+    orc_sdk_deck_clear(out.items);
     oh_update(&out);
 
     _plugin_function_add_f64(&a, &b, &out);
@@ -3332,24 +3332,24 @@ void test_add_f64_combinations(void)
     double *actual   = (double *)out.items;
     double *expected = NULL;
     ORC_SDK_DECK_INIT(expected, double, (((11.0, 22.0), (13.0, 24.0))));
-    ORC_SDK_REQUIRE(deck_max_depth(actual) == deck_max_depth(expected));
+    ORC_SDK_REQUIRE(orc_sdk_deck_max_depth(actual) == orc_sdk_deck_max_depth(expected));
     size_t n_marks = 0;
     {
-      _DeckHeader *h = _deck_header(actual);
+      _OrcSdk_DeckHeader *h = _orc_sdk_deck_header(actual);
       n_marks        = orc_sdk_arr_len(h->marks);
-      ORC_SDK_REQUIRE(orc_sdk_arr_len(_deck_header(expected)->marks) == n_marks);
+      ORC_SDK_REQUIRE(orc_sdk_arr_len(_orc_sdk_deck_header(expected)->marks) == n_marks);
     }
     for (size_t i = 0; i < n_marks; ++i) {
-      OrcMark const m1 = _deck_header(expected)->marks[i];
-      OrcMark const m2 = _deck_header(actual)->marks[i];
+      OrcMark const m1 = _orc_sdk_deck_header(expected)->marks[i];
+      OrcMark const m2 = _orc_sdk_deck_header(actual)->marks[i];
       ORC_SDK_REQUIRE(m1.pos == m2.pos && m1.depth == m2.depth);
     }
-    size_t const count = deck_len(actual);
-    ORC_SDK_REQUIRE(count == deck_len(expected));
+    size_t const count = orc_sdk_deck_len(actual);
+    ORC_SDK_REQUIRE(count == orc_sdk_deck_len(expected));
     for (size_t i = 0; i < count; ++i) {
       ORC_SDK_REQUIRE(actual[i] == expected[i]);
     }
-    deck_free(expected);
+    orc_sdk_deck_free(expected);
   }
   ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_handle_free(&a));
   ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_handle_free(&b));
@@ -3397,9 +3397,9 @@ void test_list_length_combinations(void)
     _plugin_function_list_length(&in, &out);
 
     oh_update(&out);
-    size_t const count = deck_len(out.items);
+    size_t const count = orc_sdk_deck_len(out.items);
     ORC_SDK_REQUIRE(count == 5);
-    ORC_SDK_REQUIRE(deck_max_depth(out.items) == 1);
+    ORC_SDK_REQUIRE(orc_sdk_deck_max_depth(out.items) == 1);
     uint64_t const  expected[] = {3, 0, 1, 0, 2};
     uint64_t *const actual     = (uint64_t *)out.items;
     for (size_t i = 0; i < count; ++i) {
@@ -3410,7 +3410,7 @@ void test_list_length_combinations(void)
        (stack_depth=3). */
     ORC_SDK_DECK_INIT(in.items, double, (((1.0, 2.0), ()), ((3.0, 4.0, 5.0), (), (6.0))));
     oh_update(&in);
-    deck_clear(out.items);
+    orc_sdk_deck_clear(out.items);
     oh_update(&out);
 
     _plugin_function_list_length(&in, &out);
@@ -3419,24 +3419,24 @@ void test_list_length_combinations(void)
     uint64_t *actual   = (uint64_t *)out.items;
     uint64_t *expected = NULL;
     ORC_SDK_DECK_INIT(expected, uint64_t, ((2, 0), (3, 0, 1)));
-    ORC_SDK_REQUIRE(deck_max_depth(actual) == deck_max_depth(expected));
+    ORC_SDK_REQUIRE(orc_sdk_deck_max_depth(actual) == orc_sdk_deck_max_depth(expected));
     size_t n_marks = 0;
     {
-      _DeckHeader *h = _deck_header(actual);
+      _OrcSdk_DeckHeader *h = _orc_sdk_deck_header(actual);
       n_marks        = orc_sdk_arr_len(h->marks);
-      ORC_SDK_REQUIRE(orc_sdk_arr_len(_deck_header(expected)->marks) == n_marks);
+      ORC_SDK_REQUIRE(orc_sdk_arr_len(_orc_sdk_deck_header(expected)->marks) == n_marks);
     }
     for (size_t i = 0; i < n_marks; ++i) {
-      OrcMark const m1 = _deck_header(expected)->marks[i];
-      OrcMark const m2 = _deck_header(actual)->marks[i];
+      OrcMark const m1 = _orc_sdk_deck_header(expected)->marks[i];
+      OrcMark const m2 = _orc_sdk_deck_header(actual)->marks[i];
       ORC_SDK_REQUIRE(m1.pos == m2.pos && m1.depth == m2.depth);
     }
-    size_t const count = deck_len(actual);
-    ORC_SDK_REQUIRE(count == deck_len(expected));
+    size_t const count = orc_sdk_deck_len(actual);
+    ORC_SDK_REQUIRE(count == orc_sdk_deck_len(expected));
     for (size_t i = 0; i < count; ++i) {
       ORC_SDK_REQUIRE(actual[i] == expected[i]);
     }
-    deck_free(expected);
+    orc_sdk_deck_free(expected);
   }
   ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_handle_free(&in));
   ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_handle_free(&out));
@@ -3463,10 +3463,10 @@ void test_two_output_combinations(void)
 
     oh_update(&out1);
     oh_update(&out2);
-    ORC_SDK_REQUIRE(deck_len(out1.items) == 3);
-    ORC_SDK_REQUIRE(deck_len(out2.items) == 3);
-    ORC_SDK_REQUIRE(deck_max_depth(out1.items) == 1);
-    ORC_SDK_REQUIRE(deck_max_depth(out2.items) == 1);
+    ORC_SDK_REQUIRE(orc_sdk_deck_len(out1.items) == 3);
+    ORC_SDK_REQUIRE(orc_sdk_deck_len(out2.items) == 3);
+    ORC_SDK_REQUIRE(orc_sdk_deck_max_depth(out1.items) == 1);
+    ORC_SDK_REQUIRE(orc_sdk_deck_max_depth(out2.items) == 1);
     double const  expected_sq[] = {4.0, 9.0, 16.0};
     double const  expected_cb[] = {8.0, 27.0, 64.0};
     double *const sq_actual     = (double *)out1.items;
@@ -3481,19 +3481,19 @@ void test_two_output_combinations(void)
     oh_update(&in_a);
     ORC_SDK_DECK_INIT(in_b.items, double, (4.0, 5.0, 6.0));
     oh_update(&in_b);
-    deck_clear(out1.items);
+    orc_sdk_deck_clear(out1.items);
     oh_update(&out1);
-    deck_clear(out2.items);
+    orc_sdk_deck_clear(out2.items);
     oh_update(&out2);
 
     _plugin_function_add_mul(&in_a, &in_b, &out1, &out2);
 
     oh_update(&out1);
     oh_update(&out2);
-    ORC_SDK_REQUIRE(deck_len(out1.items) == 3);
-    ORC_SDK_REQUIRE(deck_len(out2.items) == 3);
-    ORC_SDK_REQUIRE(deck_max_depth(out1.items) == 1);
-    ORC_SDK_REQUIRE(deck_max_depth(out2.items) == 1);
+    ORC_SDK_REQUIRE(orc_sdk_deck_len(out1.items) == 3);
+    ORC_SDK_REQUIRE(orc_sdk_deck_len(out2.items) == 3);
+    ORC_SDK_REQUIRE(orc_sdk_deck_max_depth(out1.items) == 1);
+    ORC_SDK_REQUIRE(orc_sdk_deck_max_depth(out2.items) == 1);
     double const  expected_sum[]  = {5.0, 7.0, 9.0};
     double const  expected_prod[] = {4.0, 10.0, 18.0};
     double *const sum_actual      = (double *)out1.items;
@@ -3529,9 +3529,9 @@ void test_first_add_combinations(void)
     _plugin_function_first_add(&a, &b, &out);
 
     oh_update(&out);
-    size_t const count = deck_len(out.items);
+    size_t const count = orc_sdk_deck_len(out.items);
     ORC_SDK_REQUIRE(count == 3);
-    ORC_SDK_REQUIRE(deck_max_depth(out.items) == 1);
+    ORC_SDK_REQUIRE(orc_sdk_deck_max_depth(out.items) == 1);
     double const  expected[] = {11.0, 22.0, 33.0};
     double *const actual     = (double *)out.items;
     for (size_t i = 0; i < count; ++i) {
@@ -3544,15 +3544,15 @@ void test_first_add_combinations(void)
     oh_update(&a);
     ORC_SDK_DECK_INIT(b.items, double, ((10.0, 99.0), (20.0, 99.0)));
     oh_update(&b);
-    deck_clear(out.items);
+    orc_sdk_deck_clear(out.items);
     oh_update(&out);
 
     _plugin_function_first_add(&a, &b, &out);
 
     oh_update(&out);
-    size_t const count = deck_len(out.items);
+    size_t const count = orc_sdk_deck_len(out.items);
     ORC_SDK_REQUIRE(count == 4);
-    ORC_SDK_REQUIRE(deck_max_depth(out.items) == 1);
+    ORC_SDK_REQUIRE(orc_sdk_deck_max_depth(out.items) == 1);
     // b is exhausted after its second group and stays at first(b[1])=20.0.
     double const  expected[] = {11.0, 22.0, 23.0, 24.0};
     double *const actual     = (double *)out.items;
@@ -3569,7 +3569,7 @@ void test_first_add_combinations(void)
 
 static OrcHandle _make_flattened_proxy(void const *deck)
 {
-  _DeckHeader  *h     = _deck_header(deck);
+  _OrcSdk_DeckHeader  *h     = _orc_sdk_deck_header(deck);
   OrcMark      *marks = NULL;
   OrcMark const mark  = (OrcMark) {.depth = 0, .pos = 0};
   orc_sdk_arr_push(marks, mark);
@@ -3589,7 +3589,7 @@ static OrcHandle _make_flattened_proxy(void const *deck)
 
 static OrcHandle _make_grafted_proxy(void const *deck)
 {
-  _DeckHeader *h         = _deck_header(deck);
+  _OrcSdk_DeckHeader *h         = _orc_sdk_deck_header(deck);
   OrcMark     *old_marks = h->marks;
   size_t const n_marks   = orc_sdk_arr_len(old_marks);
   OrcMark     *marks     = NULL;
@@ -3627,7 +3627,7 @@ static OrcHandle _make_grafted_proxy(void const *deck)
 
 static OrcHandle _make_simplified_proxy(void const *deck)
 {
-  _DeckHeader *h       = _deck_header(deck);
+  _OrcSdk_DeckHeader *h       = _orc_sdk_deck_header(deck);
   size_t const n_marks = orc_sdk_arr_len(h->marks);
   OrcMark     *marks   = NULL;
   if (n_marks == 0) {
@@ -3681,13 +3681,13 @@ static void _assert_decks_match(void const  *actual,
                                 void const  *expected,
                                 size_t const item_size)
 {
-  size_t const na = deck_len(actual);
-  size_t const ne = deck_len(expected);
+  size_t const na = orc_sdk_deck_len(actual);
+  size_t const ne = orc_sdk_deck_len(expected);
   ORC_SDK_REQUIRE(na == ne);
   ORC_SDK_REQUIRE(memcmp(actual, expected, na * item_size) == 0);
-  ORC_SDK_REQUIRE(deck_max_depth(actual) == deck_max_depth(expected));
-  _DeckHeader *ha  = _deck_header(actual);
-  _DeckHeader *he  = _deck_header(expected);
+  ORC_SDK_REQUIRE(orc_sdk_deck_max_depth(actual) == orc_sdk_deck_max_depth(expected));
+  _OrcSdk_DeckHeader *ha  = _orc_sdk_deck_header(actual);
+  _OrcSdk_DeckHeader *he  = _orc_sdk_deck_header(expected);
   size_t const nma = orc_sdk_arr_len(ha->marks);
   size_t const nme = orc_sdk_arr_len(he->marks);
   ORC_SDK_REQUIRE(nma == nme);
@@ -3710,8 +3710,8 @@ void test_deck_from_proxy_copy_items(void)
     orc_sdk_deck_from_proxy(&in, 1, ORC_DECK_PROXY_COPY_ITEMS, &proxy, &out);
 
     ORC_SDK_REQUIRE(out.type_id == ORC_TYPE_F64);
-    ORC_SDK_REQUIRE(deck_len(out.items) == 5);
-    ORC_SDK_REQUIRE(deck_max_depth(out.items) == 1);
+    ORC_SDK_REQUIRE(orc_sdk_deck_len(out.items) == 5);
+    ORC_SDK_REQUIRE(orc_sdk_deck_max_depth(out.items) == 1);
     double *actual = (double *)out.items;
     ORC_SDK_REQUIRE(actual[0] == 1.0 && actual[1] == 2.0 && actual[2] == 3.0);
     ORC_SDK_REQUIRE(actual[3] == 4.0 && actual[4] == 5.0);
@@ -3729,8 +3729,8 @@ void test_deck_from_proxy_copy_items(void)
     OrcHandle proxy = _make_flattened_proxy(in.items);
     orc_sdk_deck_from_proxy(&in, 1, ORC_DECK_PROXY_COPY_ITEMS, &proxy, &out);
 
-    ORC_SDK_REQUIRE(deck_len(out.items) == 5);
-    ORC_SDK_REQUIRE(deck_max_depth(out.items) == 1);
+    ORC_SDK_REQUIRE(orc_sdk_deck_len(out.items) == 5);
+    ORC_SDK_REQUIRE(orc_sdk_deck_max_depth(out.items) == 1);
     double *actual = (double *)out.items;
     ORC_SDK_REQUIRE(actual[0] == 1.0 && actual[4] == 5.0);
 
@@ -3752,7 +3752,7 @@ void test_deck_from_proxy_copy_items(void)
     _assert_decks_match(out.items, expected, sizeof(double));
     ORC_SDK_REQUIRE(out.type_id == ORC_TYPE_F64);
 
-    deck_free(expected);
+    orc_sdk_deck_free(expected);
     orc_sdk_arr_free(proxy.marks);
     ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_handle_free(&out));
     ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_handle_free(&in));
@@ -3770,7 +3770,7 @@ void test_deck_from_proxy_copy_items(void)
     ORC_SDK_DECK_INIT(expected, double, (((1.0), (2.0)), ((3.0))));
     _assert_decks_match(out.items, expected, sizeof(double));
 
-    deck_free(expected);
+    orc_sdk_deck_free(expected);
     orc_sdk_arr_free(proxy.marks);
     ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_handle_free(&out));
     ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_handle_free(&in));
@@ -3781,20 +3781,20 @@ void test_deck_from_proxy_copy_items(void)
     ORC_SDK_DECK_INIT(in.items, double, ((1.0, 2.0), (3.0, 4.0)));
     oh_update(&in);
     /* Graft to create a gap in depth levels, then use simplify proxy. */
-    deck_graft((void *)in.items);
+    orc_sdk_deck_graft((void *)in.items);
     oh_update(&in);
 
     OrcHandle proxy = _make_simplified_proxy(in.items);
     orc_sdk_deck_from_proxy(&in, 1, ORC_DECK_PROXY_COPY_ITEMS, &proxy, &out);
 
-    /* Simplify should match deck_simplify on an equivalent deck. */
+    /* Simplify should match orc_sdk_deck_simplify on an equivalent deck. */
     double *expected = NULL;
     ORC_SDK_DECK_INIT(expected, double, ((1.0, 2.0), (3.0, 4.0)));
-    deck_graft(expected);
-    deck_simplify(expected);
+    orc_sdk_deck_graft(expected);
+    orc_sdk_deck_simplify(expected);
     _assert_decks_match(out.items, expected, sizeof(double));
 
-    deck_free(expected);
+    orc_sdk_deck_free(expected);
     orc_sdk_arr_free(proxy.marks);
     ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_handle_free(&out));
     ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_handle_free(&in));
@@ -3811,9 +3811,9 @@ void test_deck_from_proxy_shuffle(void)
     oh_update(&in);
 
     OrcItemProxy *pdeck = NULL;
-    ORC_SDK_REQUIRE(deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 2}), 1) == OK);
-    ORC_SDK_REQUIRE(deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 1}), 0) == OK);
-    ORC_SDK_REQUIRE(deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 0}), 0) == OK);
+    ORC_SDK_REQUIRE(orc_sdk_deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 2}), 1) == OK);
+    ORC_SDK_REQUIRE(orc_sdk_deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 1}), 0) == OK);
+    ORC_SDK_REQUIRE(orc_sdk_deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 0}), 0) == OK);
     OrcHandle proxy = _make_shuffle_proxy(pdeck);
     orc_sdk_deck_from_proxy(&in, 1, ORC_DECK_PROXY_SHUFFLE, &proxy, &out);
 
@@ -3822,8 +3822,8 @@ void test_deck_from_proxy_shuffle(void)
     _assert_decks_match(out.items, expected, sizeof(double));
     ORC_SDK_REQUIRE(out.type_id == ORC_TYPE_F64);
 
-    deck_free(expected);
-    deck_free(pdeck);
+    orc_sdk_deck_free(expected);
+    orc_sdk_deck_free(pdeck);
     ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_handle_free(&out));
     ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_handle_free(&in));
   }
@@ -3835,12 +3835,12 @@ void test_deck_from_proxy_shuffle(void)
 
     OrcItemProxy *pdeck = NULL;
     /* First sublist reversed: flat indices 1, 0. */
-    ORC_SDK_REQUIRE(deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 1}), 2) == OK);
-    ORC_SDK_REQUIRE(deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 0}), 0) == OK);
+    ORC_SDK_REQUIRE(orc_sdk_deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 1}), 2) == OK);
+    ORC_SDK_REQUIRE(orc_sdk_deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 0}), 0) == OK);
     /* Second sublist reversed: flat indices 4, 3, 2. */
-    ORC_SDK_REQUIRE(deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 4}), 1) == OK);
-    ORC_SDK_REQUIRE(deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 3}), 0) == OK);
-    ORC_SDK_REQUIRE(deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 2}), 0) == OK);
+    ORC_SDK_REQUIRE(orc_sdk_deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 4}), 1) == OK);
+    ORC_SDK_REQUIRE(orc_sdk_deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 3}), 0) == OK);
+    ORC_SDK_REQUIRE(orc_sdk_deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 2}), 0) == OK);
     OrcHandle proxy = _make_shuffle_proxy(pdeck);
     orc_sdk_deck_from_proxy(&in, 1, ORC_DECK_PROXY_SHUFFLE, &proxy, &out);
 
@@ -3848,8 +3848,8 @@ void test_deck_from_proxy_shuffle(void)
     ORC_SDK_DECK_INIT(expected, double, ((2.0, 1.0), (5.0, 4.0, 3.0)));
     _assert_decks_match(out.items, expected, sizeof(double));
 
-    deck_free(expected);
-    deck_free(pdeck);
+    orc_sdk_deck_free(expected);
+    orc_sdk_deck_free(pdeck);
     ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_handle_free(&out));
     ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_handle_free(&in));
   }
@@ -3861,17 +3861,17 @@ void test_deck_from_proxy_shuffle(void)
     oh_update(&in);
 
     OrcItemProxy *pdeck = NULL;
-    ORC_SDK_REQUIRE(deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 1}), 1) == OK);
-    ORC_SDK_REQUIRE(deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 4}), 0) == OK);
+    ORC_SDK_REQUIRE(orc_sdk_deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 1}), 1) == OK);
+    ORC_SDK_REQUIRE(orc_sdk_deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 4}), 0) == OK);
     OrcHandle proxy = _make_shuffle_proxy(pdeck);
     orc_sdk_deck_from_proxy(&in, 1, ORC_DECK_PROXY_SHUFFLE, &proxy, &out);
 
     ORC_SDK_REQUIRE(out.type_id == ORC_TYPE_F64);
-    ORC_SDK_REQUIRE(deck_len(out.items) == 2);
+    ORC_SDK_REQUIRE(orc_sdk_deck_len(out.items) == 2);
     double *actual = (double *)out.items;
     ORC_SDK_REQUIRE(actual[0] == 2.0 && actual[1] == 5.0);
 
-    deck_free(pdeck);
+    orc_sdk_deck_free(pdeck);
     ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_handle_free(&out));
     ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_handle_free(&in));
   }
@@ -3886,10 +3886,10 @@ void test_deck_from_proxy_shuffle(void)
     oh_update(&b);
 
     OrcItemProxy *pdeck = NULL;
-    ORC_SDK_REQUIRE(deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 0}), 1) == OK);
-    ORC_SDK_REQUIRE(deck_push(pdeck, ((OrcItemProxy) {.tree = 1, .item = 0}), 0) == OK);
-    ORC_SDK_REQUIRE(deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 1}), 0) == OK);
-    ORC_SDK_REQUIRE(deck_push(pdeck, ((OrcItemProxy) {.tree = 1, .item = 1}), 0) == OK);
+    ORC_SDK_REQUIRE(orc_sdk_deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 0}), 1) == OK);
+    ORC_SDK_REQUIRE(orc_sdk_deck_push(pdeck, ((OrcItemProxy) {.tree = 1, .item = 0}), 0) == OK);
+    ORC_SDK_REQUIRE(orc_sdk_deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 1}), 0) == OK);
+    ORC_SDK_REQUIRE(orc_sdk_deck_push(pdeck, ((OrcItemProxy) {.tree = 1, .item = 1}), 0) == OK);
     OrcHandle proxy = _make_shuffle_proxy(pdeck);
 
     OrcHandle inputs[2] = {a, b};
@@ -3899,8 +3899,8 @@ void test_deck_from_proxy_shuffle(void)
     ORC_SDK_DECK_INIT(expected, double, (1.0, 10.0, 2.0, 20.0));
     _assert_decks_match(out.items, expected, sizeof(double));
 
-    deck_free(expected);
-    deck_free(pdeck);
+    orc_sdk_deck_free(expected);
+    orc_sdk_deck_free(pdeck);
     ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_handle_free(&out));
     ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_handle_free(&b));
     ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_handle_free(&a));
@@ -3920,8 +3920,8 @@ void test_deck_from_proxy_type_agnostic(void)
     orc_sdk_deck_from_proxy(&in, 1, ORC_DECK_PROXY_COPY_ITEMS, &proxy, &out);
 
     ORC_SDK_REQUIRE(out.type_id == ORC_TYPE_U32);
-    ORC_SDK_REQUIRE(deck_len(out.items) == 3);
-    ORC_SDK_REQUIRE(deck_max_depth(out.items) == 1);
+    ORC_SDK_REQUIRE(orc_sdk_deck_len(out.items) == 3);
+    ORC_SDK_REQUIRE(orc_sdk_deck_max_depth(out.items) == 1);
     uint32_t *actual = (uint32_t *)out.items;
     ORC_SDK_REQUIRE(actual[0] == 10 && actual[1] == 20 && actual[2] == 30);
 
@@ -3936,20 +3936,20 @@ void test_deck_from_proxy_type_agnostic(void)
     oh_update(&in);
 
     OrcItemProxy *pdeck = NULL;
-    ORC_SDK_REQUIRE(deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 3}), 1) == OK);
-    ORC_SDK_REQUIRE(deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 2}), 0) == OK);
-    ORC_SDK_REQUIRE(deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 1}), 0) == OK);
-    ORC_SDK_REQUIRE(deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 0}), 0) == OK);
+    ORC_SDK_REQUIRE(orc_sdk_deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 3}), 1) == OK);
+    ORC_SDK_REQUIRE(orc_sdk_deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 2}), 0) == OK);
+    ORC_SDK_REQUIRE(orc_sdk_deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 1}), 0) == OK);
+    ORC_SDK_REQUIRE(orc_sdk_deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 0}), 0) == OK);
     OrcHandle proxy = _make_shuffle_proxy(pdeck);
     orc_sdk_deck_from_proxy(&in, 1, ORC_DECK_PROXY_SHUFFLE, &proxy, &out);
 
     ORC_SDK_REQUIRE(out.type_id == ORC_TYPE_I32);
-    ORC_SDK_REQUIRE(deck_len(out.items) == 4);
+    ORC_SDK_REQUIRE(orc_sdk_deck_len(out.items) == 4);
     int32_t *actual = (int32_t *)out.items;
     ORC_SDK_REQUIRE(actual[0] == -4 && actual[1] == -3 && actual[2] == -2 &&
                     actual[3] == -1);
 
-    deck_free(pdeck);
+    orc_sdk_deck_free(pdeck);
     ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_handle_free(&out));
     ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_handle_free(&in));
   }
@@ -3963,8 +3963,8 @@ void test_deck_from_proxy_type_agnostic(void)
     orc_sdk_deck_from_proxy(&in, 1, ORC_DECK_PROXY_COPY_ITEMS, &proxy, &out);
 
     ORC_SDK_REQUIRE(out.type_id == ORC_TYPE_I16);
-    ORC_SDK_REQUIRE(deck_len(out.items) == 3);
-    ORC_SDK_REQUIRE(deck_max_depth(out.items) == 2);
+    ORC_SDK_REQUIRE(orc_sdk_deck_len(out.items) == 3);
+    ORC_SDK_REQUIRE(orc_sdk_deck_max_depth(out.items) == 2);
     int16_t *actual = (int16_t *)out.items;
     ORC_SDK_REQUIRE(actual[0] == 10 && actual[1] == 20 && actual[2] == 30);
 
