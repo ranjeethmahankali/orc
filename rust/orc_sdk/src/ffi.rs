@@ -29,8 +29,9 @@ macro_rules! orc_plugin {
                 return orc_sdk::ORC_ERROR_INVALID_HANDLE;
             }
             match <$plugin as orc_sdk::TOrcPluginAdaptor>::deck_alloc(id) {
-                Ok(handle) => {
+                Ok(mut handle) => {
                     unsafe {
+                        handle.free_fn = Some(orc_deck_free);
                         *out = handle;
                     }
                     orc_sdk::ORC_ERROR_NONE

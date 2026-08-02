@@ -78,6 +78,7 @@ pub fn handle_from_deck<T: TOrcData>(deck: &Deck<T>, id: u64) -> OrcHandle {
         strides: ptr_from_slice(strides),
         type_id: T::TYPE_INFO.type_id,
         dims: [0; ORC_NUM_DIMS as usize],
+        free_fn: None,
     }
 }
 
