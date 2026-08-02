@@ -648,6 +648,33 @@ where
             }
         })
     }
+
+    pub fn from_handle(handle: &'a OrcHandle) -> Self {
+        let (marks, stride_offset, strides) = unsafe {
+            let marks = slice_from_ptr(handle.marks.cast(), handle.n_marks as usize);
+            let stride_offset = slice_from_ptr(handle.stride_offset, handle.n_marks as usize);
+            let strides = slice_from_ptr(handle.strides, calc_stride_count(marks, stride_offset));
+            (marks, stride_offset, strides)
+        };
+        let depth = marks.first().map(|m| m.depth + 1).unwrap_or(0u8);
+        let end = if depth == 0 {
+            handle.n_items
+        } else {
+            handle.n_marks
+        } as usize;
+        Self {
+            items: unsafe { slice_from_ptr(handle.items.cast(), handle.n_items as usize) },
+            cursor: ReadCursor {
+                n_items: handle.n_items as usize,
+                marks,
+                strides,
+                stride_offset,
+                depth,
+                start: 0,
+                end,
+            },
+        }
+    }
 }
 
 impl<'a, T> Index<usize> for DeckView<'a, T>
