@@ -104,7 +104,6 @@ pub type DeckFromProxyFn = unsafe extern "C" fn(
 // Compile-time checks to keep these type aliases in sync with the bindings.
 const _: PluginInitFn = orc_plugin_init;
 const _: DeckAllocFn = orc_deck_alloc;
-const _: DeckFreeFn = orc_deck_free;
 const _: DeckFromProxyFn = orc_deck_from_proxy;
 
 pub enum ProxyType {

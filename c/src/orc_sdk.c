@@ -1194,6 +1194,8 @@ OrcError _handle_free_fn(OrcHandle *const handle)
 
 void oh_update(OrcHandle *handle)
 {
+  REQUIRE_WITH_MSG(handle != NULL, "Invalid handle");
+  REQUIRE_WITH_MSG(handle->type_id != 0, "Invalid type id");
   _DeckHeader *h        = _deck_header(handle->items);
   handle->handle        = (uint64_t)handle->items;
   handle->n_items       = h->count;
