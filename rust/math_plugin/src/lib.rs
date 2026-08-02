@@ -73,8 +73,6 @@ impl TOrcPluginAdaptor for Adaptor {
             ORC_TYPE_I64 => alloc_deck::<i64>(),
             ORC_TYPE_F32 => alloc_deck::<f32>(),
             ORC_TYPE_F64 => alloc_deck::<f64>(),
-            // We just return an empty handle to the host when the type is not supported. Maybe in
-            // the future we should return some error code.
             _ => Err(Error::DeckTypeMismatch),
         }
     }
@@ -105,8 +103,6 @@ impl TOrcPluginAdaptor for Adaptor {
             ORC_TYPE_I64 => deck_from_proxy_impl::<i64>(inputs, proxy_type, proxy),
             ORC_TYPE_F32 => deck_from_proxy_impl::<f32>(inputs, proxy_type, proxy),
             ORC_TYPE_F64 => deck_from_proxy_impl::<f64>(inputs, proxy_type, proxy),
-            // We just return an empty handle to the host when the type is not supported. Maybe in
-            // the future we should return some error code.
             _ => Err(Error::DeckTypeMismatch),
         }
     }
