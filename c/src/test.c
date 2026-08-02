@@ -2325,17 +2325,17 @@ void test_dv_binary_deck(void)
   }
 }
 
-// ========== DeckWriter ==========
+// ========== OrcSdk_DeckWriter ==========
 
 void test_dw_basic_depth2(void)
 {
-  // Build ((0,1,2),(3,4,5),(6,7,8)) via DeckWriter, then verify via OrcSdk_DeckView.
+  // Build ((0,1,2),(3,4,5),(6,7,8)) via OrcSdk_DeckWriter, then verify via OrcSdk_DeckView.
   uint32_t *deck    = NULL;
   uint32_t  counter = 0;
   {
-    DeckWriter w = dw_from_deck(deck, 2);
+    OrcSdk_DeckWriter w = orc_sdk_dw_from_deck(deck, 2);
     for (int g = 0; g < 3; ++g) {
-      DeckWriter c = dw_child(&w);
+      OrcSdk_DeckWriter c = orc_sdk_dw_child(&w);
       for (int i = 0; i < 3; ++i) {
         ORC_SDK_REQUIRE(dw_push(&c, counter) == OK);
         counter++;
@@ -2368,13 +2368,13 @@ void test_dw_depth3_nested(void)
   uint32_t *deck    = NULL;
   uint32_t  counter = 0;
   {
-    DeckWriter w3 = dw_from_deck(deck, 3);
+    OrcSdk_DeckWriter w3 = orc_sdk_dw_from_deck(deck, 3);
     ORC_SDK_REQUIRE(w3.depth == 3);
     for (int a = 0; a < 3; ++a) {
-      DeckWriter w2 = dw_child(&w3);
+      OrcSdk_DeckWriter w2 = orc_sdk_dw_child(&w3);
       ORC_SDK_REQUIRE(w2.depth == 2);
       for (int b = 0; b < 3; ++b) {
-        DeckWriter w1 = dw_child(&w2);
+        OrcSdk_DeckWriter w1 = orc_sdk_dw_child(&w2);
         ORC_SDK_REQUIRE(w1.depth == 1);
         for (int c = 0; c < 3; ++c) {
           ORC_SDK_REQUIRE(dw_push(&w1, counter) == OK);
@@ -2411,14 +2411,14 @@ void test_dw_unbalanced_tree(void)
   // ((1), (2,3,4), (5,6)) — groups of different sizes.
   uint32_t *deck = NULL;
   {
-    DeckWriter w = dw_from_deck(deck, 2);
+    OrcSdk_DeckWriter w = orc_sdk_dw_from_deck(deck, 2);
     {
-      DeckWriter c = dw_child(&w);
+      OrcSdk_DeckWriter c = orc_sdk_dw_child(&w);
       uint32_t   v = 1;
       ORC_SDK_REQUIRE(dw_push(&c, v) == OK);
     }
     {
-      DeckWriter c = dw_child(&w);
+      OrcSdk_DeckWriter c = orc_sdk_dw_child(&w);
       uint32_t   v;
       v = 2;
       ORC_SDK_REQUIRE(dw_push(&c, v) == OK);
@@ -2428,7 +2428,7 @@ void test_dw_unbalanced_tree(void)
       ORC_SDK_REQUIRE(dw_push(&c, v) == OK);
     }
     {
-      DeckWriter c = dw_child(&w);
+      OrcSdk_DeckWriter c = orc_sdk_dw_child(&w);
       uint32_t   v;
       v = 5;
       ORC_SDK_REQUIRE(dw_push(&c, v) == OK);
@@ -2471,13 +2471,13 @@ void test_dw_empty_groups(void)
   // Build ((), (1,2), (), (3), ()) via dw_close for empty groups.
   uint32_t *deck = NULL;
   {
-    DeckWriter w = dw_from_deck(deck, 2);
+    OrcSdk_DeckWriter w = orc_sdk_dw_from_deck(deck, 2);
     {
-      DeckWriter c = dw_child(&w);
+      OrcSdk_DeckWriter c = orc_sdk_dw_child(&w);
       dw_close(&c);  // empty group
     }
     {
-      DeckWriter c = dw_child(&w);
+      OrcSdk_DeckWriter c = orc_sdk_dw_child(&w);
       uint32_t   v;
       v = 1;
       ORC_SDK_REQUIRE(dw_push(&c, v) == OK);
@@ -2485,16 +2485,16 @@ void test_dw_empty_groups(void)
       ORC_SDK_REQUIRE(dw_push(&c, v) == OK);
     }
     {
-      DeckWriter c = dw_child(&w);
+      OrcSdk_DeckWriter c = orc_sdk_dw_child(&w);
       dw_close(&c);  // empty group
     }
     {
-      DeckWriter c = dw_child(&w);
+      OrcSdk_DeckWriter c = orc_sdk_dw_child(&w);
       uint32_t   v = 3;
       ORC_SDK_REQUIRE(dw_push(&c, v) == OK);
     }
     {
-      DeckWriter c = dw_child(&w);
+      OrcSdk_DeckWriter c = orc_sdk_dw_child(&w);
       dw_close(&c);  // empty group
     }
   }
@@ -2522,15 +2522,15 @@ void test_dw_nested_empty(void)
   // Build (((), (1,2)), ((3,)), (())) at depth 3.
   uint32_t *deck = NULL;
   {
-    DeckWriter w3 = dw_from_deck(deck, 3);
+    OrcSdk_DeckWriter w3 = orc_sdk_dw_from_deck(deck, 3);
     {
-      DeckWriter w2 = dw_child(&w3);
+      OrcSdk_DeckWriter w2 = orc_sdk_dw_child(&w3);
       {
-        DeckWriter w1 = dw_child(&w2);
+        OrcSdk_DeckWriter w1 = orc_sdk_dw_child(&w2);
         dw_close(&w1);  // empty inner
       }
       {
-        DeckWriter w1 = dw_child(&w2);
+        OrcSdk_DeckWriter w1 = orc_sdk_dw_child(&w2);
         uint32_t   v;
         v = 1;
         ORC_SDK_REQUIRE(dw_push(&w1, v) == OK);
@@ -2539,17 +2539,17 @@ void test_dw_nested_empty(void)
       }
     }
     {
-      DeckWriter w2 = dw_child(&w3);
+      OrcSdk_DeckWriter w2 = orc_sdk_dw_child(&w3);
       {
-        DeckWriter w1 = dw_child(&w2);
+        OrcSdk_DeckWriter w1 = orc_sdk_dw_child(&w2);
         uint32_t   v  = 3;
         ORC_SDK_REQUIRE(dw_push(&w1, v) == OK);
       }
     }
     {
-      DeckWriter w2 = dw_child(&w3);
+      OrcSdk_DeckWriter w2 = orc_sdk_dw_child(&w3);
       {
-        DeckWriter w1 = dw_child(&w2);
+        OrcSdk_DeckWriter w1 = orc_sdk_dw_child(&w2);
         dw_close(&w1);  // empty inner
       }
     }
@@ -2597,11 +2597,11 @@ void test_dw_single_element_deep(void)
   // One item wrapped at depth 5: (((((42)))))
   uint32_t *deck = NULL;
   {
-    DeckWriter w5 = dw_from_deck(deck, 5);
-    DeckWriter w4 = dw_child(&w5);
-    DeckWriter w3 = dw_child(&w4);
-    DeckWriter w2 = dw_child(&w3);
-    DeckWriter w1 = dw_child(&w2);
+    OrcSdk_DeckWriter w5 = orc_sdk_dw_from_deck(deck, 5);
+    OrcSdk_DeckWriter w4 = orc_sdk_dw_child(&w5);
+    OrcSdk_DeckWriter w3 = orc_sdk_dw_child(&w4);
+    OrcSdk_DeckWriter w2 = orc_sdk_dw_child(&w3);
+    OrcSdk_DeckWriter w1 = orc_sdk_dw_child(&w2);
     uint32_t   v  = 42;
     ORC_SDK_REQUIRE(dw_push(&w1, v) == OK);
   }
@@ -2625,13 +2625,13 @@ void test_dw_len_tracking(void)
   // Verify dw_len reflects items added at each scope level.
   uint32_t *deck = NULL;
   {
-    DeckWriter w3 = dw_from_deck(deck, 3);
+    OrcSdk_DeckWriter w3 = orc_sdk_dw_from_deck(deck, 3);
     ORC_SDK_REQUIRE(dw_len(&w3) == 0);
     {
-      DeckWriter w2 = dw_child(&w3);
+      OrcSdk_DeckWriter w2 = orc_sdk_dw_child(&w3);
       ORC_SDK_REQUIRE(dw_len(&w2) == 0);
       {
-        DeckWriter w1 = dw_child(&w2);
+        OrcSdk_DeckWriter w1 = orc_sdk_dw_child(&w2);
         ORC_SDK_REQUIRE(dw_len(&w1) == 0);
         uint32_t v = 10;
         dw_push(&w1, v);
@@ -2642,7 +2642,7 @@ void test_dw_len_tracking(void)
       }
       ORC_SDK_REQUIRE(dw_len(&w2) == 2);
       {
-        DeckWriter w1 = dw_child(&w2);
+        OrcSdk_DeckWriter w1 = orc_sdk_dw_child(&w2);
         uint32_t   v  = 30;
         dw_push(&w1, v);
         ORC_SDK_REQUIRE(dw_len(&w1) == 1);
@@ -2651,10 +2651,10 @@ void test_dw_len_tracking(void)
     }
     ORC_SDK_REQUIRE(dw_len(&w3) == 3);
     {
-      DeckWriter w2 = dw_child(&w3);
+      OrcSdk_DeckWriter w2 = orc_sdk_dw_child(&w3);
       ORC_SDK_REQUIRE(dw_len(&w2) == 0);
       {
-        DeckWriter w1 = dw_child(&w2);
+        OrcSdk_DeckWriter w1 = orc_sdk_dw_child(&w2);
         uint32_t   v  = 40;
         dw_push(&w1, v);
       }
@@ -2684,7 +2684,7 @@ void test_dw_append_to_existing(void)
   ORC_SDK_REQUIRE(_orc_sdk_deck_header(deck)->item_size == sizeof(uint32_t));
   // Append another depth-1 group.
   {
-    DeckWriter w = dw_from_deck(deck, 1);
+    OrcSdk_DeckWriter w = orc_sdk_dw_from_deck(deck, 1);
     v            = 5;
     dw_push(&w, v);
     v = 6;
@@ -2716,7 +2716,7 @@ void test_dw_flat_depth1(void)
   // Depth-1 writer: just a flat list.
   uint32_t *deck = NULL;
   {
-    DeckWriter w = dw_from_deck(deck, 1);
+    OrcSdk_DeckWriter w = orc_sdk_dw_from_deck(deck, 1);
     for (uint32_t i = 0; i < 5; ++i) {
       uint32_t v = i * 10;
       dw_push(&w, v);
@@ -2741,9 +2741,9 @@ void test_dw_deck_item_ptr(void)
   // Verify deck_item_ptr points to the right items.
   uint32_t *deck = NULL;
   {
-    DeckWriter w = dw_from_deck(deck, 2);
+    OrcSdk_DeckWriter w = orc_sdk_dw_from_deck(deck, 2);
     {
-      DeckWriter c = dw_child(&w);
+      OrcSdk_DeckWriter c = orc_sdk_dw_child(&w);
       uint32_t   v;
       v = 100;
       dw_push(&c, v);
@@ -2758,7 +2758,7 @@ void test_dw_deck_item_ptr(void)
       ORC_SDK_REQUIRE(dw_len(&c) == 3);
     }
     {
-      DeckWriter c = dw_child(&w);
+      OrcSdk_DeckWriter c = orc_sdk_dw_child(&w);
       uint32_t   v;
       v = 400;
       dw_push(&c, v);
@@ -2781,22 +2781,22 @@ void test_dw_close_idempotent(void)
   // dw_close on an already-closed writer should be a no-op.
   uint32_t *deck = NULL;
   {
-    DeckWriter w = dw_from_deck(deck, 2);
+    OrcSdk_DeckWriter w = orc_sdk_dw_from_deck(deck, 2);
     {
       // Writer that writes — close should be no-op.
-      DeckWriter c = dw_child(&w);
+      OrcSdk_DeckWriter c = orc_sdk_dw_child(&w);
       uint32_t   v = 1;
       dw_push(&c, v);
       dw_close(&c);  // has_next_depth already false
     }
     {
       // Writer that is closed twice.
-      DeckWriter c = dw_child(&w);
+      OrcSdk_DeckWriter c = orc_sdk_dw_child(&w);
       dw_close(&c);  // creates empty group
       dw_close(&c);  // should be no-op (zeroed)
     }
     {
-      DeckWriter c = dw_child(&w);
+      OrcSdk_DeckWriter c = orc_sdk_dw_child(&w);
       uint32_t   v = 2;
       dw_push(&c, v);
     }
@@ -2822,22 +2822,22 @@ void test_dw_all_empty_depth3(void)
   // (((), ()), (())) — depth 3, no items at all.
   uint32_t *deck = NULL;
   {
-    DeckWriter w3 = dw_from_deck(deck, 3);
+    OrcSdk_DeckWriter w3 = orc_sdk_dw_from_deck(deck, 3);
     {
-      DeckWriter w2 = dw_child(&w3);
+      OrcSdk_DeckWriter w2 = orc_sdk_dw_child(&w3);
       {
-        DeckWriter w1 = dw_child(&w2);
+        OrcSdk_DeckWriter w1 = orc_sdk_dw_child(&w2);
         dw_close(&w1);
       }
       {
-        DeckWriter w1 = dw_child(&w2);
+        OrcSdk_DeckWriter w1 = orc_sdk_dw_child(&w2);
         dw_close(&w1);
       }
     }
     {
-      DeckWriter w2 = dw_child(&w3);
+      OrcSdk_DeckWriter w2 = orc_sdk_dw_child(&w3);
       {
-        DeckWriter w1 = dw_child(&w2);
+        OrcSdk_DeckWriter w1 = orc_sdk_dw_child(&w2);
         dw_close(&w1);
       }
     }
@@ -2993,7 +2993,7 @@ void _plugin_function_list_element(OrcHandle const *list_handle,
     ORC_SDK_REQUIRE(list_input.depth == 1);
     ORC_SDK_REQUIRE(index_input.depth == 0);
     // Get output for the current combination.
-    DeckWriter *item_ouput = comb_get_output(combinations, 0);
+    OrcSdk_DeckWriter *item_ouput = comb_get_output(combinations, 0);
     ORC_SDK_REQUIRE(item_ouput->depth == 0);
     double *output_ptr = (double *)dw_push_empty(item_ouput);
     {  // This scope simulates the actual doRun of the block.
@@ -3025,7 +3025,7 @@ void _plugin_function_add_f64(OrcHandle const *a_handle,
              b_input = comb_get_input(combinations, 1);
     ORC_SDK_REQUIRE(a_input.depth == 0);
     ORC_SDK_REQUIRE(b_input.depth == 0);
-    DeckWriter *out = comb_get_output(combinations, 0);
+    OrcSdk_DeckWriter *out = comb_get_output(combinations, 0);
     ORC_SDK_REQUIRE(out->depth == 0);
     double *output_ptr = (double *)dw_push_empty(out);
     {
@@ -3054,8 +3054,8 @@ void _plugin_function_sq_cb(OrcHandle const *in_handle,
   while (combinations) {
     OrcSdk_DeckView in_input = comb_get_input(combinations, 0);
     ORC_SDK_REQUIRE(in_input.depth == 0);
-    DeckWriter *out_sq = comb_get_output(combinations, 0);
-    DeckWriter *out_cb = comb_get_output(combinations, 1);
+    OrcSdk_DeckWriter *out_sq = comb_get_output(combinations, 0);
+    OrcSdk_DeckWriter *out_cb = comb_get_output(combinations, 1);
     ORC_SDK_REQUIRE(out_sq->depth == 0);
     ORC_SDK_REQUIRE(out_cb->depth == 0);
     double *sq_ptr = (double *)dw_push_empty(out_sq);
@@ -3090,8 +3090,8 @@ void _plugin_function_add_mul(OrcHandle const *a_handle,
              b_input = comb_get_input(combinations, 1);
     ORC_SDK_REQUIRE(a_input.depth == 0);
     ORC_SDK_REQUIRE(b_input.depth == 0);
-    DeckWriter *out_sum  = comb_get_output(combinations, 0);
-    DeckWriter *out_prod = comb_get_output(combinations, 1);
+    OrcSdk_DeckWriter *out_sum  = comb_get_output(combinations, 0);
+    OrcSdk_DeckWriter *out_prod = comb_get_output(combinations, 1);
     ORC_SDK_REQUIRE(out_sum->depth == 0);
     ORC_SDK_REQUIRE(out_prod->depth == 0);
     double *sum_ptr  = (double *)dw_push_empty(out_sum);
@@ -3124,7 +3124,7 @@ void _plugin_function_first_add(OrcHandle const *a_handle,
              b_input = comb_get_input(combinations, 1);
     ORC_SDK_REQUIRE(a_input.depth == 1);
     ORC_SDK_REQUIRE(b_input.depth == 1);
-    DeckWriter *out = comb_get_output(combinations, 0);
+    OrcSdk_DeckWriter *out = comb_get_output(combinations, 0);
     ORC_SDK_REQUIRE(out->depth == 0);
     double *output_ptr = (double *)dw_push_empty(out);
     {
@@ -3370,7 +3370,7 @@ void _plugin_function_list_length(OrcHandle const *in_handle, OrcHandle *out_han
                                  1);
   while (combinations) {
     OrcSdk_DeckView    list_input = comb_get_input(combinations, 0);
-    DeckWriter *out        = comb_get_output(combinations, 0);
+    OrcSdk_DeckWriter *out        = comb_get_output(combinations, 0);
     ORC_SDK_REQUIRE(list_input.depth == 1);
     ORC_SDK_REQUIRE(out->depth == 0);
     uint64_t *output_ptr = (uint64_t *)dw_push_empty(out);

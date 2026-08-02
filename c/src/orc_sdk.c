@@ -979,9 +979,9 @@ void const *orc_sdk_dv_item_ptr(OrcSdk_DeckView const *const v)
   return (char *)v->items + start_pos * v->item_size;
 }
 
-// ========== DeckWriter ==========
+// ========== OrcSdk_DeckWriter ==========
 
-uint8_t _dw_next_depth(DeckWriter *writer)
+uint8_t _orc_sdk_dw_next_depth(OrcSdk_DeckWriter *writer)
 {
   assert(writer != NULL);
   if (writer->has_next_depth) {
@@ -993,7 +993,7 @@ uint8_t _dw_next_depth(DeckWriter *writer)
   }
 }
 
-DeckWriter dw_child(DeckWriter *writer)
+OrcSdk_DeckWriter orc_sdk_dw_child(OrcSdk_DeckWriter *writer)
 {
   ORC_SDK_REQUIRE_WITH_MSG(writer != NULL && writer->depth > 0,
                            "Cannot create a child for this writer");
@@ -1002,7 +1002,7 @@ DeckWriter dw_child(DeckWriter *writer)
     depth                  = writer->next_depth;
     writer->has_next_depth = false;
   }
-  return (DeckWriter) {
+  return (OrcSdk_DeckWriter) {
     .deck           = writer->deck,
     .item_size      = writer->item_size,
     .depth          = writer->depth - 1,
@@ -1012,14 +1012,14 @@ DeckWriter dw_child(DeckWriter *writer)
   };
 }
 
-OrcSdk_Status _dw_push_impl(DeckWriter *writer, void *item)
+OrcSdk_Status _dw_push_impl(OrcSdk_DeckWriter *writer, void *item)
 {
   *(writer->deck) =
-    _orc_sdk_deck_push_impl(*(writer->deck), item, writer->item_size, _dw_next_depth(writer));
+    _orc_sdk_deck_push_impl(*(writer->deck), item, writer->item_size, _orc_sdk_dw_next_depth(writer));
   return *(writer->deck) == NULL ? ALLOC_FAILED : OK;
 }
 
-OrcSdk_Status dw_close(DeckWriter *writer)
+OrcSdk_Status dw_close(OrcSdk_DeckWriter *writer)
 {
   OrcSdk_Status status = OK;
   if (writer != NULL && writer->has_next_depth) {
@@ -1028,12 +1028,12 @@ OrcSdk_Status dw_close(DeckWriter *writer)
     if (*(writer->deck) == NULL) {
       status = ALLOC_FAILED;
     }
-    *writer = (DeckWriter) {0};
+    *writer = (OrcSdk_DeckWriter) {0};
   }
   return status;
 }
 
-OrcSdk_Status dw_advance(DeckWriter *writer)
+OrcSdk_Status dw_advance(OrcSdk_DeckWriter *writer)
 {
   if (writer == NULL)
     return NULL_PTR;
@@ -1050,10 +1050,10 @@ OrcSdk_Status dw_advance(DeckWriter *writer)
   return OK;
 }
 
-void *dw_push_empty(DeckWriter *writer)
+void *dw_push_empty(OrcSdk_DeckWriter *writer)
 {
   *(writer->deck) =
-    _orc_sdk_deck_push_empty(*(writer->deck), writer->item_size, _dw_next_depth(writer));
+    _orc_sdk_deck_push_empty(*(writer->deck), writer->item_size, _orc_sdk_dw_next_depth(writer));
   _OrcSdk_DeckHeader *h = _orc_sdk_deck_header(*(writer->deck));
   if (h == NULL) {
     return NULL;
@@ -1117,7 +1117,7 @@ typedef struct
   OrcSdk_DeckView   *view_matrix;
   uint8_t    *input_depths;
   size_t      n_inputs;
-  DeckWriter *writer_matrix;
+  OrcSdk_DeckWriter *writer_matrix;
   uint8_t    *output_depths;
   size_t      n_outputs;
   size_t      stack_depth;
@@ -1260,9 +1260,9 @@ void *comb_init(OrcHandle const **inputs,
   for (size_t i = 0; i < n_outputs; ++i) {
     uint8_t const arg_depth = output_depths[i];
     out->output_depths[i]   = arg_depth;
-    DeckWriter *dst         = out->writer_matrix + i * stack_depth;
+    OrcSdk_DeckWriter *dst         = out->writer_matrix + i * stack_depth;
     // The first writer.
-    *dst = (DeckWriter) {
+    *dst = (OrcSdk_DeckWriter) {
       .deck           = (void **)&(outputs[i]->items),
       .item_size      = outputs[i]->item_size,
       .depth          = arg_depth + max_delta,
@@ -1271,7 +1271,7 @@ void *comb_init(OrcHandle const **inputs,
       .start          = orc_sdk_deck_len(outputs[i]->items),
     };
     for (size_t d = 1; d < stack_depth; ++d) {
-      DeckWriter child = dw_child(dst);
+      OrcSdk_DeckWriter child = orc_sdk_dw_child(dst);
       *(++dst)         = child;
     }
     ORC_SDK_REQUIRE(dst->depth == arg_depth);
@@ -1298,7 +1298,7 @@ void *comb_advance(void *ptr)
     }
     if (any_advanced) {  // At least one input advanced. Advance all the writers.
       for (size_t i = 0; i < n_outputs; ++i) {
-        DeckWriter *last_writer = comb->writer_matrix + (i + 1) * comb->stack_depth - 1;
+        OrcSdk_DeckWriter *last_writer = comb->writer_matrix + (i + 1) * comb->stack_depth - 1;
         OrcSdk_Status const status = dw_advance(last_writer);
         ORC_SDK_REQUIRE(status == OK);
       }
@@ -1323,7 +1323,7 @@ void *comb_advance(void *ptr)
       *last_view          = (OrcSdk_DeckView) {0};
     }
     for (size_t i = 0; i < n_outputs; ++i) {  // Pop all the outputs.
-      DeckWriter *last_writer = comb->writer_matrix + i * comb->stack_depth + stack_top;
+      OrcSdk_DeckWriter *last_writer = comb->writer_matrix + i * comb->stack_depth + stack_top;
       OrcSdk_Status const status = dw_close(last_writer);
       ORC_SDK_REQUIRE(status == OK);
     }
@@ -1337,7 +1337,7 @@ void *comb_advance(void *ptr)
     }
     if (state == ADVANCED) {  // Only advance all the outputs if inputs did.
       for (size_t i = 0; i < n_outputs; ++i) {
-        DeckWriter *last_writer = comb->writer_matrix + i * comb->stack_depth + stack_top;
+        OrcSdk_DeckWriter *last_writer = comb->writer_matrix + i * comb->stack_depth + stack_top;
         OrcSdk_Status const status = dw_advance(last_writer);
         ORC_SDK_REQUIRE(status == OK);
       }
@@ -1356,10 +1356,10 @@ void *comb_advance(void *ptr)
     }
     // Telescope the outputs to the desired depth.
     for (size_t i = 0; i < n_outputs; ++i) {
-      DeckWriter *prev = comb->writer_matrix + i * comb->stack_depth + stack_top;
+      OrcSdk_DeckWriter *prev = comb->writer_matrix + i * comb->stack_depth + stack_top;
       for (size_t d = stack_top + 1; d < comb->stack_depth; ++d) {
-        DeckWriter *dst = prev + 1;
-        *dst            = dw_child(prev);
+        OrcSdk_DeckWriter *dst = prev + 1;
+        *dst            = orc_sdk_dw_child(prev);
         prev            = dst;
       }
     }
@@ -1386,7 +1386,7 @@ OrcSdk_DeckView comb_get_input(void *ptr, size_t const index)
   return *(comb->view_matrix + (index + 1) * comb->stack_depth - 1);
 }
 
-DeckWriter *comb_get_output(void *ptr, size_t const index)
+OrcSdk_DeckWriter *comb_get_output(void *ptr, size_t const index)
 {
   ORC_SDK_REQUIRE_WITH_MSG(ptr != NULL, "Invalid combinations");
   Combinations *comb = (Combinations *)ptr;

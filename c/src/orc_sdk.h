@@ -545,13 +545,13 @@ typedef struct
   bool    has_next_depth;
   uint8_t next_depth;
   size_t  start;
-} DeckWriter;
+} OrcSdk_DeckWriter;
 
-static inline DeckWriter _dw_from_deck_impl(void        **deck,
+static inline OrcSdk_DeckWriter _orc_sdk_dw_from_deck_impl(void        **deck,
                                             uint8_t const depth,
                                             size_t const  item_size)
 {
-  return (DeckWriter) {
+  return (OrcSdk_DeckWriter) {
     .deck           = deck,
     .item_size      = item_size,
     .depth          = depth,
@@ -561,32 +561,32 @@ static inline DeckWriter _dw_from_deck_impl(void        **deck,
   };
 }
 
-#define dw_from_deck(deck, depth) \
-  (_dw_from_deck_impl((void **)(&(deck)), (depth), sizeof(*(deck))))
+#define orc_sdk_dw_from_deck(deck, depth) \
+  (_orc_sdk_dw_from_deck_impl((void **)(&(deck)), (depth), sizeof(*(deck))))
 
-DeckWriter dw_child(DeckWriter *writer);
+OrcSdk_DeckWriter orc_sdk_dw_child(OrcSdk_DeckWriter *writer);
 
-uint8_t _dw_next_depth(DeckWriter *writer);
+uint8_t _orc_sdk_dw_next_depth(OrcSdk_DeckWriter *writer);
 
-OrcSdk_Status _dw_push_impl(DeckWriter *writer, void *item);
+OrcSdk_Status _dw_push_impl(OrcSdk_DeckWriter *writer, void *item);
 
 #define dw_push(writer, item) (_dw_push_impl((writer), &(item)))
 
-void *dw_push_empty(DeckWriter *writer);
+void *dw_push_empty(OrcSdk_DeckWriter *writer);
 
-static inline void *deck_item_ptr(DeckWriter *writer)
+static inline void *deck_item_ptr(OrcSdk_DeckWriter *writer)
 {
   return (char *)(*(writer->deck)) + writer->start * writer->item_size;
 }
 
-static inline size_t dw_len(DeckWriter *writer)
+static inline size_t dw_len(OrcSdk_DeckWriter *writer)
 {
   return orc_sdk_deck_len(*(writer->deck)) - writer->start;
 }
 
-OrcSdk_Status dw_close(DeckWriter *writer);
+OrcSdk_Status dw_close(OrcSdk_DeckWriter *writer);
 
-OrcSdk_Status dw_advance(DeckWriter *writer);
+OrcSdk_Status dw_advance(OrcSdk_DeckWriter *writer);
 
 // ========== Dims (Units) ==========
 
@@ -613,7 +613,7 @@ void *comb_advance(void *comb);
 
 OrcSdk_DeckView comb_get_input(void *comb, size_t const index);
 
-DeckWriter *comb_get_output(void *comb, size_t const index);
+OrcSdk_DeckWriter *comb_get_output(void *comb, size_t const index);
 
 void oh_update(OrcHandle *handle);
 
