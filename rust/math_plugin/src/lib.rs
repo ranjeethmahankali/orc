@@ -24,8 +24,7 @@ pub(crate) fn registry() -> &'static ObjectRegistry {
 
 fn alloc_deck<T: TOrcData>() -> Result<OrcHandle, Error> {
     let deck = Deck::<T>::default();
-    let mut handle = handle_from_deck(&deck, 0);
-    handle.free_fn = Some(crate::orc_deck_free);
+    let mut handle = handle_from_deck(&deck, 0, Some(crate::orc_deck_free));
     match REGISTRY.alloc(deck) {
         Ok(h) => handle.handle = h,
         Err(e) => {

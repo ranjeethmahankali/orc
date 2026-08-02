@@ -700,11 +700,14 @@ fn generate_dispatch_fn(
             let id_ident = format_ident!("__out_id_{j}");
             quote! {
                 let #id_ident = __outputs[#j].handle;
-                __outputs[#j] = orc_sdk::handle_from_deck(#deck_ident, #id_ident);
-                // Set the free function so the host can free this handle without knowing
-                // which plugin owns it. orc_deck_free is emitted by orc_plugin! in the
-                // same plugin binary.
-                __outputs[#j].free_fn = Some(crate::orc_deck_free);
+                // Pass orc_deck_free explicitly so the host can free this handle without
+                // knowing which plugin owns it. orc_deck_free is emitted by orc_plugin!
+                // in the same plugin binary.
+                __outputs[#j] = orc_sdk::handle_from_deck(
+                    #deck_ident,
+                    #id_ident,
+                    Some(crate::orc_deck_free),
+                );
             }
         })
         .collect();
