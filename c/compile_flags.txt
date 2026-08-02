@@ -1,2 +1,5 @@
+# This is to get clangd to include directories. We include this directory in the build system,
+# but clangd doesn't know about it because we use nob.h.
+
 # clangd resolves these paths relative to this file's directory (c/).
 -I.
