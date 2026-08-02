@@ -18,7 +18,7 @@ typedef union
 void test_arr_null_pointer_operations(void)
 {
   double *null_arr = NULL;
-  ORC_SDK_REQUIRE_WITH_MSG(arr_len(null_arr) == 0,
+  ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_len(null_arr) == 0,
                            "Null pointer represents an empty array");
   ORC_SDK_REQUIRE_WITH_MSG(arr_end(null_arr) == null_arr, "End of a NULL is itself");
   ORC_SDK_REQUIRE_WITH_MSG(arr_swap_remove(null_arr, 0) == OUT_OF_BOUNDS,
@@ -26,22 +26,22 @@ void test_arr_null_pointer_operations(void)
   double *arr = NULL;
   ORC_SDK_REQUIRE_WITH_MSG(arr_reserve(arr, 10) == OK, "Reserve starting with NULL");
   ORC_SDK_REQUIRE_WITH_MSG(arr != NULL, "Should be allocated after reserve");
-  arr_free(arr);
+  orc_sdk_arr_free(arr);
   // Should not crash
   double *ptr = NULL;
-  arr_free(ptr);
+  orc_sdk_arr_free(ptr);
 }
 
 void test_arr_empty_array_operations(void)
 {
   double *arr = NULL;
   ORC_SDK_REQUIRE_WITH_MSG(arr_reserve(arr, 0) == OK, "Empty array reserve");
-  ORC_SDK_REQUIRE_WITH_MSG(arr_len(arr) == 0, "Length after reserved is zero");
+  ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_len(arr) == 0, "Length after reserved is zero");
   ORC_SDK_REQUIRE_WITH_MSG(arr_swap_remove(arr, 0) == OUT_OF_BOUNDS,
                            "Cannot remove from empty array");
   ORC_SDK_REQUIRE_WITH_MSG(arr_push(arr, 1.0) == OK, "Push into empty array");
-  ORC_SDK_REQUIRE_WITH_MSG(arr_len(arr) == 1, "Array after pushing");
-  arr_free(arr);
+  ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_len(arr) == 1, "Array after pushing");
+  orc_sdk_arr_free(arr);
 }
 
 void test_arr_index_boundary_conditions(void)
@@ -50,16 +50,17 @@ void test_arr_index_boundary_conditions(void)
   arr_push(arr, 1.0);
   // Single element array
   ORC_SDK_REQUIRE(arr_swap_remove(arr, 0) == OK);
-  ORC_SDK_REQUIRE(arr_len(arr) == 0);
+  ORC_SDK_REQUIRE(orc_sdk_arr_len(arr) == 0);
   ORC_SDK_REQUIRE(arr_swap_remove(arr, 0) == OUT_OF_BOUNDS);  // Empty array
   // Add elements back
   arr_push(arr, 1.0);
   arr_push(arr, 2.0);
-  ORC_SDK_REQUIRE(arr_swap_remove(arr, arr_len(arr)) == OUT_OF_BOUNDS);  // One past end
-  ORC_SDK_REQUIRE(arr_swap_remove(arr, arr_len(arr) + 10) ==
+  ORC_SDK_REQUIRE(arr_swap_remove(arr, orc_sdk_arr_len(arr)) ==
+                  OUT_OF_BOUNDS);  // One past end
+  ORC_SDK_REQUIRE(arr_swap_remove(arr, orc_sdk_arr_len(arr) + 10) ==
                   OUT_OF_BOUNDS);                                    // Way past end
   ORC_SDK_REQUIRE(arr_swap_remove(arr, SIZE_MAX) == OUT_OF_BOUNDS);  // Huge index
-  arr_free(arr);
+  orc_sdk_arr_free(arr);
 }
 
 void test_arr_capacity_management(void)
@@ -79,26 +80,26 @@ void test_arr_capacity_management(void)
   ORC_SDK_REQUIRE(arr_reserve(arr, 10) == OK);
   ORC_SDK_REQUIRE(_orc_sdk_arr_capacity(arr) == 10);
   // Test growth pattern
-  arr_free(arr);
+  orc_sdk_arr_free(arr);
   arr = NULL;
   ORC_SDK_REQUIRE(arr_push(arr, 1.0) == OK);
   size_t cap1 = _orc_sdk_arr_capacity(arr);
   // Fill to capacity
-  while (arr_len(arr) < cap1) {
-    arr_push(arr, (double)arr_len(arr));
+  while (orc_sdk_arr_len(arr) < cap1) {
+    arr_push(arr, (double)orc_sdk_arr_len(arr));
   }
   // Next push should grow
   arr_push(arr, 999.0);
   ORC_SDK_REQUIRE(_orc_sdk_arr_capacity(arr) > cap1);
-  arr_free(arr);
+  orc_sdk_arr_free(arr);
 }
 
 void test_arr_double_free_safety(void)
 {
   double *arr = NULL;
   arr_push(arr, 1.0);
-  arr_free(arr);  // First free, arr becomes NULL
-  arr_free(arr);  // Second free on NULL, should not crash
+  orc_sdk_arr_free(arr);  // First free, arr becomes NULL
+  orc_sdk_arr_free(arr);  // Second free on NULL, should not crash
 }
 
 void test_arr_swap_remove_correctness(void)
@@ -111,21 +112,21 @@ void test_arr_swap_remove_correctness(void)
   // Remove middle element (index 2, value 2.0)
   // Should replace with last element (value 4.0)
   ORC_SDK_REQUIRE(arr_swap_remove(arr, 2) == OK);
-  ORC_SDK_REQUIRE(arr_len(arr) == 4);
+  ORC_SDK_REQUIRE(orc_sdk_arr_len(arr) == 4);
   ORC_SDK_REQUIRE(arr[2] == 4.0);  // Last element moved here
   // Remove first element
   ORC_SDK_REQUIRE(arr_swap_remove(arr, 0) == OK);
-  ORC_SDK_REQUIRE(arr_len(arr) == 3);
+  ORC_SDK_REQUIRE(orc_sdk_arr_len(arr) == 3);
   ORC_SDK_REQUIRE(arr[0] == 3.0);  // Last element moved to front
   // Remove last element
-  size_t last_idx = arr_len(arr) - 1;
+  size_t last_idx = orc_sdk_arr_len(arr) - 1;
   ORC_SDK_REQUIRE(arr_swap_remove(arr, last_idx) == OK);
-  ORC_SDK_REQUIRE(arr_len(arr) == 2);
+  ORC_SDK_REQUIRE(orc_sdk_arr_len(arr) == 2);
   // Remove from single-element array
   arr_swap_remove(arr, 0);
   arr_swap_remove(arr, 0);
-  ORC_SDK_REQUIRE(arr_len(arr) == 0);
-  arr_free(arr);
+  ORC_SDK_REQUIRE(orc_sdk_arr_len(arr) == 0);
+  orc_sdk_arr_free(arr);
 }
 
 void test_arr_memory_stress(void)
@@ -137,19 +138,19 @@ void test_arr_memory_stress(void)
     ORC_SDK_REQUIRE(arr_push(arr, (double)i) == OK);
   }
   // Verify all elements
-  ORC_SDK_REQUIRE(arr_len(arr) == LARGE_SIZE);
+  ORC_SDK_REQUIRE(orc_sdk_arr_len(arr) == LARGE_SIZE);
   for (size_t i = 0; i < LARGE_SIZE; i++) {
     ORC_SDK_REQUIRE(arr[i] == (double)i);
   }
   // Repeated push/remove cycles
   for (int cycle = 0; cycle < 100; cycle++) {
-    size_t old_len = arr_len(arr);
+    size_t old_len = orc_sdk_arr_len(arr);
     arr_push(arr, 999.0);
-    ORC_SDK_REQUIRE(arr_len(arr) == old_len + 1);
-    arr_swap_remove(arr, arr_len(arr) - 1);
-    ORC_SDK_REQUIRE(arr_len(arr) == old_len);
+    ORC_SDK_REQUIRE(orc_sdk_arr_len(arr) == old_len + 1);
+    arr_swap_remove(arr, orc_sdk_arr_len(arr) - 1);
+    ORC_SDK_REQUIRE(orc_sdk_arr_len(arr) == old_len);
   }
-  arr_free(arr);
+  orc_sdk_arr_free(arr);
 }
 
 void test_arr_different_types(void)
@@ -158,17 +159,17 @@ void test_arr_different_types(void)
   int *ints = NULL;
   ORC_SDK_REQUIRE(arr_push(ints, 42) == OK);
   ORC_SDK_REQUIRE(arr_push(ints, -17) == OK);
-  ORC_SDK_REQUIRE(arr_len(ints) == 2);
+  ORC_SDK_REQUIRE(orc_sdk_arr_len(ints) == 2);
   ORC_SDK_REQUIRE(ints[0] == 42);
   ORC_SDK_REQUIRE(ints[1] == -17);
-  arr_free(ints);
+  orc_sdk_arr_free(ints);
   // Test with char
   char *chars = NULL;
   ORC_SDK_REQUIRE(arr_push(chars, 'A') == OK);
   ORC_SDK_REQUIRE(arr_push(chars, 'B') == OK);
   ORC_SDK_REQUIRE(chars[0] == 'A');
   ORC_SDK_REQUIRE(chars[1] == 'B');
-  arr_free(chars);
+  orc_sdk_arr_free(chars);
   // Test with pointers
   const char  *strings[] = {"hello", "world"};
   const char **str_ptrs  = NULL;
@@ -176,7 +177,7 @@ void test_arr_different_types(void)
   ORC_SDK_REQUIRE(arr_push(str_ptrs, strings[1]) == OK);
   ORC_SDK_REQUIRE(str_ptrs[0] == strings[0]);
   ORC_SDK_REQUIRE(str_ptrs[1] == strings[1]);
-  arr_free(str_ptrs);
+  orc_sdk_arr_free(str_ptrs);
   // Test with struct
   typedef struct
   {
@@ -194,7 +195,7 @@ void test_arr_different_types(void)
   ORC_SDK_REQUIRE(points[1].x == -5);
   ORC_SDK_REQUIRE(points[1].y == 15);
   ORC_SDK_REQUIRE(points[1].value == 2.71);
-  arr_free(points);
+  orc_sdk_arr_free(points);
   // Test alignment by checking data pointer alignment
   long long *longs = NULL;
   ORC_SDK_REQUIRE(arr_push(longs, 123456789LL) == OK);
@@ -202,7 +203,7 @@ void test_arr_different_types(void)
   uintptr_t addr = (uintptr_t)longs;
   ORC_SDK_REQUIRE_WITH_MSG(addr % sizeof(long long) == 0,
                            "long long array not properly aligned");
-  arr_free(longs);
+  orc_sdk_arr_free(longs);
 }
 
 void test_arr_ordered_remove(void)
@@ -215,7 +216,7 @@ void test_arr_ordered_remove(void)
   // Remove middle element (index 2, value 30)
   // Should shift [40, 50] left to fill the gap
   ORC_SDK_REQUIRE(arr_remove(arr, 2) == OK);
-  ORC_SDK_REQUIRE(arr_len(arr) == 4);
+  ORC_SDK_REQUIRE(orc_sdk_arr_len(arr) == 4);
   ORC_SDK_REQUIRE_WITH_MSG(arr[0] == 10, "First element should be unchanged");
   ORC_SDK_REQUIRE_WITH_MSG(arr[1] == 20, "Second element should be unchanged");
   ORC_SDK_REQUIRE_WITH_MSG(arr[2] == 40, "Third element should be 40 (was 4th)");
@@ -223,20 +224,20 @@ void test_arr_ordered_remove(void)
   // Remove first element
   // Should shift [20, 40, 50] left
   ORC_SDK_REQUIRE(arr_remove(arr, 0) == OK);
-  ORC_SDK_REQUIRE(arr_len(arr) == 3);
+  ORC_SDK_REQUIRE(orc_sdk_arr_len(arr) == 3);
   ORC_SDK_REQUIRE_WITH_MSG(arr[0] == 20, "First element should now be 20");
   ORC_SDK_REQUIRE_WITH_MSG(arr[1] == 40, "Second element should be 40");
   ORC_SDK_REQUIRE_WITH_MSG(arr[2] == 50, "Third element should be 50");
   // Remove last element
   // Should just decrease count, no shifting needed
   ORC_SDK_REQUIRE(arr_remove(arr, 2) == OK);
-  ORC_SDK_REQUIRE(arr_len(arr) == 2);
+  ORC_SDK_REQUIRE(orc_sdk_arr_len(arr) == 2);
   ORC_SDK_REQUIRE_WITH_MSG(arr[0] == 20, "First element unchanged");
   ORC_SDK_REQUIRE_WITH_MSG(arr[1] == 40, "Second element unchanged");
   // Remove from single-element array
   arr_remove(arr, 0);
   arr_remove(arr, 0);
-  ORC_SDK_REQUIRE_WITH_MSG(arr_len(arr) == 0, "Array should be empty");
+  ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_len(arr) == 0, "Array should be empty");
   // Test bounds checking
   ORC_SDK_REQUIRE_WITH_MSG(arr_remove(arr, 0) == OUT_OF_BOUNDS,
                            "Remove from empty array should fail");
@@ -246,7 +247,7 @@ void test_arr_ordered_remove(void)
                            "Remove past end should fail");
   ORC_SDK_REQUIRE_WITH_MSG(arr_remove(arr, SIZE_MAX) == OUT_OF_BOUNDS,
                            "Remove huge index should fail");
-  arr_free(arr);
+  orc_sdk_arr_free(arr);
   // Test with NULL pointer
   int *null_arr = NULL;
   ORC_SDK_REQUIRE_WITH_MSG(arr_remove(null_arr, 0) == OUT_OF_BOUNDS,
@@ -259,7 +260,7 @@ void test_arr_resize_zero_fill(void)
   // Test resize from empty array - should zero-fill all elements
   arr_resize(arr, 5);
   ORC_SDK_REQUIRE_WITH_MSG(arr != NULL, "Resize from empty should succeed");
-  ORC_SDK_REQUIRE_WITH_MSG(arr_len(arr) == 5, "Array should have 5 elements");
+  ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_len(arr) == 5, "Array should have 5 elements");
   for (size_t i = 0; i < 5; i++) {
     ORC_SDK_REQUIRE_WITH_MSG(arr[i] == 0.0, "All elements should be zero-initialized");
   }
@@ -270,7 +271,7 @@ void test_arr_resize_zero_fill(void)
   // Test resize to larger size (growth) - new elements should be zero
   arr_resize(arr, 8);
   ORC_SDK_REQUIRE_WITH_MSG(arr != NULL, "Resize growth should succeed");
-  ORC_SDK_REQUIRE_WITH_MSG(arr_len(arr) == 8, "Array should have 8 elements");
+  ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_len(arr) == 8, "Array should have 8 elements");
   ORC_SDK_REQUIRE_WITH_MSG(_orc_sdk_arr_capacity(arr) >= 8,
                            "Capacity should accommodate new size");
   // Check original elements unchanged
@@ -285,7 +286,7 @@ void test_arr_resize_zero_fill(void)
   // Test resize to smaller size (shrink) - remaining elements preserved
   arr_resize(arr, 3);
   ORC_SDK_REQUIRE_WITH_MSG(arr != NULL, "Resize shrink should succeed");
-  ORC_SDK_REQUIRE_WITH_MSG(arr_len(arr) == 3, "Array should have 3 elements");
+  ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_len(arr) == 3, "Array should have 3 elements");
   // Capacity should remain the same (no reallocation on shrink)
   ORC_SDK_REQUIRE_WITH_MSG(_orc_sdk_arr_capacity(arr) >= 8,
                            "Capacity should not decrease on shrink");
@@ -295,11 +296,12 @@ void test_arr_resize_zero_fill(void)
                              "Remaining elements should be unchanged");
   }
   // Test resize to same size (no-op)
-  size_t len_before = arr_len(arr);
+  size_t len_before = orc_sdk_arr_len(arr);
   size_t cap_before = _orc_sdk_arr_capacity(arr);
   arr_resize(arr, 3);
   ORC_SDK_REQUIRE_WITH_MSG(arr != NULL, "Resize same size should succeed");
-  ORC_SDK_REQUIRE_WITH_MSG(arr_len(arr) == len_before, "Length should be unchanged");
+  ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_len(arr) == len_before,
+                           "Length should be unchanged");
   ORC_SDK_REQUIRE_WITH_MSG(_orc_sdk_arr_capacity(arr) == cap_before,
                            "Capacity should be unchanged");
   for (size_t i = 0; i < 3; i++) {
@@ -308,26 +310,27 @@ void test_arr_resize_zero_fill(void)
   // Test resize to zero (empty)
   arr_resize(arr, 0);
   ORC_SDK_REQUIRE_WITH_MSG(arr != NULL, "Resize to zero should succeed");
-  ORC_SDK_REQUIRE_WITH_MSG(arr_len(arr) == 0, "Array should be empty");
+  ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_len(arr) == 0, "Array should be empty");
   ORC_SDK_REQUIRE_WITH_MSG(_orc_sdk_arr_capacity(arr) >= 8,
                            "Capacity should be preserved");
   // Test resize from zero back to non-zero - should zero-fill
   arr_resize(arr, 4);
   ORC_SDK_REQUIRE_WITH_MSG(arr != NULL, "Resize from zero should succeed");
-  ORC_SDK_REQUIRE_WITH_MSG(arr_len(arr) == 4, "Array should have 4 elements");
+  ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_len(arr) == 4, "Array should have 4 elements");
   for (size_t i = 0; i < 4; i++) {
     ORC_SDK_REQUIRE_WITH_MSG(arr[i] == 0.0, "Elements should be zero-initialized");
   }
-  arr_free(arr);
+  orc_sdk_arr_free(arr);
   // Test resize with NULL array - should create and zero-fill
   double *null_arr = NULL;
   arr_resize(null_arr, 3);
   ORC_SDK_REQUIRE_WITH_MSG(null_arr != NULL, "Resize NULL array should succeed");
-  ORC_SDK_REQUIRE_WITH_MSG(arr_len(null_arr) == 3, "Array should have 3 elements");
+  ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_len(null_arr) == 3,
+                           "Array should have 3 elements");
   for (size_t i = 0; i < 3; i++) {
     ORC_SDK_REQUIRE_WITH_MSG(null_arr[i] == 0.0, "Elements should be zero-initialized");
   }
-  arr_free(null_arr);
+  orc_sdk_arr_free(null_arr);
   // Test with different types to ensure zero-initialization works correctly
   int *int_arr = NULL;
   arr_resize(int_arr, 3);
@@ -335,7 +338,7 @@ void test_arr_resize_zero_fill(void)
   for (size_t i = 0; i < 3; i++) {
     ORC_SDK_REQUIRE_WITH_MSG(int_arr[i] == 0, "Int elements should be zero-initialized");
   }
-  arr_free(int_arr);
+  orc_sdk_arr_free(int_arr);
   // Test with pointers
   void **ptr_arr = NULL;
   arr_resize(ptr_arr, 2);
@@ -344,13 +347,13 @@ void test_arr_resize_zero_fill(void)
     ORC_SDK_REQUIRE_WITH_MSG(ptr_arr[i] == NULL,
                              "Pointer elements should be NULL-initialized");
   }
-  arr_free(ptr_arr);
+  orc_sdk_arr_free(ptr_arr);
   // Test large resize to verify performance and correctness
   double      *large_arr  = NULL;
   const size_t LARGE_SIZE = 10000;
   arr_resize(large_arr, LARGE_SIZE);
   ORC_SDK_REQUIRE_WITH_MSG(large_arr != NULL, "Large resize should succeed");
-  ORC_SDK_REQUIRE_WITH_MSG(arr_len(large_arr) == LARGE_SIZE,
+  ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_len(large_arr) == LARGE_SIZE,
                            "Large array should have correct length");
   // Spot check zero-initialization (checking all would be slow)
   ORC_SDK_REQUIRE_WITH_MSG(large_arr[0] == 0.0, "First element should be zero");
@@ -358,12 +361,13 @@ void test_arr_resize_zero_fill(void)
                            "Middle element should be zero");
   ORC_SDK_REQUIRE_WITH_MSG(large_arr[LARGE_SIZE - 1] == 0.0,
                            "Last element should be zero");
-  arr_free(large_arr);
+  orc_sdk_arr_free(large_arr);
   // Test edge case: resize to 1 element
   double *single_arr = NULL;
   arr_resize(single_arr, 1);
   ORC_SDK_REQUIRE_WITH_MSG(single_arr != NULL, "Single element resize should succeed");
-  ORC_SDK_REQUIRE_WITH_MSG(arr_len(single_arr) == 1, "Array should have 1 element");
+  ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_len(single_arr) == 1,
+                           "Array should have 1 element");
   ORC_SDK_REQUIRE_WITH_MSG(single_arr[0] == 0.0,
                            "Single element should be zero-initialized");
   // Modify the element then resize larger
@@ -374,7 +378,7 @@ void test_arr_resize_zero_fill(void)
                            "New elements should be zero-initialized");
   ORC_SDK_REQUIRE_WITH_MSG(single_arr[2] == 0.0,
                            "New elements should be zero-initialized");
-  arr_free(single_arr);
+  orc_sdk_arr_free(single_arr);
 }
 
 void test_arr_fill(void)
@@ -384,7 +388,7 @@ void test_arr_fill(void)
   arr_resize(ints, 4);
   int val = 42;
   arr_fill(ints, val);
-  ORC_SDK_REQUIRE(arr_len(ints) == 4);
+  ORC_SDK_REQUIRE(orc_sdk_arr_len(ints) == 4);
   for (size_t i = 0; i < 4; i++) {
     ORC_SDK_REQUIRE_WITH_MSG(ints[i] == 42, "All elements should be 42");
   }
@@ -392,7 +396,7 @@ void test_arr_fill(void)
   arr_resize(ints, 7);
   val = 77;
   arr_fill(ints, val);
-  ORC_SDK_REQUIRE(arr_len(ints) == 7);
+  ORC_SDK_REQUIRE(orc_sdk_arr_len(ints) == 7);
   for (size_t i = 0; i < 7; i++) {
     ORC_SDK_REQUIRE_WITH_MSG(ints[i] == 77, "All elements should be 77");
   }
@@ -400,25 +404,25 @@ void test_arr_fill(void)
   arr_resize(ints, 1025);
   val = 123;
   arr_fill(ints, val);
-  ORC_SDK_REQUIRE(arr_len(ints) == 1025);
+  ORC_SDK_REQUIRE(orc_sdk_arr_len(ints) == 1025);
   for (size_t i = 0; i < 1025; i++) {
     ORC_SDK_REQUIRE_WITH_MSG(ints[i] == 123, "All elements should be 123");
   }
-  arr_free(ints);
+  orc_sdk_arr_free(ints);
   // Test 4: Single element
   double *doubles = NULL;
   arr_resize(doubles, 1);
   double dval = 3.14;
   arr_fill(doubles, dval);
-  ORC_SDK_REQUIRE(arr_len(doubles) == 1);
+  ORC_SDK_REQUIRE(orc_sdk_arr_len(doubles) == 1);
   ORC_SDK_REQUIRE(doubles[0] == 3.14);
-  arr_free(doubles);
+  orc_sdk_arr_free(doubles);
   // Test 5: Empty array
   float *floats = NULL;
   dval          = 1.0f;
-  arr_fill(floats, dval);  // arr_len(NULL) is 0
-  ORC_SDK_REQUIRE(arr_len(floats) == 0);
-  arr_free(floats);
+  arr_fill(floats, dval);  // orc_sdk_arr_len(NULL) is 0
+  ORC_SDK_REQUIRE(orc_sdk_arr_len(floats) == 0);
+  orc_sdk_arr_free(floats);
   // Test 6: Different types (Structs)
   typedef struct
   {
@@ -429,12 +433,12 @@ void test_arr_fill(void)
   TestStruct  sval    = {10, 20.0};
   arr_resize(structs, 3);
   arr_fill(structs, sval);
-  ORC_SDK_REQUIRE(arr_len(structs) == 3);
+  ORC_SDK_REQUIRE(orc_sdk_arr_len(structs) == 3);
   for (size_t i = 0; i < 3; i++) {
     ORC_SDK_REQUIRE(structs[i].a == 10);
     ORC_SDK_REQUIRE(structs[i].b == 20.0);
   }
-  arr_free(structs);
+  orc_sdk_arr_free(structs);
 }
 
 void test_arr_clear(void)
@@ -442,31 +446,34 @@ void test_arr_clear(void)
   double *arr = NULL;
   // Test clear on empty array
   arr_clear(arr);
-  ORC_SDK_REQUIRE_WITH_MSG(arr_len(arr) == 0, "Clear on NULL array should work");
+  ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_len(arr) == 0, "Clear on NULL array should work");
   // Add some elements
   arr_resize(arr, 5);
-  ORC_SDK_REQUIRE_WITH_MSG(arr_len(arr) == 5, "Array should have 5 elements");
+  ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_len(arr) == 5, "Array should have 5 elements");
   size_t old_capacity = _orc_sdk_arr_capacity(arr);
   // Clear the array
   arr_clear(arr);
-  ORC_SDK_REQUIRE_WITH_MSG(arr_len(arr) == 0, "Array should be empty after clear");
+  ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_len(arr) == 0,
+                           "Array should be empty after clear");
   ORC_SDK_REQUIRE_WITH_MSG(_orc_sdk_arr_capacity(arr) == old_capacity,
                            "Capacity should be preserved");
   // Verify we can still use the array after clear
   OrcSdk_Status s = arr_push(arr, 2.71);
   ORC_SDK_REQUIRE_WITH_MSG(s == OK, "Should be able to push after clear");
-  ORC_SDK_REQUIRE_WITH_MSG(arr_len(arr) == 1, "Array should have 1 element after push");
+  ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_len(arr) == 1,
+                           "Array should have 1 element after push");
   ORC_SDK_REQUIRE_WITH_MSG(arr[0] == 2.71, "Element should be correct");
   // Clear again with elements
   arr_push(arr, 1.0);
   arr_push(arr, 2.0);
-  ORC_SDK_REQUIRE_WITH_MSG(arr_len(arr) == 3, "Array should have 3 elements");
+  ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_len(arr) == 3, "Array should have 3 elements");
   arr_clear(arr);
-  ORC_SDK_REQUIRE_WITH_MSG(arr_len(arr) == 0, "Array should be empty after second clear");
+  ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_len(arr) == 0,
+                           "Array should be empty after second clear");
   // Test operations on cleared array
   ORC_SDK_REQUIRE_WITH_MSG(arr_swap_remove(arr, 0) == OUT_OF_BOUNDS,
                            "Remove from cleared array should fail");
-  arr_free(arr);
+  orc_sdk_arr_free(arr);
   // Test clear on NULL pointer (should not crash)
   double *null_arr = NULL;
   arr_clear(null_arr);  // Should not crash
@@ -480,12 +487,12 @@ void test_arr_remove_range(void)
     OrcSdk_Status s = arr_push(arr, i * 10);
     ORC_SDK_REQUIRE_WITH_MSG(s == OK, "Setup should succeed");
   }
-  ORC_SDK_REQUIRE_WITH_MSG(arr_len(arr) == 5, "Array should have 5 elements");
+  ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_len(arr) == 5, "Array should have 5 elements");
   // Test 1: Remove middle range [1, 3) -> removes 20, 30
   // Expected: [10, 40, 50]
   OrcSdk_Status result = arr_remove_range(arr, 1, 3);
   ORC_SDK_REQUIRE_WITH_MSG(result == OK, "Remove middle range should succeed");
-  ORC_SDK_REQUIRE_WITH_MSG(arr_len(arr) == 3,
+  ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_len(arr) == 3,
                            "Array should have 3 elements after removing 2");
   ORC_SDK_REQUIRE_WITH_MSG(arr[0] == 10, "First element should be unchanged");
   ORC_SDK_REQUIRE_WITH_MSG(arr[1] == 40, "Second element should be 40 (was 4th)");
@@ -494,37 +501,37 @@ void test_arr_remove_range(void)
   // Expected: [40, 50]
   result = arr_remove_range(arr, 0, 1);
   ORC_SDK_REQUIRE_WITH_MSG(result == OK, "Remove from beginning should succeed");
-  ORC_SDK_REQUIRE_WITH_MSG(arr_len(arr) == 2, "Array should have 2 elements");
+  ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_len(arr) == 2, "Array should have 2 elements");
   ORC_SDK_REQUIRE_WITH_MSG(arr[0] == 40, "First element should be 40");
   ORC_SDK_REQUIRE_WITH_MSG(arr[1] == 50, "Second element should be 50");
   // Test 3: Remove from end [1, 2) -> removes 50
   // Expected: [40]
   result = arr_remove_range(arr, 1, 2);
   ORC_SDK_REQUIRE_WITH_MSG(result == OK, "Remove from end should succeed");
-  ORC_SDK_REQUIRE_WITH_MSG(arr_len(arr) == 1, "Array should have 1 element");
+  ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_len(arr) == 1, "Array should have 1 element");
   ORC_SDK_REQUIRE_WITH_MSG(arr[0] == 40, "Remaining element should be 40");
   // Test 4: Remove entire array [0, 1)
   result = arr_remove_range(arr, 0, 1);
   ORC_SDK_REQUIRE_WITH_MSG(result == OK, "Remove entire array should succeed");
-  ORC_SDK_REQUIRE_WITH_MSG(arr_len(arr) == 0, "Array should be empty");
+  ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_len(arr) == 0, "Array should be empty");
   // Test 5: Empty range operations
   // Add elements back
   arr_push(arr, 100);
   arr_push(arr, 200);
   arr_push(arr, 300);
-  ORC_SDK_REQUIRE_WITH_MSG(arr_len(arr) == 3, "Array should have 3 elements");
+  ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_len(arr) == 3, "Array should have 3 elements");
   // Remove empty range at beginning [0, 0)
   result = arr_remove_range(arr, 0, 0);
   ORC_SDK_REQUIRE_WITH_MSG(result == OK, "Empty range at beginning should succeed");
-  ORC_SDK_REQUIRE_WITH_MSG(arr_len(arr) == 3, "Array length should be unchanged");
+  ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_len(arr) == 3, "Array length should be unchanged");
   // Remove empty range in middle [1, 1)
   result = arr_remove_range(arr, 1, 1);
   ORC_SDK_REQUIRE_WITH_MSG(result == OK, "Empty range in middle should succeed");
-  ORC_SDK_REQUIRE_WITH_MSG(arr_len(arr) == 3, "Array length should be unchanged");
+  ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_len(arr) == 3, "Array length should be unchanged");
   // Remove empty range at end [3, 3)
   result = arr_remove_range(arr, 3, 3);
   ORC_SDK_REQUIRE_WITH_MSG(result == OK, "Empty range at end should succeed");
-  ORC_SDK_REQUIRE_WITH_MSG(arr_len(arr) == 3, "Array length should be unchanged");
+  ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_len(arr) == 3, "Array length should be unchanged");
   // Test 6: Error cases - out of bounds
   // Start index too large
   result = arr_remove_range(arr, 4, 4);
@@ -536,10 +543,10 @@ void test_arr_remove_range(void)
   result = arr_remove_range(arr, 2, 1);
   ORC_SDK_REQUIRE_WITH_MSG(result == OUT_OF_BOUNDS, "Invalid range should fail");
   // Test 7: Remove everything [0, length)
-  result = arr_remove_range(arr, 0, arr_len(arr));
+  result = arr_remove_range(arr, 0, orc_sdk_arr_len(arr));
   ORC_SDK_REQUIRE_WITH_MSG(result == OK, "Remove all elements should succeed");
-  ORC_SDK_REQUIRE_WITH_MSG(arr_len(arr) == 0, "Array should be empty");
-  arr_free(arr);
+  ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_len(arr) == 0, "Array should be empty");
+  orc_sdk_arr_free(arr);
   // Test 8: Operations on NULL array
   int *null_arr = NULL;
   result        = arr_remove_range(null_arr, 0, 0);
@@ -551,12 +558,12 @@ void test_arr_remove_range(void)
   for (int i = 0; i < 10; i++) {
     arr_push(large_arr, i);
   }
-  ORC_SDK_REQUIRE_WITH_MSG(arr_len(large_arr) == 10,
+  ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_len(large_arr) == 10,
                            "Large array should have 10 elements");
   // Remove middle chunk [3, 7) -> removes 3, 4, 5, 6
   result = arr_remove_range(large_arr, 3, 7);
   ORC_SDK_REQUIRE_WITH_MSG(result == OK, "Large range removal should succeed");
-  ORC_SDK_REQUIRE_WITH_MSG(arr_len(large_arr) == 6,
+  ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_len(large_arr) == 6,
                            "Array should have 6 elements remaining");
   // Verify elements: should be [0, 1, 2, 7, 8, 9]
   int expected[] = {0, 1, 2, 7, 8, 9};
@@ -564,7 +571,7 @@ void test_arr_remove_range(void)
     ORC_SDK_REQUIRE_WITH_MSG(large_arr[i] == expected[i],
                              "Large range removal elements should be correct");
   }
-  arr_free(large_arr);
+  orc_sdk_arr_free(large_arr);
 }
 
 void test_arr_pop(void)
@@ -582,31 +589,32 @@ void test_arr_pop(void)
   ORC_SDK_REQUIRE_WITH_MSG(arr_push(arr, 10.0) == OK, "Push should succeed");
   ORC_SDK_REQUIRE_WITH_MSG(arr_push(arr, 20.0) == OK, "Push should succeed");
   ORC_SDK_REQUIRE_WITH_MSG(arr_push(arr, 30.0) == OK, "Push should succeed");
-  ORC_SDK_REQUIRE_WITH_MSG(arr_len(arr) == 3, "Array should have 3 elements");
+  ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_len(arr) == 3, "Array should have 3 elements");
   // Test pop from array with multiple elements
   result = arr_pop(arr, &value);
   ORC_SDK_REQUIRE_WITH_MSG(result == OK, "Pop should succeed");
   ORC_SDK_REQUIRE_WITH_MSG(value == 30.0, "Popped value should be 30.0 (last element)");
-  ORC_SDK_REQUIRE_WITH_MSG(arr_len(arr) == 2, "Array should have 2 elements after pop");
+  ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_len(arr) == 2,
+                           "Array should have 2 elements after pop");
   ORC_SDK_REQUIRE_WITH_MSG(arr[0] == 10.0 && arr[1] == 20.0,
                            "Remaining elements should be correct");
   // Test sequential pops
   result = arr_pop(arr, &value);
   ORC_SDK_REQUIRE_WITH_MSG(result == OK, "Second pop should succeed");
   ORC_SDK_REQUIRE_WITH_MSG(value == 20.0, "Popped value should be 20.0");
-  ORC_SDK_REQUIRE_WITH_MSG(arr_len(arr) == 1,
+  ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_len(arr) == 1,
                            "Array should have 1 element after second pop");
   ORC_SDK_REQUIRE_WITH_MSG(arr[0] == 10.0, "Remaining element should be 10.0");
   // Test pop from single-element array
   result = arr_pop(arr, &value);
   ORC_SDK_REQUIRE_WITH_MSG(result == OK, "Pop from single element should succeed");
   ORC_SDK_REQUIRE_WITH_MSG(value == 10.0, "Popped value should be 10.0");
-  ORC_SDK_REQUIRE_WITH_MSG(arr_len(arr) == 0,
+  ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_len(arr) == 0,
                            "Array should be empty after popping last element");
   // Test pop from now-empty array (should fail)
   result = arr_pop(arr, &value);
   ORC_SDK_REQUIRE_WITH_MSG(result == OUT_OF_BOUNDS, "Pop from empty array should fail");
-  arr_free(arr);
+  orc_sdk_arr_free(arr);
   // Test with different data types
   int *int_arr = NULL;
   int  int_value;
@@ -615,8 +623,9 @@ void test_arr_pop(void)
   result = arr_pop(int_arr, &int_value);
   ORC_SDK_REQUIRE_WITH_MSG(result == OK, "Int pop should succeed");
   ORC_SDK_REQUIRE_WITH_MSG(int_value == 99, "Popped int value should be 99");
-  ORC_SDK_REQUIRE_WITH_MSG(arr_len(int_arr) == 1, "Int array should have 1 element left");
-  arr_free(int_arr);
+  ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_len(int_arr) == 1,
+                           "Int array should have 1 element left");
+  orc_sdk_arr_free(int_arr);
   // Test with pointers
   const char  *strings[] = {"first", "second", "third"};
   const char **str_arr   = NULL;
@@ -630,9 +639,9 @@ void test_arr_pop(void)
   result = arr_pop(str_arr, &str_value);
   ORC_SDK_REQUIRE_WITH_MSG(result == OK, "String pop should succeed");
   ORC_SDK_REQUIRE_WITH_MSG(str_value == strings[2], "Popped string should be 'third'");
-  ORC_SDK_REQUIRE_WITH_MSG(arr_len(str_arr) == 2,
+  ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_len(str_arr) == 2,
                            "String array should have 2 elements left");
-  arr_free(str_arr);
+  orc_sdk_arr_free(str_arr);
   // Test capacity behavior - capacity should not decrease on pop
   double *cap_arr = NULL;
   ORC_SDK_REQUIRE(OK == arr_reserve(cap_arr, 10));
@@ -645,10 +654,10 @@ void test_arr_pop(void)
   for (int i = 0; i < 5; i++) {
     arr_pop(cap_arr, &value);
   }
-  ORC_SDK_REQUIRE_WITH_MSG(arr_len(cap_arr) == 0, "Array should be empty");
+  ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_len(cap_arr) == 0, "Array should be empty");
   ORC_SDK_REQUIRE_WITH_MSG(_orc_sdk_arr_capacity(cap_arr) == initial_capacity,
                            "Capacity should not decrease");
-  arr_free(cap_arr);
+  orc_sdk_arr_free(cap_arr);
   // Test push after pop (ensure array is still usable)
   double *reuse_arr = NULL;
   arr_push(reuse_arr, 1.0);
@@ -656,10 +665,11 @@ void test_arr_pop(void)
   arr_pop(reuse_arr, &value);
   ORC_SDK_REQUIRE_WITH_MSG(value == 2.0, "Popped value should be 2.0");
   arr_push(reuse_arr, 3.0);
-  ORC_SDK_REQUIRE_WITH_MSG(arr_len(reuse_arr) == 2, "Array should have 2 elements");
+  ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_len(reuse_arr) == 2,
+                           "Array should have 2 elements");
   ORC_SDK_REQUIRE_WITH_MSG(reuse_arr[0] == 1.0, "First element should be 1.0");
   ORC_SDK_REQUIRE_WITH_MSG(reuse_arr[1] == 3.0, "Second element should be 3.0");
-  arr_free(reuse_arr);
+  orc_sdk_arr_free(reuse_arr);
 }
 
 void test_arr_fibonacci(void)
@@ -668,15 +678,15 @@ void test_arr_fibonacci(void)
   ORC_SDK_REQUIRE(arr_push(fibo, 1) == OK);
   ORC_SDK_REQUIRE(arr_push(fibo, 1) == OK);
   for (size_t i = 0; i < 10; ++i) {
-    size_t const len = arr_len(fibo);
+    size_t const len = orc_sdk_arr_len(fibo);
     ORC_SDK_REQUIRE(arr_push(fibo, fibo[len - 2] + fibo[len - 1]) == OK);
   }
-  ORC_SDK_REQUIRE(arr_len(fibo) == 12);
+  ORC_SDK_REQUIRE(orc_sdk_arr_len(fibo) == 12);
   uint32_t const expected[12] = {1, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89, 144};
   for (size_t i = 0; i < 12; ++i) {
     ORC_SDK_REQUIRE(fibo[i] == expected[i]);
   }
-  arr_free(fibo);
+  orc_sdk_arr_free(fibo);
 }
 
 void test_arr_header_alignment(void)
@@ -1736,7 +1746,7 @@ void test_deck_mark_structure(void)
   size_t      *deck = _binary_deck(3);
   _DeckHeader *h    = _deck_header(deck);
   ORC_SDK_REQUIRE(h->item_size == sizeof(size_t));
-  ORC_SDK_REQUIRE(arr_len(h->marks) == 4);
+  ORC_SDK_REQUIRE(orc_sdk_arr_len(h->marks) == 4);
   ORC_SDK_REQUIRE(h->marks[0].depth == 2);
   ORC_SDK_REQUIRE(h->marks[1].depth == 0);
   ORC_SDK_REQUIRE(h->marks[2].depth == 1);
@@ -1780,13 +1790,13 @@ void test_deck_flatten(void)
     ORC_SDK_REQUIRE(deck[i] == i);
   }
   _DeckHeader *h = _deck_header(deck);
-  ORC_SDK_REQUIRE(arr_len(h->marks) == 1);
+  ORC_SDK_REQUIRE(orc_sdk_arr_len(h->marks) == 1);
   ORC_SDK_REQUIRE(h->marks[0].depth == 0);
   ORC_SDK_REQUIRE(h->marks[0].pos == 0);
   // Flatten is idempotent.
   deck_flatten(deck);
   ORC_SDK_REQUIRE(deck_max_depth(deck) == 1);
-  ORC_SDK_REQUIRE(arr_len(h->marks) == 1);
+  ORC_SDK_REQUIRE(orc_sdk_arr_len(h->marks) == 1);
   deck_free(deck);
   // Flatten a single-element deck pushed at depth 0: no marks.
   size_t *deck2 = NULL;
@@ -1795,7 +1805,7 @@ void test_deck_flatten(void)
   deck_flatten(deck2);
   ORC_SDK_REQUIRE(deck_max_depth(deck2) == 0);
   ORC_SDK_REQUIRE(_deck_header(deck2)->item_size == sizeof(size_t));
-  ORC_SDK_REQUIRE(arr_len(_deck_header(deck2)->marks) == 0);
+  ORC_SDK_REQUIRE(orc_sdk_arr_len(_deck_header(deck2)->marks) == 0);
   deck_free(deck2);
 }
 
@@ -1830,7 +1840,7 @@ void test_deck_depth_clamping(void)
   ORC_SDK_REQUIRE(deck_max_depth(deck) == 2);
   _DeckHeader *h = _deck_header(deck);
   ORC_SDK_REQUIRE(h->item_size == sizeof(size_t));
-  ORC_SDK_REQUIRE(arr_len(h->marks) == 2);
+  ORC_SDK_REQUIRE(orc_sdk_arr_len(h->marks) == 2);
   ORC_SDK_REQUIRE(h->marks[0].depth == 1);
   ORC_SDK_REQUIRE(h->marks[1].depth <= h->marks[0].depth);
   deck_free(deck);
@@ -1845,7 +1855,7 @@ void test_deck_single_element(void)
   ORC_SDK_REQUIRE(deck_max_depth(deck) == 0);
   ORC_SDK_REQUIRE(_deck_header(deck)->item_size == sizeof(size_t));
   ORC_SDK_REQUIRE(deck[0] == 42);
-  ORC_SDK_REQUIRE(arr_len(_deck_header(deck)->marks) == 0);
+  ORC_SDK_REQUIRE(orc_sdk_arr_len(_deck_header(deck)->marks) == 0);
   deck_free(deck);
   // Depth 1.
   size_t *deck2 = NULL;
@@ -1898,7 +1908,7 @@ void test_deck_graft(void)
   //   pos 0: depth 3, pos 1: depth 0, pos 2: depth 1, pos 3: depth 0,
   //   pos 4: depth 2, pos 5: depth 0, pos 6: depth 1, pos 7: depth 0.
   _DeckHeader *h = _deck_header(deck);
-  ORC_SDK_REQUIRE(arr_len(h->marks) == 8);
+  ORC_SDK_REQUIRE(orc_sdk_arr_len(h->marks) == 8);
   uint8_t const expected_depths[] = {3, 0, 1, 0, 2, 0, 1, 0};
   for (size_t i = 0; i < 8; ++i) {
     ORC_SDK_REQUIRE(h->marks[i].depth == expected_depths[i]);
@@ -1930,7 +1940,7 @@ void test_deck_graft(void)
   // Every item should have its own mark at depth 0 (wrapped individually),
   // plus the original depth-0 mark promoted to depth 1.
   _DeckHeader *h3 = _deck_header(deck3);
-  ORC_SDK_REQUIRE(arr_len(h3->marks) == 3);
+  ORC_SDK_REQUIRE(orc_sdk_arr_len(h3->marks) == 3);
   ORC_SDK_REQUIRE(h3->marks[0].depth == 1);
   ORC_SDK_REQUIRE(h3->marks[1].depth == 0);
   ORC_SDK_REQUIRE(h3->marks[2].depth == 0);
@@ -1951,7 +1961,7 @@ void test_deck_simplify(void)
     size_t      *deck = _binary_deck(3);
     _DeckHeader *h    = _deck_header(deck);
     ORC_SDK_REQUIRE(h->item_size == sizeof(size_t));
-    size_t const n_marks = arr_len(h->marks);
+    size_t const n_marks = orc_sdk_arr_len(h->marks);
     uint8_t      depths_before[4];
     for (size_t i = 0; i < n_marks; ++i)
       depths_before[i] = h->marks[i].depth;
@@ -1970,7 +1980,7 @@ void test_deck_simplify(void)
     ORC_SDK_REQUIRE(deck_push(deck, ((size_t) {2}), 2) == OK);  // mark depth = 1
     ORC_SDK_REQUIRE(deck_push(deck, ((size_t) {3}), 0) == OK);
     _DeckHeader *h = _deck_header(deck);
-    ORC_SDK_REQUIRE(arr_len(h->marks) == 2);
+    ORC_SDK_REQUIRE(orc_sdk_arr_len(h->marks) == 2);
     // Before simplify: depths are 4 and 1 (clamped from external 5 and 2).
     // Wait — first mark has internal depth 4, second gets clamped to 4.
     // But external 2 -> internal 1, which is <= 4, so no clamping.
@@ -2010,7 +2020,7 @@ void test_deck_simplify(void)
     ORC_SDK_REQUIRE(deck_max_depth(deck) == 4);
     // After graft, depths are contiguous (0,1,2,3), so simplify is a no-op.
     _DeckHeader *h             = _deck_header(deck);
-    size_t const n_marks       = arr_len(h->marks);
+    size_t const n_marks       = orc_sdk_arr_len(h->marks);
     uint8_t     *depths_before = NULL;
     for (size_t i = 0; i < n_marks; ++i) {
       arr_push(depths_before, h->marks[i].depth);
@@ -2020,7 +2030,7 @@ void test_deck_simplify(void)
     for (size_t i = 0; i < n_marks; ++i) {
       ORC_SDK_REQUIRE(h->marks[i].depth == depths_before[i]);
     }
-    arr_free(depths_before);
+    orc_sdk_arr_free(depths_before);
     deck_free(deck);
   }
   // Simplify on empty/NULL deck is safe.
@@ -2144,7 +2154,7 @@ void test_deck_init(void)
   ORC_SDK_REQUIRE(deck[1] == 20);
   ORC_SDK_REQUIRE(deck[2] == 30);
   h = _deck_header(deck);
-  ORC_SDK_REQUIRE(arr_len(h->marks) == 1);
+  ORC_SDK_REQUIRE(orc_sdk_arr_len(h->marks) == 1);
   ORC_SDK_REQUIRE(h->marks[0].depth == 0);
   ORC_SDK_REQUIRE(h->marks[0].pos == 0);
   /* depth 2: re-init clears existing data */
@@ -2155,7 +2165,7 @@ void test_deck_init(void)
   for (size_t i = 0; i < 9; ++i)
     ORC_SDK_REQUIRE(deck[i] == i + 1);
   h = _deck_header(deck);
-  ORC_SDK_REQUIRE(arr_len(h->marks) == 3);
+  ORC_SDK_REQUIRE(orc_sdk_arr_len(h->marks) == 3);
   ORC_SDK_REQUIRE(h->marks[0].depth == 1);
   ORC_SDK_REQUIRE(h->marks[0].pos == 0);
   ORC_SDK_REQUIRE(h->marks[1].depth == 0);
@@ -2170,7 +2180,7 @@ void test_deck_init(void)
   for (size_t i = 0; i < 8; ++i)
     ORC_SDK_REQUIRE(deck[i] == i + 1);
   h = _deck_header(deck);
-  ORC_SDK_REQUIRE(arr_len(h->marks) == 4);
+  ORC_SDK_REQUIRE(orc_sdk_arr_len(h->marks) == 4);
   ORC_SDK_REQUIRE(h->marks[0].depth == 2);
   ORC_SDK_REQUIRE(h->marks[0].pos == 0);
   ORC_SDK_REQUIRE(h->marks[1].depth == 0);
@@ -3195,8 +3205,8 @@ void test_list_item_combinations(void)
     size_t n_marks = 0;
     {
       _DeckHeader *h = _deck_header(actual);
-      n_marks        = arr_len(h->marks);
-      ORC_SDK_REQUIRE(arr_len(_deck_header(expected)->marks) == n_marks);
+      n_marks        = orc_sdk_arr_len(h->marks);
+      ORC_SDK_REQUIRE(orc_sdk_arr_len(_deck_header(expected)->marks) == n_marks);
     }
     for (size_t i = 0; i < n_marks; ++i) {
       OrcMark const m1 = _deck_header(expected)->marks[i];
@@ -3285,8 +3295,8 @@ void test_add_f64_combinations(void)
     size_t n_marks = 0;
     {
       _DeckHeader *h = _deck_header(actual);
-      n_marks        = arr_len(h->marks);
-      ORC_SDK_REQUIRE(arr_len(_deck_header(expected)->marks) == n_marks);
+      n_marks        = orc_sdk_arr_len(h->marks);
+      ORC_SDK_REQUIRE(orc_sdk_arr_len(_deck_header(expected)->marks) == n_marks);
     }
     for (size_t i = 0; i < n_marks; ++i) {
       OrcMark const m1 = _deck_header(expected)->marks[i];
@@ -3321,8 +3331,8 @@ void test_add_f64_combinations(void)
     size_t n_marks = 0;
     {
       _DeckHeader *h = _deck_header(actual);
-      n_marks        = arr_len(h->marks);
-      ORC_SDK_REQUIRE(arr_len(_deck_header(expected)->marks) == n_marks);
+      n_marks        = orc_sdk_arr_len(h->marks);
+      ORC_SDK_REQUIRE(orc_sdk_arr_len(_deck_header(expected)->marks) == n_marks);
     }
     for (size_t i = 0; i < n_marks; ++i) {
       OrcMark const m1 = _deck_header(expected)->marks[i];
@@ -3408,8 +3418,8 @@ void test_list_length_combinations(void)
     size_t n_marks = 0;
     {
       _DeckHeader *h = _deck_header(actual);
-      n_marks        = arr_len(h->marks);
-      ORC_SDK_REQUIRE(arr_len(_deck_header(expected)->marks) == n_marks);
+      n_marks        = orc_sdk_arr_len(h->marks);
+      ORC_SDK_REQUIRE(orc_sdk_arr_len(_deck_header(expected)->marks) == n_marks);
     }
     for (size_t i = 0; i < n_marks; ++i) {
       OrcMark const m1 = _deck_header(expected)->marks[i];
@@ -3575,7 +3585,7 @@ static OrcHandle _make_grafted_proxy(void const *deck)
 {
   _DeckHeader *h         = _deck_header(deck);
   OrcMark     *old_marks = h->marks;
-  size_t const n_marks   = arr_len(old_marks);
+  size_t const n_marks   = orc_sdk_arr_len(old_marks);
   OrcMark     *marks     = NULL;
   uint64_t     prev      = 0;
   for (size_t i = 0; i < n_marks; ++i) {
@@ -3602,7 +3612,7 @@ static OrcHandle _make_grafted_proxy(void const *deck)
     .item_size     = h->item_size,
     .marks         = marks,
     .stride_offset = NULL,
-    .n_marks       = (uint64_t)arr_len(marks),
+    .n_marks       = (uint64_t)orc_sdk_arr_len(marks),
     .strides       = NULL,
     .type_id       = ORC_TYPE_PROXY,
     .dims          = {0},
@@ -3612,7 +3622,7 @@ static OrcHandle _make_grafted_proxy(void const *deck)
 static OrcHandle _make_simplified_proxy(void const *deck)
 {
   _DeckHeader *h       = _deck_header(deck);
-  size_t const n_marks = arr_len(h->marks);
+  size_t const n_marks = orc_sdk_arr_len(h->marks);
   OrcMark     *marks   = NULL;
   if (n_marks == 0) {
     return (OrcHandle) {
@@ -3643,7 +3653,7 @@ static OrcHandle _make_simplified_proxy(void const *deck)
     .item_size     = h->item_size,
     .marks         = marks,
     .stride_offset = NULL,
-    .n_marks       = (uint64_t)arr_len(marks),
+    .n_marks       = (uint64_t)orc_sdk_arr_len(marks),
     .strides       = NULL,
     .type_id       = ORC_TYPE_PROXY,
     .dims          = {0},
@@ -3672,8 +3682,8 @@ static void _assert_decks_match(void const  *actual,
   ORC_SDK_REQUIRE(deck_max_depth(actual) == deck_max_depth(expected));
   _DeckHeader *ha  = _deck_header(actual);
   _DeckHeader *he  = _deck_header(expected);
-  size_t const nma = arr_len(ha->marks);
-  size_t const nme = arr_len(he->marks);
+  size_t const nma = orc_sdk_arr_len(ha->marks);
+  size_t const nme = orc_sdk_arr_len(he->marks);
   ORC_SDK_REQUIRE(nma == nme);
   for (size_t i = 0; i < nma; ++i) {
     ORC_SDK_REQUIRE(ha->marks[i].pos == he->marks[i].pos);
@@ -3700,7 +3710,7 @@ void test_deck_from_proxy_copy_items(void)
     ORC_SDK_REQUIRE(actual[0] == 1.0 && actual[1] == 2.0 && actual[2] == 3.0);
     ORC_SDK_REQUIRE(actual[3] == 4.0 && actual[4] == 5.0);
 
-    arr_free(proxy.marks);
+    orc_sdk_arr_free(proxy.marks);
     ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_deck_free(&out));
     ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_deck_free(&in));
   }
@@ -3718,7 +3728,7 @@ void test_deck_from_proxy_copy_items(void)
     double *actual = (double *)out.items;
     ORC_SDK_REQUIRE(actual[0] == 1.0 && actual[4] == 5.0);
 
-    arr_free(proxy.marks);
+    orc_sdk_arr_free(proxy.marks);
     ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_deck_free(&out));
     ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_deck_free(&in));
   }
@@ -3737,7 +3747,7 @@ void test_deck_from_proxy_copy_items(void)
     ORC_SDK_REQUIRE(out.type_id == ORC_TYPE_F64);
 
     deck_free(expected);
-    arr_free(proxy.marks);
+    orc_sdk_arr_free(proxy.marks);
     ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_deck_free(&out));
     ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_deck_free(&in));
   }
@@ -3755,7 +3765,7 @@ void test_deck_from_proxy_copy_items(void)
     _assert_decks_match(out.items, expected, sizeof(double));
 
     deck_free(expected);
-    arr_free(proxy.marks);
+    orc_sdk_arr_free(proxy.marks);
     ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_deck_free(&out));
     ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_deck_free(&in));
   }
@@ -3779,7 +3789,7 @@ void test_deck_from_proxy_copy_items(void)
     _assert_decks_match(out.items, expected, sizeof(double));
 
     deck_free(expected);
-    arr_free(proxy.marks);
+    orc_sdk_arr_free(proxy.marks);
     ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_deck_free(&out));
     ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_deck_free(&in));
   }
@@ -3909,7 +3919,7 @@ void test_deck_from_proxy_type_agnostic(void)
     uint32_t *actual = (uint32_t *)out.items;
     ORC_SDK_REQUIRE(actual[0] == 10 && actual[1] == 20 && actual[2] == 30);
 
-    arr_free(proxy.marks);
+    orc_sdk_arr_free(proxy.marks);
     ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_deck_free(&out));
     ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_deck_free(&in));
   }
@@ -3952,7 +3962,7 @@ void test_deck_from_proxy_type_agnostic(void)
     int16_t *actual = (int16_t *)out.items;
     ORC_SDK_REQUIRE(actual[0] == 10 && actual[1] == 20 && actual[2] == 30);
 
-    arr_free(proxy.marks);
+    orc_sdk_arr_free(proxy.marks);
     ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_deck_free(&out));
     ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_deck_free(&in));
   }

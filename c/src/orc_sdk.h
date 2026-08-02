@@ -74,7 +74,7 @@ static inline size_t _orc_sdk_arr_capacity(void *ptr)
 /**
  * Free the array and assign the pointer to NULL.
  */
-#define arr_free(ptr) (free(_orc_sdk_arr_header((ptr))), (ptr) = NULL)
+#define orc_sdk_arr_free(ptr) (free(_orc_sdk_arr_header((ptr))), (ptr) = NULL)
 
 /**
  * @brief Get the length of the array.
@@ -82,7 +82,7 @@ static inline size_t _orc_sdk_arr_capacity(void *ptr)
  * @param ptr Pointer to the array.
  * @return size_t Length.
  */
-static inline size_t arr_len(void *ptr)
+static inline size_t orc_sdk_arr_len(void *ptr)
 {
   _OrcSdk_ArrHeader *h = _orc_sdk_arr_header(ptr);
   if (h)
@@ -111,14 +111,14 @@ OrcSdk_Status _arr_remove_impl(void *ptr, size_t const idx, size_t const elemsiz
 /**
  * Get a pointer pointing past the end of the array.
  */
-#define arr_end(ptr) (ptr) + arr_len((ptr))
+#define arr_end(ptr) (ptr) + orc_sdk_arr_len((ptr))
 
 /**
  * Removes the element at the index idx from the array. This is faster than arr_remove,
  * but doesn't preserve the order of the elements.
  */
 #define arr_swap_remove(ptr, idx)                                        \
-  (((ptr) != NULL && (idx) < arr_len(ptr))                               \
+  (((ptr) != NULL && (idx) < orc_sdk_arr_len(ptr))                       \
      ? ((ptr)[(idx)] = (ptr)[--(_orc_sdk_arr_header((ptr))->count)], OK) \
      : OUT_OF_BOUNDS)
 
@@ -154,7 +154,8 @@ void _arr_fill_impl(void             *arr,
                     size_t const      count,
                     size_t const      elemsize);
 
-#define arr_fill(ptr, val) _arr_fill_impl((ptr), &(val), arr_len((ptr)), sizeof(*ptr))
+#define arr_fill(ptr, val) \
+  _arr_fill_impl((ptr), &(val), orc_sdk_arr_len((ptr)), sizeof(*ptr))
 
 OrcSdk_Status _arr_remove_range_impl(void        *ptr,
                                      size_t const start,
@@ -174,7 +175,7 @@ OrcSdk_Status _arr_remove_range_impl(void        *ptr,
  * empty.
  */
 #define arr_pop(ptr, dst)                                        \
-  (((ptr) != NULL && arr_len((ptr)) > 0)                         \
+  (((ptr) != NULL && orc_sdk_arr_len((ptr)) > 0)                 \
      ? (*dst = (ptr)[--(_orc_sdk_arr_header((ptr)))->count], OK) \
      : OUT_OF_BOUNDS)
 
@@ -188,7 +189,7 @@ bool arr_is_empty(void *ptr);
 
 // ========== String ==========
 
-#define str_free(ptr) arr_free((ptr))
+#define str_free(ptr) orc_sdk_arr_free((ptr))
 
 static inline size_t str_len(void *ptr)
 {
