@@ -262,7 +262,9 @@ char *_str_push_str_impl(char *, char const *);
  * @return bool Flag indicating if the string is empty.
  */
 static inline bool str_is_empty(void *ptr)
-{ return str_len(ptr) == 0; }
+{
+  return str_len(ptr) == 0;
+}
 
 bool str_eq(char *const a, char *const b);
 
@@ -278,7 +280,9 @@ typedef struct
   (((sv).start == NULL || (sv).end == NULL) ? 0 : (size_t)((sv).end - (sv).start))
 
 static inline bool sv_is_empty(StrView const sv)
-{ return sv.start == sv.end || sv.start == NULL || sv.end == NULL; }
+{
+  return sv.start == sv.end || sv.start == NULL || sv.end == NULL;
+}
 
 StrView sv_from_str(char *str);
 
@@ -287,7 +291,9 @@ StrView sv_trim_left(StrView sv);
 StrView sv_trim_right(StrView sv);
 
 static inline StrView sv_trim(StrView sv)
-{ return sv_trim_left(sv_trim_right(sv)); }
+{
+  return sv_trim_left(sv_trim_right(sv));
+}
 
 bool sv_starts_with(StrView const sv, char const *const prefix);
 
@@ -306,7 +312,9 @@ StrView sv_split_at_delim(StrView *sv, char const delim);
 char *sv_find(StrView sv, char const c);
 
 static inline bool sv_contains_char(StrView sv, char const c)
-{ return sv_find(sv, c) != NULL; }
+{
+  return sv_find(sv, c) != NULL;
+}
 
 char *sv_rfind(StrView sv, char const c);
 
@@ -351,7 +359,9 @@ static inline size_t deck_len(void const *deck)
 }
 
 static inline bool deck_is_empty(void *deck)
-{ return deck_len(deck) == 0; }
+{
+  return deck_len(deck) == 0;
+}
 
 void *_deck_push_impl(void *ptr, void *item, size_t const itemsize, uint8_t const depth);
 
@@ -559,10 +569,14 @@ Status _dw_push_impl(DeckWriter *writer, void *item);
 void *dw_push_empty(DeckWriter *writer);
 
 static inline void *deck_item_ptr(DeckWriter *writer)
-{ return (char *)(*(writer->deck)) + writer->start * writer->item_size; }
+{
+  return (char *)(*(writer->deck)) + writer->start * writer->item_size;
+}
 
 static inline size_t dw_len(DeckWriter *writer)
-{ return deck_len(*(writer->deck)) - writer->start; }
+{
+  return deck_len(*(writer->deck)) - writer->start;
+}
 
 Status dw_close(DeckWriter *writer);
 
@@ -596,3 +610,5 @@ DeckView comb_get_input(void *comb, size_t const index);
 DeckWriter *comb_get_output(void *comb, size_t const index);
 
 void oh_update(OrcHandle *handle);
+
+OrcError handle_free(OrcHandle *const handle);

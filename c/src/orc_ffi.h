@@ -135,7 +135,7 @@ typedef uint8_t OrcProxyType;
 #define ORC_DECK_PROXY_COPY_ITEMS 0x02u
 #define ORC_DECK_PROXY_SHUFFLE 0x03u
 
-typedef OrcError (*DeckFreeFn)(OrcHandle *const handle);
+typedef OrcError (*OrcDeckFreeFn)(OrcHandle *const handle);
 
 struct OrcHandle
 {
@@ -149,7 +149,7 @@ struct OrcHandle
   uint64_t const *strides;
   OrcTypeId       type_id;
   OrcDims         dims;
-  DeckFreeFn      free_fn;
+  OrcDeckFreeFn   free_fn;
 };
 
 // Each plugin has to provide a generic way to construct decks out of a given input deck,
