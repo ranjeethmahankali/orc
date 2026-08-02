@@ -85,6 +85,27 @@
   theory with something that resembles a v-table, but not worth it. Very ugly, and likely not useful
   at all. This is possible trivially in C# (Grasshopper), because it is C#.
 
+* TODO orc_map_fn Macro in Rust SDK
+  :PROPERTIES:
+  :CREATED:  2026-08-02 Sun 11:00
+  :END:
+
+  Some functions will just have one input and one output, and they operate on a single item, and
+  produce a single item. These functions don't need the overhead of ~Combinations~. They can just
+  ~map~ the ~items~ of the deck, and just copy the ~marks~ of the deck. And the Rust compiler can
+  optimize that code much better. It will be nice to have another proc_macro specialized for these
+  types of functions. Something like ~orc_map_fn~.
+
+* TODO String operation plugins
+  :PROPERTIES:
+  :CREATED:  2026-08-02 Sun 11:16
+  :END:
+
+  I have some vague ideas about implementing string operations and passing strings around across the
+  ABI as a deck of u8. A deck of u8 can naturally represent a single character, a string such as a
+  line of text, or a list of strings such as a several lines read from a file, or a list of list of
+  strings, such as lines of text read from several files.
+
 * TODO tj45qx - C++ SDK
   :PROPERTIES:
   :CREATED:  2026-08-01 Sat 18:58
@@ -94,6 +115,19 @@
   implementation etc. But the abstractions to remove friction in implementing blocks will require
   some thought. I went with macros as the first pass in Rust. It is not clear to me what I should go
   with in C++.
+
+* TODO Figure out C SDK and write a simple plugin
+  :PROPERTIES:
+  :CREATED:  2026-08-02 Sun 11:09
+  :END:
+
+  The code for this is mostly in place. I just need to figure out the project structure, the
+  experience of various plugins that want to build off of ~orc_sdk~, and that of plugins that don't
+  want to build off of ~orc_sdk~ etc. I also need to figure out how to setup all these projects with
+  the ~nob~ build system.
+
+  Container operations plugin is a prime candidate for writing in C, because it doesn't need any
+  special libraries.
 
 * TODO tiwkbm - Create Toy Demo Apps
   :PROPERTIES:
@@ -123,11 +157,13 @@
   <2026-07-31 Fri 20:45> Trying to temporarily stop on this task, and finish a few other smaller
   tasks before continuing.
 
-* NEXT tj2fe7 - Proxy decks through the ABI
+* DONE tj2fe7 - Proxy decks through the ABI
+  CLOSED: [2026-08-02 Sun 11:23]
   :PROPERTIES:
   :CREATED:  2026-07-31 Fri 20:44
   :END:
   :LOGBOOK:
+  - State "DONE"       from "NEXT"       [2026-08-02 Sun 11:23]
   - State "NEXT"       from "TODO"       [2026-08-01 Sat 18:50]
   :END:
 
@@ -143,6 +179,10 @@
   datastructure it used. Which means each handle needs to contain a pointer to a free function, that
   takes the u64 handle, and returns an error. The dll need not export the free function. This
   changes the ABI design. I need to figure this out before making progress on the proxy stuff
+
+  <2026-08-02 Sun 10:56> Updated the ownership semantics of handles. The handles now carry their own
+  free functions. Finished implementing the proxy stuff in the Rust plugin. Not tested it yet. I am
+  considering merging this in, and testing it later as I write more plugins.
 
 * DONE tj2fch - OrcHandle type_id rework
   CLOSED: [2026-08-01 Sat 18:36]
