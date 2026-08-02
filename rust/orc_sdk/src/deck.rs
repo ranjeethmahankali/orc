@@ -667,7 +667,7 @@ where
     }
 
     pub fn items(&self) -> &[T] {
-        &self.items
+        self.items
     }
 
     pub fn marks(&self) -> &[OrcMark] {
