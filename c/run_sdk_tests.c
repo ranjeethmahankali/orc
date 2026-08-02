@@ -20,6 +20,7 @@ void cc_append_flags(Nob_Cmd *cmd)
   nob_cc_flags(cmd);
   nob_cmd_append(cmd, "-std=c99", "-pedantic");
   nob_cmd_append(cmd, "-O3");
+  nob_cmd_append(cmd, "-I.");  // Include the current directory.
   nob_cmd_append(cmd,
                  "-Werror",
                  "-Wformat=2",
