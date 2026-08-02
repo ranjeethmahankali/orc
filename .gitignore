@@ -35,7 +35,7 @@ Cargo.lock
 # C SDK stuff
 
 /c/build/
-/c/run_sdk_tests.old
-/c/run_sdk_tests.exe
-/c/run_sdk_tests
-/c/run_sdk_tests.exe.old
+/c/make.old
+/c/make.exe
+/c/make
+/c/make.exe.old
