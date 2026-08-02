@@ -523,17 +523,17 @@ typedef struct
 
 OrcSdk_DeckView _orc_sdk_dv_from_deck_impl(void *ptr, size_t const item_size, uint8_t const depth);
 
-#define dv_from_deck(ptr, depth) _orc_sdk_dv_from_deck_impl((ptr), sizeof(*(ptr)), (depth))
+#define orc_sdk_dv_from_deck(ptr, depth) _orc_sdk_dv_from_deck_impl((ptr), sizeof(*(ptr)), (depth))
 
-uint8_t dv_depth(OrcSdk_DeckView const *const v);
+uint8_t orc_sdk_dv_depth(OrcSdk_DeckView const *const v);
 
-size_t dv_len(OrcSdk_DeckView const *const v);
+size_t orc_sdk_dv_len(OrcSdk_DeckView const *const v);
 
-OrcSdk_DeckView dv_child(OrcSdk_DeckView const *const v);
+OrcSdk_DeckView orc_sdk_dv_child(OrcSdk_DeckView const *const v);
 
-void const *dv_item_ptr(OrcSdk_DeckView const *const v);
+void const *orc_sdk_dv_item_ptr(OrcSdk_DeckView const *const v);
 
-bool dv_advance(OrcSdk_DeckView *const v);
+bool orc_sdk_dv_advance(OrcSdk_DeckView *const v);
 
 // ========== DeckWriter ==========
 
