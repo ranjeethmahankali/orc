@@ -3007,6 +3007,7 @@ void _plugin_function_list_element(OrcHandle const *list_handle,
     }
     combinations = orc_sdk_comb_advance(combinations);
   }
+  orc_sdk_comb_free(combinations);
 }
 
 // This simulates a function that takes two F64 scalars and outputs their sum.
@@ -3038,6 +3039,7 @@ void _plugin_function_add_f64(OrcHandle const *a_handle,
     }
     combinations = orc_sdk_comb_advance(combinations);
   }
+  orc_sdk_comb_free(combinations);
 }
 
 // This simulates a function that takes one F64 scalar and outputs its square and cube.
@@ -3070,6 +3072,7 @@ void _plugin_function_sq_cb(OrcHandle const *in_handle,
     }
     combinations = orc_sdk_comb_advance(combinations);
   }
+  orc_sdk_comb_free(combinations);
 }
 
 // This simulates a function that takes two F64 scalars and outputs their sum and product.
@@ -3108,6 +3111,7 @@ void _plugin_function_add_mul(OrcHandle const *a_handle,
     }
     combinations = orc_sdk_comb_advance(combinations);
   }
+  orc_sdk_comb_free(combinations);
 }
 
 void _plugin_function_first_add(OrcHandle const *a_handle,
@@ -3141,6 +3145,7 @@ void _plugin_function_first_add(OrcHandle const *a_handle,
     }
     combinations = orc_sdk_comb_advance(combinations);
   }
+  orc_sdk_comb_free(combinations);
 }
 
 void test_list_item_combinations(void)
@@ -3382,6 +3387,7 @@ void _plugin_function_list_length(OrcHandle const *in_handle, OrcHandle *out_han
     *output_ptr          = (uint64_t)orc_sdk_dv_len(&list_input);
     combinations         = orc_sdk_comb_advance(combinations);
   }
+  orc_sdk_comb_free(combinations);
 }
 
 void test_list_length_combinations(void)
