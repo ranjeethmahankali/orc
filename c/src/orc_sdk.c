@@ -1395,115 +1395,46 @@ DeckWriter *comb_get_output(void *ptr, size_t const index)
 
 // ========== FFI helper functions ==========
 
-static OrcTypeInfo _orc_type_info_u8(void)
-{
-  return (OrcTypeInfo) {
-    .type_id = ORC_TYPE_U8, .name = "u8", .desc = "Unsigned 8 bit integer"};
-}
-static OrcTypeInfo _orc_type_info_u16(void)
-{
-  return (OrcTypeInfo) {
-    .type_id = ORC_TYPE_U16, .name = "u16", .desc = "Unsigned 16 bit integer"};
-}
-static OrcTypeInfo _orc_type_info_u32(void)
-{
-  return (OrcTypeInfo) {
-    .type_id = ORC_TYPE_U32, .name = "u32", .desc = "Unsigned 32 bit integer"};
-}
-static OrcTypeInfo _orc_type_info_u64(void)
-{
-  return (OrcTypeInfo) {
-    .type_id = ORC_TYPE_U64, .name = "u64", .desc = "Unsigned 64 bit integer"};
-}
-static OrcTypeInfo _orc_type_info_f32(void)
-{
-  return (OrcTypeInfo) {
-    .type_id = ORC_TYPE_F32, .name = "f32", .desc = "32 bit floating point scalar"};
-}
-static OrcTypeInfo _orc_type_info_f64(void)
-{
-  return (OrcTypeInfo) {
-    .type_id = ORC_TYPE_F64, .name = "f64", .desc = "64 bit floating point scalar"};
-}
-static OrcTypeInfo _orc_type_info_i8(void)
-{
-  return (OrcTypeInfo) {
-    .type_id = ORC_TYPE_I8, .name = "i8", .desc = "Signed 8 bit integer"};
-}
-static OrcTypeInfo _orc_type_info_i16(void)
-{
-  return (OrcTypeInfo) {
-    .type_id = ORC_TYPE_I16, .name = "i16", .desc = "Signed 16 bit integer"};
-}
-static OrcTypeInfo _orc_type_info_i32(void)
-{
-  return (OrcTypeInfo) {
-    .type_id = ORC_TYPE_I32, .name = "i32", .desc = "Signed 32 bit integer"};
-}
-static OrcTypeInfo _orc_type_info_i64(void)
-{
-  return (OrcTypeInfo) {
-    .type_id = ORC_TYPE_I64, .name = "i64", .desc = "Signed 64 bit integer"};
-}
-
-// ========== Plugin - Host IO ==========
-
-OrcError orc_plugin_init(OrcHost const *host, OrcPlugin *plugin_data_out)
-{
-  (void)host;
-  (void)plugin_data_out;
-  TODO("Not implemented");
-}
-
 OrcError orc_deck_alloc(OrcTypeId const id, OrcHandle *const out)
 {
   if (out == NULL) {
     return ORC_ERROR_INVALID_HANDLE;
   }
   out->item_size = 0;
+  out->type_id   = id;
   switch (id) {
     // Unsigned integers.
   case ORC_TYPE_U8:
     out->item_size = sizeof(uint8_t);
-    out->type_id   = _orc_type_info_u8().type_id;
     break;
   case ORC_TYPE_U16:
     out->item_size = sizeof(uint16_t);
-    out->type_id   = _orc_type_info_u16().type_id;
     break;
   case ORC_TYPE_U32:
     out->item_size = sizeof(uint32_t);
-    out->type_id   = _orc_type_info_u32().type_id;
     break;
   case ORC_TYPE_U64:
     out->item_size = sizeof(uint64_t);
-    out->type_id   = _orc_type_info_u64().type_id;
     break;
     // Scalars.
   case ORC_TYPE_F32:
     out->item_size = sizeof(float);
-    out->type_id   = _orc_type_info_f32().type_id;
     break;
   case ORC_TYPE_F64:
     out->item_size = sizeof(double);
-    out->type_id   = _orc_type_info_f64().type_id;
     break;
     // Signed integers.
   case ORC_TYPE_I8:
     out->item_size = sizeof(int8_t);
-    out->type_id   = _orc_type_info_i8().type_id;
     break;
   case ORC_TYPE_I16:
     out->item_size = sizeof(int16_t);
-    out->type_id   = _orc_type_info_i16().type_id;
     break;
   case ORC_TYPE_I32:
     out->item_size = sizeof(int32_t);
-    out->type_id   = _orc_type_info_i32().type_id;
     break;
   case ORC_TYPE_I64:
     out->item_size = sizeof(int64_t);
-    out->type_id   = _orc_type_info_i64().type_id;
     break;
   default:
     TODO("The plugin should handle its own types here");
