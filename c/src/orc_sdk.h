@@ -39,15 +39,6 @@
 
 #define ORC_SDK_DEBUG(...) (fprintf(stderr, __VA_ARGS__))
 
-// The purpose of this struct is to check for maximum alignment compatibility of other
-// types.
-typedef union
-{
-  long long   ll;
-  long double ld;
-  void       *p;
-} _MaxAlignCompat;
-
 typedef enum
 {
   OK = 0,

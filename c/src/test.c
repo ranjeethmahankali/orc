@@ -6,6 +6,15 @@
 #include <stdio.h>
 #include <string.h>
 
+// The purpose of this struct is to check for maximum alignment compatibility of other
+// types.
+typedef union
+{
+  long long   ll;
+  long double ld;
+  void       *p;
+} _MaxAlignCompat;
+
 void test_arr_null_pointer_operations(void)
 {
   double *null_arr = NULL;
