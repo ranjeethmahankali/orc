@@ -90,6 +90,23 @@ where
     }
 
     /**
+    Assign the given items and marks to this deck. The old contents of this deck are dropped.
+    */
+    pub fn assign_from_raw_data(&mut self, items: Vec<T>, marks: Vec<OrcMark>) {
+        self.items = items;
+        self.marks = marks;
+        self.stride_offset.clear();
+        self.strides.clear();
+        self.pegs.clear();
+        calc_strides(
+            &self.marks,
+            &mut self.pegs,
+            &mut self.stride_offset,
+            &mut self.strides,
+        );
+    }
+
+    /**
     Get the maximum depth of this deck. By definition, this is the depth of the
     first mark.
     */
@@ -647,6 +664,14 @@ where
                 None
             }
         })
+    }
+
+    pub fn items(&self) -> &[T] {
+        &self.items
+    }
+
+    pub fn marks(&self) -> &[OrcMark] {
+        self.cursor.marks
     }
 }
 

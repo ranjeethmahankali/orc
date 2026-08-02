@@ -61,7 +61,7 @@ macro_rules! orc_plugin {
             proxy: *const orc_sdk::OrcHandle,
             out: *mut orc_sdk::OrcHandle,
         ) -> orc_sdk::OrcError {
-            if proxy.is_null() || out.is_null() {
+            if inputs.is_null() || proxy.is_null() || out.is_null() {
                 return orc_sdk::ORC_ERROR_INVALID_HANDLE;
             }
             // Convert all the FFI pointers to Rust references.
@@ -79,15 +79,9 @@ macro_rules! orc_plugin {
                 _ => return orc_sdk::ORC_ERROR_INVALID_PROXY,
             };
             match <$plugin as orc_sdk::TOrcPluginAdaptor>::deck_from_proxy(
-                inputs, proxy_type, proxy,
+                inputs, proxy_type, proxy, out,
             ) {
-                Ok(mut handle) => {
-                    unsafe {
-                        handle.free_fn = Some(orc_deck_free);
-                        *out = handle;
-                    }
-                    orc_sdk::ORC_ERROR_NONE
-                }
+                Ok(_) => orc_sdk::ORC_ERROR_NONE,
                 Err(e) => e.into(),
             }
         }
@@ -124,7 +118,8 @@ pub trait TOrcPluginAdaptor {
         inputs: &[OrcHandle],
         proxy_type: ProxyType,
         proxy: &OrcHandle,
-    ) -> Result<OrcHandle, Error>;
+        out: &mut OrcHandle,
+    ) -> Result<(), Error>;
 }
 
 pub trait TOrcData: Default + Clone + Send + Sync + 'static {

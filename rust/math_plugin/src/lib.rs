@@ -87,22 +87,23 @@ impl TOrcPluginAdaptor for Adaptor {
         inputs: &[OrcHandle],
         proxy_type: ProxyType,
         proxy: &OrcHandle,
-    ) -> Result<OrcHandle, Error> {
+        out: &mut OrcHandle,
+    ) -> Result<(), Error> {
         let type_id = match inputs.first() {
             Some(input) => input.type_id,
             None => return Err(Error::InvalidProxy),
         };
         match type_id {
-            ORC_TYPE_U8 => deck_from_proxy_impl::<u8>(inputs, proxy_type, proxy),
-            ORC_TYPE_U16 => deck_from_proxy_impl::<u16>(inputs, proxy_type, proxy),
-            ORC_TYPE_U32 => deck_from_proxy_impl::<u32>(inputs, proxy_type, proxy),
-            ORC_TYPE_U64 => deck_from_proxy_impl::<u64>(inputs, proxy_type, proxy),
-            ORC_TYPE_I8 => deck_from_proxy_impl::<i8>(inputs, proxy_type, proxy),
-            ORC_TYPE_I16 => deck_from_proxy_impl::<i16>(inputs, proxy_type, proxy),
-            ORC_TYPE_I32 => deck_from_proxy_impl::<i32>(inputs, proxy_type, proxy),
-            ORC_TYPE_I64 => deck_from_proxy_impl::<i64>(inputs, proxy_type, proxy),
-            ORC_TYPE_F32 => deck_from_proxy_impl::<f32>(inputs, proxy_type, proxy),
-            ORC_TYPE_F64 => deck_from_proxy_impl::<f64>(inputs, proxy_type, proxy),
+            ORC_TYPE_U8 => deck_from_proxy_impl::<u8>(inputs, proxy_type, proxy, out),
+            ORC_TYPE_U16 => deck_from_proxy_impl::<u16>(inputs, proxy_type, proxy, out),
+            ORC_TYPE_U32 => deck_from_proxy_impl::<u32>(inputs, proxy_type, proxy, out),
+            ORC_TYPE_U64 => deck_from_proxy_impl::<u64>(inputs, proxy_type, proxy, out),
+            ORC_TYPE_I8 => deck_from_proxy_impl::<i8>(inputs, proxy_type, proxy, out),
+            ORC_TYPE_I16 => deck_from_proxy_impl::<i16>(inputs, proxy_type, proxy, out),
+            ORC_TYPE_I32 => deck_from_proxy_impl::<i32>(inputs, proxy_type, proxy, out),
+            ORC_TYPE_I64 => deck_from_proxy_impl::<i64>(inputs, proxy_type, proxy, out),
+            ORC_TYPE_F32 => deck_from_proxy_impl::<f32>(inputs, proxy_type, proxy, out),
+            ORC_TYPE_F64 => deck_from_proxy_impl::<f64>(inputs, proxy_type, proxy, out),
             _ => Err(Error::DeckTypeMismatch),
         }
     }
@@ -112,7 +113,8 @@ fn deck_from_proxy_impl<T: TOrcData>(
     inputs: &[OrcHandle],
     proxy_type: ProxyType,
     proxy: &OrcHandle,
-) -> Result<OrcHandle, Error> {
+    out: &mut OrcHandle,
+) -> Result<(), Error> {
     let type_id = match inputs.first() {
         Some(input) => input.type_id,
         None => return Err(Error::InvalidProxy),
@@ -121,23 +123,52 @@ fn deck_from_proxy_impl<T: TOrcData>(
         // All inputs must be of the same type. This is a problem.
         return Err(Error::InvalidProxy);
     }
-    let mut out = OrcHandle::default();
+    REGISTRY.ensure_alloc_default::<Deck<T>>(&mut out.handle)?;
     REGISTRY
-        .with_mut(&[type_id], |out_decks| -> Result<OrcHandle, Error> {
-            match proxy_type {
+        .with_mut(&[out.handle], |out_decks| -> Result<(), Error> {
+            let out_deck = out_decks[0]
+                .downcast_mut::<Deck<T>>()
+                .ok_or(Error::DeckTypeMismatch)?;
+            let (items, marks) = match proxy_type {
                 ProxyType::CopyAll => {
                     // We expect exactly one input, and we will make a full clone of that data.
-                    todo!();
+                    if inputs.len() != 1 {
+                        return Err(Error::InvalidProxy);
+                    }
+                    let input_handle = unsafe { inputs.get_unchecked(0) }; // SAFETY: we just checked above.
+                    let input = DeckView::<T>::from_handle(input_handle)?;
+                    (input.items().to_vec(), input.marks().to_vec())
                 }
                 ProxyType::CopyItems => {
+                    // We expect exactly one input. We will copy the items of the input, but the marks from the proxy.
+                    if inputs.len() != 1 {
+                        return Err(Error::InvalidProxy);
+                    }
+                    let input_handle = unsafe { inputs.get_unchecked(0) }; // SAFETY: we just checked above.
+                    let input = DeckView::<T>::from_handle(input_handle)?;
                     let proxy = DeckView::<OrcItemProxy>::from_handle(proxy)?;
-                    todo!()
+                    (input.items().to_vec(), proxy.marks().to_vec())
                 }
                 ProxyType::Shuffle => {
                     let proxy = DeckView::<OrcItemProxy>::from_handle(proxy)?;
-                    todo!()
+                    let inputs = inputs
+                        .iter()
+                        .map(|input| DeckView::<T>::from_handle(input))
+                        .collect::<Result<Box<[DeckView<T>]>, Error>>()?;
+                    (
+                        proxy
+                            .items()
+                            .iter()
+                            .map(|ii| inputs[ii.tree as usize].items()[ii.item as usize].clone())
+                            .collect::<Vec<T>>(),
+                        proxy.marks().to_vec(),
+                    )
                 }
-            }
+            };
+            out_deck.assign_from_raw_data(items, marks);
+            let id = out.handle;
+            *out = handle_from_deck(out_deck, id, Some(orc_deck_free));
+            Ok(())
         })
         .flatten()
 }
