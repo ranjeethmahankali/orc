@@ -3651,7 +3651,7 @@ void test_deck_from_proxy_copy_items(void)
     oh_update(&in);
 
     OrcHandle proxy = _make_flattened_proxy(in.items);
-    orc_deck_from_proxy(&in, 1, ORC_DECK_PROXY_COPY_ITEMS, &proxy, &out);
+    orc_sdk_deck_from_proxy(&in, 1, ORC_DECK_PROXY_COPY_ITEMS, &proxy, &out);
 
     REQUIRE(out.type_id == ORC_TYPE_F64);
     REQUIRE(deck_len(out.items) == 5);
@@ -3671,7 +3671,7 @@ void test_deck_from_proxy_copy_items(void)
     oh_update(&in);
 
     OrcHandle proxy = _make_flattened_proxy(in.items);
-    orc_deck_from_proxy(&in, 1, ORC_DECK_PROXY_COPY_ITEMS, &proxy, &out);
+    orc_sdk_deck_from_proxy(&in, 1, ORC_DECK_PROXY_COPY_ITEMS, &proxy, &out);
 
     REQUIRE(deck_len(out.items) == 5);
     REQUIRE(deck_max_depth(out.items) == 1);
@@ -3689,7 +3689,7 @@ void test_deck_from_proxy_copy_items(void)
     oh_update(&in);
 
     OrcHandle proxy = _make_grafted_proxy(in.items);
-    orc_deck_from_proxy(&in, 1, ORC_DECK_PROXY_COPY_ITEMS, &proxy, &out);
+    orc_sdk_deck_from_proxy(&in, 1, ORC_DECK_PROXY_COPY_ITEMS, &proxy, &out);
 
     double *expected = NULL;
     DECK_INIT(expected, double, ((1.0), (2.0), (3.0)));
@@ -3708,7 +3708,7 @@ void test_deck_from_proxy_copy_items(void)
     oh_update(&in);
 
     OrcHandle proxy = _make_grafted_proxy(in.items);
-    orc_deck_from_proxy(&in, 1, ORC_DECK_PROXY_COPY_ITEMS, &proxy, &out);
+    orc_sdk_deck_from_proxy(&in, 1, ORC_DECK_PROXY_COPY_ITEMS, &proxy, &out);
 
     double *expected = NULL;
     DECK_INIT(expected, double, (((1.0), (2.0)), ((3.0))));
@@ -3729,7 +3729,7 @@ void test_deck_from_proxy_copy_items(void)
     oh_update(&in);
 
     OrcHandle proxy = _make_simplified_proxy(in.items);
-    orc_deck_from_proxy(&in, 1, ORC_DECK_PROXY_COPY_ITEMS, &proxy, &out);
+    orc_sdk_deck_from_proxy(&in, 1, ORC_DECK_PROXY_COPY_ITEMS, &proxy, &out);
 
     /* Simplify should match deck_simplify on an equivalent deck. */
     double *expected = NULL;
@@ -3759,7 +3759,7 @@ void test_deck_from_proxy_shuffle(void)
     REQUIRE(deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 1}), 0) == OK);
     REQUIRE(deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 0}), 0) == OK);
     OrcHandle proxy = _make_shuffle_proxy(pdeck);
-    orc_deck_from_proxy(&in, 1, ORC_DECK_PROXY_SHUFFLE, &proxy, &out);
+    orc_sdk_deck_from_proxy(&in, 1, ORC_DECK_PROXY_SHUFFLE, &proxy, &out);
 
     double *expected = NULL;
     DECK_INIT(expected, double, (3.0, 2.0, 1.0));
@@ -3786,7 +3786,7 @@ void test_deck_from_proxy_shuffle(void)
     REQUIRE(deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 3}), 0) == OK);
     REQUIRE(deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 2}), 0) == OK);
     OrcHandle proxy = _make_shuffle_proxy(pdeck);
-    orc_deck_from_proxy(&in, 1, ORC_DECK_PROXY_SHUFFLE, &proxy, &out);
+    orc_sdk_deck_from_proxy(&in, 1, ORC_DECK_PROXY_SHUFFLE, &proxy, &out);
 
     double *expected = NULL;
     DECK_INIT(expected, double, ((2.0, 1.0), (5.0, 4.0, 3.0)));
@@ -3808,7 +3808,7 @@ void test_deck_from_proxy_shuffle(void)
     REQUIRE(deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 1}), 1) == OK);
     REQUIRE(deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 4}), 0) == OK);
     OrcHandle proxy = _make_shuffle_proxy(pdeck);
-    orc_deck_from_proxy(&in, 1, ORC_DECK_PROXY_SHUFFLE, &proxy, &out);
+    orc_sdk_deck_from_proxy(&in, 1, ORC_DECK_PROXY_SHUFFLE, &proxy, &out);
 
     REQUIRE(out.type_id == ORC_TYPE_F64);
     REQUIRE(deck_len(out.items) == 2);
@@ -3837,7 +3837,7 @@ void test_deck_from_proxy_shuffle(void)
     OrcHandle proxy = _make_shuffle_proxy(pdeck);
 
     OrcHandle inputs[2] = {a, b};
-    orc_deck_from_proxy(inputs, 2, ORC_DECK_PROXY_SHUFFLE, &proxy, &out);
+    orc_sdk_deck_from_proxy(inputs, 2, ORC_DECK_PROXY_SHUFFLE, &proxy, &out);
 
     double *expected = NULL;
     DECK_INIT(expected, double, (1.0, 10.0, 2.0, 20.0));
@@ -3861,7 +3861,7 @@ void test_deck_from_proxy_type_agnostic(void)
     oh_update(&in);
 
     OrcHandle proxy = _make_flattened_proxy(in.items);
-    orc_deck_from_proxy(&in, 1, ORC_DECK_PROXY_COPY_ITEMS, &proxy, &out);
+    orc_sdk_deck_from_proxy(&in, 1, ORC_DECK_PROXY_COPY_ITEMS, &proxy, &out);
 
     REQUIRE(out.type_id == ORC_TYPE_U32);
     REQUIRE(deck_len(out.items) == 3);
@@ -3885,7 +3885,7 @@ void test_deck_from_proxy_type_agnostic(void)
     REQUIRE(deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 1}), 0) == OK);
     REQUIRE(deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 0}), 0) == OK);
     OrcHandle proxy = _make_shuffle_proxy(pdeck);
-    orc_deck_from_proxy(&in, 1, ORC_DECK_PROXY_SHUFFLE, &proxy, &out);
+    orc_sdk_deck_from_proxy(&in, 1, ORC_DECK_PROXY_SHUFFLE, &proxy, &out);
 
     REQUIRE(out.type_id == ORC_TYPE_I32);
     REQUIRE(deck_len(out.items) == 4);
@@ -3903,7 +3903,7 @@ void test_deck_from_proxy_type_agnostic(void)
     oh_update(&in);
 
     OrcHandle proxy = _make_grafted_proxy(in.items);
-    orc_deck_from_proxy(&in, 1, ORC_DECK_PROXY_COPY_ITEMS, &proxy, &out);
+    orc_sdk_deck_from_proxy(&in, 1, ORC_DECK_PROXY_COPY_ITEMS, &proxy, &out);
 
     REQUIRE(out.type_id == ORC_TYPE_I16);
     REQUIRE(deck_len(out.items) == 3);

@@ -1533,11 +1533,11 @@ void _copy_items(OrcTypeId const type_id,
   copy_fn(src, dst, n_items);
 }
 
-OrcError orc_deck_from_proxy(OrcHandle const   *inputs,
-                             uint64_t const     n_inputs,
-                             OrcProxyType const proxy_type,
-                             OrcHandle const   *proxy,
-                             OrcHandle         *out)
+OrcError orc_sdk_deck_from_proxy(OrcHandle const   *inputs,
+                                 uint64_t const     n_inputs,
+                                 OrcProxyType const proxy_type,
+                                 OrcHandle const   *proxy,
+                                 OrcHandle         *out)
 {
   if (n_inputs == 0) {
     return ORC_ERROR_NONE;  // Nothing to do.

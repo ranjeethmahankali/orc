@@ -616,3 +616,9 @@ void oh_update(OrcHandle *handle);
 OrcError orc_sdk_deck_alloc(OrcTypeId const id, OrcHandle *const out);
 
 OrcError orc_sdk_deck_free(OrcHandle *const handle);
+
+OrcError orc_sdk_deck_from_proxy(OrcHandle const   *inputs,
+                                 uint64_t const     n_inputs,
+                                 OrcProxyType const proxy_type,
+                                 OrcHandle const   *proxy,
+                                 OrcHandle         *out);
