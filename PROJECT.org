@@ -116,9 +116,12 @@
   some thought. I went with macros as the first pass in Rust. It is not clear to me what I should go
   with in C++.
 
-* TODO tj5fbs - Figure out C SDK and write a simple plugin
+* NEXT tj5fbs - Figure out C SDK and write a simple plugin
   :PROPERTIES:
   :CREATED:  2026-08-02 Sun 11:09
+  :END:
+  :LOGBOOK:
+  - State "NEXT"       from "TODO"       [2026-08-02 Sun 11:44]
   :END:
 
   The code for this is mostly in place. I just need to figure out the project structure, the
@@ -129,6 +132,11 @@
   Container operations plugin is a prime candidate for writing in C, because it doesn't need any
   special libraries. Don't want to add too many blocks at once, but just a few to make sure the
   proxy stuff is working nicely across the ABI.
+
+  <2026-08-02 Sun 11:43> orc_sdk should not implement definitions anything from orc_ffi.h. orc_ffi
+  should just contain pure forward declarations. It is up to each plugin how to implement
+  those. orc_sdk should provide namespaced equivalents of the things in orc_ffi, and each plugin can
+  choose to simply call the orc_sdk functions if they don't want to write their own.
 
 * TODO tiwkbm - Create Toy Demo Apps
   :PROPERTIES:
