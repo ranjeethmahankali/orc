@@ -71,13 +71,6 @@ macro_rules! orc_plugin {
                     &mut *out,
                 )
             };
-            if proxy.type_id != orc_sdk::ORC_TYPE_PROXY || inputs.is_empty() {
-                return orc_sdk::ORC_ERROR_INVALID_PROXY;
-            }
-            let type_id = inputs[0].type_id;
-            if !inputs.iter().all(|i| i.type_id == type_id) {
-                return orc_sdk::ORC_ERROR_INVALID_PROXY;
-            }
             let proxy_type = match proxy_type {
                 orc_sdk::ORC_DECK_PROXY_COPY_ALL => ProxyType::CopyAll,
                 orc_sdk::ORC_DECK_PROXY_COPY_ITEMS => ProxyType::CopyItems,
@@ -203,6 +196,13 @@ impl TOrcData for i64 {
         type_id: crate::ORC_TYPE_I64,
         name: c"i64".as_ptr(),
         desc: c"Signed 64 bit integer".as_ptr(),
+    };
+}
+impl TOrcData for OrcItemProxy {
+    const TYPE_INFO: OrcTypeInfo = OrcTypeInfo {
+        type_id: crate::ORC_TYPE_PROXY,
+        name: c"item_proxy".as_ptr(),
+        desc: c"Proxy indices that can be used to point to an element of another deck.".as_ptr(),
     };
 }
 

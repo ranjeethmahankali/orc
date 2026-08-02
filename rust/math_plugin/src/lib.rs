@@ -1,9 +1,9 @@
 use orc_sdk::{
-    Deck, Error, HostCallbacks, ORC_ABI_VERSION, ORC_TYPE_F32, ORC_TYPE_F64, ORC_TYPE_I8,
+    Deck, DeckView, Error, HostCallbacks, ORC_ABI_VERSION, ORC_TYPE_F32, ORC_TYPE_F64, ORC_TYPE_I8,
     ORC_TYPE_I16, ORC_TYPE_I32, ORC_TYPE_I64, ORC_TYPE_U8, ORC_TYPE_U16, ORC_TYPE_U32,
-    ORC_TYPE_U64, ObjectRegistry, OrcFuncInfo, OrcHandle, OrcHost, OrcHostCallbackAPI, OrcPlugin,
-    OrcTypeId, ProxyType, TOrcData, TOrcPluginAdaptor, handle_from_deck, orc_fn_info, orc_plugin,
-    reset_handle,
+    ORC_TYPE_U64, ObjectRegistry, OrcFuncInfo, OrcHandle, OrcHost, OrcHostCallbackAPI,
+    OrcItemProxy, OrcPlugin, OrcTypeId, ProxyType, TOrcData, TOrcPluginAdaptor, handle_from_deck,
+    orc_fn_info, orc_plugin, reset_handle,
 };
 use std::sync::{LazyLock, OnceLock};
 
@@ -86,12 +86,64 @@ impl TOrcPluginAdaptor for Adaptor {
     }
 
     fn deck_from_proxy(
-        _inputs: &[OrcHandle],
-        _proxy_type: orc_sdk::ProxyType,
-        _proxy: &OrcHandle,
+        inputs: &[OrcHandle],
+        proxy_type: ProxyType,
+        proxy: &OrcHandle,
     ) -> Result<OrcHandle, Error> {
-        todo!()
+        let type_id = match inputs.first() {
+            Some(input) => input.type_id,
+            None => return Err(Error::InvalidProxy),
+        };
+        match type_id {
+            ORC_TYPE_U8 => deck_from_proxy_impl::<u8>(inputs, proxy_type, proxy),
+            ORC_TYPE_U16 => deck_from_proxy_impl::<u16>(inputs, proxy_type, proxy),
+            ORC_TYPE_U32 => deck_from_proxy_impl::<u32>(inputs, proxy_type, proxy),
+            ORC_TYPE_U64 => deck_from_proxy_impl::<u64>(inputs, proxy_type, proxy),
+            ORC_TYPE_I8 => deck_from_proxy_impl::<i8>(inputs, proxy_type, proxy),
+            ORC_TYPE_I16 => deck_from_proxy_impl::<i16>(inputs, proxy_type, proxy),
+            ORC_TYPE_I32 => deck_from_proxy_impl::<i32>(inputs, proxy_type, proxy),
+            ORC_TYPE_I64 => deck_from_proxy_impl::<i64>(inputs, proxy_type, proxy),
+            ORC_TYPE_F32 => deck_from_proxy_impl::<f32>(inputs, proxy_type, proxy),
+            ORC_TYPE_F64 => deck_from_proxy_impl::<f64>(inputs, proxy_type, proxy),
+            // We just return an empty handle to the host when the type is not supported. Maybe in
+            // the future we should return some error code.
+            _ => Err(Error::DeckTypeMismatch),
+        }
     }
+}
+
+fn deck_from_proxy_impl<T: TOrcData>(
+    inputs: &[OrcHandle],
+    proxy_type: ProxyType,
+    proxy: &OrcHandle,
+) -> Result<OrcHandle, Error> {
+    let type_id = match inputs.first() {
+        Some(input) => input.type_id,
+        None => return Err(Error::InvalidProxy),
+    };
+    if inputs.iter().skip(1).any(|h| h.type_id != type_id) {
+        // All inputs must be of the same type. This is a problem.
+        return Err(Error::InvalidProxy);
+    }
+    let mut out = OrcHandle::default();
+    REGISTRY
+        .with_mut(&[type_id], |out_decks| -> Result<OrcHandle, Error> {
+            match proxy_type {
+                ProxyType::CopyAll => {
+                    // We expect exactly one input, and we will make a full clone of that data.
+                    todo!();
+                }
+                ProxyType::CopyItems => {
+                    let proxy = DeckView::<OrcItemProxy>::from_handle(proxy)?;
+                    todo!()
+                }
+                ProxyType::Shuffle => {
+                    let proxy = DeckView::<OrcItemProxy>::from_handle(proxy)?;
+                    todo!()
+                }
+            }
+        })
+        .flatten()
 }
 
 orc_plugin!(Adaptor);
