@@ -1203,131 +1203,131 @@ void test_str_mixed_new_operations(void)
 
 // String view.
 
-void test_sv_from_str_and_basics(void)
+void test_orc_sv_from_str_and_basics(void)
 {
   // From a normal string
   char    buf[] = "hello";
-  OrcStrView sv    = sv_from_str(buf);
+  OrcStrView sv    = orc_sv_from_str(buf);
   ORC_SDK_REQUIRE(sv.start == buf);
   ORC_SDK_REQUIRE(sv.end == buf + 5);
-  ORC_SDK_REQUIRE(sv_len(sv) == 5);
-  ORC_SDK_REQUIRE(!sv_is_empty(sv));
+  ORC_SDK_REQUIRE(orc_sv_len(sv) == 5);
+  ORC_SDK_REQUIRE(!orc_sv_is_empty(sv));
   // From empty string
   char    empty[] = "";
-  OrcStrView e       = sv_from_str(empty);
+  OrcStrView e       = orc_sv_from_str(empty);
   ORC_SDK_REQUIRE(e.start == empty);
   ORC_SDK_REQUIRE(e.end == empty);
-  ORC_SDK_REQUIRE(sv_len(e) == 0);
-  ORC_SDK_REQUIRE(sv_is_empty(e));
+  ORC_SDK_REQUIRE(orc_sv_len(e) == 0);
+  ORC_SDK_REQUIRE(orc_sv_is_empty(e));
   // From NULL
-  OrcStrView n = sv_from_str(NULL);
+  OrcStrView n = orc_sv_from_str(NULL);
   ORC_SDK_REQUIRE(n.start == NULL);
   ORC_SDK_REQUIRE(n.end == NULL);
-  ORC_SDK_REQUIRE(sv_len(n) == 0);
-  ORC_SDK_REQUIRE(sv_is_empty(n));
+  ORC_SDK_REQUIRE(orc_sv_len(n) == 0);
+  ORC_SDK_REQUIRE(orc_sv_is_empty(n));
 }
 
-void test_sv_trim(void)
+void test_orc_sv_trim(void)
 {
   // Trim left
   char    buf1[] = "  hi";
-  OrcStrView sv1    = sv_trim_left(sv_from_str(buf1));
-  ORC_SDK_REQUIRE(sv_len(sv1) == 2);
+  OrcStrView sv1    = orc_sv_trim_left(orc_sv_from_str(buf1));
+  ORC_SDK_REQUIRE(orc_sv_len(sv1) == 2);
   ORC_SDK_REQUIRE(memcmp(sv1.start, "hi", 2) == 0);
   // Trim right
   char    buf2[] = "hi  ";
-  OrcStrView sv2    = sv_trim_right(sv_from_str(buf2));
-  ORC_SDK_REQUIRE(sv_len(sv2) == 2);
+  OrcStrView sv2    = orc_sv_trim_right(orc_sv_from_str(buf2));
+  ORC_SDK_REQUIRE(orc_sv_len(sv2) == 2);
   ORC_SDK_REQUIRE(memcmp(sv2.start, "hi", 2) == 0);
   // Trim both
   char    buf3[] = " \t hi \n ";
-  OrcStrView sv3    = sv_trim_right(sv_trim_left(sv_from_str(buf3)));
-  ORC_SDK_REQUIRE(sv_len(sv3) == 2);
+  OrcStrView sv3    = orc_sv_trim_right(orc_sv_trim_left(orc_sv_from_str(buf3)));
+  ORC_SDK_REQUIRE(orc_sv_len(sv3) == 2);
   ORC_SDK_REQUIRE(memcmp(sv3.start, "hi", 2) == 0);
   // All whitespace trims to empty
   char    buf4[] = "   ";
-  OrcStrView sv4    = sv_trim_left(sv_from_str(buf4));
-  ORC_SDK_REQUIRE(sv_is_empty(sv4));
+  OrcStrView sv4    = orc_sv_trim_left(orc_sv_from_str(buf4));
+  ORC_SDK_REQUIRE(orc_sv_is_empty(sv4));
   char    buf5[] = "   ";
-  OrcStrView sv5    = sv_trim_right(sv_from_str(buf5));
-  ORC_SDK_REQUIRE(sv_is_empty(sv5));
+  OrcStrView sv5    = orc_sv_trim_right(orc_sv_from_str(buf5));
+  ORC_SDK_REQUIRE(orc_sv_is_empty(sv5));
   // No whitespace is a no-op
   char    buf6[] = "abc";
-  OrcStrView sv6    = sv_trim_left(sv_trim_right(sv_from_str(buf6)));
-  ORC_SDK_REQUIRE(sv_len(sv6) == 3);
+  OrcStrView sv6    = orc_sv_trim_left(orc_sv_trim_right(orc_sv_from_str(buf6)));
+  ORC_SDK_REQUIRE(orc_sv_len(sv6) == 3);
   ORC_SDK_REQUIRE(memcmp(sv6.start, "abc", 3) == 0);
   // Empty view
-  OrcStrView sv7 = sv_trim_left(sv_from_str(""));
-  ORC_SDK_REQUIRE(sv_is_empty(sv7));
-  OrcStrView sv8 = sv_trim_right(sv_from_str(""));
-  ORC_SDK_REQUIRE(sv_is_empty(sv8));
+  OrcStrView sv7 = orc_sv_trim_left(orc_sv_from_str(""));
+  ORC_SDK_REQUIRE(orc_sv_is_empty(sv7));
+  OrcStrView sv8 = orc_sv_trim_right(orc_sv_from_str(""));
+  ORC_SDK_REQUIRE(orc_sv_is_empty(sv8));
   // NULL view
-  OrcStrView null_sv = sv_trim_left((OrcStrView) {0});
+  OrcStrView null_sv = orc_sv_trim_left((OrcStrView) {0});
   ORC_SDK_REQUIRE(null_sv.start == NULL);
   ORC_SDK_REQUIRE(null_sv.end == NULL);
-  null_sv = sv_trim_right((OrcStrView) {0});
+  null_sv = orc_sv_trim_right((OrcStrView) {0});
   ORC_SDK_REQUIRE(null_sv.start == NULL);
   ORC_SDK_REQUIRE(null_sv.end == NULL);
 }
 
-void test_sv_split_at_delim(void)
+void test_orc_sv_split_at_delim(void)
 {
   // Basic split on comma
   char    buf[] = "one,two,three";
-  OrcStrView sv    = sv_from_str(buf);
-  OrcStrView part1 = sv_split_at_delim(&sv, ',');
-  ORC_SDK_REQUIRE(sv_len(part1) == 3);
+  OrcStrView sv    = orc_sv_from_str(buf);
+  OrcStrView part1 = orc_sv_split_at_delim(&sv, ',');
+  ORC_SDK_REQUIRE(orc_sv_len(part1) == 3);
   ORC_SDK_REQUIRE(memcmp(part1.start, "one", 3) == 0);
   ORC_SDK_REQUIRE_WITH_MSG(sv.start == buf + 4, "Remainder starts after delimiter");
-  OrcStrView part2 = sv_split_at_delim(&sv, ',');
-  ORC_SDK_REQUIRE(sv_len(part2) == 3);
+  OrcStrView part2 = orc_sv_split_at_delim(&sv, ',');
+  ORC_SDK_REQUIRE(orc_sv_len(part2) == 3);
   ORC_SDK_REQUIRE(memcmp(part2.start, "two", 3) == 0);
   // Last segment — no more delimiters, returns remainder and nulls out sv
-  OrcStrView part3 = sv_split_at_delim(&sv, ',');
-  ORC_SDK_REQUIRE(sv_len(part3) == 5);
+  OrcStrView part3 = orc_sv_split_at_delim(&sv, ',');
+  ORC_SDK_REQUIRE(orc_sv_len(part3) == 5);
   ORC_SDK_REQUIRE(memcmp(part3.start, "three", 5) == 0);
   ORC_SDK_REQUIRE(sv.start == NULL);
   ORC_SDK_REQUIRE(sv.end == NULL);
   // Splitting an exhausted view returns empty
-  OrcStrView part4 = sv_split_at_delim(&sv, ',');
-  ORC_SDK_REQUIRE(sv_is_empty(part4));
+  OrcStrView part4 = orc_sv_split_at_delim(&sv, ',');
+  ORC_SDK_REQUIRE(orc_sv_is_empty(part4));
   // Delimiter at start yields empty first part
   char    buf2[] = ",hello";
-  OrcStrView sv2    = sv_from_str(buf2);
-  OrcStrView first  = sv_split_at_delim(&sv2, ',');
-  ORC_SDK_REQUIRE(sv_len(first) == 0);
-  ORC_SDK_REQUIRE(sv_len(sv2) == 5);
+  OrcStrView sv2    = orc_sv_from_str(buf2);
+  OrcStrView first  = orc_sv_split_at_delim(&sv2, ',');
+  ORC_SDK_REQUIRE(orc_sv_len(first) == 0);
+  ORC_SDK_REQUIRE(orc_sv_len(sv2) == 5);
   ORC_SDK_REQUIRE(memcmp(sv2.start, "hello", 5) == 0);
   // Delimiter at end yields content then empty
   char    buf3[] = "hello,";
-  OrcStrView sv3    = sv_from_str(buf3);
-  OrcStrView before = sv_split_at_delim(&sv3, ',');
-  ORC_SDK_REQUIRE(sv_len(before) == 5);
+  OrcStrView sv3    = orc_sv_from_str(buf3);
+  OrcStrView before = orc_sv_split_at_delim(&sv3, ',');
+  ORC_SDK_REQUIRE(orc_sv_len(before) == 5);
   ORC_SDK_REQUIRE(memcmp(before.start, "hello", 5) == 0);
-  OrcStrView after = sv_split_at_delim(&sv3, ',');
-  ORC_SDK_REQUIRE(sv_len(after) == 0);
+  OrcStrView after = orc_sv_split_at_delim(&sv3, ',');
+  ORC_SDK_REQUIRE(orc_sv_len(after) == 0);
   ORC_SDK_REQUIRE(sv3.start == NULL);
   // No delimiter at all
   char    buf4[] = "none";
-  OrcStrView sv4    = sv_from_str(buf4);
-  OrcStrView whole  = sv_split_at_delim(&sv4, ',');
-  ORC_SDK_REQUIRE(sv_len(whole) == 4);
+  OrcStrView sv4    = orc_sv_from_str(buf4);
+  OrcStrView whole  = orc_sv_split_at_delim(&sv4, ',');
+  ORC_SDK_REQUIRE(orc_sv_len(whole) == 4);
   ORC_SDK_REQUIRE(memcmp(whole.start, "none", 4) == 0);
   ORC_SDK_REQUIRE(sv4.start == NULL);
 }
 
-void test_sv_split_line(void)
+void test_orc_sv_split_line(void)
 {
   char    buf[] = "line1\nline2\nline3";
-  OrcStrView sv    = sv_from_str(buf);
-  OrcStrView l1    = sv_split_line(&sv);
-  ORC_SDK_REQUIRE(sv_len(l1) == 5);
+  OrcStrView sv    = orc_sv_from_str(buf);
+  OrcStrView l1    = orc_sv_split_line(&sv);
+  ORC_SDK_REQUIRE(orc_sv_len(l1) == 5);
   ORC_SDK_REQUIRE(memcmp(l1.start, "line1", 5) == 0);
-  OrcStrView l2 = sv_split_line(&sv);
-  ORC_SDK_REQUIRE(sv_len(l2) == 5);
+  OrcStrView l2 = orc_sv_split_line(&sv);
+  ORC_SDK_REQUIRE(orc_sv_len(l2) == 5);
   ORC_SDK_REQUIRE(memcmp(l2.start, "line2", 5) == 0);
-  OrcStrView l3 = sv_split_line(&sv);
-  ORC_SDK_REQUIRE(sv_len(l3) == 5);
+  OrcStrView l3 = orc_sv_split_line(&sv);
+  ORC_SDK_REQUIRE(orc_sv_len(l3) == 5);
   ORC_SDK_REQUIRE(memcmp(l3.start, "line3", 5) == 0);
   ORC_SDK_REQUIRE(sv.start == NULL);
 }
@@ -1335,139 +1335,139 @@ void test_sv_split_line(void)
 void test_sv_trim_combined(void)
 {
   char    buf1[] = " \t hello \n ";
-  OrcStrView sv1    = sv_trim(sv_from_str(buf1));
-  ORC_SDK_REQUIRE(sv_len(sv1) == 5);
+  OrcStrView sv1    = orc_sv_trim(orc_sv_from_str(buf1));
+  ORC_SDK_REQUIRE(orc_sv_len(sv1) == 5);
   ORC_SDK_REQUIRE(memcmp(sv1.start, "hello", 5) == 0);
   // No whitespace
   char    buf2[] = "abc";
-  OrcStrView sv2    = sv_trim(sv_from_str(buf2));
-  ORC_SDK_REQUIRE(sv_len(sv2) == 3);
+  OrcStrView sv2    = orc_sv_trim(orc_sv_from_str(buf2));
+  ORC_SDK_REQUIRE(orc_sv_len(sv2) == 3);
   ORC_SDK_REQUIRE(memcmp(sv2.start, "abc", 3) == 0);
   // All whitespace
   char    buf3[] = "   ";
-  OrcStrView sv3    = sv_trim(sv_from_str(buf3));
-  ORC_SDK_REQUIRE(sv_is_empty(sv3));
+  OrcStrView sv3    = orc_sv_trim(orc_sv_from_str(buf3));
+  ORC_SDK_REQUIRE(orc_sv_is_empty(sv3));
   // Empty and NULL
-  ORC_SDK_REQUIRE(sv_is_empty(sv_trim(sv_from_str(""))));
-  ORC_SDK_REQUIRE(sv_trim((OrcStrView) {0}).start == NULL);
+  ORC_SDK_REQUIRE(orc_sv_is_empty(orc_sv_trim(orc_sv_from_str(""))));
+  ORC_SDK_REQUIRE(orc_sv_trim((OrcStrView) {0}).start == NULL);
 }
 
-void test_sv_starts_with(void)
+void test_orc_sv_starts_with(void)
 {
   char    buf[] = "hello world";
-  OrcStrView sv    = sv_from_str(buf);
-  ORC_SDK_REQUIRE(sv_starts_with(sv, "hello"));
-  ORC_SDK_REQUIRE(sv_starts_with(sv, "h"));
-  ORC_SDK_REQUIRE(sv_starts_with(sv, "hello world"));
-  ORC_SDK_REQUIRE(!sv_starts_with(sv, "hello world!"));
-  ORC_SDK_REQUIRE(!sv_starts_with(sv, "world"));
-  ORC_SDK_REQUIRE(!sv_starts_with(sv, "Hello"));
+  OrcStrView sv    = orc_sv_from_str(buf);
+  ORC_SDK_REQUIRE(orc_sv_starts_with(sv, "hello"));
+  ORC_SDK_REQUIRE(orc_sv_starts_with(sv, "h"));
+  ORC_SDK_REQUIRE(orc_sv_starts_with(sv, "hello world"));
+  ORC_SDK_REQUIRE(!orc_sv_starts_with(sv, "hello world!"));
+  ORC_SDK_REQUIRE(!orc_sv_starts_with(sv, "world"));
+  ORC_SDK_REQUIRE(!orc_sv_starts_with(sv, "Hello"));
   // NULL prefix
-  ORC_SDK_REQUIRE(!sv_starts_with(sv, NULL));
+  ORC_SDK_REQUIRE(!orc_sv_starts_with(sv, NULL));
   // Empty view
-  OrcStrView empty = sv_from_str("");
-  ORC_SDK_REQUIRE(!sv_starts_with(empty, "a"));
+  OrcStrView empty = orc_sv_from_str("");
+  ORC_SDK_REQUIRE(!orc_sv_starts_with(empty, "a"));
   // NULL view
   OrcStrView null_sv = (OrcStrView) {0};
-  ORC_SDK_REQUIRE(!sv_starts_with(null_sv, "a"));
+  ORC_SDK_REQUIRE(!orc_sv_starts_with(null_sv, "a"));
   // Single char view
   char    buf2[] = "x";
-  OrcStrView sv2    = sv_from_str(buf2);
-  ORC_SDK_REQUIRE(sv_starts_with(sv2, "x"));
-  ORC_SDK_REQUIRE(!sv_starts_with(sv2, "xy"));
+  OrcStrView sv2    = orc_sv_from_str(buf2);
+  ORC_SDK_REQUIRE(orc_sv_starts_with(sv2, "x"));
+  ORC_SDK_REQUIRE(!orc_sv_starts_with(sv2, "xy"));
 }
 
-void test_sv_ends_with(void)
+void test_orc_sv_ends_with(void)
 {
   char    buf[] = "hello world";
-  OrcStrView sv    = sv_from_str(buf);
-  ORC_SDK_REQUIRE(sv_ends_with(sv, "world"));
-  ORC_SDK_REQUIRE(sv_ends_with(sv, "d"));
-  ORC_SDK_REQUIRE(sv_ends_with(sv, "hello world"));
-  ORC_SDK_REQUIRE(!sv_ends_with(sv, "hello world!"));
-  ORC_SDK_REQUIRE(!sv_ends_with(sv, "hello"));
-  ORC_SDK_REQUIRE(!sv_ends_with(sv, "World"));
+  OrcStrView sv    = orc_sv_from_str(buf);
+  ORC_SDK_REQUIRE(orc_sv_ends_with(sv, "world"));
+  ORC_SDK_REQUIRE(orc_sv_ends_with(sv, "d"));
+  ORC_SDK_REQUIRE(orc_sv_ends_with(sv, "hello world"));
+  ORC_SDK_REQUIRE(!orc_sv_ends_with(sv, "hello world!"));
+  ORC_SDK_REQUIRE(!orc_sv_ends_with(sv, "hello"));
+  ORC_SDK_REQUIRE(!orc_sv_ends_with(sv, "World"));
   // NULL suffix
-  ORC_SDK_REQUIRE(!sv_ends_with(sv, NULL));
+  ORC_SDK_REQUIRE(!orc_sv_ends_with(sv, NULL));
   // Empty view
-  OrcStrView empty = sv_from_str("");
-  ORC_SDK_REQUIRE(!sv_ends_with(empty, "a"));
+  OrcStrView empty = orc_sv_from_str("");
+  ORC_SDK_REQUIRE(!orc_sv_ends_with(empty, "a"));
   // NULL view
   OrcStrView null_sv = (OrcStrView) {0};
-  ORC_SDK_REQUIRE(!sv_ends_with(null_sv, "a"));
+  ORC_SDK_REQUIRE(!orc_sv_ends_with(null_sv, "a"));
   // Single char view
   char    buf2[] = "x";
-  OrcStrView sv2    = sv_from_str(buf2);
-  ORC_SDK_REQUIRE(sv_ends_with(sv2, "x"));
-  ORC_SDK_REQUIRE(!sv_ends_with(sv2, "yx"));
+  OrcStrView sv2    = orc_sv_from_str(buf2);
+  ORC_SDK_REQUIRE(orc_sv_ends_with(sv2, "x"));
+  ORC_SDK_REQUIRE(!orc_sv_ends_with(sv2, "yx"));
 }
 
-void test_sv_contains_str(void)
+void test_orc_sv_contains_str(void)
 {
   char    buf[] = "hello world";
-  OrcStrView sv    = sv_from_str(buf);
-  ORC_SDK_REQUIRE(sv_contains_str(sv, "hello"));
-  ORC_SDK_REQUIRE(sv_contains_str(sv, "world"));
-  ORC_SDK_REQUIRE(sv_contains_str(sv, "lo wo"));
-  ORC_SDK_REQUIRE(sv_contains_str(sv, "hello world"));
-  ORC_SDK_REQUIRE(sv_contains_str(sv, "h"));
-  ORC_SDK_REQUIRE(sv_contains_str(sv, "d"));
-  ORC_SDK_REQUIRE(!sv_contains_str(sv, "hello world!"));
-  ORC_SDK_REQUIRE(!sv_contains_str(sv, "xyz"));
-  ORC_SDK_REQUIRE(!sv_contains_str(sv, "Hello"));
+  OrcStrView sv    = orc_sv_from_str(buf);
+  ORC_SDK_REQUIRE(orc_sv_contains_str(sv, "hello"));
+  ORC_SDK_REQUIRE(orc_sv_contains_str(sv, "world"));
+  ORC_SDK_REQUIRE(orc_sv_contains_str(sv, "lo wo"));
+  ORC_SDK_REQUIRE(orc_sv_contains_str(sv, "hello world"));
+  ORC_SDK_REQUIRE(orc_sv_contains_str(sv, "h"));
+  ORC_SDK_REQUIRE(orc_sv_contains_str(sv, "d"));
+  ORC_SDK_REQUIRE(!orc_sv_contains_str(sv, "hello world!"));
+  ORC_SDK_REQUIRE(!orc_sv_contains_str(sv, "xyz"));
+  ORC_SDK_REQUIRE(!orc_sv_contains_str(sv, "Hello"));
   // Repeated first-byte partial matches (regression: infinite loop)
   char    buf2[] = "aaab";
-  OrcStrView sv2    = sv_from_str(buf2);
-  ORC_SDK_REQUIRE(sv_contains_str(sv2, "aab"));
-  ORC_SDK_REQUIRE(!sv_contains_str(sv2, "aac"));
+  OrcStrView sv2    = orc_sv_from_str(buf2);
+  ORC_SDK_REQUIRE(orc_sv_contains_str(sv2, "aab"));
+  ORC_SDK_REQUIRE(!orc_sv_contains_str(sv2, "aac"));
   // Empty needle
-  ORC_SDK_REQUIRE(!sv_contains_str(sv, ""));
+  ORC_SDK_REQUIRE(!orc_sv_contains_str(sv, ""));
   // NULL needle
-  ORC_SDK_REQUIRE(!sv_contains_str(sv, NULL));
+  ORC_SDK_REQUIRE(!orc_sv_contains_str(sv, NULL));
   // Empty view
-  OrcStrView empty = sv_from_str("");
-  ORC_SDK_REQUIRE(!sv_contains_str(empty, "a"));
+  OrcStrView empty = orc_sv_from_str("");
+  ORC_SDK_REQUIRE(!orc_sv_contains_str(empty, "a"));
   // NULL view
   OrcStrView null_sv = (OrcStrView) {0};
-  ORC_SDK_REQUIRE(!sv_contains_str(null_sv, "a"));
+  ORC_SDK_REQUIRE(!orc_sv_contains_str(null_sv, "a"));
   // Single char view
   char    buf3[] = "x";
-  OrcStrView sv3    = sv_from_str(buf3);
-  ORC_SDK_REQUIRE(sv_contains_str(sv3, "x"));
-  ORC_SDK_REQUIRE(!sv_contains_str(sv3, "y"));
-  ORC_SDK_REQUIRE(!sv_contains_str(sv3, "xy"));
+  OrcStrView sv3    = orc_sv_from_str(buf3);
+  ORC_SDK_REQUIRE(orc_sv_contains_str(sv3, "x"));
+  ORC_SDK_REQUIRE(!orc_sv_contains_str(sv3, "y"));
+  ORC_SDK_REQUIRE(!orc_sv_contains_str(sv3, "xy"));
   // Needle same length as view, no match
   char    buf4[] = "abc";
-  OrcStrView sv4    = sv_from_str(buf4);
-  ORC_SDK_REQUIRE(!sv_contains_str(sv4, "abd"));
-  ORC_SDK_REQUIRE(sv_contains_str(sv4, "abc"));
+  OrcStrView sv4    = orc_sv_from_str(buf4);
+  ORC_SDK_REQUIRE(!orc_sv_contains_str(sv4, "abd"));
+  ORC_SDK_REQUIRE(orc_sv_contains_str(sv4, "abc"));
 }
 
-void test_sv_find(void)
+void test_orc_sv_find(void)
 {
   char    buf[] = "hello";
-  OrcStrView sv    = sv_from_str(buf);
-  ORC_SDK_REQUIRE(sv_find(sv, 'h') == buf);
-  ORC_SDK_REQUIRE(sv_find(sv, 'o') == buf + 4);
-  ORC_SDK_REQUIRE(sv_find(sv, 'l') == buf + 2);
-  ORC_SDK_REQUIRE(sv_find(sv, 'z') == NULL);
+  OrcStrView sv    = orc_sv_from_str(buf);
+  ORC_SDK_REQUIRE(orc_sv_find(sv, 'h') == buf);
+  ORC_SDK_REQUIRE(orc_sv_find(sv, 'o') == buf + 4);
+  ORC_SDK_REQUIRE(orc_sv_find(sv, 'l') == buf + 2);
+  ORC_SDK_REQUIRE(orc_sv_find(sv, 'z') == NULL);
   // Empty view
-  OrcStrView empty = sv_from_str("");
-  ORC_SDK_REQUIRE(sv_find(empty, 'a') == NULL);
+  OrcStrView empty = orc_sv_from_str("");
+  ORC_SDK_REQUIRE(orc_sv_find(empty, 'a') == NULL);
   // NULL view
   OrcStrView null_sv = (OrcStrView) {0};
-  ORC_SDK_REQUIRE(sv_find(null_sv, 'a') == NULL);
+  ORC_SDK_REQUIRE(orc_sv_find(null_sv, 'a') == NULL);
   // Single char view
   char    buf2[] = "x";
-  OrcStrView sv2    = sv_from_str(buf2);
-  ORC_SDK_REQUIRE(sv_find(sv2, 'x') == buf2);
-  ORC_SDK_REQUIRE(sv_find(sv2, 'y') == NULL);
+  OrcStrView sv2    = orc_sv_from_str(buf2);
+  ORC_SDK_REQUIRE(orc_sv_find(sv2, 'x') == buf2);
+  ORC_SDK_REQUIRE(orc_sv_find(sv2, 'y') == NULL);
 }
 
 void test_sv_rfind(void)
 {
   char    buf[] = "hello";
-  OrcStrView sv    = sv_from_str(buf);
+  OrcStrView sv    = orc_sv_from_str(buf);
   // Finds last occurrence
   ORC_SDK_REQUIRE(sv_rfind(sv, 'l') == buf + 3);
   ORC_SDK_REQUIRE(sv_rfind(sv, 'h') == buf);
@@ -1475,22 +1475,22 @@ void test_sv_rfind(void)
   ORC_SDK_REQUIRE(sv_rfind(sv, 'z') == NULL);
   // All same characters
   char    buf2[] = "aaaa";
-  OrcStrView sv2    = sv_from_str(buf2);
+  OrcStrView sv2    = orc_sv_from_str(buf2);
   ORC_SDK_REQUIRE(sv_rfind(sv2, 'a') == buf2 + 3);
   // Empty view (regression: out-of-bounds dereference)
-  OrcStrView empty = sv_from_str("");
+  OrcStrView empty = orc_sv_from_str("");
   ORC_SDK_REQUIRE(sv_rfind(empty, 'a') == NULL);
   // NULL view
   OrcStrView null_sv = (OrcStrView) {0};
   ORC_SDK_REQUIRE(sv_rfind(null_sv, 'a') == NULL);
   // Single char view
   char    buf3[] = "x";
-  OrcStrView sv3    = sv_from_str(buf3);
+  OrcStrView sv3    = orc_sv_from_str(buf3);
   ORC_SDK_REQUIRE(sv_rfind(sv3, 'x') == buf3);
   ORC_SDK_REQUIRE(sv_rfind(sv3, 'y') == NULL);
   // Only first char matches
   char    buf4[] = "abc";
-  OrcStrView sv4    = sv_from_str(buf4);
+  OrcStrView sv4    = orc_sv_from_str(buf4);
   ORC_SDK_REQUIRE(sv_rfind(sv4, 'a') == buf4);
   // Only last char matches
   ORC_SDK_REQUIRE(sv_rfind(sv4, 'c') == buf4 + 2);
@@ -1528,108 +1528,108 @@ void test_orc_str_eq(void)
 void test_sv_contains_char(void)
 {
   char    buf[] = "hello";
-  OrcStrView sv    = sv_from_str(buf);
+  OrcStrView sv    = orc_sv_from_str(buf);
   ORC_SDK_REQUIRE(sv_contains_char(sv, 'h'));
   ORC_SDK_REQUIRE(sv_contains_char(sv, 'o'));
   ORC_SDK_REQUIRE(!sv_contains_char(sv, 'z'));
   // Empty and NULL views
-  ORC_SDK_REQUIRE(!sv_contains_char(sv_from_str(""), 'a'));
+  ORC_SDK_REQUIRE(!sv_contains_char(orc_sv_from_str(""), 'a'));
   ORC_SDK_REQUIRE(!sv_contains_char((OrcStrView) {0}, 'a'));
 }
 
-void test_sv_strip_prefix(void)
+void test_orc_sv_strip_prefix(void)
 {
   char    buf[] = "hello world";
-  OrcStrView sv    = sv_from_str(buf);
+  OrcStrView sv    = orc_sv_from_str(buf);
   // Successful strip
-  ORC_SDK_REQUIRE(sv_strip_prefix(&sv, "hello"));
-  ORC_SDK_REQUIRE(sv_len(sv) == 6);
+  ORC_SDK_REQUIRE(orc_sv_strip_prefix(&sv, "hello"));
+  ORC_SDK_REQUIRE(orc_sv_len(sv) == 6);
   ORC_SDK_REQUIRE(memcmp(sv.start, " world", 6) == 0);
   // Strip again on remainder
-  ORC_SDK_REQUIRE(sv_strip_prefix(&sv, " "));
-  ORC_SDK_REQUIRE(sv_len(sv) == 5);
+  ORC_SDK_REQUIRE(orc_sv_strip_prefix(&sv, " "));
+  ORC_SDK_REQUIRE(orc_sv_len(sv) == 5);
   ORC_SDK_REQUIRE(memcmp(sv.start, "world", 5) == 0);
   // Prefix not present
-  ORC_SDK_REQUIRE(!sv_strip_prefix(&sv, "xyz"));
-  ORC_SDK_REQUIRE_WITH_MSG(sv_len(sv) == 5, "View unchanged on failed strip");
+  ORC_SDK_REQUIRE(!orc_sv_strip_prefix(&sv, "xyz"));
+  ORC_SDK_REQUIRE_WITH_MSG(orc_sv_len(sv) == 5, "View unchanged on failed strip");
   // Prefix longer than view
-  ORC_SDK_REQUIRE(!sv_strip_prefix(&sv, "world!!!!"));
+  ORC_SDK_REQUIRE(!orc_sv_strip_prefix(&sv, "world!!!!"));
   // Strip entire view
-  ORC_SDK_REQUIRE(sv_strip_prefix(&sv, "world"));
-  ORC_SDK_REQUIRE(sv_is_empty(sv));
+  ORC_SDK_REQUIRE(orc_sv_strip_prefix(&sv, "world"));
+  ORC_SDK_REQUIRE(orc_sv_is_empty(sv));
   // Empty view
-  OrcStrView empty = sv_from_str("");
-  ORC_SDK_REQUIRE(!sv_strip_prefix(&empty, "a"));
+  OrcStrView empty = orc_sv_from_str("");
+  ORC_SDK_REQUIRE(!orc_sv_strip_prefix(&empty, "a"));
   // NULL view
   OrcStrView null_sv = (OrcStrView) {0};
-  ORC_SDK_REQUIRE(!sv_strip_prefix(&null_sv, "a"));
+  ORC_SDK_REQUIRE(!orc_sv_strip_prefix(&null_sv, "a"));
   // NULL prefix
-  OrcStrView sv2 = sv_from_str(buf);
-  ORC_SDK_REQUIRE(!sv_strip_prefix(&sv2, NULL));
+  OrcStrView sv2 = orc_sv_from_str(buf);
+  ORC_SDK_REQUIRE(!orc_sv_strip_prefix(&sv2, NULL));
   // NULL pointer to sv
-  ORC_SDK_REQUIRE(!sv_strip_prefix(NULL, "a"));
+  ORC_SDK_REQUIRE(!orc_sv_strip_prefix(NULL, "a"));
 }
 
-void test_sv_strip_suffix(void)
+void test_orc_sv_strip_suffix(void)
 {
   char    buf[] = "hello world";
-  OrcStrView sv    = sv_from_str(buf);
+  OrcStrView sv    = orc_sv_from_str(buf);
   // Successful strip
-  ORC_SDK_REQUIRE(sv_strip_suffix(&sv, "world"));
-  ORC_SDK_REQUIRE(sv_len(sv) == 6);
+  ORC_SDK_REQUIRE(orc_sv_strip_suffix(&sv, "world"));
+  ORC_SDK_REQUIRE(orc_sv_len(sv) == 6);
   ORC_SDK_REQUIRE(memcmp(sv.start, "hello ", 6) == 0);
   // Strip again on remainder
-  ORC_SDK_REQUIRE(sv_strip_suffix(&sv, " "));
-  ORC_SDK_REQUIRE(sv_len(sv) == 5);
+  ORC_SDK_REQUIRE(orc_sv_strip_suffix(&sv, " "));
+  ORC_SDK_REQUIRE(orc_sv_len(sv) == 5);
   ORC_SDK_REQUIRE(memcmp(sv.start, "hello", 5) == 0);
   // Suffix not present
-  ORC_SDK_REQUIRE(!sv_strip_suffix(&sv, "xyz"));
-  ORC_SDK_REQUIRE_WITH_MSG(sv_len(sv) == 5, "View unchanged on failed strip");
+  ORC_SDK_REQUIRE(!orc_sv_strip_suffix(&sv, "xyz"));
+  ORC_SDK_REQUIRE_WITH_MSG(orc_sv_len(sv) == 5, "View unchanged on failed strip");
   // Suffix longer than view
-  ORC_SDK_REQUIRE(!sv_strip_suffix(&sv, "!!!!hello"));
+  ORC_SDK_REQUIRE(!orc_sv_strip_suffix(&sv, "!!!!hello"));
   // Strip entire view
-  ORC_SDK_REQUIRE(sv_strip_suffix(&sv, "hello"));
-  ORC_SDK_REQUIRE(sv_is_empty(sv));
+  ORC_SDK_REQUIRE(orc_sv_strip_suffix(&sv, "hello"));
+  ORC_SDK_REQUIRE(orc_sv_is_empty(sv));
   // Empty view
-  OrcStrView empty = sv_from_str("");
-  ORC_SDK_REQUIRE(!sv_strip_suffix(&empty, "a"));
+  OrcStrView empty = orc_sv_from_str("");
+  ORC_SDK_REQUIRE(!orc_sv_strip_suffix(&empty, "a"));
   // NULL view
   OrcStrView null_sv = (OrcStrView) {0};
-  ORC_SDK_REQUIRE(!sv_strip_suffix(&null_sv, "a"));
+  ORC_SDK_REQUIRE(!orc_sv_strip_suffix(&null_sv, "a"));
   // NULL suffix
-  OrcStrView sv2 = sv_from_str(buf);
-  ORC_SDK_REQUIRE(!sv_strip_suffix(&sv2, NULL));
+  OrcStrView sv2 = orc_sv_from_str(buf);
+  ORC_SDK_REQUIRE(!orc_sv_strip_suffix(&sv2, NULL));
   // NULL pointer to sv
-  ORC_SDK_REQUIRE(!sv_strip_suffix(NULL, "a"));
+  ORC_SDK_REQUIRE(!orc_sv_strip_suffix(NULL, "a"));
 }
 
 void test_sv_slice(void)
 {
   char    buf[] = "hello world";
-  OrcStrView sv    = sv_from_str(buf);
+  OrcStrView sv    = orc_sv_from_str(buf);
   // Slice from middle
   OrcStrView mid = sv_slice(sv, 2, 7);
-  ORC_SDK_REQUIRE(sv_len(mid) == 5);
+  ORC_SDK_REQUIRE(orc_sv_len(mid) == 5);
   ORC_SDK_REQUIRE(memcmp(mid.start, "llo w", 5) == 0);
   // Slice from start
   OrcStrView head = sv_slice(sv, 0, 5);
-  ORC_SDK_REQUIRE(sv_len(head) == 5);
+  ORC_SDK_REQUIRE(orc_sv_len(head) == 5);
   ORC_SDK_REQUIRE(memcmp(head.start, "hello", 5) == 0);
   // Slice to end
   OrcStrView tail = sv_slice(sv, 6, 11);
-  ORC_SDK_REQUIRE(sv_len(tail) == 5);
+  ORC_SDK_REQUIRE(orc_sv_len(tail) == 5);
   ORC_SDK_REQUIRE(memcmp(tail.start, "world", 5) == 0);
   // Full slice
   OrcStrView full = sv_slice(sv, 0, 11);
-  ORC_SDK_REQUIRE(sv_len(full) == 11);
+  ORC_SDK_REQUIRE(orc_sv_len(full) == 11);
   ORC_SDK_REQUIRE(memcmp(full.start, "hello world", 11) == 0);
   // Empty slice (start == end)
   OrcStrView empty_slice = sv_slice(sv, 3, 3);
-  ORC_SDK_REQUIRE(sv_is_empty(empty_slice));
+  ORC_SDK_REQUIRE(orc_sv_is_empty(empty_slice));
   ORC_SDK_REQUIRE(empty_slice.start != NULL);
   // Single char slice
   OrcStrView one = sv_slice(sv, 0, 1);
-  ORC_SDK_REQUIRE(sv_len(one) == 1);
+  ORC_SDK_REQUIRE(orc_sv_len(one) == 1);
   ORC_SDK_REQUIRE(*one.start == 'h');
   // Invalid: end > view length
   OrcStrView bad1 = sv_slice(sv, 0, 100);
@@ -1649,23 +1649,23 @@ void test_sv_eq(void)
 {
   char    buf1[] = "hello";
   char    buf2[] = "hello";
-  OrcStrView a      = sv_from_str(buf1);
-  OrcStrView b      = sv_from_str(buf2);
+  OrcStrView a      = orc_sv_from_str(buf1);
+  OrcStrView b      = orc_sv_from_str(buf2);
   // Equal views (different backing memory)
   ORC_SDK_REQUIRE(sv_eq(a, b));
   // Same view
   ORC_SDK_REQUIRE(sv_eq(a, a));
   // Different content, same length
   char    buf3[] = "world";
-  OrcStrView c      = sv_from_str(buf3);
+  OrcStrView c      = orc_sv_from_str(buf3);
   ORC_SDK_REQUIRE(!sv_eq(a, c));
   // Different lengths
   char    buf4[] = "hi";
-  OrcStrView d      = sv_from_str(buf4);
+  OrcStrView d      = orc_sv_from_str(buf4);
   ORC_SDK_REQUIRE(!sv_eq(a, d));
   // Both empty
-  OrcStrView e1 = sv_from_str("");
-  OrcStrView e2 = sv_from_str("");
+  OrcStrView e1 = orc_sv_from_str("");
+  OrcStrView e2 = orc_sv_from_str("");
   ORC_SDK_REQUIRE(sv_eq(e1, e2));
   // Both NULL
   OrcStrView n1 = (OrcStrView) {0};
@@ -1678,7 +1678,7 @@ void test_sv_eq(void)
   // Compare sub-slices
   OrcStrView sub    = sv_slice(a, 0, 3);
   char    buf5[] = "hel";
-  OrcStrView match  = sv_from_str(buf5);
+  OrcStrView match  = orc_sv_from_str(buf5);
   ORC_SDK_REQUIRE(sv_eq(sub, match));
 }
 
@@ -2052,8 +2052,8 @@ void test_deck_printf(void)
   size_t *deck = _binary_deck(5);
   ORC_SDK_REQUIRE(_deck_header(deck)->item_size == sizeof(size_t));
   char *output = deck_to_str(deck, _print_size_t);
-  ORC_SDK_REQUIRE(sv_eq(sv_trim(sv_from_str(output)),
-                        sv_trim(sv_from_str("  5 ---------------| 0\n"
+  ORC_SDK_REQUIRE(sv_eq(orc_sv_trim(orc_sv_from_str(output)),
+                        orc_sv_trim(orc_sv_from_str("  5 ---------------| 0\n"
                                             "                   | 1\n"
                                             "              1 ---| 2\n"
                                             "                   | 3\n"
@@ -2089,8 +2089,8 @@ void test_deck_printf(void)
   // Depth-2 with empty lists.
   DECK_INIT(deck, size_t, ((1, 2, 3), (), (4, 5, 6, 7), (), (8, 9, 10, 11), ()));
   output = deck_to_str(deck, _print_size_t);
-  ORC_SDK_REQUIRE(sv_eq(sv_trim(sv_from_str(output)),
-                        sv_trim(sv_from_str("  2 ------| 1\n"
+  ORC_SDK_REQUIRE(sv_eq(orc_sv_trim(orc_sv_from_str(output)),
+                        orc_sv_trim(orc_sv_from_str("  2 ------| 1\n"
                                             "          | 2\n"
                                             "          | 3\n"
                                             "     1 ---|\n"
@@ -2108,21 +2108,21 @@ void test_deck_printf(void)
   // Depth-1: Flat list.
   DECK_INIT(deck, size_t, (10, 20, 30));
   output = deck_to_str(deck, _print_size_t);
-  ORC_SDK_REQUIRE(sv_eq(sv_from_str(output),
-                        sv_from_str("  1 ---| 10\n"
+  ORC_SDK_REQUIRE(sv_eq(orc_sv_from_str(output),
+                        orc_sv_from_str("  1 ---| 10\n"
                                     "       | 20\n"
                                     "       | 30\n")));
   orc_str_free(output);
   // List with single element.
   DECK_INIT(deck, size_t, (42));
   output = deck_to_str(deck, _print_size_t);
-  ORC_SDK_REQUIRE(sv_eq(sv_from_str(output), sv_from_str("  1 ---| 42\n")));
+  ORC_SDK_REQUIRE(sv_eq(orc_sv_from_str(output), orc_sv_from_str("  1 ---| 42\n")));
   orc_str_free(output);
   // All empty depth-2.
   DECK_INIT(deck, size_t, ((), (), ()));
   output = deck_to_str(deck, _print_size_t);
-  ORC_SDK_REQUIRE(sv_eq(sv_from_str(output),
-                        sv_from_str("  2 ------|\n"
+  ORC_SDK_REQUIRE(sv_eq(orc_sv_from_str(output),
+                        orc_sv_from_str("  2 ------|\n"
                                     "     1 ---|\n"
                                     "     1 ---|\n")));
   orc_str_free(output);
@@ -2133,8 +2133,8 @@ void test_deck_printf(void)
   // Depth-3 with nested empty.
   DECK_INIT(deck, size_t, (((1, 2), ()), (()), ((3))));
   output = deck_to_str(deck, _print_size_t);
-  ORC_SDK_REQUIRE(sv_eq(sv_from_str(output),
-                        sv_from_str("  3 ---------| 1\n"
+  ORC_SDK_REQUIRE(sv_eq(orc_sv_from_str(output),
+                        orc_sv_from_str("  3 ---------| 1\n"
                                     "             | 2\n"
                                     "        1 ---|\n"
                                     "     2 ------|\n"

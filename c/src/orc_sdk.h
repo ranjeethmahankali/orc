@@ -270,44 +270,44 @@ typedef struct
   char *end;
 } OrcStrView;
 
-#define sv_len(sv) \
+#define orc_sv_len(sv) \
   (((sv).start == NULL || (sv).end == NULL) ? 0 : (size_t)((sv).end - (sv).start))
 
-static inline bool sv_is_empty(OrcStrView const sv)
+static inline bool orc_sv_is_empty(OrcStrView const sv)
 {
   return sv.start == sv.end || sv.start == NULL || sv.end == NULL;
 }
 
-OrcStrView sv_from_str(char *str);
+OrcStrView orc_sv_from_str(char *str);
 
-OrcStrView sv_trim_left(OrcStrView sv);
+OrcStrView orc_sv_trim_left(OrcStrView sv);
 
-OrcStrView sv_trim_right(OrcStrView sv);
+OrcStrView orc_sv_trim_right(OrcStrView sv);
 
-static inline OrcStrView sv_trim(OrcStrView sv)
+static inline OrcStrView orc_sv_trim(OrcStrView sv)
 {
-  return sv_trim_left(sv_trim_right(sv));
+  return orc_sv_trim_left(orc_sv_trim_right(sv));
 }
 
-bool sv_starts_with(OrcStrView const sv, char const *const prefix);
+bool orc_sv_starts_with(OrcStrView const sv, char const *const prefix);
 
-bool sv_ends_with(OrcStrView const sv, char const *const suffix);
+bool orc_sv_ends_with(OrcStrView const sv, char const *const suffix);
 
-bool sv_strip_prefix(OrcStrView *sv, char const *const prefix);
+bool orc_sv_strip_prefix(OrcStrView *sv, char const *const prefix);
 
-bool sv_strip_suffix(OrcStrView *sv, char const *const suffix);
+bool orc_sv_strip_suffix(OrcStrView *sv, char const *const suffix);
 
-bool sv_contains_str(OrcStrView const sv, char const *const needle);
+bool orc_sv_contains_str(OrcStrView const sv, char const *const needle);
 
-OrcStrView sv_split_at_delim(OrcStrView *sv, char const delim);
+OrcStrView orc_sv_split_at_delim(OrcStrView *sv, char const delim);
 
-#define sv_split_line(sv) sv_split_at_delim((sv), '\n')
+#define orc_sv_split_line(sv) orc_sv_split_at_delim((sv), '\n')
 
-char *sv_find(OrcStrView sv, char const c);
+char *orc_sv_find(OrcStrView sv, char const c);
 
 static inline bool sv_contains_char(OrcStrView sv, char const c)
 {
-  return sv_find(sv, c) != NULL;
+  return orc_sv_find(sv, c) != NULL;
 }
 
 char *sv_rfind(OrcStrView sv, char const c);

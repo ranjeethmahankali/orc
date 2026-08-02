@@ -238,7 +238,7 @@ bool orc_str_eq(char *const a, char *const b)
 
 // ========== String view ==========
 
-OrcStrView sv_from_str(char *str)
+OrcStrView orc_sv_from_str(char *str)
 {
   char *end = NULL;
   if (str) {
@@ -247,7 +247,7 @@ OrcStrView sv_from_str(char *str)
   return (OrcStrView) {.start = str, .end = end};
 }
 
-OrcStrView sv_trim_left(OrcStrView sv)
+OrcStrView orc_sv_trim_left(OrcStrView sv)
 {
   if (sv.start != NULL && sv.end != NULL) {
     while (sv.start < sv.end && isspace((int)(*sv.start))) {
@@ -260,7 +260,7 @@ OrcStrView sv_trim_left(OrcStrView sv)
   }
 }
 
-OrcStrView sv_trim_right(OrcStrView sv)
+OrcStrView orc_sv_trim_right(OrcStrView sv)
 {
   if (sv.start != NULL && sv.end != NULL) {
     while (sv.end > sv.start && isspace((int)(*(sv.end - 1)))) {
@@ -273,10 +273,10 @@ OrcStrView sv_trim_right(OrcStrView sv)
   }
 }
 
-OrcStrView sv_split_at_delim(OrcStrView *sv, char const delim)
+OrcStrView orc_sv_split_at_delim(OrcStrView *sv, char const delim)
 {
   if (sv->start != NULL && sv->end != NULL) {
-    void *mid = memchr(sv->start, delim, sv_len(*sv));
+    void *mid = memchr(sv->start, delim, orc_sv_len(*sv));
     if (mid != NULL) {
       char *start = sv->start;
       sv->start   = (char *)mid + 1;
@@ -294,9 +294,9 @@ OrcStrView sv_split_at_delim(OrcStrView *sv, char const delim)
   }
 }
 
-bool sv_starts_with(OrcStrView const sv, char const *const prefix)
+bool orc_sv_starts_with(OrcStrView const sv, char const *const prefix)
 {
-  size_t const n = sv_len(sv);
+  size_t const n = orc_sv_len(sv);
   if (n == 0 || prefix == NULL) {
     return false;
   }
@@ -307,9 +307,9 @@ bool sv_starts_with(OrcStrView const sv, char const *const prefix)
   return memcmp(sv.start, prefix, preflen) == 0;
 }
 
-bool sv_ends_with(OrcStrView const sv, char const *const suffix)
+bool orc_sv_ends_with(OrcStrView const sv, char const *const suffix)
 {
-  size_t const n = sv_len(sv);
+  size_t const n = orc_sv_len(sv);
   if (n == 0 || suffix == NULL) {
     return false;
   }
@@ -320,7 +320,7 @@ bool sv_ends_with(OrcStrView const sv, char const *const suffix)
   return memcmp(sv.end - suflen, suffix, suflen) == 0;
 }
 
-bool sv_contains_str(OrcStrView const sv, char const *const needle)
+bool orc_sv_contains_str(OrcStrView const sv, char const *const needle)
 {
   if (needle == NULL || sv.start == NULL || sv.end == NULL) {
     return false;
@@ -328,7 +328,7 @@ bool sv_contains_str(OrcStrView const sv, char const *const needle)
   // NOTE: GCC extension has the function `memmem` but writing this out to not depend on
   // the extension.
   size_t const nlen = strlen(needle);
-  size_t       slen = sv_len(sv);
+  size_t       slen = orc_sv_len(sv);
   if (nlen > slen || nlen == 0) {
     return false;
   }
@@ -350,12 +350,12 @@ bool sv_contains_str(OrcStrView const sv, char const *const needle)
   } while (true);
 }
 
-char *sv_find(OrcStrView sv, char const c)
+char *orc_sv_find(OrcStrView sv, char const c)
 {
   if (sv.start == NULL || sv.end == NULL) {
     return NULL;
   }
-  return memchr(sv.start, c, sv_len(sv));
+  return memchr(sv.start, c, orc_sv_len(sv));
 }
 
 char *sv_rfind(OrcStrView sv, char const c)
@@ -377,12 +377,12 @@ char *sv_rfind(OrcStrView sv, char const c)
   }
 }
 
-bool sv_strip_prefix(OrcStrView *sv, char const *const prefix)
+bool orc_sv_strip_prefix(OrcStrView *sv, char const *const prefix)
 {
   if (sv == NULL) {
     return false;
   }
-  size_t const n = sv_len(*sv);
+  size_t const n = orc_sv_len(*sv);
   if (n == 0 || prefix == NULL) {
     return false;
   }
@@ -399,12 +399,12 @@ bool sv_strip_prefix(OrcStrView *sv, char const *const prefix)
   }
 }
 
-bool sv_strip_suffix(OrcStrView *sv, char const *const suffix)
+bool orc_sv_strip_suffix(OrcStrView *sv, char const *const suffix)
 {
   if (sv == NULL) {
     return false;
   }
-  size_t const n = sv_len(*sv);
+  size_t const n = orc_sv_len(*sv);
   if (n == 0 || suffix == NULL) {
     return false;
   }
@@ -441,8 +441,8 @@ OrcStrView sv_slice(OrcStrView sv, size_t const start, size_t const end)
 
 bool sv_eq(OrcStrView const a, OrcStrView const b)
 {
-  size_t const n = sv_len(a);
-  if (n != sv_len(b)) {
+  size_t const n = orc_sv_len(a);
+  if (n != orc_sv_len(b)) {
     return false;
   }
   if (n == 0) {
