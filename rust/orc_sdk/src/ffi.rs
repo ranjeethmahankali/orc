@@ -29,8 +29,9 @@ macro_rules! orc_plugin {
                 return orc_sdk::ORC_ERROR_INVALID_HANDLE;
             }
             match <$plugin as orc_sdk::TOrcPluginAdaptor>::deck_alloc(id) {
-                Ok(handle) => {
+                Ok(mut handle) => {
                     unsafe {
+                        handle.free_fn = Some(orc_deck_free);
                         *out = handle;
                     }
                     orc_sdk::ORC_ERROR_NONE
@@ -60,7 +61,7 @@ macro_rules! orc_plugin {
             proxy: *const orc_sdk::OrcHandle,
             out: *mut orc_sdk::OrcHandle,
         ) -> orc_sdk::OrcError {
-            if proxy.is_null() || out.is_null() {
+            if inputs.is_null() || proxy.is_null() || out.is_null() {
                 return orc_sdk::ORC_ERROR_INVALID_HANDLE;
             }
             // Convert all the FFI pointers to Rust references.
@@ -71,13 +72,6 @@ macro_rules! orc_plugin {
                     &mut *out,
                 )
             };
-            if proxy.type_id != orc_sdk::ORC_TYPE_PROXY || inputs.is_empty() {
-                return orc_sdk::ORC_ERROR_INVALID_PROXY;
-            }
-            let type_id = inputs[0].type_id;
-            if !inputs.iter().all(|i| i.type_id == type_id) {
-                return orc_sdk::ORC_ERROR_INVALID_PROXY;
-            }
             let proxy_type = match proxy_type {
                 orc_sdk::ORC_DECK_PROXY_COPY_ALL => ProxyType::CopyAll,
                 orc_sdk::ORC_DECK_PROXY_COPY_ITEMS => ProxyType::CopyItems,
@@ -85,10 +79,10 @@ macro_rules! orc_plugin {
                 _ => return orc_sdk::ORC_ERROR_INVALID_PROXY,
             };
             match <$plugin as orc_sdk::TOrcPluginAdaptor>::deck_from_proxy(
-                inputs, proxy_type, proxy,
+                inputs, proxy_type, proxy, out,
             ) {
-                Ok(handle) => {
-                    *out = handle;
+                Ok(_) => {
+                    out.free_fn = Some(orc_deck_free);
                     orc_sdk::ORC_ERROR_NONE
                 }
                 Err(e) => e.into(),
@@ -111,7 +105,6 @@ pub type DeckFromProxyFn = unsafe extern "C" fn(
 // Compile-time checks to keep these type aliases in sync with the bindings.
 const _: PluginInitFn = orc_plugin_init;
 const _: DeckAllocFn = orc_deck_alloc;
-const _: DeckFreeFn = orc_deck_free;
 const _: DeckFromProxyFn = orc_deck_from_proxy;
 
 pub enum ProxyType {
@@ -128,7 +121,8 @@ pub trait TOrcPluginAdaptor {
         inputs: &[OrcHandle],
         proxy_type: ProxyType,
         proxy: &OrcHandle,
-    ) -> Result<OrcHandle, Error>;
+        out: &mut OrcHandle,
+    ) -> Result<(), Error>;
 }
 
 pub trait TOrcData: Default + Clone + Send + Sync + 'static {
@@ -203,6 +197,13 @@ impl TOrcData for i64 {
         type_id: crate::ORC_TYPE_I64,
         name: c"i64".as_ptr(),
         desc: c"Signed 64 bit integer".as_ptr(),
+    };
+}
+impl TOrcData for OrcItemProxy {
+    const TYPE_INFO: OrcTypeInfo = OrcTypeInfo {
+        type_id: crate::ORC_TYPE_PROXY,
+        name: c"item_proxy".as_ptr(),
+        desc: c"Proxy indices that can be used to point to an element of another deck.".as_ptr(),
     };
 }
 

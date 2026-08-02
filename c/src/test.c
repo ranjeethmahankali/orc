@@ -3173,9 +3173,9 @@ void test_list_item_combinations(void)
   }
   // Clean up decks - In a real scenario, the host program is cleaning up, by calling
   // below functions, which are defined inside a plugin.
-  orc_deck_free(&lists);
-  orc_deck_free(&indices);
-  orc_deck_free(&out_items);
+  REQUIRE(ORC_ERROR_NONE == orc_deck_free(&lists));
+  REQUIRE(ORC_ERROR_NONE == orc_deck_free(&indices));
+  REQUIRE(ORC_ERROR_NONE == orc_deck_free(&out_items));
 }
 
 void test_add_f64_combinations(void)
@@ -3297,9 +3297,9 @@ void test_add_f64_combinations(void)
     }
     deck_free(expected);
   }
-  orc_deck_free(&a);
-  orc_deck_free(&b);
-  orc_deck_free(&out);
+  REQUIRE(ORC_ERROR_NONE == orc_deck_free(&a));
+  REQUIRE(ORC_ERROR_NONE == orc_deck_free(&b));
+  REQUIRE(ORC_ERROR_NONE == orc_deck_free(&out));
 }
 
 // This simulates a function that takes depth=1 lists of F64 and outputs the length of
@@ -3383,8 +3383,8 @@ void test_list_length_combinations(void)
     }
     deck_free(expected);
   }
-  orc_deck_free(&in);
-  orc_deck_free(&out);
+  REQUIRE(ORC_ERROR_NONE == orc_deck_free(&in));
+  REQUIRE(ORC_ERROR_NONE == orc_deck_free(&out));
 }
 
 void test_two_output_combinations(void)
@@ -3448,10 +3448,10 @@ void test_two_output_combinations(void)
       REQUIRE(prod_actual[i] == expected_prod[i]);
     }
   }
-  orc_deck_free(&in_a);
-  orc_deck_free(&in_b);
-  orc_deck_free(&out1);
-  orc_deck_free(&out2);
+  REQUIRE(ORC_ERROR_NONE == orc_deck_free(&in_a));
+  REQUIRE(ORC_ERROR_NONE == orc_deck_free(&in_b));
+  REQUIRE(ORC_ERROR_NONE == orc_deck_free(&out1));
+  REQUIRE(ORC_ERROR_NONE == orc_deck_free(&out2));
 }
 
 void test_first_add_combinations(void)
@@ -3504,9 +3504,9 @@ void test_first_add_combinations(void)
       REQUIRE(actual[i] == expected[i]);
     }
   }
-  orc_deck_free(&a);
-  orc_deck_free(&b);
-  orc_deck_free(&out);
+  REQUIRE(ORC_ERROR_NONE == orc_deck_free(&a));
+  REQUIRE(ORC_ERROR_NONE == orc_deck_free(&b));
+  REQUIRE(ORC_ERROR_NONE == orc_deck_free(&out));
 }
 
 // ==================== Shuffling decks with a proxy ====================
@@ -3614,7 +3614,8 @@ static OrcHandle _make_shuffle_proxy(OrcItemProxy const *pdeck)
 {
   OrcHandle handle;
   memset(&handle, 0, sizeof(handle));
-  handle.items = pdeck;
+  handle.items   = pdeck;
+  handle.type_id = ORC_TYPE_PROXY;
   oh_update(&handle);
   handle.type_id = ORC_TYPE_PROXY;
   return handle;
@@ -3660,8 +3661,8 @@ void test_deck_from_proxy_copy_items(void)
     REQUIRE(actual[3] == 4.0 && actual[4] == 5.0);
 
     arr_free(proxy.marks);
-    orc_deck_free(&out);
-    orc_deck_free(&in);
+    REQUIRE(ORC_ERROR_NONE == orc_deck_free(&out));
+    REQUIRE(ORC_ERROR_NONE == orc_deck_free(&in));
   }
   { /* Flatten a depth-3 deck. */
     OrcHandle in = {0}, out = {0};
@@ -3678,8 +3679,8 @@ void test_deck_from_proxy_copy_items(void)
     REQUIRE(actual[0] == 1.0 && actual[4] == 5.0);
 
     arr_free(proxy.marks);
-    orc_deck_free(&out);
-    orc_deck_free(&in);
+    REQUIRE(ORC_ERROR_NONE == orc_deck_free(&out));
+    REQUIRE(ORC_ERROR_NONE == orc_deck_free(&in));
   }
   { /* Graft a flat deck: (1, 2, 3) → ((1), (2), (3)). */
     OrcHandle in = {0}, out = {0};
@@ -3697,8 +3698,8 @@ void test_deck_from_proxy_copy_items(void)
 
     deck_free(expected);
     arr_free(proxy.marks);
-    orc_deck_free(&out);
-    orc_deck_free(&in);
+    REQUIRE(ORC_ERROR_NONE == orc_deck_free(&out));
+    REQUIRE(ORC_ERROR_NONE == orc_deck_free(&in));
   }
   { /* Graft a depth-2 deck: ((1, 2), (3)) → (((1, 2)), ((3))). */
     OrcHandle in = {0}, out = {0};
@@ -3715,8 +3716,8 @@ void test_deck_from_proxy_copy_items(void)
 
     deck_free(expected);
     arr_free(proxy.marks);
-    orc_deck_free(&out);
-    orc_deck_free(&in);
+    REQUIRE(ORC_ERROR_NONE == orc_deck_free(&out));
+    REQUIRE(ORC_ERROR_NONE == orc_deck_free(&in));
   }
   { /* Simplify: remove gaps in depth levels. */
     OrcHandle in = {0}, out = {0};
@@ -3739,8 +3740,8 @@ void test_deck_from_proxy_copy_items(void)
 
     deck_free(expected);
     arr_free(proxy.marks);
-    orc_deck_free(&out);
-    orc_deck_free(&in);
+    REQUIRE(ORC_ERROR_NONE == orc_deck_free(&out));
+    REQUIRE(ORC_ERROR_NONE == orc_deck_free(&in));
   }
 }
 
@@ -3767,8 +3768,8 @@ void test_deck_from_proxy_shuffle(void)
 
     deck_free(expected);
     deck_free(pdeck);
-    orc_deck_free(&out);
-    orc_deck_free(&in);
+    REQUIRE(ORC_ERROR_NONE == orc_deck_free(&out));
+    REQUIRE(ORC_ERROR_NONE == orc_deck_free(&in));
   }
   { /* Nested reverse: ((1, 2), (3, 4, 5)) → ((2, 1), (5, 4, 3)). */
     OrcHandle in = {0}, out = {0};
@@ -3793,8 +3794,8 @@ void test_deck_from_proxy_shuffle(void)
 
     deck_free(expected);
     deck_free(pdeck);
-    orc_deck_free(&out);
-    orc_deck_free(&in);
+    REQUIRE(ORC_ERROR_NONE == orc_deck_free(&out));
+    REQUIRE(ORC_ERROR_NONE == orc_deck_free(&in));
   }
   { /* Generic list_item: pick item at index 1 from each sublist.
        ((1, 2, 3), (4, 5)) → (2, 5). */
@@ -3815,8 +3816,8 @@ void test_deck_from_proxy_shuffle(void)
     REQUIRE(actual[0] == 2.0 && actual[1] == 5.0);
 
     deck_free(pdeck);
-    orc_deck_free(&out);
-    orc_deck_free(&in);
+    REQUIRE(ORC_ERROR_NONE == orc_deck_free(&out));
+    REQUIRE(ORC_ERROR_NONE == orc_deck_free(&in));
   }
   { /* Multi-input shuffle: interleave from two decks.
        A=(1, 2), B=(10, 20) → (1, 10, 2, 20). */
@@ -3844,9 +3845,9 @@ void test_deck_from_proxy_shuffle(void)
 
     deck_free(expected);
     deck_free(pdeck);
-    orc_deck_free(&out);
-    orc_deck_free(&b);
-    orc_deck_free(&a);
+    REQUIRE(ORC_ERROR_NONE == orc_deck_free(&out));
+    REQUIRE(ORC_ERROR_NONE == orc_deck_free(&b));
+    REQUIRE(ORC_ERROR_NONE == orc_deck_free(&a));
   }
 }
 
@@ -3869,8 +3870,8 @@ void test_deck_from_proxy_type_agnostic(void)
     REQUIRE(actual[0] == 10 && actual[1] == 20 && actual[2] == 30);
 
     arr_free(proxy.marks);
-    orc_deck_free(&out);
-    orc_deck_free(&in);
+    REQUIRE(ORC_ERROR_NONE == orc_deck_free(&out));
+    REQUIRE(ORC_ERROR_NONE == orc_deck_free(&in));
   }
   { /* i32 shuffle reverse. */
     OrcHandle in = {0}, out = {0};
@@ -3892,8 +3893,8 @@ void test_deck_from_proxy_type_agnostic(void)
     REQUIRE(actual[0] == -4 && actual[1] == -3 && actual[2] == -2 && actual[3] == -1);
 
     deck_free(pdeck);
-    orc_deck_free(&out);
-    orc_deck_free(&in);
+    REQUIRE(ORC_ERROR_NONE == orc_deck_free(&out));
+    REQUIRE(ORC_ERROR_NONE == orc_deck_free(&in));
   }
   { /* i16 graft. */
     OrcHandle in = {0}, out = {0};
@@ -3911,7 +3912,7 @@ void test_deck_from_proxy_type_agnostic(void)
     REQUIRE(actual[0] == 10 && actual[1] == 20 && actual[2] == 30);
 
     arr_free(proxy.marks);
-    orc_deck_free(&out);
-    orc_deck_free(&in);
+    REQUIRE(ORC_ERROR_NONE == orc_deck_free(&out));
+    REQUIRE(ORC_ERROR_NONE == orc_deck_free(&in));
   }
 }

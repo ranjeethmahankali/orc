@@ -1,7 +1,7 @@
 use crate::{
     Deck, Error, ORC_MSG_LEVEL_DEBUG, ORC_MSG_LEVEL_ERROR, ORC_MSG_LEVEL_FATAL, ORC_MSG_LEVEL_INFO,
-    ORC_MSG_LEVEL_WARN, ORC_NUM_DIMS, OrcFuncInfo, OrcHandle, OrcHost, OrcHostCallbackAPI,
-    OrcTypeId, OrcTypeInfo, deck::fmt_raw_deck, ffi::TOrcData,
+    ORC_MSG_LEVEL_WARN, ORC_NUM_DIMS, OrcDeckFreeFn, OrcFuncInfo, OrcHandle, OrcHost,
+    OrcHostCallbackAPI, OrcTypeId, OrcTypeInfo, deck::fmt_raw_deck, ffi::TOrcData,
 };
 use std::{
     alloc::{GlobalAlloc, Layout, System},
@@ -60,7 +60,7 @@ pub fn string_from_ffi(ptr: *const std::ffi::c_char) -> String {
     }
 }
 
-pub fn handle_from_deck<T: TOrcData>(deck: &Deck<T>, id: u64) -> OrcHandle {
+pub fn handle_from_deck<T: TOrcData>(deck: &Deck<T>, id: u64, free_fn: OrcDeckFreeFn) -> OrcHandle {
     let (items, marks, (stride_offset, strides)) = (deck.items(), deck.marks(), deck.stride_info());
     debug_assert_eq!(
         marks.len(),
@@ -78,6 +78,7 @@ pub fn handle_from_deck<T: TOrcData>(deck: &Deck<T>, id: u64) -> OrcHandle {
         strides: ptr_from_slice(strides),
         type_id: T::TYPE_INFO.type_id,
         dims: [0; ORC_NUM_DIMS as usize],
+        free_fn,
     }
 }
 

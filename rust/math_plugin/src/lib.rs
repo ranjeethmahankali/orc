@@ -1,9 +1,9 @@
 use orc_sdk::{
-    Deck, Error, HostCallbacks, ORC_ABI_VERSION, ORC_TYPE_F32, ORC_TYPE_F64, ORC_TYPE_I8,
+    Deck, DeckView, Error, HostCallbacks, ORC_ABI_VERSION, ORC_TYPE_F32, ORC_TYPE_F64, ORC_TYPE_I8,
     ORC_TYPE_I16, ORC_TYPE_I32, ORC_TYPE_I64, ORC_TYPE_U8, ORC_TYPE_U16, ORC_TYPE_U32,
-    ORC_TYPE_U64, ObjectRegistry, OrcFuncInfo, OrcHandle, OrcHost, OrcHostCallbackAPI, OrcPlugin,
-    OrcTypeId, ProxyType, TOrcData, TOrcPluginAdaptor, handle_from_deck, orc_fn_info, orc_plugin,
-    reset_handle,
+    ORC_TYPE_U64, ObjectRegistry, OrcFuncInfo, OrcHandle, OrcHost, OrcHostCallbackAPI,
+    OrcItemProxy, OrcPlugin, OrcTypeId, ProxyType, TOrcData, TOrcPluginAdaptor, handle_from_deck,
+    orc_fn_info, orc_plugin, reset_handle,
 };
 use std::sync::{LazyLock, OnceLock};
 
@@ -24,7 +24,7 @@ pub(crate) fn registry() -> &'static ObjectRegistry {
 
 fn alloc_deck<T: TOrcData>() -> Result<OrcHandle, Error> {
     let deck = Deck::<T>::default();
-    let mut handle = handle_from_deck(&deck, 0);
+    let mut handle = handle_from_deck(&deck, 0, Some(crate::orc_deck_free));
     match REGISTRY.alloc(deck) {
         Ok(h) => handle.handle = h,
         Err(e) => {
@@ -73,8 +73,6 @@ impl TOrcPluginAdaptor for Adaptor {
             ORC_TYPE_I64 => alloc_deck::<i64>(),
             ORC_TYPE_F32 => alloc_deck::<f32>(),
             ORC_TYPE_F64 => alloc_deck::<f64>(),
-            // We just return an empty handle to the host when the type is not supported. Maybe in
-            // the future we should return some error code.
             _ => Err(Error::DeckTypeMismatch),
         }
     }
@@ -86,12 +84,93 @@ impl TOrcPluginAdaptor for Adaptor {
     }
 
     fn deck_from_proxy(
-        _inputs: &[OrcHandle],
-        _proxy_type: orc_sdk::ProxyType,
-        _proxy: &OrcHandle,
-    ) -> Result<OrcHandle, Error> {
-        todo!()
+        inputs: &[OrcHandle],
+        proxy_type: ProxyType,
+        proxy: &OrcHandle,
+        out: &mut OrcHandle,
+    ) -> Result<(), Error> {
+        let type_id = match inputs.first() {
+            Some(input) => input.type_id,
+            None => return Err(Error::InvalidProxy),
+        };
+        match type_id {
+            ORC_TYPE_U8 => deck_from_proxy_impl::<u8>(inputs, proxy_type, proxy, out),
+            ORC_TYPE_U16 => deck_from_proxy_impl::<u16>(inputs, proxy_type, proxy, out),
+            ORC_TYPE_U32 => deck_from_proxy_impl::<u32>(inputs, proxy_type, proxy, out),
+            ORC_TYPE_U64 => deck_from_proxy_impl::<u64>(inputs, proxy_type, proxy, out),
+            ORC_TYPE_I8 => deck_from_proxy_impl::<i8>(inputs, proxy_type, proxy, out),
+            ORC_TYPE_I16 => deck_from_proxy_impl::<i16>(inputs, proxy_type, proxy, out),
+            ORC_TYPE_I32 => deck_from_proxy_impl::<i32>(inputs, proxy_type, proxy, out),
+            ORC_TYPE_I64 => deck_from_proxy_impl::<i64>(inputs, proxy_type, proxy, out),
+            ORC_TYPE_F32 => deck_from_proxy_impl::<f32>(inputs, proxy_type, proxy, out),
+            ORC_TYPE_F64 => deck_from_proxy_impl::<f64>(inputs, proxy_type, proxy, out),
+            _ => Err(Error::DeckTypeMismatch),
+        }
     }
+}
+
+fn deck_from_proxy_impl<T: TOrcData>(
+    inputs: &[OrcHandle],
+    proxy_type: ProxyType,
+    proxy: &OrcHandle,
+    out: &mut OrcHandle,
+) -> Result<(), Error> {
+    let type_id = match inputs.first() {
+        Some(input) => input.type_id,
+        None => return Err(Error::InvalidProxy),
+    };
+    if inputs.iter().skip(1).any(|h| h.type_id != type_id) {
+        // All inputs must be of the same type. This is a problem.
+        return Err(Error::InvalidProxy);
+    }
+    REGISTRY.ensure_alloc_default::<Deck<T>>(&mut out.handle)?;
+    REGISTRY
+        .with_mut(&[out.handle], |out_decks| -> Result<(), Error> {
+            let out_deck = out_decks[0]
+                .downcast_mut::<Deck<T>>()
+                .ok_or(Error::DeckTypeMismatch)?;
+            let (items, marks) = match proxy_type {
+                ProxyType::CopyAll => {
+                    // We expect exactly one input, and we will make a full clone of that data.
+                    if inputs.len() != 1 {
+                        return Err(Error::InvalidProxy);
+                    }
+                    let input_handle = unsafe { inputs.get_unchecked(0) }; // SAFETY: we just checked above.
+                    let input = DeckView::<T>::from_handle(input_handle)?;
+                    (input.items().to_vec(), input.marks().to_vec())
+                }
+                ProxyType::CopyItems => {
+                    // We expect exactly one input. We will copy the items of the input, but the marks from the proxy.
+                    if inputs.len() != 1 {
+                        return Err(Error::InvalidProxy);
+                    }
+                    let input_handle = unsafe { inputs.get_unchecked(0) }; // SAFETY: we just checked above.
+                    let input = DeckView::<T>::from_handle(input_handle)?;
+                    let proxy = DeckView::<OrcItemProxy>::from_handle(proxy)?;
+                    (input.items().to_vec(), proxy.marks().to_vec())
+                }
+                ProxyType::Shuffle => {
+                    let proxy = DeckView::<OrcItemProxy>::from_handle(proxy)?;
+                    let inputs = inputs
+                        .iter()
+                        .map(|input| DeckView::<T>::from_handle(input))
+                        .collect::<Result<Box<[DeckView<T>]>, Error>>()?;
+                    (
+                        proxy
+                            .items()
+                            .iter()
+                            .map(|ii| inputs[ii.tree as usize].items()[ii.item as usize].clone())
+                            .collect::<Vec<T>>(),
+                        proxy.marks().to_vec(),
+                    )
+                }
+            };
+            out_deck.assign_from_raw_data(items, marks);
+            let id = out.handle;
+            *out = handle_from_deck(out_deck, id, Some(orc_deck_free));
+            Ok(())
+        })
+        .flatten()
 }
 
 orc_plugin!(Adaptor);

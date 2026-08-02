@@ -700,7 +700,14 @@ fn generate_dispatch_fn(
             let id_ident = format_ident!("__out_id_{j}");
             quote! {
                 let #id_ident = __outputs[#j].handle;
-                __outputs[#j] = orc_sdk::handle_from_deck(#deck_ident, #id_ident);
+                // Pass orc_deck_free explicitly so the host can free this handle without
+                // knowing which plugin owns it. orc_deck_free is emitted by orc_plugin!
+                // in the same plugin binary.
+                __outputs[#j] = orc_sdk::handle_from_deck(
+                    #deck_ident,
+                    #id_ident,
+                    Some(crate::orc_deck_free),
+                );
             }
         })
         .collect();
@@ -977,8 +984,18 @@ pub fn orc_fn(input: TokenStream) -> TokenStream {
                 types = Some(*t.ty.clone());
             }
             syn::Stmt::Item(syn::Item::Fn(f)) => match f.sig.ident.to_string().as_str() {
-                "run" => run_fn = Some(f.clone()),
-                "dims" => dims_fn = Some(f.clone()),
+                "run" => {
+                    let mut f = f.clone();
+                    // Doc attrs were already collected into `docs`; strip them so they
+                    // don't re-appear as #[doc = ...] on the emitted inner function.
+                    f.attrs.retain(|a| !a.path().is_ident("doc"));
+                    run_fn = Some(f);
+                }
+                "dims" => {
+                    let mut f = f.clone();
+                    f.attrs.retain(|a| !a.path().is_ident("doc"));
+                    dims_fn = Some(f);
+                }
                 _ => user_items.push(quote::quote!(#f)),
             },
             syn::Stmt::Local(local) => {

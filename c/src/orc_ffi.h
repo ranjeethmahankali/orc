@@ -115,38 +115,6 @@ typedef struct
   uint64_t pos;
 } OrcMark;
 
-struct OrcHandle
-{
-  uint64_t        handle;
-  void const     *items;
-  uint64_t        n_items;
-  uint64_t        item_size;
-  OrcMark const  *marks;
-  uint64_t const *stride_offset;
-  uint64_t        n_marks;
-  uint64_t const *strides;
-  OrcTypeId       type_id;
-  OrcDims         dims;
-};
-
-// Each plugin has to provide a generic way to construct decks out of a given input deck,
-// for all of its custom datatypes.
-typedef struct
-{
-  uint64_t tree;
-  uint64_t item;
-} OrcItemProxy;
-
-typedef uint8_t OrcProxyType;
-
-#define ORC_DECK_PROXY_COPY_ALL 0x01u
-#define ORC_DECK_PROXY_COPY_ITEMS 0x02u
-#define ORC_DECK_PROXY_SHUFFLE 0x03u
-
-// ===========================================================
-// Functions meant to be implemented by the plugin.
-// ===========================================================
-
 typedef uint32_t OrcError;
 
 #define ORC_ERROR_NONE 0u
@@ -161,11 +129,46 @@ typedef uint32_t OrcError;
 #define ORC_ERROR_CANNOT_LOAD_PLUGINS 0xff09u
 #define ORC_ERROR_UNKNOWN 0xffffu
 
+typedef uint8_t OrcProxyType;
+
+#define ORC_DECK_PROXY_COPY_ALL 0x01u
+#define ORC_DECK_PROXY_COPY_ITEMS 0x02u
+#define ORC_DECK_PROXY_SHUFFLE 0x03u
+
+typedef OrcError (*OrcDeckFreeFn)(OrcHandle *const handle);
+
+struct OrcHandle
+{
+  uint64_t        handle;
+  void const     *items;
+  uint64_t        n_items;
+  uint64_t        item_size;
+  OrcMark const  *marks;
+  uint64_t const *stride_offset;
+  uint64_t        n_marks;
+  uint64_t const *strides;
+  OrcTypeId       type_id;
+  OrcDims         dims;
+  OrcDeckFreeFn   free_fn;
+};
+
+// Each plugin has to provide a generic way to construct decks out of a given input deck,
+// for all of its custom datatypes.
+typedef struct
+{
+  uint64_t tree;
+  uint64_t item;
+} OrcItemProxy;
+
+// ===========================================================
+// Functions meant to be implemented by the plugin.
+// ===========================================================
+
 // Loading the plugin, and register the host with the plugin.
 OrcError orc_plugin_init(OrcHost const *host, OrcPlugin *plugin_data_out);
 
-// Deck lifetime operations.
 OrcError orc_deck_alloc(OrcTypeId const id, OrcHandle *const out);
+
 OrcError orc_deck_free(OrcHandle *const handle);
 
 OrcError orc_deck_from_proxy(OrcHandle const   *inputs,
