@@ -169,6 +169,8 @@ OrcError orc_plugin_init(OrcHost const *host, OrcPlugin *plugin_data_out);
 
 OrcError orc_deck_alloc(OrcTypeId const id, OrcHandle *const out);
 
+OrcError orc_deck_free(OrcHandle *const handle);
+
 OrcError orc_deck_from_proxy(OrcHandle const   *inputs,
                              uint64_t const     n_inputs,
                              OrcProxyType const proxy_type,

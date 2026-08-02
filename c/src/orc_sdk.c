@@ -1581,7 +1581,7 @@ static CopyItemsFn _deck_item_get_copy_items_fn(OrcTypeId const type_id)
   }
 }
 
-OrcError handle_free(OrcHandle *const handle)
+OrcError orc_deck_free(OrcHandle *const handle)
 {
   if (handle == NULL) {
     return ORC_ERROR_NONE;
@@ -1633,7 +1633,7 @@ OrcError orc_deck_from_proxy(OrcHandle const   *inputs,
   case ORC_DECK_PROXY_COPY_ALL: {
     if (n_inputs != 1) {
       // COPY_ALL is only valid with a single input.
-      handle_free(out);
+      orc_deck_free(out);
       return ORC_ERROR_INVALID_PROXY;
     }
     size_t const n_items = inputs[0].n_items;
@@ -1659,7 +1659,7 @@ OrcError orc_deck_from_proxy(OrcHandle const   *inputs,
   case ORC_DECK_PROXY_COPY_ITEMS: {
     if (n_inputs != 1) {
       // COPY_ITEMS is only valid with a single input.
-      handle_free(out);
+      orc_deck_free(out);
       return ORC_ERROR_INVALID_PROXY;
     }
     size_t const n_items = inputs[0].n_items;
@@ -1710,7 +1710,7 @@ OrcError orc_deck_from_proxy(OrcHandle const   *inputs,
     oh_update(out);
   } break;
   default:
-    handle_free(out);
+    orc_deck_free(out);
     return ORC_ERROR_INVALID_PROXY;
   }
   return ORC_ERROR_NONE;

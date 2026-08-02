@@ -610,5 +610,3 @@ DeckView comb_get_input(void *comb, size_t const index);
 DeckWriter *comb_get_output(void *comb, size_t const index);
 
 void oh_update(OrcHandle *handle);
-
-OrcError handle_free(OrcHandle *const handle);

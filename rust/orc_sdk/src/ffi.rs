@@ -81,8 +81,11 @@ macro_rules! orc_plugin {
             match <$plugin as orc_sdk::TOrcPluginAdaptor>::deck_from_proxy(
                 inputs, proxy_type, proxy,
             ) {
-                Ok(handle) => {
-                    *out = handle;
+                Ok(mut handle) => {
+                    unsafe {
+                        handle.free_fn = Some(orc_deck_free);
+                        *out = handle;
+                    }
                     orc_sdk::ORC_ERROR_NONE
                 }
                 Err(e) => e.into(),
