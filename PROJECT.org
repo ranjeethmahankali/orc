@@ -123,7 +123,7 @@
   <2026-07-31 Fri 20:45> Trying to temporarily stop on this task, and finish a few other smaller
   tasks before continuing.
 
-* NEXT tj2fe7 - Proxy decks through the ABI - 
+* NEXT tj2fe7 - Proxy decks through the ABI
   :PROPERTIES:
   :CREATED:  2026-07-31 Fri 20:44
   :END:
@@ -134,6 +134,15 @@
   Currently proxy deck stuff is not fully fleshed out through the ABI. Requires a bit more thought
   and [[*tj2fch - OrcHandle type_id rework][type_id rework]] needs to happen before this. I will just flesh this out first in the Rust SDK,
   and Rust examples. The C SDK has not taken shape yet.
+
+  <2026-08-01 Sat 21:08> Started implementing it. Made some progress. Close to finishing. But hit a
+  small snag. I realized that the refactor I just made to the type id system changes some of the
+  ownership semantics. It allows many plugins to deal with the same type ids. Which means the host
+  cannot clearly determine which plugin is supposed to free a deck. The deck MUST be freed by the
+  same plugin that created it. Because only that plugin knows the implementation of the deck
+  datastructure it used. Which means each handle needs to contain a pointer to a free function, that
+  takes the u64 handle, and returns an error. The dll need not export the free function. This
+  changes the ABI design. I need to figure this out before making progress on the proxy stuff
 
 * DONE tj2fch - OrcHandle type_id rework
   CLOSED: [2026-08-01 Sat 18:36]
