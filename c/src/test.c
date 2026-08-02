@@ -1748,7 +1748,7 @@ void test_deck_binary_deck(void)
 void test_deck_mark_structure(void)
 {
   // Depth-3 binary deck: marks at positions 0,2,4,6 with depths 2,0,1,0.
-  size_t      *deck = _binary_deck(3);
+  size_t             *deck = _binary_deck(3);
   _OrcSdk_DeckHeader *h    = _orc_sdk_deck_header(deck);
   ORC_SDK_REQUIRE(h->item_size == sizeof(size_t));
   ORC_SDK_REQUIRE(orc_sdk_arr_len(h->marks) == 4);
@@ -1963,7 +1963,7 @@ void test_orc_sdk_deck_simplify(void)
 {
   // A deck whose mark depths already use every level is unchanged.
   {
-    size_t      *deck = _binary_deck(3);
+    size_t             *deck = _binary_deck(3);
     _OrcSdk_DeckHeader *h    = _orc_sdk_deck_header(deck);
     ORC_SDK_REQUIRE(h->item_size == sizeof(size_t));
     size_t const n_marks = orc_sdk_arr_len(h->marks);
@@ -2010,9 +2010,9 @@ void test_orc_sdk_deck_simplify(void)
     ORC_SDK_REQUIRE(orc_sdk_deck_push(deck, ((size_t) {2}), 2) == OK);
     ORC_SDK_REQUIRE(orc_sdk_deck_push(deck, ((size_t) {3}), 0) == OK);
     orc_sdk_deck_simplify(deck);
-    _OrcSdk_DeckHeader  *h  = _orc_sdk_deck_header(deck);
-    uint8_t const d0 = h->marks[0].depth;
-    uint8_t const d1 = h->marks[1].depth;
+    _OrcSdk_DeckHeader *h  = _orc_sdk_deck_header(deck);
+    uint8_t const       d0 = h->marks[0].depth;
+    uint8_t const       d1 = h->marks[1].depth;
     orc_sdk_deck_simplify(deck);
     ORC_SDK_REQUIRE(h->marks[0].depth == d0);
     ORC_SDK_REQUIRE(h->marks[1].depth == d1);
@@ -2025,8 +2025,8 @@ void test_orc_sdk_deck_simplify(void)
     ORC_SDK_REQUIRE(orc_sdk_deck_max_depth(deck) == 4);
     // After graft, depths are contiguous (0,1,2,3), so simplify is a no-op.
     _OrcSdk_DeckHeader *h             = _orc_sdk_deck_header(deck);
-    size_t const n_marks       = orc_sdk_arr_len(h->marks);
-    uint8_t     *depths_before = NULL;
+    size_t const        n_marks       = orc_sdk_arr_len(h->marks);
+    uint8_t            *depths_before = NULL;
     for (size_t i = 0; i < n_marks; ++i) {
       orc_sdk_arr_push(depths_before, h->marks[i].depth);
     }
@@ -2148,7 +2148,7 @@ void test_deck_printf(void)
 
 void test_deck_init(void)
 {
-  size_t      *deck = NULL;
+  size_t             *deck = NULL;
   _OrcSdk_DeckHeader *h    = NULL;
   /* depth 1: flat list */
   ORC_SDK_DECK_INIT(deck, size_t, (10, 20, 30));
@@ -2234,7 +2234,7 @@ void test_dv_binary_deck(void)
   ORC_SDK_REQUIRE((1 << DEPTH) == orc_sdk_deck_len(deck));
   ORC_SDK_REQUIRE(_orc_sdk_deck_header(deck)->item_size == sizeof(size_t));
   {  // Iterate from level 5.
-    size_t   counter = 0;
+    size_t          counter = 0;
     OrcSdk_DeckView v5      = orc_sdk_dv_from_deck(deck, 5);
     do {
       ORC_SDK_REQUIRE(5 == orc_sdk_dv_depth(&v5));
@@ -2270,7 +2270,7 @@ void test_dv_binary_deck(void)
   }
   {  // Iterate from level 4.
     OrcSdk_DeckView v4      = orc_sdk_dv_from_deck(deck, 4);
-    size_t   counter = 0;
+    size_t          counter = 0;
     do {
       ORC_SDK_REQUIRE(4 == orc_sdk_dv_depth(&v4));
       ORC_SDK_REQUIRE(16 == orc_sdk_dv_len(&v4));
@@ -2300,7 +2300,7 @@ void test_dv_binary_deck(void)
   }
   {  // Iterate from level 3.
     OrcSdk_DeckView v3      = orc_sdk_dv_from_deck(deck, 3);
-    size_t   counter = 0;
+    size_t          counter = 0;
     do {
       ORC_SDK_REQUIRE(3 == orc_sdk_dv_depth(&v3));
       ORC_SDK_REQUIRE(8 == orc_sdk_dv_len(&v3));
@@ -2329,7 +2329,8 @@ void test_dv_binary_deck(void)
 
 void test_dw_basic_depth2(void)
 {
-  // Build ((0,1,2),(3,4,5),(6,7,8)) via OrcSdk_DeckWriter, then verify via OrcSdk_DeckView.
+  // Build ((0,1,2),(3,4,5),(6,7,8)) via OrcSdk_DeckWriter, then verify via
+  // OrcSdk_DeckView.
   uint32_t *deck    = NULL;
   uint32_t  counter = 0;
   {
@@ -2337,17 +2338,17 @@ void test_dw_basic_depth2(void)
     for (int g = 0; g < 3; ++g) {
       OrcSdk_DeckWriter c = orc_sdk_dw_child(&w);
       for (int i = 0; i < 3; ++i) {
-        ORC_SDK_REQUIRE(dw_push(&c, counter) == OK);
+        ORC_SDK_REQUIRE(orc_sdk_dw_push(&c, counter) == OK);
         counter++;
       }
-      ORC_SDK_REQUIRE(dw_len(&c) == 3);
+      ORC_SDK_REQUIRE(orc_sdk_dw_len(&c) == 3);
     }
   }
   ORC_SDK_REQUIRE(orc_sdk_deck_len(deck) == 9);
   ORC_SDK_REQUIRE(orc_sdk_deck_max_depth(deck) == 2);
   ORC_SDK_REQUIRE(_orc_sdk_deck_header(deck)->item_size == sizeof(uint32_t));
   // Read back via OrcSdk_DeckView.
-  counter     = 0;
+  counter            = 0;
   OrcSdk_DeckView v2 = orc_sdk_dv_from_deck(deck, 2);
   do {
     OrcSdk_DeckView v1 = orc_sdk_dv_child(&v2);
@@ -2377,10 +2378,10 @@ void test_dw_depth3_nested(void)
         OrcSdk_DeckWriter w1 = orc_sdk_dw_child(&w2);
         ORC_SDK_REQUIRE(w1.depth == 1);
         for (int c = 0; c < 3; ++c) {
-          ORC_SDK_REQUIRE(dw_push(&w1, counter) == OK);
+          ORC_SDK_REQUIRE(orc_sdk_dw_push(&w1, counter) == OK);
           counter++;
         }
-        ORC_SDK_REQUIRE(dw_len(&w1) == 3);
+        ORC_SDK_REQUIRE(orc_sdk_dw_len(&w1) == 3);
       }
     }
   }
@@ -2388,7 +2389,7 @@ void test_dw_depth3_nested(void)
   ORC_SDK_REQUIRE(orc_sdk_deck_max_depth(deck) == 3);
   ORC_SDK_REQUIRE(_orc_sdk_deck_header(deck)->item_size == sizeof(uint32_t));
   // Read back: iterate depth 3 → 2 → 1 → items.
-  counter     = 0;
+  counter            = 0;
   OrcSdk_DeckView v3 = orc_sdk_dv_from_deck(deck, 3);
   do {
     OrcSdk_DeckView v2 = orc_sdk_dv_child(&v3);
@@ -2414,26 +2415,26 @@ void test_dw_unbalanced_tree(void)
     OrcSdk_DeckWriter w = orc_sdk_dw_from_deck(deck, 2);
     {
       OrcSdk_DeckWriter c = orc_sdk_dw_child(&w);
-      uint32_t   v = 1;
-      ORC_SDK_REQUIRE(dw_push(&c, v) == OK);
+      uint32_t          v = 1;
+      ORC_SDK_REQUIRE(orc_sdk_dw_push(&c, v) == OK);
     }
     {
       OrcSdk_DeckWriter c = orc_sdk_dw_child(&w);
-      uint32_t   v;
+      uint32_t          v;
       v = 2;
-      ORC_SDK_REQUIRE(dw_push(&c, v) == OK);
+      ORC_SDK_REQUIRE(orc_sdk_dw_push(&c, v) == OK);
       v = 3;
-      ORC_SDK_REQUIRE(dw_push(&c, v) == OK);
+      ORC_SDK_REQUIRE(orc_sdk_dw_push(&c, v) == OK);
       v = 4;
-      ORC_SDK_REQUIRE(dw_push(&c, v) == OK);
+      ORC_SDK_REQUIRE(orc_sdk_dw_push(&c, v) == OK);
     }
     {
       OrcSdk_DeckWriter c = orc_sdk_dw_child(&w);
-      uint32_t   v;
+      uint32_t          v;
       v = 5;
-      ORC_SDK_REQUIRE(dw_push(&c, v) == OK);
+      ORC_SDK_REQUIRE(orc_sdk_dw_push(&c, v) == OK);
       v = 6;
-      ORC_SDK_REQUIRE(dw_push(&c, v) == OK);
+      ORC_SDK_REQUIRE(orc_sdk_dw_push(&c, v) == OK);
     }
   }
   ORC_SDK_REQUIRE(orc_sdk_deck_len(deck) == 6);
@@ -2450,8 +2451,8 @@ void test_dw_unbalanced_tree(void)
   orc_sdk_dv_advance(&outer);
   // But outer only has one top-level group, so we iterate children instead.
   // Let's just verify sequentially.
-  uint32_t expected[] = {1, 2, 3, 4, 5, 6};
-  size_t   idx        = 0;
+  uint32_t        expected[] = {1, 2, 3, 4, 5, 6};
+  size_t          idx        = 0;
   OrcSdk_DeckView top        = orc_sdk_dv_from_deck(deck, 2);
   do {
     OrcSdk_DeckView inner = orc_sdk_dv_child(&top);
@@ -2468,34 +2469,34 @@ void test_dw_unbalanced_tree(void)
 
 void test_dw_empty_groups(void)
 {
-  // Build ((), (1,2), (), (3), ()) via dw_close for empty groups.
+  // Build ((), (1,2), (), (3), ()) via orc_sdk_dw_close for empty groups.
   uint32_t *deck = NULL;
   {
     OrcSdk_DeckWriter w = orc_sdk_dw_from_deck(deck, 2);
     {
       OrcSdk_DeckWriter c = orc_sdk_dw_child(&w);
-      dw_close(&c);  // empty group
+      orc_sdk_dw_close(&c);  // empty group
     }
     {
       OrcSdk_DeckWriter c = orc_sdk_dw_child(&w);
-      uint32_t   v;
+      uint32_t          v;
       v = 1;
-      ORC_SDK_REQUIRE(dw_push(&c, v) == OK);
+      ORC_SDK_REQUIRE(orc_sdk_dw_push(&c, v) == OK);
       v = 2;
-      ORC_SDK_REQUIRE(dw_push(&c, v) == OK);
+      ORC_SDK_REQUIRE(orc_sdk_dw_push(&c, v) == OK);
     }
     {
       OrcSdk_DeckWriter c = orc_sdk_dw_child(&w);
-      dw_close(&c);  // empty group
+      orc_sdk_dw_close(&c);  // empty group
     }
     {
       OrcSdk_DeckWriter c = orc_sdk_dw_child(&w);
-      uint32_t   v = 3;
-      ORC_SDK_REQUIRE(dw_push(&c, v) == OK);
+      uint32_t          v = 3;
+      ORC_SDK_REQUIRE(orc_sdk_dw_push(&c, v) == OK);
     }
     {
       OrcSdk_DeckWriter c = orc_sdk_dw_child(&w);
-      dw_close(&c);  // empty group
+      orc_sdk_dw_close(&c);  // empty group
     }
   }
   ORC_SDK_REQUIRE(orc_sdk_deck_len(deck) == 3);
@@ -2504,8 +2505,8 @@ void test_dw_empty_groups(void)
   ORC_SDK_REQUIRE(deck[1] == 2);
   ORC_SDK_REQUIRE(deck[2] == 3);
   // Verify: 5 inner groups, sizes 0,2,0,1,0.
-  size_t   group_sizes[] = {0, 2, 0, 1, 0};
-  size_t   gi            = 0;
+  size_t          group_sizes[] = {0, 2, 0, 1, 0};
+  size_t          gi            = 0;
   OrcSdk_DeckView top           = orc_sdk_dv_from_deck(deck, 2);
   do {
     OrcSdk_DeckView inner = orc_sdk_dv_child(&top);
@@ -2527,30 +2528,30 @@ void test_dw_nested_empty(void)
       OrcSdk_DeckWriter w2 = orc_sdk_dw_child(&w3);
       {
         OrcSdk_DeckWriter w1 = orc_sdk_dw_child(&w2);
-        dw_close(&w1);  // empty inner
+        orc_sdk_dw_close(&w1);  // empty inner
       }
       {
         OrcSdk_DeckWriter w1 = orc_sdk_dw_child(&w2);
-        uint32_t   v;
+        uint32_t          v;
         v = 1;
-        ORC_SDK_REQUIRE(dw_push(&w1, v) == OK);
+        ORC_SDK_REQUIRE(orc_sdk_dw_push(&w1, v) == OK);
         v = 2;
-        ORC_SDK_REQUIRE(dw_push(&w1, v) == OK);
+        ORC_SDK_REQUIRE(orc_sdk_dw_push(&w1, v) == OK);
       }
     }
     {
       OrcSdk_DeckWriter w2 = orc_sdk_dw_child(&w3);
       {
         OrcSdk_DeckWriter w1 = orc_sdk_dw_child(&w2);
-        uint32_t   v  = 3;
-        ORC_SDK_REQUIRE(dw_push(&w1, v) == OK);
+        uint32_t          v  = 3;
+        ORC_SDK_REQUIRE(orc_sdk_dw_push(&w1, v) == OK);
       }
     }
     {
       OrcSdk_DeckWriter w2 = orc_sdk_dw_child(&w3);
       {
         OrcSdk_DeckWriter w1 = orc_sdk_dw_child(&w2);
-        dw_close(&w1);  // empty inner
+        orc_sdk_dw_close(&w1);  // empty inner
       }
     }
   }
@@ -2602,8 +2603,8 @@ void test_dw_single_element_deep(void)
     OrcSdk_DeckWriter w3 = orc_sdk_dw_child(&w4);
     OrcSdk_DeckWriter w2 = orc_sdk_dw_child(&w3);
     OrcSdk_DeckWriter w1 = orc_sdk_dw_child(&w2);
-    uint32_t   v  = 42;
-    ORC_SDK_REQUIRE(dw_push(&w1, v) == OK);
+    uint32_t          v  = 42;
+    ORC_SDK_REQUIRE(orc_sdk_dw_push(&w1, v) == OK);
   }
   ORC_SDK_REQUIRE(orc_sdk_deck_len(deck) == 1);
   ORC_SDK_REQUIRE(orc_sdk_deck_max_depth(deck) == 5);
@@ -2620,47 +2621,47 @@ void test_dw_single_element_deep(void)
   orc_sdk_deck_free(deck);
 }
 
-void test_dw_len_tracking(void)
+void test_orc_sdk_dw_len_tracking(void)
 {
-  // Verify dw_len reflects items added at each scope level.
+  // Verify orc_sdk_dw_len reflects items added at each scope level.
   uint32_t *deck = NULL;
   {
     OrcSdk_DeckWriter w3 = orc_sdk_dw_from_deck(deck, 3);
-    ORC_SDK_REQUIRE(dw_len(&w3) == 0);
+    ORC_SDK_REQUIRE(orc_sdk_dw_len(&w3) == 0);
     {
       OrcSdk_DeckWriter w2 = orc_sdk_dw_child(&w3);
-      ORC_SDK_REQUIRE(dw_len(&w2) == 0);
+      ORC_SDK_REQUIRE(orc_sdk_dw_len(&w2) == 0);
       {
         OrcSdk_DeckWriter w1 = orc_sdk_dw_child(&w2);
-        ORC_SDK_REQUIRE(dw_len(&w1) == 0);
+        ORC_SDK_REQUIRE(orc_sdk_dw_len(&w1) == 0);
         uint32_t v = 10;
-        dw_push(&w1, v);
-        ORC_SDK_REQUIRE(dw_len(&w1) == 1);
+        orc_sdk_dw_push(&w1, v);
+        ORC_SDK_REQUIRE(orc_sdk_dw_len(&w1) == 1);
         v = 20;
-        dw_push(&w1, v);
-        ORC_SDK_REQUIRE(dw_len(&w1) == 2);
+        orc_sdk_dw_push(&w1, v);
+        ORC_SDK_REQUIRE(orc_sdk_dw_len(&w1) == 2);
       }
-      ORC_SDK_REQUIRE(dw_len(&w2) == 2);
+      ORC_SDK_REQUIRE(orc_sdk_dw_len(&w2) == 2);
       {
         OrcSdk_DeckWriter w1 = orc_sdk_dw_child(&w2);
-        uint32_t   v  = 30;
-        dw_push(&w1, v);
-        ORC_SDK_REQUIRE(dw_len(&w1) == 1);
+        uint32_t          v  = 30;
+        orc_sdk_dw_push(&w1, v);
+        ORC_SDK_REQUIRE(orc_sdk_dw_len(&w1) == 1);
       }
-      ORC_SDK_REQUIRE(dw_len(&w2) == 3);
+      ORC_SDK_REQUIRE(orc_sdk_dw_len(&w2) == 3);
     }
-    ORC_SDK_REQUIRE(dw_len(&w3) == 3);
+    ORC_SDK_REQUIRE(orc_sdk_dw_len(&w3) == 3);
     {
       OrcSdk_DeckWriter w2 = orc_sdk_dw_child(&w3);
-      ORC_SDK_REQUIRE(dw_len(&w2) == 0);
+      ORC_SDK_REQUIRE(orc_sdk_dw_len(&w2) == 0);
       {
         OrcSdk_DeckWriter w1 = orc_sdk_dw_child(&w2);
-        uint32_t   v  = 40;
-        dw_push(&w1, v);
+        uint32_t          v  = 40;
+        orc_sdk_dw_push(&w1, v);
       }
-      ORC_SDK_REQUIRE(dw_len(&w2) == 1);
+      ORC_SDK_REQUIRE(orc_sdk_dw_len(&w2) == 1);
     }
-    ORC_SDK_REQUIRE(dw_len(&w3) == 4);
+    ORC_SDK_REQUIRE(orc_sdk_dw_len(&w3) == 4);
   }
   ORC_SDK_REQUIRE(orc_sdk_deck_len(deck) == 4);
   ORC_SDK_REQUIRE(_orc_sdk_deck_header(deck)->item_size == sizeof(uint32_t));
@@ -2685,19 +2686,19 @@ void test_dw_append_to_existing(void)
   // Append another depth-1 group.
   {
     OrcSdk_DeckWriter w = orc_sdk_dw_from_deck(deck, 1);
-    v            = 5;
-    dw_push(&w, v);
+    v                   = 5;
+    orc_sdk_dw_push(&w, v);
     v = 6;
-    dw_push(&w, v);
+    orc_sdk_dw_push(&w, v);
   }
   ORC_SDK_REQUIRE(orc_sdk_deck_len(deck) == 6);
   ORC_SDK_REQUIRE(_orc_sdk_deck_header(deck)->item_size == sizeof(uint32_t));
   // Verify: ((1,2),(3,4),(5,6))
-  uint32_t counter = 0;
+  uint32_t        counter = 0;
   OrcSdk_DeckView top     = orc_sdk_dv_from_deck(deck, 2);
   do {
     OrcSdk_DeckView inner = orc_sdk_dv_child(&top);
-    size_t   n     = 0;
+    size_t          n     = 0;
     do {
       uint32_t const *items = orc_sdk_dv_item_ptr(&inner);
       for (size_t i = 0; i < orc_sdk_dv_len(&inner); ++i) {
@@ -2719,9 +2720,9 @@ void test_dw_flat_depth1(void)
     OrcSdk_DeckWriter w = orc_sdk_dw_from_deck(deck, 1);
     for (uint32_t i = 0; i < 5; ++i) {
       uint32_t v = i * 10;
-      dw_push(&w, v);
+      orc_sdk_dw_push(&w, v);
     }
-    ORC_SDK_REQUIRE(dw_len(&w) == 5);
+    ORC_SDK_REQUIRE(orc_sdk_dw_len(&w) == 5);
   }
   ORC_SDK_REQUIRE(orc_sdk_deck_len(deck) == 5);
   ORC_SDK_REQUIRE(orc_sdk_deck_max_depth(deck) == 1);
@@ -2736,38 +2737,38 @@ void test_dw_flat_depth1(void)
   orc_sdk_deck_free(deck);
 }
 
-void test_dw_deck_item_ptr(void)
+void test_dw_orc_sdk_deck_item_ptr(void)
 {
-  // Verify deck_item_ptr points to the right items.
+  // Verify orc_sdk_deck_item_ptr points to the right items.
   uint32_t *deck = NULL;
   {
     OrcSdk_DeckWriter w = orc_sdk_dw_from_deck(deck, 2);
     {
       OrcSdk_DeckWriter c = orc_sdk_dw_child(&w);
-      uint32_t   v;
+      uint32_t          v;
       v = 100;
-      dw_push(&c, v);
+      orc_sdk_dw_push(&c, v);
       v = 200;
-      dw_push(&c, v);
+      orc_sdk_dw_push(&c, v);
       v = 300;
-      dw_push(&c, v);
-      uint32_t *items = deck_item_ptr(&c);
+      orc_sdk_dw_push(&c, v);
+      uint32_t *items = orc_sdk_deck_item_ptr(&c);
       ORC_SDK_REQUIRE(items[0] == 100);
       ORC_SDK_REQUIRE(items[1] == 200);
       ORC_SDK_REQUIRE(items[2] == 300);
-      ORC_SDK_REQUIRE(dw_len(&c) == 3);
+      ORC_SDK_REQUIRE(orc_sdk_dw_len(&c) == 3);
     }
     {
       OrcSdk_DeckWriter c = orc_sdk_dw_child(&w);
-      uint32_t   v;
+      uint32_t          v;
       v = 400;
-      dw_push(&c, v);
+      orc_sdk_dw_push(&c, v);
       v = 500;
-      dw_push(&c, v);
-      uint32_t *items = deck_item_ptr(&c);
+      orc_sdk_dw_push(&c, v);
+      uint32_t *items = orc_sdk_deck_item_ptr(&c);
       ORC_SDK_REQUIRE(items[0] == 400);
       ORC_SDK_REQUIRE(items[1] == 500);
-      ORC_SDK_REQUIRE(dw_len(&c) == 2);
+      ORC_SDK_REQUIRE(orc_sdk_dw_len(&c) == 2);
     }
   }
   ORC_SDK_REQUIRE(orc_sdk_deck_len(deck) == 5);
@@ -2775,37 +2776,37 @@ void test_dw_deck_item_ptr(void)
   orc_sdk_deck_free(deck);
 }
 
-void test_dw_close_idempotent(void)
+void test_orc_sdk_dw_close_idempotent(void)
 {
-  // dw_close on an already-written writer should be a no-op.
-  // dw_close on an already-closed writer should be a no-op.
+  // orc_sdk_dw_close on an already-written writer should be a no-op.
+  // orc_sdk_dw_close on an already-closed writer should be a no-op.
   uint32_t *deck = NULL;
   {
     OrcSdk_DeckWriter w = orc_sdk_dw_from_deck(deck, 2);
     {
       // Writer that writes — close should be no-op.
       OrcSdk_DeckWriter c = orc_sdk_dw_child(&w);
-      uint32_t   v = 1;
-      dw_push(&c, v);
-      dw_close(&c);  // has_next_depth already false
+      uint32_t          v = 1;
+      orc_sdk_dw_push(&c, v);
+      orc_sdk_dw_close(&c);  // has_next_depth already false
     }
     {
       // Writer that is closed twice.
       OrcSdk_DeckWriter c = orc_sdk_dw_child(&w);
-      dw_close(&c);  // creates empty group
-      dw_close(&c);  // should be no-op (zeroed)
+      orc_sdk_dw_close(&c);  // creates empty group
+      orc_sdk_dw_close(&c);  // should be no-op (zeroed)
     }
     {
       OrcSdk_DeckWriter c = orc_sdk_dw_child(&w);
-      uint32_t   v = 2;
-      dw_push(&c, v);
+      uint32_t          v = 2;
+      orc_sdk_dw_push(&c, v);
     }
   }
   ORC_SDK_REQUIRE(orc_sdk_deck_len(deck) == 2);
   ORC_SDK_REQUIRE(_orc_sdk_deck_header(deck)->item_size == sizeof(uint32_t));
   // Verify: ((1), (), (2))
-  size_t   group_sizes[] = {1, 0, 1};
-  size_t   gi            = 0;
+  size_t          group_sizes[] = {1, 0, 1};
+  size_t          gi            = 0;
   OrcSdk_DeckView top           = orc_sdk_dv_from_deck(deck, 2);
   do {
     OrcSdk_DeckView inner = orc_sdk_dv_child(&top);
@@ -2827,18 +2828,18 @@ void test_dw_all_empty_depth3(void)
       OrcSdk_DeckWriter w2 = orc_sdk_dw_child(&w3);
       {
         OrcSdk_DeckWriter w1 = orc_sdk_dw_child(&w2);
-        dw_close(&w1);
+        orc_sdk_dw_close(&w1);
       }
       {
         OrcSdk_DeckWriter w1 = orc_sdk_dw_child(&w2);
-        dw_close(&w1);
+        orc_sdk_dw_close(&w1);
       }
     }
     {
       OrcSdk_DeckWriter w2 = orc_sdk_dw_child(&w3);
       {
         OrcSdk_DeckWriter w1 = orc_sdk_dw_child(&w2);
-        dw_close(&w1);
+        orc_sdk_dw_close(&w1);
       }
     }
   }
@@ -2869,90 +2870,90 @@ void test_dw_all_empty_depth3(void)
 
 // ========== Dims (Units) ==========
 
-void test_dims_equal(void)
+void test_orc_sdk_dims_equal(void)
 {
   OrcDims a = {1, 0, -2, 0, 0, 0, 0};
   OrcDims b = {1, 0, -2, 0, 0, 0, 0};
   OrcDims c = {1, 0, -1, 0, 0, 0, 0};
-  ORC_SDK_REQUIRE(dims_equal(a, b));
-  ORC_SDK_REQUIRE(!dims_equal(a, c));
+  ORC_SDK_REQUIRE(orc_sdk_dims_equal(a, b));
+  ORC_SDK_REQUIRE(!orc_sdk_dims_equal(a, c));
   // Dimensionless
   OrcDims zero_a = {0, 0, 0, 0, 0, 0, 0};
   OrcDims zero_b = {0, 0, 0, 0, 0, 0, 0};
-  ORC_SDK_REQUIRE(dims_equal(zero_a, zero_b));
+  ORC_SDK_REQUIRE(orc_sdk_dims_equal(zero_a, zero_b));
   // Differ only in last dimension
   OrcDims d = {0, 0, 0, 0, 0, 0, 1};
-  ORC_SDK_REQUIRE(!dims_equal(zero_a, d));
+  ORC_SDK_REQUIRE(!orc_sdk_dims_equal(zero_a, d));
 }
 
-void test_dims_multiply(void)
+void test_orc_sdk_dims_multiply(void)
 {
   // force * distance = energy
   OrcDims force  = {1, 1, -2, 0, 0, 0, 0};
   OrcDims length = {1, 0, 0, 0, 0, 0, 0};
   OrcDims out;
-  dims_multiply(force, length, out);
+  orc_sdk_dims_multiply(force, length, out);
   OrcDims energy = {2, 1, -2, 0, 0, 0, 0};
-  ORC_SDK_REQUIRE(dims_equal(out, energy));
+  ORC_SDK_REQUIRE(orc_sdk_dims_equal(out, energy));
   // Multiply by dimensionless is identity
   OrcDims zero = {0, 0, 0, 0, 0, 0, 0};
-  dims_multiply(force, zero, out);
-  ORC_SDK_REQUIRE(dims_equal(out, force));
+  orc_sdk_dims_multiply(force, zero, out);
+  ORC_SDK_REQUIRE(orc_sdk_dims_equal(out, force));
   // Negative exponents cancel
   OrcDims a = {-1, -1, 3, 0, 0, 0, 0};
   OrcDims b = {1, 1, -3, 0, 0, 0, 0};
-  dims_multiply(a, b, out);
-  ORC_SDK_REQUIRE(dims_equal(out, zero));
+  orc_sdk_dims_multiply(a, b, out);
+  ORC_SDK_REQUIRE(orc_sdk_dims_equal(out, zero));
 }
 
-void test_dims_divide(void)
+void test_orc_sdk_dims_divide(void)
 {
   // velocity / time = acceleration
   OrcDims velocity = {1, 0, -1, 0, 0, 0, 0};
   OrcDims time     = {0, 0, 1, 0, 0, 0, 0};
   OrcDims out;
-  dims_divide(velocity, time, out);
+  orc_sdk_dims_divide(velocity, time, out);
   OrcDims accel = {1, 0, -2, 0, 0, 0, 0};
-  ORC_SDK_REQUIRE(dims_equal(out, accel));
+  ORC_SDK_REQUIRE(orc_sdk_dims_equal(out, accel));
   // Divide by self = dimensionless
-  dims_divide(velocity, velocity, out);
+  orc_sdk_dims_divide(velocity, velocity, out);
   OrcDims zero = {0, 0, 0, 0, 0, 0, 0};
-  ORC_SDK_REQUIRE(dims_equal(out, zero));
+  ORC_SDK_REQUIRE(orc_sdk_dims_equal(out, zero));
   // Divide dimensionless by something = negated exponents
-  dims_divide(zero, time, out);
+  orc_sdk_dims_divide(zero, time, out);
   OrcDims inv_time = {0, 0, -1, 0, 0, 0, 0};
-  ORC_SDK_REQUIRE(dims_equal(out, inv_time));
+  ORC_SDK_REQUIRE(orc_sdk_dims_equal(out, inv_time));
 }
 
-void test_dims_pow(void)
+void test_orc_sdk_dims_pow(void)
 {
   OrcDims length = {1, 0, 0, 0, 0, 0, 0};
   OrcDims out;
   // length^2 = area
-  dims_pow(length, 2, out);
+  orc_sdk_dims_pow(length, 2, out);
   OrcDims area = {2, 0, 0, 0, 0, 0, 0};
-  ORC_SDK_REQUIRE(dims_equal(out, area));
+  ORC_SDK_REQUIRE(orc_sdk_dims_equal(out, area));
   // length^3 = volume
-  dims_pow(length, 3, out);
+  orc_sdk_dims_pow(length, 3, out);
   OrcDims volume = {3, 0, 0, 0, 0, 0, 0};
-  ORC_SDK_REQUIRE(dims_equal(out, volume));
+  ORC_SDK_REQUIRE(orc_sdk_dims_equal(out, volume));
   // pow 0 = dimensionless
   OrcDims velocity = {1, 0, -1, 0, 0, 0, 0};
-  dims_pow(velocity, 0, out);
+  orc_sdk_dims_pow(velocity, 0, out);
   OrcDims zero = {0, 0, 0, 0, 0, 0, 0};
-  ORC_SDK_REQUIRE(dims_equal(out, zero));
+  ORC_SDK_REQUIRE(orc_sdk_dims_equal(out, zero));
   // pow 1 = identity
-  dims_pow(velocity, 1, out);
-  ORC_SDK_REQUIRE(dims_equal(out, velocity));
+  orc_sdk_dims_pow(velocity, 1, out);
+  ORC_SDK_REQUIRE(orc_sdk_dims_equal(out, velocity));
   // Negative power
-  dims_pow(velocity, -1, out);
+  orc_sdk_dims_pow(velocity, -1, out);
   OrcDims inv_vel = {-1, 0, 1, 0, 0, 0, 0};
-  ORC_SDK_REQUIRE(dims_equal(out, inv_vel));
+  ORC_SDK_REQUIRE(orc_sdk_dims_equal(out, inv_vel));
   // pow -2 on multi-dim
   OrcDims force = {1, 1, -2, 0, 0, 0, 0};
-  dims_pow(force, -2, out);
+  orc_sdk_dims_pow(force, -2, out);
   OrcDims expected = {-2, -2, 4, 0, 0, 0, 0};
-  ORC_SDK_REQUIRE(dims_equal(out, expected));
+  ORC_SDK_REQUIRE(orc_sdk_dims_equal(out, expected));
 }
 
 // ========== Plugin Functions ==========
@@ -2980,29 +2981,31 @@ void _plugin_function_list_element(OrcHandle const *list_handle,
   ORC_SDK_REQUIRE(index_handle->type_id == ORC_TYPE_U32);
   ORC_SDK_REQUIRE(item_handle->type_id == ORC_TYPE_F64);
   // Use the SDK provided combinatorics helper to stride over the input data.
-  void *combinations = comb_init((OrcHandle const *[]) {list_handle, index_handle},
-                                 (uint8_t const[]) {1, 0},
-                                 2,
-                                 (OrcHandle *[]) {item_handle},
-                                 (uint8_t const[]) {0},
-                                 1);
+  void *combinations =
+    orc_sdk_comb_init((OrcHandle const *[]) {list_handle, index_handle},
+                      (uint8_t const[]) {1, 0},
+                      2,
+                      (OrcHandle *[]) {item_handle},
+                      (uint8_t const[]) {0},
+                      1);
   while (combinations) {  // List processing iterations.
     // Get inputs for the current combination.
-    OrcSdk_DeckView list_input  = comb_get_input(combinations, 0),
-             index_input = comb_get_input(combinations, 1);
+    OrcSdk_DeckView list_input  = orc_sdk_comb_get_input(combinations, 0),
+                    index_input = orc_sdk_comb_get_input(combinations, 1);
     ORC_SDK_REQUIRE(list_input.depth == 1);
     ORC_SDK_REQUIRE(index_input.depth == 0);
     // Get output for the current combination.
-    OrcSdk_DeckWriter *item_ouput = comb_get_output(combinations, 0);
+    OrcSdk_DeckWriter *item_ouput = orc_sdk_comb_get_output(combinations, 0);
     ORC_SDK_REQUIRE(item_ouput->depth == 0);
-    double *output_ptr = (double *)dw_push_empty(item_ouput);
+    double *output_ptr = (double *)orc_sdk_dw_push_empty(item_ouput);
     {  // This scope simulates the actual doRun of the block.
       double        *list  = (double *)orc_sdk_dv_item_ptr(&list_input);
       uint32_t const index = *(uint32_t *)orc_sdk_dv_item_ptr(&index_input);
-      ORC_SDK_REQUIRE_WITH_MSG(index < orc_sdk_dv_len(&list_input), "Index out of bounds");
+      ORC_SDK_REQUIRE_WITH_MSG(index < orc_sdk_dv_len(&list_input),
+                               "Index out of bounds");
       *output_ptr = list[index];  // Copy the output to the writer.
     }
-    combinations = comb_advance(combinations);
+    combinations = orc_sdk_comb_advance(combinations);
   }
 }
 
@@ -3014,26 +3017,26 @@ void _plugin_function_add_f64(OrcHandle const *a_handle,
   ORC_SDK_REQUIRE(a_handle->type_id == ORC_TYPE_F64);
   ORC_SDK_REQUIRE(b_handle->type_id == ORC_TYPE_F64);
   ORC_SDK_REQUIRE(out_handle->type_id == ORC_TYPE_F64);
-  void *combinations = comb_init((OrcHandle const *[]) {a_handle, b_handle},
-                                 (uint8_t const[]) {0, 0},
-                                 2,
-                                 (OrcHandle *[]) {out_handle},
-                                 (uint8_t const[]) {0},
-                                 1);
+  void *combinations = orc_sdk_comb_init((OrcHandle const *[]) {a_handle, b_handle},
+                                         (uint8_t const[]) {0, 0},
+                                         2,
+                                         (OrcHandle *[]) {out_handle},
+                                         (uint8_t const[]) {0},
+                                         1);
   while (combinations) {
-    OrcSdk_DeckView a_input = comb_get_input(combinations, 0),
-             b_input = comb_get_input(combinations, 1);
+    OrcSdk_DeckView a_input = orc_sdk_comb_get_input(combinations, 0),
+                    b_input = orc_sdk_comb_get_input(combinations, 1);
     ORC_SDK_REQUIRE(a_input.depth == 0);
     ORC_SDK_REQUIRE(b_input.depth == 0);
-    OrcSdk_DeckWriter *out = comb_get_output(combinations, 0);
+    OrcSdk_DeckWriter *out = orc_sdk_comb_get_output(combinations, 0);
     ORC_SDK_REQUIRE(out->depth == 0);
-    double *output_ptr = (double *)dw_push_empty(out);
+    double *output_ptr = (double *)orc_sdk_dw_push_empty(out);
     {
       double const a = *(double *)orc_sdk_dv_item_ptr(&a_input);
       double const b = *(double *)orc_sdk_dv_item_ptr(&b_input);
       *output_ptr    = a + b;
     }
-    combinations = comb_advance(combinations);
+    combinations = orc_sdk_comb_advance(combinations);
   }
 }
 
@@ -3045,27 +3048,27 @@ void _plugin_function_sq_cb(OrcHandle const *in_handle,
   ORC_SDK_REQUIRE(in_handle->type_id == ORC_TYPE_F64);
   ORC_SDK_REQUIRE(out_sq_handle->type_id == ORC_TYPE_F64);
   ORC_SDK_REQUIRE(out_cb_handle->type_id == ORC_TYPE_F64);
-  void *combinations = comb_init((OrcHandle const *[]) {in_handle},
-                                 (uint8_t const[]) {0},
-                                 1,
-                                 (OrcHandle *[]) {out_sq_handle, out_cb_handle},
-                                 (uint8_t const[]) {0, 0},
-                                 2);
+  void *combinations = orc_sdk_comb_init((OrcHandle const *[]) {in_handle},
+                                         (uint8_t const[]) {0},
+                                         1,
+                                         (OrcHandle *[]) {out_sq_handle, out_cb_handle},
+                                         (uint8_t const[]) {0, 0},
+                                         2);
   while (combinations) {
-    OrcSdk_DeckView in_input = comb_get_input(combinations, 0);
+    OrcSdk_DeckView in_input = orc_sdk_comb_get_input(combinations, 0);
     ORC_SDK_REQUIRE(in_input.depth == 0);
-    OrcSdk_DeckWriter *out_sq = comb_get_output(combinations, 0);
-    OrcSdk_DeckWriter *out_cb = comb_get_output(combinations, 1);
+    OrcSdk_DeckWriter *out_sq = orc_sdk_comb_get_output(combinations, 0);
+    OrcSdk_DeckWriter *out_cb = orc_sdk_comb_get_output(combinations, 1);
     ORC_SDK_REQUIRE(out_sq->depth == 0);
     ORC_SDK_REQUIRE(out_cb->depth == 0);
-    double *sq_ptr = (double *)dw_push_empty(out_sq);
-    double *cb_ptr = (double *)dw_push_empty(out_cb);
+    double *sq_ptr = (double *)orc_sdk_dw_push_empty(out_sq);
+    double *cb_ptr = (double *)orc_sdk_dw_push_empty(out_cb);
     {
       double const x = *(double *)orc_sdk_dv_item_ptr(&in_input);
       *sq_ptr        = x * x;
       *cb_ptr        = x * x * x;
     }
-    combinations = comb_advance(combinations);
+    combinations = orc_sdk_comb_advance(combinations);
   }
 }
 
@@ -3079,30 +3082,31 @@ void _plugin_function_add_mul(OrcHandle const *a_handle,
   ORC_SDK_REQUIRE(b_handle->type_id == ORC_TYPE_F64);
   ORC_SDK_REQUIRE(out_sum_handle->type_id == ORC_TYPE_F64);
   ORC_SDK_REQUIRE(out_prod_handle->type_id == ORC_TYPE_F64);
-  void *combinations = comb_init((OrcHandle const *[]) {a_handle, b_handle},
-                                 (uint8_t const[]) {0, 0},
-                                 2,
-                                 (OrcHandle *[]) {out_sum_handle, out_prod_handle},
-                                 (uint8_t const[]) {0, 0},
-                                 2);
+  void *combinations =
+    orc_sdk_comb_init((OrcHandle const *[]) {a_handle, b_handle},
+                      (uint8_t const[]) {0, 0},
+                      2,
+                      (OrcHandle *[]) {out_sum_handle, out_prod_handle},
+                      (uint8_t const[]) {0, 0},
+                      2);
   while (combinations) {
-    OrcSdk_DeckView a_input = comb_get_input(combinations, 0),
-             b_input = comb_get_input(combinations, 1);
+    OrcSdk_DeckView a_input = orc_sdk_comb_get_input(combinations, 0),
+                    b_input = orc_sdk_comb_get_input(combinations, 1);
     ORC_SDK_REQUIRE(a_input.depth == 0);
     ORC_SDK_REQUIRE(b_input.depth == 0);
-    OrcSdk_DeckWriter *out_sum  = comb_get_output(combinations, 0);
-    OrcSdk_DeckWriter *out_prod = comb_get_output(combinations, 1);
+    OrcSdk_DeckWriter *out_sum  = orc_sdk_comb_get_output(combinations, 0);
+    OrcSdk_DeckWriter *out_prod = orc_sdk_comb_get_output(combinations, 1);
     ORC_SDK_REQUIRE(out_sum->depth == 0);
     ORC_SDK_REQUIRE(out_prod->depth == 0);
-    double *sum_ptr  = (double *)dw_push_empty(out_sum);
-    double *prod_ptr = (double *)dw_push_empty(out_prod);
+    double *sum_ptr  = (double *)orc_sdk_dw_push_empty(out_sum);
+    double *prod_ptr = (double *)orc_sdk_dw_push_empty(out_prod);
     {
       double const a = *(double *)orc_sdk_dv_item_ptr(&a_input);
       double const b = *(double *)orc_sdk_dv_item_ptr(&b_input);
       *sum_ptr       = a + b;
       *prod_ptr      = a * b;
     }
-    combinations = comb_advance(combinations);
+    combinations = orc_sdk_comb_advance(combinations);
   }
 }
 
@@ -3113,28 +3117,29 @@ void _plugin_function_first_add(OrcHandle const *a_handle,
   ORC_SDK_REQUIRE(a_handle->type_id == ORC_TYPE_F64);
   ORC_SDK_REQUIRE(b_handle->type_id == ORC_TYPE_F64);
   ORC_SDK_REQUIRE(out_handle->type_id == ORC_TYPE_F64);
-  void *combinations = comb_init((OrcHandle const *[]) {a_handle, b_handle},
-                                 (uint8_t const[]) {1, 1},
-                                 2,
-                                 (OrcHandle *[]) {out_handle},
-                                 (uint8_t const[]) {0},
-                                 1);
+  void *combinations = orc_sdk_comb_init((OrcHandle const *[]) {a_handle, b_handle},
+                                         (uint8_t const[]) {1, 1},
+                                         2,
+                                         (OrcHandle *[]) {out_handle},
+                                         (uint8_t const[]) {0},
+                                         1);
   while (combinations) {
-    OrcSdk_DeckView a_input = comb_get_input(combinations, 0),
-             b_input = comb_get_input(combinations, 1);
+    OrcSdk_DeckView a_input = orc_sdk_comb_get_input(combinations, 0),
+                    b_input = orc_sdk_comb_get_input(combinations, 1);
     ORC_SDK_REQUIRE(a_input.depth == 1);
     ORC_SDK_REQUIRE(b_input.depth == 1);
-    OrcSdk_DeckWriter *out = comb_get_output(combinations, 0);
+    OrcSdk_DeckWriter *out = orc_sdk_comb_get_output(combinations, 0);
     ORC_SDK_REQUIRE(out->depth == 0);
-    double *output_ptr = (double *)dw_push_empty(out);
+    double *output_ptr = (double *)orc_sdk_dw_push_empty(out);
     {
-      ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_dv_len(&a_input) > 0 && orc_sdk_dv_len(&b_input) > 0,
-                               "Lists must be non-empty");
+      ORC_SDK_REQUIRE_WITH_MSG(
+        orc_sdk_dv_len(&a_input) > 0 && orc_sdk_dv_len(&b_input) > 0,
+        "Lists must be non-empty");
       double const a_first = *(double *)orc_sdk_dv_item_ptr(&a_input);
       double const b_first = *(double *)orc_sdk_dv_item_ptr(&b_input);
       *output_ptr          = a_first + b_first;
     }
-    combinations = comb_advance(combinations);
+    combinations = orc_sdk_comb_advance(combinations);
   }
 }
 
@@ -3159,15 +3164,15 @@ void test_list_item_combinations(void)
                        (4.4, 5.5, 6.6, 6.28318),
                        (7.7, 8.8, 9.9, 10.1, 3.14159),
                        (11.1, 12.1, 13.1, 14.1, 15.1)));
-    oh_update(&lists);
+    orc_sdk_oh_update(&lists);
     ORC_SDK_REQUIRE(orc_sdk_deck_len(lists.items) == 18);
     ORC_SDK_DECK_INIT(indices.items, uint32_t, 2);
-    oh_update(&indices);
+    orc_sdk_oh_update(&indices);
     ORC_SDK_REQUIRE(orc_sdk_deck_len(indices.items) == 1);
     // Run the block - In a real scenario, this function is provided by a plugin DLL.
     _plugin_function_list_element(&lists, &indices, &out_items);
     // Check the outputs. The input had 4 lists, so the output should have 4 items.
-    oh_update(&out_items);
+    orc_sdk_oh_update(&out_items);
     size_t const count = orc_sdk_deck_len(out_items.items);
     ORC_SDK_REQUIRE(count == 4);
     ORC_SDK_REQUIRE(orc_sdk_deck_max_depth(out_items.items) == 1);
@@ -3180,12 +3185,12 @@ void test_list_item_combinations(void)
   }
   { /* Same depth 2 lists, with a list of indices. */
     ORC_SDK_DECK_INIT(indices.items, uint32_t, (0, 1, 2));
-    oh_update(&indices);
+    orc_sdk_oh_update(&indices);
     orc_sdk_deck_clear(out_items.items);  // Clear the outputs.
-    oh_update(&out_items);
+    orc_sdk_oh_update(&out_items);
     // Run the block - In a real scenario, this function is provided by a plugin DLL.
     _plugin_function_list_element(&lists, &indices, &out_items);
-    oh_update(&out_items);
+    orc_sdk_oh_update(&out_items);
     size_t const count = orc_sdk_deck_len(out_items.items);
     ORC_SDK_REQUIRE(count == 4);
     ORC_SDK_REQUIRE(orc_sdk_deck_max_depth(out_items.items) == 1);
@@ -3197,12 +3202,12 @@ void test_list_item_combinations(void)
   }
   { /* Same depth 2 lists as before, with depth-2 indices. */
     ORC_SDK_DECK_INIT(indices.items, uint32_t, ((0, 1, 2), (1, 2, 3)));
-    oh_update(&indices);
+    orc_sdk_oh_update(&indices);
     orc_sdk_deck_clear(out_items.items);  // Clear the outputs.
-    oh_update(&out_items);
+    orc_sdk_oh_update(&out_items);
     // Run the block - In a real scenario, this function is provided by a plugin DLL.
     _plugin_function_list_element(&lists, &indices, &out_items);
-    oh_update(&out_items);
+    orc_sdk_oh_update(&out_items);
     double *actual   = (double *)out_items.items;
     double *expected = NULL;
     ORC_SDK_DECK_INIT(expected, double, ((1.1, 5.5, 9.9, 13.1), (2.23, 6.6, 10.1, 14.1)));
@@ -3210,7 +3215,7 @@ void test_list_item_combinations(void)
     size_t n_marks = 0;
     {
       _OrcSdk_DeckHeader *h = _orc_sdk_deck_header(actual);
-      n_marks        = orc_sdk_arr_len(h->marks);
+      n_marks               = orc_sdk_arr_len(h->marks);
       ORC_SDK_REQUIRE(orc_sdk_arr_len(_orc_sdk_deck_header(expected)->marks) == n_marks);
     }
     for (size_t i = 0; i < n_marks; ++i) {
@@ -3245,13 +3250,13 @@ void test_add_f64_combinations(void)
 
   { /* Flat equal-length inputs: a and b each have 3 scalars (stack_depth=2). */
     ORC_SDK_DECK_INIT(a.items, double, (1.0, 2.0, 3.0));
-    oh_update(&a);
+    orc_sdk_oh_update(&a);
     ORC_SDK_DECK_INIT(b.items, double, (10.0, 20.0, 30.0));
-    oh_update(&b);
+    orc_sdk_oh_update(&b);
 
     _plugin_function_add_f64(&a, &b, &out);
 
-    oh_update(&out);
+    orc_sdk_oh_update(&out);
     size_t const count = orc_sdk_deck_len(out.items);
     ORC_SDK_REQUIRE(count == 3);
     ORC_SDK_REQUIRE(orc_sdk_deck_max_depth(out.items) == 1);
@@ -3263,15 +3268,15 @@ void test_add_f64_combinations(void)
   }
   { /* Flat inputs, broadcast-last: a has 4 scalars, b has 2 (stack_depth=2). */
     ORC_SDK_DECK_INIT(a.items, double, (1.0, 2.0, 3.0, 4.0));
-    oh_update(&a);
+    orc_sdk_oh_update(&a);
     ORC_SDK_DECK_INIT(b.items, double, (10.0, 20.0));
-    oh_update(&b);
+    orc_sdk_oh_update(&b);
     orc_sdk_deck_clear(out.items);
-    oh_update(&out);
+    orc_sdk_oh_update(&out);
 
     _plugin_function_add_f64(&a, &b, &out);
 
-    oh_update(&out);
+    orc_sdk_oh_update(&out);
     size_t const count = orc_sdk_deck_len(out.items);
     ORC_SDK_REQUIRE(count == 4);
     ORC_SDK_REQUIRE(orc_sdk_deck_max_depth(out.items) == 1);
@@ -3284,15 +3289,15 @@ void test_add_f64_combinations(void)
   }
   { /* Depth-2 inputs, equal groups: 2 inner groups of 2 items each (stack_depth=3). */
     ORC_SDK_DECK_INIT(a.items, double, ((1.0, 2.0), (3.0, 4.0)));
-    oh_update(&a);
+    orc_sdk_oh_update(&a);
     ORC_SDK_DECK_INIT(b.items, double, ((10.0, 20.0), (30.0, 40.0)));
-    oh_update(&b);
+    orc_sdk_oh_update(&b);
     orc_sdk_deck_clear(out.items);
-    oh_update(&out);
+    orc_sdk_oh_update(&out);
 
     _plugin_function_add_f64(&a, &b, &out);
 
-    oh_update(&out);
+    orc_sdk_oh_update(&out);
     double *actual   = (double *)out.items;
     double *expected = NULL;
     ORC_SDK_DECK_INIT(expected, double, ((11.0, 22.0), (33.0, 44.0)));
@@ -3300,7 +3305,7 @@ void test_add_f64_combinations(void)
     size_t n_marks = 0;
     {
       _OrcSdk_DeckHeader *h = _orc_sdk_deck_header(actual);
-      n_marks        = orc_sdk_arr_len(h->marks);
+      n_marks               = orc_sdk_arr_len(h->marks);
       ORC_SDK_REQUIRE(orc_sdk_arr_len(_orc_sdk_deck_header(expected)->marks) == n_marks);
     }
     for (size_t i = 0; i < n_marks; ++i) {
@@ -3318,17 +3323,17 @@ void test_add_f64_combinations(void)
   { /* Depth-2 inputs, broadcast-last at inner-group level: a has 2 groups, b has 1
        (stack_depth=3). */
     ORC_SDK_DECK_INIT(a.items, double, ((1.0, 2.0), (3.0, 4.0)));
-    oh_update(&a);
+    orc_sdk_oh_update(&a);
     // b is a single depth-2 group (((10.0, 20.0))): b's one group broadcasts across a's
     // two.
     ORC_SDK_DECK_INIT(b.items, double, (((10.0, 20.0))));
-    oh_update(&b);
+    orc_sdk_oh_update(&b);
     orc_sdk_deck_clear(out.items);
-    oh_update(&out);
+    orc_sdk_oh_update(&out);
 
     _plugin_function_add_f64(&a, &b, &out);
 
-    oh_update(&out);
+    orc_sdk_oh_update(&out);
     double *actual   = (double *)out.items;
     double *expected = NULL;
     ORC_SDK_DECK_INIT(expected, double, (((11.0, 22.0), (13.0, 24.0))));
@@ -3336,7 +3341,7 @@ void test_add_f64_combinations(void)
     size_t n_marks = 0;
     {
       _OrcSdk_DeckHeader *h = _orc_sdk_deck_header(actual);
-      n_marks        = orc_sdk_arr_len(h->marks);
+      n_marks               = orc_sdk_arr_len(h->marks);
       ORC_SDK_REQUIRE(orc_sdk_arr_len(_orc_sdk_deck_header(expected)->marks) == n_marks);
     }
     for (size_t i = 0; i < n_marks; ++i) {
@@ -3362,20 +3367,20 @@ void _plugin_function_list_length(OrcHandle const *in_handle, OrcHandle *out_han
 {
   ORC_SDK_REQUIRE(in_handle->type_id == ORC_TYPE_F64);
   ORC_SDK_REQUIRE(out_handle->type_id == ORC_TYPE_U64);
-  void *combinations = comb_init((OrcHandle const *[]) {in_handle},
-                                 (uint8_t const[]) {1},
-                                 1,
-                                 (OrcHandle *[]) {out_handle},
-                                 (uint8_t const[]) {0},
-                                 1);
+  void *combinations = orc_sdk_comb_init((OrcHandle const *[]) {in_handle},
+                                         (uint8_t const[]) {1},
+                                         1,
+                                         (OrcHandle *[]) {out_handle},
+                                         (uint8_t const[]) {0},
+                                         1);
   while (combinations) {
-    OrcSdk_DeckView    list_input = comb_get_input(combinations, 0);
-    OrcSdk_DeckWriter *out        = comb_get_output(combinations, 0);
+    OrcSdk_DeckView    list_input = orc_sdk_comb_get_input(combinations, 0);
+    OrcSdk_DeckWriter *out        = orc_sdk_comb_get_output(combinations, 0);
     ORC_SDK_REQUIRE(list_input.depth == 1);
     ORC_SDK_REQUIRE(out->depth == 0);
-    uint64_t *output_ptr = (uint64_t *)dw_push_empty(out);
+    uint64_t *output_ptr = (uint64_t *)orc_sdk_dw_push_empty(out);
     *output_ptr          = (uint64_t)orc_sdk_dv_len(&list_input);
-    combinations         = comb_advance(combinations);
+    combinations         = orc_sdk_comb_advance(combinations);
   }
 }
 
@@ -3392,11 +3397,11 @@ void test_list_length_combinations(void)
 
   { /* Depth-2 input: 5 lists, some empty (stack_depth=2). */
     ORC_SDK_DECK_INIT(in.items, double, ((1.0, 2.0, 3.0), (), (4.0), (), (5.0, 6.0)));
-    oh_update(&in);
+    orc_sdk_oh_update(&in);
 
     _plugin_function_list_length(&in, &out);
 
-    oh_update(&out);
+    orc_sdk_oh_update(&out);
     size_t const count = orc_sdk_deck_len(out.items);
     ORC_SDK_REQUIRE(count == 5);
     ORC_SDK_REQUIRE(orc_sdk_deck_max_depth(out.items) == 1);
@@ -3409,13 +3414,13 @@ void test_list_length_combinations(void)
   { /* Depth-3 input: two outer groups each containing lists, with empty lists inside
        (stack_depth=3). */
     ORC_SDK_DECK_INIT(in.items, double, (((1.0, 2.0), ()), ((3.0, 4.0, 5.0), (), (6.0))));
-    oh_update(&in);
+    orc_sdk_oh_update(&in);
     orc_sdk_deck_clear(out.items);
-    oh_update(&out);
+    orc_sdk_oh_update(&out);
 
     _plugin_function_list_length(&in, &out);
 
-    oh_update(&out);
+    orc_sdk_oh_update(&out);
     uint64_t *actual   = (uint64_t *)out.items;
     uint64_t *expected = NULL;
     ORC_SDK_DECK_INIT(expected, uint64_t, ((2, 0), (3, 0, 1)));
@@ -3423,7 +3428,7 @@ void test_list_length_combinations(void)
     size_t n_marks = 0;
     {
       _OrcSdk_DeckHeader *h = _orc_sdk_deck_header(actual);
-      n_marks        = orc_sdk_arr_len(h->marks);
+      n_marks               = orc_sdk_arr_len(h->marks);
       ORC_SDK_REQUIRE(orc_sdk_arr_len(_orc_sdk_deck_header(expected)->marks) == n_marks);
     }
     for (size_t i = 0; i < n_marks; ++i) {
@@ -3457,12 +3462,12 @@ void test_two_output_combinations(void)
 
   { /* One input, two outputs: square and cube of 3 scalars (stack_depth=2). */
     ORC_SDK_DECK_INIT(in_a.items, double, (2.0, 3.0, 4.0));
-    oh_update(&in_a);
+    orc_sdk_oh_update(&in_a);
 
     _plugin_function_sq_cb(&in_a, &out1, &out2);
 
-    oh_update(&out1);
-    oh_update(&out2);
+    orc_sdk_oh_update(&out1);
+    orc_sdk_oh_update(&out2);
     ORC_SDK_REQUIRE(orc_sdk_deck_len(out1.items) == 3);
     ORC_SDK_REQUIRE(orc_sdk_deck_len(out2.items) == 3);
     ORC_SDK_REQUIRE(orc_sdk_deck_max_depth(out1.items) == 1);
@@ -3478,18 +3483,18 @@ void test_two_output_combinations(void)
   }
   { /* Two inputs, two outputs: sum and product of 3 scalars each (stack_depth=2). */
     ORC_SDK_DECK_INIT(in_a.items, double, (1.0, 2.0, 3.0));
-    oh_update(&in_a);
+    orc_sdk_oh_update(&in_a);
     ORC_SDK_DECK_INIT(in_b.items, double, (4.0, 5.0, 6.0));
-    oh_update(&in_b);
+    orc_sdk_oh_update(&in_b);
     orc_sdk_deck_clear(out1.items);
-    oh_update(&out1);
+    orc_sdk_oh_update(&out1);
     orc_sdk_deck_clear(out2.items);
-    oh_update(&out2);
+    orc_sdk_oh_update(&out2);
 
     _plugin_function_add_mul(&in_a, &in_b, &out1, &out2);
 
-    oh_update(&out1);
-    oh_update(&out2);
+    orc_sdk_oh_update(&out1);
+    orc_sdk_oh_update(&out2);
     ORC_SDK_REQUIRE(orc_sdk_deck_len(out1.items) == 3);
     ORC_SDK_REQUIRE(orc_sdk_deck_len(out2.items) == 3);
     ORC_SDK_REQUIRE(orc_sdk_deck_max_depth(out1.items) == 1);
@@ -3522,13 +3527,13 @@ void test_first_add_combinations(void)
 
   { /* Equal-length: a and b each have 3 depth=1 groups (stack_depth=2). */
     ORC_SDK_DECK_INIT(a.items, double, ((1.0, 99.0), (2.0, 99.0), (3.0, 99.0)));
-    oh_update(&a);
+    orc_sdk_oh_update(&a);
     ORC_SDK_DECK_INIT(b.items, double, ((10.0, 99.0), (20.0, 99.0), (30.0, 99.0)));
-    oh_update(&b);
+    orc_sdk_oh_update(&b);
 
     _plugin_function_first_add(&a, &b, &out);
 
-    oh_update(&out);
+    orc_sdk_oh_update(&out);
     size_t const count = orc_sdk_deck_len(out.items);
     ORC_SDK_REQUIRE(count == 3);
     ORC_SDK_REQUIRE(orc_sdk_deck_max_depth(out.items) == 1);
@@ -3541,15 +3546,15 @@ void test_first_add_combinations(void)
   { /* Broadcast-last at group level: a has 4 groups, b has 2 (stack_depth=2). */
     ORC_SDK_DECK_INIT(
       a.items, double, ((1.0, 99.0), (2.0, 99.0), (3.0, 99.0), (4.0, 99.0)));
-    oh_update(&a);
+    orc_sdk_oh_update(&a);
     ORC_SDK_DECK_INIT(b.items, double, ((10.0, 99.0), (20.0, 99.0)));
-    oh_update(&b);
+    orc_sdk_oh_update(&b);
     orc_sdk_deck_clear(out.items);
-    oh_update(&out);
+    orc_sdk_oh_update(&out);
 
     _plugin_function_first_add(&a, &b, &out);
 
-    oh_update(&out);
+    orc_sdk_oh_update(&out);
     size_t const count = orc_sdk_deck_len(out.items);
     ORC_SDK_REQUIRE(count == 4);
     ORC_SDK_REQUIRE(orc_sdk_deck_max_depth(out.items) == 1);
@@ -3569,9 +3574,9 @@ void test_first_add_combinations(void)
 
 static OrcHandle _make_flattened_proxy(void const *deck)
 {
-  _OrcSdk_DeckHeader  *h     = _orc_sdk_deck_header(deck);
-  OrcMark      *marks = NULL;
-  OrcMark const mark  = (OrcMark) {.depth = 0, .pos = 0};
+  _OrcSdk_DeckHeader *h     = _orc_sdk_deck_header(deck);
+  OrcMark            *marks = NULL;
+  OrcMark const       mark  = (OrcMark) {.depth = 0, .pos = 0};
   orc_sdk_arr_push(marks, mark);
   return (OrcHandle) {
     .handle        = 0,
@@ -3590,10 +3595,10 @@ static OrcHandle _make_flattened_proxy(void const *deck)
 static OrcHandle _make_grafted_proxy(void const *deck)
 {
   _OrcSdk_DeckHeader *h         = _orc_sdk_deck_header(deck);
-  OrcMark     *old_marks = h->marks;
-  size_t const n_marks   = orc_sdk_arr_len(old_marks);
-  OrcMark     *marks     = NULL;
-  uint64_t     prev      = 0;
+  OrcMark            *old_marks = h->marks;
+  size_t const        n_marks   = orc_sdk_arr_len(old_marks);
+  OrcMark            *marks     = NULL;
+  uint64_t            prev      = 0;
   for (size_t i = 0; i < n_marks; ++i) {
     uint8_t const  new_depth = old_marks[i].depth + 1;
     uint64_t const current   = old_marks[i].pos;
@@ -3628,8 +3633,8 @@ static OrcHandle _make_grafted_proxy(void const *deck)
 static OrcHandle _make_simplified_proxy(void const *deck)
 {
   _OrcSdk_DeckHeader *h       = _orc_sdk_deck_header(deck);
-  size_t const n_marks = orc_sdk_arr_len(h->marks);
-  OrcMark     *marks   = NULL;
+  size_t const        n_marks = orc_sdk_arr_len(h->marks);
+  OrcMark            *marks   = NULL;
   if (n_marks == 0) {
     return (OrcHandle) {
       .type_id = ORC_TYPE_PROXY,
@@ -3672,7 +3677,7 @@ static OrcHandle _make_shuffle_proxy(OrcItemProxy const *pdeck)
   memset(&handle, 0, sizeof(handle));
   handle.items   = pdeck;
   handle.type_id = ORC_TYPE_PROXY;
-  oh_update(&handle);
+  orc_sdk_oh_update(&handle);
   handle.type_id = ORC_TYPE_PROXY;
   return handle;
 }
@@ -3688,8 +3693,8 @@ static void _assert_decks_match(void const  *actual,
   ORC_SDK_REQUIRE(orc_sdk_deck_max_depth(actual) == orc_sdk_deck_max_depth(expected));
   _OrcSdk_DeckHeader *ha  = _orc_sdk_deck_header(actual);
   _OrcSdk_DeckHeader *he  = _orc_sdk_deck_header(expected);
-  size_t const nma = orc_sdk_arr_len(ha->marks);
-  size_t const nme = orc_sdk_arr_len(he->marks);
+  size_t const        nma = orc_sdk_arr_len(ha->marks);
+  size_t const        nme = orc_sdk_arr_len(he->marks);
   ORC_SDK_REQUIRE(nma == nme);
   for (size_t i = 0; i < nma; ++i) {
     ORC_SDK_REQUIRE(ha->marks[i].pos == he->marks[i].pos);
@@ -3704,7 +3709,7 @@ void test_deck_from_proxy_copy_items(void)
     OrcHandle in = {0}, out = {0};
     orc_sdk_handle_alloc(ORC_TYPE_F64, &in);
     ORC_SDK_DECK_INIT(in.items, double, ((1.0, 2.0), (3.0, 4.0, 5.0)));
-    oh_update(&in);
+    orc_sdk_oh_update(&in);
 
     OrcHandle proxy = _make_flattened_proxy(in.items);
     orc_sdk_deck_from_proxy(&in, 1, ORC_DECK_PROXY_COPY_ITEMS, &proxy, &out);
@@ -3724,7 +3729,7 @@ void test_deck_from_proxy_copy_items(void)
     OrcHandle in = {0}, out = {0};
     orc_sdk_handle_alloc(ORC_TYPE_F64, &in);
     ORC_SDK_DECK_INIT(in.items, double, (((1.0, 2.0), (3.0)), ((4.0, 5.0))));
-    oh_update(&in);
+    orc_sdk_oh_update(&in);
 
     OrcHandle proxy = _make_flattened_proxy(in.items);
     orc_sdk_deck_from_proxy(&in, 1, ORC_DECK_PROXY_COPY_ITEMS, &proxy, &out);
@@ -3742,7 +3747,7 @@ void test_deck_from_proxy_copy_items(void)
     OrcHandle in = {0}, out = {0};
     orc_sdk_handle_alloc(ORC_TYPE_F64, &in);
     ORC_SDK_DECK_INIT(in.items, double, (1.0, 2.0, 3.0));
-    oh_update(&in);
+    orc_sdk_oh_update(&in);
 
     OrcHandle proxy = _make_grafted_proxy(in.items);
     orc_sdk_deck_from_proxy(&in, 1, ORC_DECK_PROXY_COPY_ITEMS, &proxy, &out);
@@ -3761,7 +3766,7 @@ void test_deck_from_proxy_copy_items(void)
     OrcHandle in = {0}, out = {0};
     orc_sdk_handle_alloc(ORC_TYPE_F64, &in);
     ORC_SDK_DECK_INIT(in.items, double, ((1.0, 2.0), (3.0)));
-    oh_update(&in);
+    orc_sdk_oh_update(&in);
 
     OrcHandle proxy = _make_grafted_proxy(in.items);
     orc_sdk_deck_from_proxy(&in, 1, ORC_DECK_PROXY_COPY_ITEMS, &proxy, &out);
@@ -3779,10 +3784,10 @@ void test_deck_from_proxy_copy_items(void)
     OrcHandle in = {0}, out = {0};
     orc_sdk_handle_alloc(ORC_TYPE_F64, &in);
     ORC_SDK_DECK_INIT(in.items, double, ((1.0, 2.0), (3.0, 4.0)));
-    oh_update(&in);
+    orc_sdk_oh_update(&in);
     /* Graft to create a gap in depth levels, then use simplify proxy. */
     orc_sdk_deck_graft((void *)in.items);
-    oh_update(&in);
+    orc_sdk_oh_update(&in);
 
     OrcHandle proxy = _make_simplified_proxy(in.items);
     orc_sdk_deck_from_proxy(&in, 1, ORC_DECK_PROXY_COPY_ITEMS, &proxy, &out);
@@ -3808,12 +3813,15 @@ void test_deck_from_proxy_shuffle(void)
     OrcHandle in = {0}, out = {0};
     orc_sdk_handle_alloc(ORC_TYPE_F64, &in);
     ORC_SDK_DECK_INIT(in.items, double, (1.0, 2.0, 3.0));
-    oh_update(&in);
+    orc_sdk_oh_update(&in);
 
     OrcItemProxy *pdeck = NULL;
-    ORC_SDK_REQUIRE(orc_sdk_deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 2}), 1) == OK);
-    ORC_SDK_REQUIRE(orc_sdk_deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 1}), 0) == OK);
-    ORC_SDK_REQUIRE(orc_sdk_deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 0}), 0) == OK);
+    ORC_SDK_REQUIRE(
+      orc_sdk_deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 2}), 1) == OK);
+    ORC_SDK_REQUIRE(
+      orc_sdk_deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 1}), 0) == OK);
+    ORC_SDK_REQUIRE(
+      orc_sdk_deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 0}), 0) == OK);
     OrcHandle proxy = _make_shuffle_proxy(pdeck);
     orc_sdk_deck_from_proxy(&in, 1, ORC_DECK_PROXY_SHUFFLE, &proxy, &out);
 
@@ -3831,16 +3839,21 @@ void test_deck_from_proxy_shuffle(void)
     OrcHandle in = {0}, out = {0};
     orc_sdk_handle_alloc(ORC_TYPE_F64, &in);
     ORC_SDK_DECK_INIT(in.items, double, ((1.0, 2.0), (3.0, 4.0, 5.0)));
-    oh_update(&in);
+    orc_sdk_oh_update(&in);
 
     OrcItemProxy *pdeck = NULL;
     /* First sublist reversed: flat indices 1, 0. */
-    ORC_SDK_REQUIRE(orc_sdk_deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 1}), 2) == OK);
-    ORC_SDK_REQUIRE(orc_sdk_deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 0}), 0) == OK);
+    ORC_SDK_REQUIRE(
+      orc_sdk_deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 1}), 2) == OK);
+    ORC_SDK_REQUIRE(
+      orc_sdk_deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 0}), 0) == OK);
     /* Second sublist reversed: flat indices 4, 3, 2. */
-    ORC_SDK_REQUIRE(orc_sdk_deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 4}), 1) == OK);
-    ORC_SDK_REQUIRE(orc_sdk_deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 3}), 0) == OK);
-    ORC_SDK_REQUIRE(orc_sdk_deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 2}), 0) == OK);
+    ORC_SDK_REQUIRE(
+      orc_sdk_deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 4}), 1) == OK);
+    ORC_SDK_REQUIRE(
+      orc_sdk_deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 3}), 0) == OK);
+    ORC_SDK_REQUIRE(
+      orc_sdk_deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 2}), 0) == OK);
     OrcHandle proxy = _make_shuffle_proxy(pdeck);
     orc_sdk_deck_from_proxy(&in, 1, ORC_DECK_PROXY_SHUFFLE, &proxy, &out);
 
@@ -3858,11 +3871,13 @@ void test_deck_from_proxy_shuffle(void)
     OrcHandle in = {0}, out = {0};
     orc_sdk_handle_alloc(ORC_TYPE_F64, &in);
     ORC_SDK_DECK_INIT(in.items, double, ((1.0, 2.0, 3.0), (4.0, 5.0)));
-    oh_update(&in);
+    orc_sdk_oh_update(&in);
 
     OrcItemProxy *pdeck = NULL;
-    ORC_SDK_REQUIRE(orc_sdk_deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 1}), 1) == OK);
-    ORC_SDK_REQUIRE(orc_sdk_deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 4}), 0) == OK);
+    ORC_SDK_REQUIRE(
+      orc_sdk_deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 1}), 1) == OK);
+    ORC_SDK_REQUIRE(
+      orc_sdk_deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 4}), 0) == OK);
     OrcHandle proxy = _make_shuffle_proxy(pdeck);
     orc_sdk_deck_from_proxy(&in, 1, ORC_DECK_PROXY_SHUFFLE, &proxy, &out);
 
@@ -3881,15 +3896,19 @@ void test_deck_from_proxy_shuffle(void)
     orc_sdk_handle_alloc(ORC_TYPE_F64, &a);
     orc_sdk_handle_alloc(ORC_TYPE_F64, &b);
     ORC_SDK_DECK_INIT(a.items, double, (1.0, 2.0));
-    oh_update(&a);
+    orc_sdk_oh_update(&a);
     ORC_SDK_DECK_INIT(b.items, double, (10.0, 20.0));
-    oh_update(&b);
+    orc_sdk_oh_update(&b);
 
     OrcItemProxy *pdeck = NULL;
-    ORC_SDK_REQUIRE(orc_sdk_deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 0}), 1) == OK);
-    ORC_SDK_REQUIRE(orc_sdk_deck_push(pdeck, ((OrcItemProxy) {.tree = 1, .item = 0}), 0) == OK);
-    ORC_SDK_REQUIRE(orc_sdk_deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 1}), 0) == OK);
-    ORC_SDK_REQUIRE(orc_sdk_deck_push(pdeck, ((OrcItemProxy) {.tree = 1, .item = 1}), 0) == OK);
+    ORC_SDK_REQUIRE(
+      orc_sdk_deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 0}), 1) == OK);
+    ORC_SDK_REQUIRE(
+      orc_sdk_deck_push(pdeck, ((OrcItemProxy) {.tree = 1, .item = 0}), 0) == OK);
+    ORC_SDK_REQUIRE(
+      orc_sdk_deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 1}), 0) == OK);
+    ORC_SDK_REQUIRE(
+      orc_sdk_deck_push(pdeck, ((OrcItemProxy) {.tree = 1, .item = 1}), 0) == OK);
     OrcHandle proxy = _make_shuffle_proxy(pdeck);
 
     OrcHandle inputs[2] = {a, b};
@@ -3914,7 +3933,7 @@ void test_deck_from_proxy_type_agnostic(void)
     OrcHandle in = {0}, out = {0};
     orc_sdk_handle_alloc(ORC_TYPE_U32, &in);
     ORC_SDK_DECK_INIT(in.items, uint32_t, ((10, 20), (30)));
-    oh_update(&in);
+    orc_sdk_oh_update(&in);
 
     OrcHandle proxy = _make_flattened_proxy(in.items);
     orc_sdk_deck_from_proxy(&in, 1, ORC_DECK_PROXY_COPY_ITEMS, &proxy, &out);
@@ -3933,13 +3952,17 @@ void test_deck_from_proxy_type_agnostic(void)
     OrcHandle in = {0}, out = {0};
     orc_sdk_handle_alloc(ORC_TYPE_I32, &in);
     ORC_SDK_DECK_INIT(in.items, int32_t, (-1, -2, -3, -4));
-    oh_update(&in);
+    orc_sdk_oh_update(&in);
 
     OrcItemProxy *pdeck = NULL;
-    ORC_SDK_REQUIRE(orc_sdk_deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 3}), 1) == OK);
-    ORC_SDK_REQUIRE(orc_sdk_deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 2}), 0) == OK);
-    ORC_SDK_REQUIRE(orc_sdk_deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 1}), 0) == OK);
-    ORC_SDK_REQUIRE(orc_sdk_deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 0}), 0) == OK);
+    ORC_SDK_REQUIRE(
+      orc_sdk_deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 3}), 1) == OK);
+    ORC_SDK_REQUIRE(
+      orc_sdk_deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 2}), 0) == OK);
+    ORC_SDK_REQUIRE(
+      orc_sdk_deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 1}), 0) == OK);
+    ORC_SDK_REQUIRE(
+      orc_sdk_deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 0}), 0) == OK);
     OrcHandle proxy = _make_shuffle_proxy(pdeck);
     orc_sdk_deck_from_proxy(&in, 1, ORC_DECK_PROXY_SHUFFLE, &proxy, &out);
 
@@ -3957,7 +3980,7 @@ void test_deck_from_proxy_type_agnostic(void)
     OrcHandle in = {0}, out = {0};
     orc_sdk_handle_alloc(ORC_TYPE_I16, &in);
     ORC_SDK_DECK_INIT(in.items, int16_t, (10, 20, 30));
-    oh_update(&in);
+    orc_sdk_oh_update(&in);
 
     OrcHandle proxy = _make_grafted_proxy(in.items);
     orc_sdk_deck_from_proxy(&in, 1, ORC_DECK_PROXY_COPY_ITEMS, &proxy, &out);
