@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-// When this project builds, the build.rs file will be run, which uses bindgen to consume orc_ffi.h
+// When this project builds, the build.rs file will be run, which uses bindgen to consume orc_abi.h
 // to generate a bindings.rs file. That file will be written into the output directory where the
 // build process writes the binaries to. Cargo exposes that as an environment variable. So we use
 // that environment variable, and include the contents of that file in this file, effectively

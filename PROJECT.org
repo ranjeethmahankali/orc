@@ -133,12 +133,14 @@
   special libraries. Don't want to add too many blocks at once, but just a few to make sure the
   proxy stuff is working nicely across the ABI.
 
-  <2026-08-02 Sun 11:43> orc_sdk should not implement definitions anything from orc_ffi.h. orc_ffi
+  <2026-08-02 Sun 11:43> orc_sdk should not implement definitions anything from orc_abi.h. orc_abi
   should just contain pure forward declarations. It is up to each plugin how to implement
-  those. orc_sdk should provide namespaced equivalents of the things in orc_ffi, and each plugin can
+  those. orc_sdk should provide namespaced equivalents of the things in orc_abi, and each plugin can
   choose to simply call the orc_sdk functions if they don't want to write their own.
 
-  - [ ] namespace everything in orc_sdk.h with a prefix.
+  - [X] namespace everything in orc_sdk.h with a prefix.
+
+  <2026-08-02 Sun 14:02> LLM namespaced the entire public API of orc_sdk.
 
 * TODO tiwkbm - Create Toy Demo Apps
   :PROPERTIES:
@@ -243,7 +245,7 @@
   - State "CLOSED"     from "TODO"       [2026-07-28 Tue 09:16]
   :END:
 
-  The current rendering API in [[file:c/src/orc_ffi.h::rendering_api][the current ffi]] is just a stub. While supporting
+  The current rendering API in [[file:c/src/orc_abi.h::rendering_api][the current ffi]] is just a stub. While supporting
   static rendering primitives is simple, supporting implicit rendering requires
   a lot more thought.
 

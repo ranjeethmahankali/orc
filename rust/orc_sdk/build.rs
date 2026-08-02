@@ -1,6 +1,6 @@
 fn main() {
     let bindings = bindgen::Builder::default()
-        .header("../../c/src/orc_ffi.h")
+        .header("../../c/src/orc_abi.h")
         .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()))
         .parse_callbacks(Box::new(TypeAliasCallback))
         .allowlist_type("Orc.*")
