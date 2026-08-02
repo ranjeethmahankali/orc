@@ -116,6 +116,16 @@
   some thought. I went with macros as the first pass in Rust. It is not clear to me what I should go
   with in C++.
 
+* TODO Improve Function Metadata
+  :PROPERTIES:
+  :CREATED:  2026-08-02 Sun 19:14
+  :END:
+
+  We want the function metadata to also contain information about how many inputs and outputs the
+  function has, and what types. All of this has to be optional, and functions may choose to be
+  wildly variadic and type agnostic. The metatdata should allow the functions to express that
+  somehow.
+
 * NEXT tj5fbs - Figure out C SDK and write a simple plugin
   :PROPERTIES:
   :CREATED:  2026-08-02 Sun 11:09
