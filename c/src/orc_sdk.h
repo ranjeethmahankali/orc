@@ -390,7 +390,7 @@ char *_deck_to_str(void        *ptr,
 
 #define deck_to_str(ptr, snprint_item) _deck_to_str((ptr), sizeof(*(ptr)), snprint_item)
 
-/* ========== DECK_INIT macro ==========
+/* ========== ORC_SDK_DECK_INIT macro ==========
  *
  * Initialise a deck from a nested parenthesised literal, mirroring the Rust
  * `deck!` macro.  Depths are assigned with the "ruler-sequence" rule: the first
@@ -399,100 +399,110 @@ char *_deck_to_str(void        *ptr,
  *
  * Usage:
  *   size_t* d = NULL;
- *   DECK_INIT(d, size_t, (1, 2, 3));                            // depth 1
- *   DECK_INIT(d, size_t, ((1, 2, 3), (4, 5, 6), (7, 8, 9)));   // depth 2
- *   DECK_INIT(d, size_t, (((1, 2), (3, 4)), ((5, 6), (7, 8)))); // depth 3
+ *   ORC_SDK_DECK_INIT(d, size_t, (1, 2, 3));                            // depth 1
+ *   ORC_SDK_DECK_INIT(d, size_t, ((1, 2, 3), (4, 5, 6), (7, 8, 9)));   // depth 2
+ *   ORC_SDK_DECK_INIT(d, size_t, (((1, 2), (3, 4)), ((5, 6), (7, 8)))); // depth 3
  *   deck_free(d);
  *
  * Supports nesting up to depth 255 (limited by rescan budget: 3^6 = 729).
  */
 /* --- Eval chain: forces 3^6 = 729 rescans --- */
-#define _DI_EVAL(...) _DI_E1(_DI_E1(_DI_E1(__VA_ARGS__)))
-#define _DI_E1(...) _DI_E2(_DI_E2(_DI_E2(__VA_ARGS__)))
-#define _DI_E2(...) _DI_E3(_DI_E3(_DI_E3(__VA_ARGS__)))
-#define _DI_E3(...) _DI_E4(_DI_E4(_DI_E4(__VA_ARGS__)))
-#define _DI_E4(...) _DI_E5(_DI_E5(_DI_E5(__VA_ARGS__)))
-#define _DI_E5(...) __VA_ARGS__
+#define _ORC_SDK_DI_EVAL(...) _ORC_SDK_DI_E1(_ORC_SDK_DI_E1(_ORC_SDK_DI_E1(__VA_ARGS__)))
+#define _ORC_SDK_DI_E1(...) _ORC_SDK_DI_E2(_ORC_SDK_DI_E2(_ORC_SDK_DI_E2(__VA_ARGS__)))
+#define _ORC_SDK_DI_E2(...) _ORC_SDK_DI_E3(_ORC_SDK_DI_E3(_ORC_SDK_DI_E3(__VA_ARGS__)))
+#define _ORC_SDK_DI_E3(...) _ORC_SDK_DI_E4(_ORC_SDK_DI_E4(_ORC_SDK_DI_E4(__VA_ARGS__)))
+#define _ORC_SDK_DI_E4(...) _ORC_SDK_DI_E5(_ORC_SDK_DI_E5(_ORC_SDK_DI_E5(__VA_ARGS__)))
+#define _ORC_SDK_DI_E5(...) __VA_ARGS__
 
 /* --- Core utility --- */
-#define _DI_EMPTY()
-#define _DI_DEFER(id) id _DI_EMPTY()
-#define _DI_EXPAND(...) __VA_ARGS__
-#define _DI_CAT(a, b) _DI_CAT_(a, b)
-#define _DI_CAT_(a, b) a##b
-#define _DI_FIRST(...) _DI_FIRST_(__VA_ARGS__, ~)
-#define _DI_FIRST_(a, ...) a
-#define _DI_SECOND(...) _DI_SECOND_(__VA_ARGS__, ~, ~)
-#define _DI_SECOND_(a, b, ...) b
+#define _ORC_SDK_DI_EMPTY()
+#define _ORC_SDK_DI_DEFER(id) id _ORC_SDK_DI_EMPTY()
+#define _ORC_SDK_DI_EXPAND(...) __VA_ARGS__
+#define _ORC_SDK_DI_CAT(a, b) _ORC_SDK_DI_CAT_(a, b)
+#define _ORC_SDK_DI_CAT_(a, b) a##b
+#define _ORC_SDK_DI_FIRST(...) _ORC_SDK_DI_FIRST_(__VA_ARGS__, ~)
+#define _ORC_SDK_DI_FIRST_(a, ...) a
+#define _ORC_SDK_DI_SECOND(...) _ORC_SDK_DI_SECOND_(__VA_ARGS__, ~, ~)
+#define _ORC_SDK_DI_SECOND_(a, b, ...) b
 
-/* --- Paren detection: _DI_IS_PAREN(x) => 1 if x is (...), else 0 --- */
-#define _DI_IS_PAREN_PROBE(...) ~, 1
-#define _DI_IS_PAREN(x) _DI_IS_PAREN_CHK(_DI_IS_PAREN_PROBE x)
-#define _DI_IS_PAREN_CHK(...) _DI_SECOND(__VA_ARGS__, 0)
+/* --- Paren detection: _ORC_SDK_DI_IS_PAREN(x) => 1 if x is (...), else 0 --- */
+#define _ORC_SDK_DI_IS_PAREN_PROBE(...) ~, 1
+#define _ORC_SDK_DI_IS_PAREN(x) _ORC_SDK_DI_IS_PAREN_CHK(_ORC_SDK_DI_IS_PAREN_PROBE x)
+#define _ORC_SDK_DI_IS_PAREN_CHK(...) _ORC_SDK_DI_SECOND(__VA_ARGS__, 0)
 
 /* --- Boolean --- */
-#define _DI_NOT(x) _DI_CAT(_DI_NOT_, x)
-#define _DI_NOT_0 1
-#define _DI_NOT_1 0
+#define _ORC_SDK_DI_NOT(x) _ORC_SDK_DI_CAT(_ORC_SDK_DI_NOT_, x)
+#define _ORC_SDK_DI_NOT_0 1
+#define _ORC_SDK_DI_NOT_1 0
 
 /* --- End sentinel (function-like macro; detected via invocation, not ##).
- *     _DI_DONE_CHK is a probe: for empty x it sees () directly; for _DI_END
- *     the sentinel eats () instead.  Either way ~,1 is injected.  For normal
- *     values (including 1.1) neither fires, so _DI_SECOND returns 0. --- */
-#define _DI_END(...) ~, 1
-#define _DI_DONE_CHK() ~, 1
-#define _DI_IS_END(x) _DI_SECOND(_DI_DONE_CHK x(), 0)
-#define _DI_CONT(x) _DI_CAT(_DI_CONT_, _DI_IS_PAREN(x))(x)
-#define _DI_CONT_1(x) 1
-#define _DI_CONT_0(x) _DI_NOT(_DI_IS_END(x))
+ *     _ORC_SDK_DI_DONE_CHK is a probe: for empty x it sees () directly; for
+ * _ORC_SDK_DI_END the sentinel eats () instead.  Either way ~,1 is injected.  For normal
+ *     values (including 1.1) neither fires, so _ORC_SDK_DI_SECOND returns 0. --- */
+#define _ORC_SDK_DI_END(...) ~, 1
+#define _ORC_SDK_DI_DONE_CHK() ~, 1
+#define _ORC_SDK_DI_IS_END(x) _ORC_SDK_DI_SECOND(_ORC_SDK_DI_DONE_CHK x(), 0)
+#define _ORC_SDK_DI_CONT(x) _ORC_SDK_DI_CAT(_ORC_SDK_DI_CONT_, _ORC_SDK_DI_IS_PAREN(x))(x)
+#define _ORC_SDK_DI_CONT_1(x) 1
+#define _ORC_SDK_DI_CONT_0(x) _ORC_SDK_DI_NOT(_ORC_SDK_DI_IS_END(x))
 
 /* --- Push: main dispatch (CAT-based to avoid IIF prescanning) ---
  *     Depth is threaded as an accumulator: +1 at each paren-strip.
  *     Rest-groups always restart at depth 1 (intrinsic depth). */
-#define _DI_PUSH(ptr, type, depth, ...) \
-  _DI_CAT(_DI_PC_, _DI_CONT(_DI_FIRST(__VA_ARGS__)))(ptr, type, depth, __VA_ARGS__)
-#define _DI_PC_0(ptr, type, depth, ...) \
+#define _ORC_SDK_DI_PUSH(ptr, type, depth, ...)                                      \
+  _ORC_SDK_DI_CAT(_ORC_SDK_DI_PC_, _ORC_SDK_DI_CONT(_ORC_SDK_DI_FIRST(__VA_ARGS__))) \
+  (ptr, type, depth, __VA_ARGS__)
+#define _ORC_SDK_DI_PC_0(ptr, type, depth, ...) \
   (void)((ptr) = _deck_start_new_arr((void *)(ptr), sizeof(type), (uint8_t)(depth)));
-#define _DI_PC_1(ptr, type, depth, ...) \
-  _DI_CAT(_DI_PP_, _DI_IS_PAREN(_DI_FIRST(__VA_ARGS__)))(ptr, type, depth, __VA_ARGS__)
-#define _DI_PP_0(ptr, type, depth, ...) _DI_PUSH_VALS(ptr, type, depth, __VA_ARGS__)
-#define _DI_PP_1(ptr, type, depth, first_grp, ...)        \
-  _DI_DEFER(_DI_PUSH_I)                                   \
-  ()(ptr, type, depth + 1, _DI_EXPAND first_grp, _DI_END) \
-    _DI_CAT(_DI_GT_, _DI_CONT(_DI_FIRST(__VA_ARGS__)))(ptr, type, __VA_ARGS__)
-#define _DI_PUSH_I() _DI_PUSH
+#define _ORC_SDK_DI_PC_1(ptr, type, depth, ...)                                          \
+  _ORC_SDK_DI_CAT(_ORC_SDK_DI_PP_, _ORC_SDK_DI_IS_PAREN(_ORC_SDK_DI_FIRST(__VA_ARGS__))) \
+  (ptr, type, depth, __VA_ARGS__)
+#define _ORC_SDK_DI_PP_0(ptr, type, depth, ...) \
+  _ORC_SDK_DI_PUSH_VALS(ptr, type, depth, __VA_ARGS__)
+#define _ORC_SDK_DI_PP_1(ptr, type, depth, first_grp, ...)                              \
+  _ORC_SDK_DI_DEFER(_ORC_SDK_DI_PUSH_I)                                                 \
+  ()(ptr, type, depth + 1, _ORC_SDK_DI_EXPAND first_grp, _ORC_SDK_DI_END)               \
+    _ORC_SDK_DI_CAT(_ORC_SDK_DI_GT_, _ORC_SDK_DI_CONT(_ORC_SDK_DI_FIRST(__VA_ARGS__)))( \
+      ptr, type, __VA_ARGS__)
+#define _ORC_SDK_DI_PUSH_I() _ORC_SDK_DI_PUSH
 
 /* --- Push flat values: first gets depth, rest get 0 --- */
-#define _DI_PUSH_VALS(ptr, type, depth, first, ...)                            \
-  (void)((ptr) = _deck_push_impl(                                              \
-           (void *)(ptr), &((type) {first}), sizeof(type), (uint8_t)(depth))); \
-  _DI_CAT(_DI_VT_, _DI_CONT(_DI_FIRST(__VA_ARGS__)))(ptr, type, __VA_ARGS__)
-#define _DI_PUSH_VALS_REST(ptr, type, first, ...)                                     \
+#define _ORC_SDK_DI_PUSH_VALS(ptr, type, depth, first, ...)                          \
+  (void)((ptr) = _deck_push_impl(                                                    \
+           (void *)(ptr), &((type) {first}), sizeof(type), (uint8_t)(depth)));       \
+  _ORC_SDK_DI_CAT(_ORC_SDK_DI_VT_, _ORC_SDK_DI_CONT(_ORC_SDK_DI_FIRST(__VA_ARGS__))) \
+  (ptr, type, __VA_ARGS__)
+#define _ORC_SDK_DI_PUSH_VALS_REST(ptr, type, first, ...)                             \
   (void)((ptr) = _deck_push_impl((void *)(ptr), &((type) {first}), sizeof(type), 0)); \
-  _DI_CAT(_DI_VT_, _DI_CONT(_DI_FIRST(__VA_ARGS__)))(ptr, type, __VA_ARGS__)
-#define _DI_VT_0(ptr, type, ...)
-#define _DI_VT_1(ptr, type, ...) _DI_DEFER(_DI_PUSH_VALS_REST_I)()(ptr, type, __VA_ARGS__)
-#define _DI_PUSH_VALS_REST_I() _DI_PUSH_VALS_REST
+  _ORC_SDK_DI_CAT(_ORC_SDK_DI_VT_, _ORC_SDK_DI_CONT(_ORC_SDK_DI_FIRST(__VA_ARGS__)))  \
+  (ptr, type, __VA_ARGS__)
+#define _ORC_SDK_DI_VT_0(ptr, type, ...)
+#define _ORC_SDK_DI_VT_1(ptr, type, ...) \
+  _ORC_SDK_DI_DEFER(_ORC_SDK_DI_PUSH_VALS_REST_I)()(ptr, type, __VA_ARGS__)
+#define _ORC_SDK_DI_PUSH_VALS_REST_I() _ORC_SDK_DI_PUSH_VALS_REST
 
 /* --- Rest groups: each restarts at depth 1 --- */
-#define _DI_GT_0(ptr, type, ...)
-#define _DI_GT_1(ptr, type, ...) _DI_DEFER(_DI_PUSH_REST_GRP_I)()(ptr, type, __VA_ARGS__)
-#define _DI_PUSH_REST_GRP(ptr, type, grp, ...) \
-  _DI_DEFER(_DI_PUSH_I)                        \
-  ()(ptr, type, 1, _DI_EXPAND grp, _DI_END)    \
-    _DI_CAT(_DI_GT_, _DI_CONT(_DI_FIRST(__VA_ARGS__)))(ptr, type, __VA_ARGS__)
-#define _DI_PUSH_REST_GRP_I() _DI_PUSH_REST_GRP
+#define _ORC_SDK_DI_GT_0(ptr, type, ...)
+#define _ORC_SDK_DI_GT_1(ptr, type, ...) \
+  _ORC_SDK_DI_DEFER(_ORC_SDK_DI_PUSH_REST_GRP_I)()(ptr, type, __VA_ARGS__)
+#define _ORC_SDK_DI_PUSH_REST_GRP(ptr, type, grp, ...)                                  \
+  _ORC_SDK_DI_DEFER(_ORC_SDK_DI_PUSH_I)                                                 \
+  ()(ptr, type, 1, _ORC_SDK_DI_EXPAND grp, _ORC_SDK_DI_END)                             \
+    _ORC_SDK_DI_CAT(_ORC_SDK_DI_GT_, _ORC_SDK_DI_CONT(_ORC_SDK_DI_FIRST(__VA_ARGS__)))( \
+      ptr, type, __VA_ARGS__)
+#define _ORC_SDK_DI_PUSH_REST_GRP_I() _ORC_SDK_DI_PUSH_REST_GRP
 
 /* --- Unwrap: strip outer parens if present, pass through bare values --- */
-#define _DI_UNWRAP(x) _DI_CAT(_DI_UW_, _DI_IS_PAREN(x))(x)
-#define _DI_UW_1(x) _DI_EXPAND x
-#define _DI_UW_0(x) x
+#define _ORC_SDK_DI_UNWRAP(x) _ORC_SDK_DI_CAT(_ORC_SDK_DI_UW_, _ORC_SDK_DI_IS_PAREN(x))(x)
+#define _ORC_SDK_DI_UW_1(x) _ORC_SDK_DI_EXPAND x
+#define _ORC_SDK_DI_UW_0(x) x
 
 /* --- Entry point --- */
-#define DECK_INIT(ptr, type, data)                                \
-  do {                                                            \
-    deck_clear((void *)(ptr));                                    \
-    _DI_EVAL(_DI_PUSH((ptr), type, 1, _DI_UNWRAP(data), _DI_END)) \
+#define ORC_SDK_DECK_INIT(ptr, type, data)                                         \
+  do {                                                                             \
+    deck_clear((void *)(ptr));                                                     \
+    _ORC_SDK_DI_EVAL(                                                              \
+      _ORC_SDK_DI_PUSH((ptr), type, 1, _ORC_SDK_DI_UNWRAP(data), _ORC_SDK_DI_END)) \
   } while (0)
 
 // ========== DeckView ==========
@@ -609,9 +619,9 @@ void oh_update(OrcHandle *handle);
 
 // ========== Helpers for implementing plugins ==========
 
-OrcError orc_sdk_deck_alloc(OrcTypeId const id, OrcHandle *const out);
+OrcError orc_sdk_handle_alloc(OrcTypeId const id, OrcHandle *const out);
 
-OrcError orc_sdk_deck_free(OrcHandle *const handle);
+OrcError orc_sdk_handle_free(OrcHandle *const handle);
 
 OrcError orc_sdk_deck_from_proxy(OrcHandle const   *inputs,
                                  uint64_t const     n_inputs,

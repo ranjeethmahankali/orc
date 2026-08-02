@@ -2092,7 +2092,7 @@ void test_deck_printf(void)
                                                         "                   | 31\n"))));
   orc_str_free(output);
   // Depth-2 with empty lists.
-  DECK_INIT(deck, size_t, ((1, 2, 3), (), (4, 5, 6, 7), (), (8, 9, 10, 11), ()));
+  ORC_SDK_DECK_INIT(deck, size_t, ((1, 2, 3), (), (4, 5, 6, 7), (), (8, 9, 10, 11), ()));
   output = deck_to_str(deck, _print_size_t);
   ORC_SDK_REQUIRE(orc_sv_eq(orc_sv_trim(orc_sv_from_str(output)),
                             orc_sv_trim(orc_sv_from_str("  2 ------| 1\n"
@@ -2111,7 +2111,7 @@ void test_deck_printf(void)
                                                         "     1 ---|\n"))));
   orc_str_free(output);
   // Depth-1: Flat list.
-  DECK_INIT(deck, size_t, (10, 20, 30));
+  ORC_SDK_DECK_INIT(deck, size_t, (10, 20, 30));
   output = deck_to_str(deck, _print_size_t);
   ORC_SDK_REQUIRE(orc_sv_eq(orc_sv_from_str(output),
                             orc_sv_from_str("  1 ---| 10\n"
@@ -2119,12 +2119,12 @@ void test_deck_printf(void)
                                             "       | 30\n")));
   orc_str_free(output);
   // List with single element.
-  DECK_INIT(deck, size_t, (42));
+  ORC_SDK_DECK_INIT(deck, size_t, (42));
   output = deck_to_str(deck, _print_size_t);
   ORC_SDK_REQUIRE(orc_sv_eq(orc_sv_from_str(output), orc_sv_from_str("  1 ---| 42\n")));
   orc_str_free(output);
   // All empty depth-2.
-  DECK_INIT(deck, size_t, ((), (), ()));
+  ORC_SDK_DECK_INIT(deck, size_t, ((), (), ()));
   output = deck_to_str(deck, _print_size_t);
   ORC_SDK_REQUIRE(orc_sv_eq(orc_sv_from_str(output),
                             orc_sv_from_str("  2 ------|\n"
@@ -2136,7 +2136,7 @@ void test_deck_printf(void)
   output = deck_to_str(deck, _print_size_t);
   ORC_SDK_REQUIRE(output == NULL);
   // Depth-3 with nested empty.
-  DECK_INIT(deck, size_t, (((1, 2), ()), (()), ((3))));
+  ORC_SDK_DECK_INIT(deck, size_t, (((1, 2), ()), (()), ((3))));
   output = deck_to_str(deck, _print_size_t);
   ORC_SDK_REQUIRE(orc_sv_eq(orc_sv_from_str(output),
                             orc_sv_from_str("  3 ---------| 1\n"
@@ -2151,7 +2151,7 @@ void test_deck_init(void)
   size_t      *deck = NULL;
   _DeckHeader *h    = NULL;
   /* depth 1: flat list */
-  DECK_INIT(deck, size_t, (10, 20, 30));
+  ORC_SDK_DECK_INIT(deck, size_t, (10, 20, 30));
   ORC_SDK_REQUIRE(deck_len(deck) == 3);
   ORC_SDK_REQUIRE(deck_max_depth(deck) == 1);
   ORC_SDK_REQUIRE(_deck_header(deck)->item_size == sizeof(size_t));
@@ -2163,7 +2163,7 @@ void test_deck_init(void)
   ORC_SDK_REQUIRE(h->marks[0].depth == 0);
   ORC_SDK_REQUIRE(h->marks[0].pos == 0);
   /* depth 2: re-init clears existing data */
-  DECK_INIT(deck, size_t, ((1, 2, 3), (4, 5, 6), (7, 8, 9)));
+  ORC_SDK_DECK_INIT(deck, size_t, ((1, 2, 3), (4, 5, 6), (7, 8, 9)));
   ORC_SDK_REQUIRE(deck_len(deck) == 9);
   ORC_SDK_REQUIRE(deck_max_depth(deck) == 2);
   ORC_SDK_REQUIRE(_deck_header(deck)->item_size == sizeof(size_t));
@@ -2178,7 +2178,7 @@ void test_deck_init(void)
   ORC_SDK_REQUIRE(h->marks[2].depth == 0);
   ORC_SDK_REQUIRE(h->marks[2].pos == 6);
   /* depth 3: ruler sequence depths 2,0,1,0 at positions 0,2,4,6 */
-  DECK_INIT(deck, size_t, (((1, 2), (3, 4)), ((5, 6), (7, 8))));
+  ORC_SDK_DECK_INIT(deck, size_t, (((1, 2), (3, 4)), ((5, 6), (7, 8))));
   ORC_SDK_REQUIRE(deck_len(deck) == 8);
   ORC_SDK_REQUIRE(deck_max_depth(deck) == 3);
   ORC_SDK_REQUIRE(_deck_header(deck)->item_size == sizeof(size_t));
@@ -3144,24 +3144,24 @@ void test_list_item_combinations(void)
   // Allocate decks - In a real scenario, the host program is allocating these,
   // by calling below functions, defined inside a plugin.
   OrcHandle lists = {0}, indices = {0}, out_items = {0};
-  orc_sdk_deck_alloc(ORC_TYPE_F64, &lists);
-  orc_sdk_deck_alloc(ORC_TYPE_U32, &indices);
-  orc_sdk_deck_alloc(ORC_TYPE_F64, &out_items);
+  orc_sdk_handle_alloc(ORC_TYPE_F64, &lists);
+  orc_sdk_handle_alloc(ORC_TYPE_U32, &indices);
+  orc_sdk_handle_alloc(ORC_TYPE_F64, &out_items);
   ORC_SDK_REQUIRE_WITH_MSG(
     lists.items != NULL && indices.items != NULL && out_items.items != NULL,
     "Unable to allocate decks");
   { /*Depth 2 lists, with one index.*/
     // Populate the inputs with data - in a real scenario this data is computed
     // by upstream functions. Here we pretend.
-    DECK_INIT(lists.items,
-              double,
-              ((1.1, 2.23, 3.34, 3.14159),
-               (4.4, 5.5, 6.6, 6.28318),
-               (7.7, 8.8, 9.9, 10.1, 3.14159),
-               (11.1, 12.1, 13.1, 14.1, 15.1)));
+    ORC_SDK_DECK_INIT(lists.items,
+                      double,
+                      ((1.1, 2.23, 3.34, 3.14159),
+                       (4.4, 5.5, 6.6, 6.28318),
+                       (7.7, 8.8, 9.9, 10.1, 3.14159),
+                       (11.1, 12.1, 13.1, 14.1, 15.1)));
     oh_update(&lists);
     ORC_SDK_REQUIRE(deck_len(lists.items) == 18);
-    DECK_INIT(indices.items, uint32_t, 2);
+    ORC_SDK_DECK_INIT(indices.items, uint32_t, 2);
     oh_update(&indices);
     ORC_SDK_REQUIRE(deck_len(indices.items) == 1);
     // Run the block - In a real scenario, this function is provided by a plugin DLL.
@@ -3179,7 +3179,7 @@ void test_list_item_combinations(void)
     }
   }
   { /* Same depth 2 lists, with a list of indices. */
-    DECK_INIT(indices.items, uint32_t, (0, 1, 2));
+    ORC_SDK_DECK_INIT(indices.items, uint32_t, (0, 1, 2));
     oh_update(&indices);
     deck_clear(out_items.items);  // Clear the outputs.
     oh_update(&out_items);
@@ -3196,7 +3196,7 @@ void test_list_item_combinations(void)
     }
   }
   { /* Same depth 2 lists as before, with depth-2 indices. */
-    DECK_INIT(indices.items, uint32_t, ((0, 1, 2), (1, 2, 3)));
+    ORC_SDK_DECK_INIT(indices.items, uint32_t, ((0, 1, 2), (1, 2, 3)));
     oh_update(&indices);
     deck_clear(out_items.items);  // Clear the outputs.
     oh_update(&out_items);
@@ -3205,7 +3205,7 @@ void test_list_item_combinations(void)
     oh_update(&out_items);
     double *actual   = (double *)out_items.items;
     double *expected = NULL;
-    DECK_INIT(expected, double, ((1.1, 5.5, 9.9, 13.1), (2.23, 6.6, 10.1, 14.1)));
+    ORC_SDK_DECK_INIT(expected, double, ((1.1, 5.5, 9.9, 13.1), (2.23, 6.6, 10.1, 14.1)));
     ORC_SDK_REQUIRE(deck_max_depth(actual) == deck_max_depth(expected));
     size_t n_marks = 0;
     {
@@ -3227,9 +3227,9 @@ void test_list_item_combinations(void)
   }
   // Clean up decks - In a real scenario, the host program is cleaning up, by calling
   // below functions, which are defined inside a plugin.
-  ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_deck_free(&lists));
-  ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_deck_free(&indices));
-  ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_deck_free(&out_items));
+  ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_handle_free(&lists));
+  ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_handle_free(&indices));
+  ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_handle_free(&out_items));
 }
 
 void test_add_f64_combinations(void)
@@ -3237,16 +3237,16 @@ void test_add_f64_combinations(void)
   /*=== Tests two-input scalar addition: equal lengths, broadcast, and depth-2 inputs.
    * ===*/
   OrcHandle a = {0}, b = {0}, out = {0};
-  orc_sdk_deck_alloc(ORC_TYPE_F64, &a);
-  orc_sdk_deck_alloc(ORC_TYPE_F64, &b);
-  orc_sdk_deck_alloc(ORC_TYPE_F64, &out);
+  orc_sdk_handle_alloc(ORC_TYPE_F64, &a);
+  orc_sdk_handle_alloc(ORC_TYPE_F64, &b);
+  orc_sdk_handle_alloc(ORC_TYPE_F64, &out);
   ORC_SDK_REQUIRE_WITH_MSG(a.items != NULL && b.items != NULL && out.items != NULL,
                            "Unable to allocate decks");
 
   { /* Flat equal-length inputs: a and b each have 3 scalars (stack_depth=2). */
-    DECK_INIT(a.items, double, (1.0, 2.0, 3.0));
+    ORC_SDK_DECK_INIT(a.items, double, (1.0, 2.0, 3.0));
     oh_update(&a);
-    DECK_INIT(b.items, double, (10.0, 20.0, 30.0));
+    ORC_SDK_DECK_INIT(b.items, double, (10.0, 20.0, 30.0));
     oh_update(&b);
 
     _plugin_function_add_f64(&a, &b, &out);
@@ -3262,9 +3262,9 @@ void test_add_f64_combinations(void)
     }
   }
   { /* Flat inputs, broadcast-last: a has 4 scalars, b has 2 (stack_depth=2). */
-    DECK_INIT(a.items, double, (1.0, 2.0, 3.0, 4.0));
+    ORC_SDK_DECK_INIT(a.items, double, (1.0, 2.0, 3.0, 4.0));
     oh_update(&a);
-    DECK_INIT(b.items, double, (10.0, 20.0));
+    ORC_SDK_DECK_INIT(b.items, double, (10.0, 20.0));
     oh_update(&b);
     deck_clear(out.items);
     oh_update(&out);
@@ -3283,9 +3283,9 @@ void test_add_f64_combinations(void)
     }
   }
   { /* Depth-2 inputs, equal groups: 2 inner groups of 2 items each (stack_depth=3). */
-    DECK_INIT(a.items, double, ((1.0, 2.0), (3.0, 4.0)));
+    ORC_SDK_DECK_INIT(a.items, double, ((1.0, 2.0), (3.0, 4.0)));
     oh_update(&a);
-    DECK_INIT(b.items, double, ((10.0, 20.0), (30.0, 40.0)));
+    ORC_SDK_DECK_INIT(b.items, double, ((10.0, 20.0), (30.0, 40.0)));
     oh_update(&b);
     deck_clear(out.items);
     oh_update(&out);
@@ -3295,7 +3295,7 @@ void test_add_f64_combinations(void)
     oh_update(&out);
     double *actual   = (double *)out.items;
     double *expected = NULL;
-    DECK_INIT(expected, double, ((11.0, 22.0), (33.0, 44.0)));
+    ORC_SDK_DECK_INIT(expected, double, ((11.0, 22.0), (33.0, 44.0)));
     ORC_SDK_REQUIRE(deck_max_depth(actual) == deck_max_depth(expected));
     size_t n_marks = 0;
     {
@@ -3317,11 +3317,11 @@ void test_add_f64_combinations(void)
   }
   { /* Depth-2 inputs, broadcast-last at inner-group level: a has 2 groups, b has 1
        (stack_depth=3). */
-    DECK_INIT(a.items, double, ((1.0, 2.0), (3.0, 4.0)));
+    ORC_SDK_DECK_INIT(a.items, double, ((1.0, 2.0), (3.0, 4.0)));
     oh_update(&a);
     // b is a single depth-2 group (((10.0, 20.0))): b's one group broadcasts across a's
     // two.
-    DECK_INIT(b.items, double, (((10.0, 20.0))));
+    ORC_SDK_DECK_INIT(b.items, double, (((10.0, 20.0))));
     oh_update(&b);
     deck_clear(out.items);
     oh_update(&out);
@@ -3331,7 +3331,7 @@ void test_add_f64_combinations(void)
     oh_update(&out);
     double *actual   = (double *)out.items;
     double *expected = NULL;
-    DECK_INIT(expected, double, (((11.0, 22.0), (13.0, 24.0))));
+    ORC_SDK_DECK_INIT(expected, double, (((11.0, 22.0), (13.0, 24.0))));
     ORC_SDK_REQUIRE(deck_max_depth(actual) == deck_max_depth(expected));
     size_t n_marks = 0;
     {
@@ -3351,9 +3351,9 @@ void test_add_f64_combinations(void)
     }
     deck_free(expected);
   }
-  ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_deck_free(&a));
-  ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_deck_free(&b));
-  ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_deck_free(&out));
+  ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_handle_free(&a));
+  ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_handle_free(&b));
+  ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_handle_free(&out));
 }
 
 // This simulates a function that takes depth=1 lists of F64 and outputs the length of
@@ -3385,13 +3385,13 @@ void test_list_length_combinations(void)
    * empty lists producing zeros. ===*/
   OrcHandle in  = {0};
   OrcHandle out = {0};
-  orc_sdk_deck_alloc(ORC_TYPE_F64, &in);
-  orc_sdk_deck_alloc(ORC_TYPE_U64, &out);
+  orc_sdk_handle_alloc(ORC_TYPE_F64, &in);
+  orc_sdk_handle_alloc(ORC_TYPE_U64, &out);
   ORC_SDK_REQUIRE_WITH_MSG(in.items != NULL && out.items != NULL,
                            "Unable to allocate decks");
 
   { /* Depth-2 input: 5 lists, some empty (stack_depth=2). */
-    DECK_INIT(in.items, double, ((1.0, 2.0, 3.0), (), (4.0), (), (5.0, 6.0)));
+    ORC_SDK_DECK_INIT(in.items, double, ((1.0, 2.0, 3.0), (), (4.0), (), (5.0, 6.0)));
     oh_update(&in);
 
     _plugin_function_list_length(&in, &out);
@@ -3408,7 +3408,7 @@ void test_list_length_combinations(void)
   }
   { /* Depth-3 input: two outer groups each containing lists, with empty lists inside
        (stack_depth=3). */
-    DECK_INIT(in.items, double, (((1.0, 2.0), ()), ((3.0, 4.0, 5.0), (), (6.0))));
+    ORC_SDK_DECK_INIT(in.items, double, (((1.0, 2.0), ()), ((3.0, 4.0, 5.0), (), (6.0))));
     oh_update(&in);
     deck_clear(out.items);
     oh_update(&out);
@@ -3418,7 +3418,7 @@ void test_list_length_combinations(void)
     oh_update(&out);
     uint64_t *actual   = (uint64_t *)out.items;
     uint64_t *expected = NULL;
-    DECK_INIT(expected, uint64_t, ((2, 0), (3, 0, 1)));
+    ORC_SDK_DECK_INIT(expected, uint64_t, ((2, 0), (3, 0, 1)));
     ORC_SDK_REQUIRE(deck_max_depth(actual) == deck_max_depth(expected));
     size_t n_marks = 0;
     {
@@ -3438,8 +3438,8 @@ void test_list_length_combinations(void)
     }
     deck_free(expected);
   }
-  ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_deck_free(&in));
-  ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_deck_free(&out));
+  ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_handle_free(&in));
+  ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_handle_free(&out));
 }
 
 void test_two_output_combinations(void)
@@ -3447,16 +3447,16 @@ void test_two_output_combinations(void)
   /*=== Tests multiple-output Combinations: sq+cb (1 in, 2 out) and add+mul (2 in, 2 out).
    * ===*/
   OrcHandle in_a = {0}, in_b = {0}, out1 = {0}, out2 = {0};
-  orc_sdk_deck_alloc(ORC_TYPE_F64, &in_a);
-  orc_sdk_deck_alloc(ORC_TYPE_F64, &in_b);
-  orc_sdk_deck_alloc(ORC_TYPE_F64, &out1);
-  orc_sdk_deck_alloc(ORC_TYPE_F64, &out2);
+  orc_sdk_handle_alloc(ORC_TYPE_F64, &in_a);
+  orc_sdk_handle_alloc(ORC_TYPE_F64, &in_b);
+  orc_sdk_handle_alloc(ORC_TYPE_F64, &out1);
+  orc_sdk_handle_alloc(ORC_TYPE_F64, &out2);
   ORC_SDK_REQUIRE_WITH_MSG(
     in_a.items != NULL && in_b.items != NULL && out1.items != NULL && out2.items != NULL,
     "Unable to allocate decks");
 
   { /* One input, two outputs: square and cube of 3 scalars (stack_depth=2). */
-    DECK_INIT(in_a.items, double, (2.0, 3.0, 4.0));
+    ORC_SDK_DECK_INIT(in_a.items, double, (2.0, 3.0, 4.0));
     oh_update(&in_a);
 
     _plugin_function_sq_cb(&in_a, &out1, &out2);
@@ -3477,9 +3477,9 @@ void test_two_output_combinations(void)
     }
   }
   { /* Two inputs, two outputs: sum and product of 3 scalars each (stack_depth=2). */
-    DECK_INIT(in_a.items, double, (1.0, 2.0, 3.0));
+    ORC_SDK_DECK_INIT(in_a.items, double, (1.0, 2.0, 3.0));
     oh_update(&in_a);
-    DECK_INIT(in_b.items, double, (4.0, 5.0, 6.0));
+    ORC_SDK_DECK_INIT(in_b.items, double, (4.0, 5.0, 6.0));
     oh_update(&in_b);
     deck_clear(out1.items);
     oh_update(&out1);
@@ -3503,10 +3503,10 @@ void test_two_output_combinations(void)
       ORC_SDK_REQUIRE(prod_actual[i] == expected_prod[i]);
     }
   }
-  ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_deck_free(&in_a));
-  ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_deck_free(&in_b));
-  ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_deck_free(&out1));
-  ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_deck_free(&out2));
+  ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_handle_free(&in_a));
+  ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_handle_free(&in_b));
+  ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_handle_free(&out1));
+  ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_handle_free(&out2));
 }
 
 void test_first_add_combinations(void)
@@ -3514,16 +3514,16 @@ void test_first_add_combinations(void)
   /*=== Tests arg_depth=1: plugin receives depth-1 list views and sums their first
    * elements. ===*/
   OrcHandle a = {0}, b = {0}, out = {0};
-  orc_sdk_deck_alloc(ORC_TYPE_F64, &a);
-  orc_sdk_deck_alloc(ORC_TYPE_F64, &b);
-  orc_sdk_deck_alloc(ORC_TYPE_F64, &out);
+  orc_sdk_handle_alloc(ORC_TYPE_F64, &a);
+  orc_sdk_handle_alloc(ORC_TYPE_F64, &b);
+  orc_sdk_handle_alloc(ORC_TYPE_F64, &out);
   ORC_SDK_REQUIRE_WITH_MSG(a.items != NULL && b.items != NULL && out.items != NULL,
                            "Unable to allocate decks");
 
   { /* Equal-length: a and b each have 3 depth=1 groups (stack_depth=2). */
-    DECK_INIT(a.items, double, ((1.0, 99.0), (2.0, 99.0), (3.0, 99.0)));
+    ORC_SDK_DECK_INIT(a.items, double, ((1.0, 99.0), (2.0, 99.0), (3.0, 99.0)));
     oh_update(&a);
-    DECK_INIT(b.items, double, ((10.0, 99.0), (20.0, 99.0), (30.0, 99.0)));
+    ORC_SDK_DECK_INIT(b.items, double, ((10.0, 99.0), (20.0, 99.0), (30.0, 99.0)));
     oh_update(&b);
 
     _plugin_function_first_add(&a, &b, &out);
@@ -3539,9 +3539,10 @@ void test_first_add_combinations(void)
     }
   }
   { /* Broadcast-last at group level: a has 4 groups, b has 2 (stack_depth=2). */
-    DECK_INIT(a.items, double, ((1.0, 99.0), (2.0, 99.0), (3.0, 99.0), (4.0, 99.0)));
+    ORC_SDK_DECK_INIT(
+      a.items, double, ((1.0, 99.0), (2.0, 99.0), (3.0, 99.0), (4.0, 99.0)));
     oh_update(&a);
-    DECK_INIT(b.items, double, ((10.0, 99.0), (20.0, 99.0)));
+    ORC_SDK_DECK_INIT(b.items, double, ((10.0, 99.0), (20.0, 99.0)));
     oh_update(&b);
     deck_clear(out.items);
     oh_update(&out);
@@ -3559,9 +3560,9 @@ void test_first_add_combinations(void)
       ORC_SDK_REQUIRE(actual[i] == expected[i]);
     }
   }
-  ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_deck_free(&a));
-  ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_deck_free(&b));
-  ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_deck_free(&out));
+  ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_handle_free(&a));
+  ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_handle_free(&b));
+  ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_handle_free(&out));
 }
 
 // ==================== Shuffling decks with a proxy ====================
@@ -3701,8 +3702,8 @@ void test_deck_from_proxy_copy_items(void)
   /*=== COPY_ITEMS: copies items from input, structure (marks) from proxy. ===*/
   { /* Flatten a depth-2 deck. */
     OrcHandle in = {0}, out = {0};
-    orc_sdk_deck_alloc(ORC_TYPE_F64, &in);
-    DECK_INIT(in.items, double, ((1.0, 2.0), (3.0, 4.0, 5.0)));
+    orc_sdk_handle_alloc(ORC_TYPE_F64, &in);
+    ORC_SDK_DECK_INIT(in.items, double, ((1.0, 2.0), (3.0, 4.0, 5.0)));
     oh_update(&in);
 
     OrcHandle proxy = _make_flattened_proxy(in.items);
@@ -3716,13 +3717,13 @@ void test_deck_from_proxy_copy_items(void)
     ORC_SDK_REQUIRE(actual[3] == 4.0 && actual[4] == 5.0);
 
     orc_sdk_arr_free(proxy.marks);
-    ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_deck_free(&out));
-    ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_deck_free(&in));
+    ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_handle_free(&out));
+    ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_handle_free(&in));
   }
   { /* Flatten a depth-3 deck. */
     OrcHandle in = {0}, out = {0};
-    orc_sdk_deck_alloc(ORC_TYPE_F64, &in);
-    DECK_INIT(in.items, double, (((1.0, 2.0), (3.0)), ((4.0, 5.0))));
+    orc_sdk_handle_alloc(ORC_TYPE_F64, &in);
+    ORC_SDK_DECK_INIT(in.items, double, (((1.0, 2.0), (3.0)), ((4.0, 5.0))));
     oh_update(&in);
 
     OrcHandle proxy = _make_flattened_proxy(in.items);
@@ -3734,50 +3735,50 @@ void test_deck_from_proxy_copy_items(void)
     ORC_SDK_REQUIRE(actual[0] == 1.0 && actual[4] == 5.0);
 
     orc_sdk_arr_free(proxy.marks);
-    ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_deck_free(&out));
-    ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_deck_free(&in));
+    ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_handle_free(&out));
+    ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_handle_free(&in));
   }
   { /* Graft a flat deck: (1, 2, 3) → ((1), (2), (3)). */
     OrcHandle in = {0}, out = {0};
-    orc_sdk_deck_alloc(ORC_TYPE_F64, &in);
-    DECK_INIT(in.items, double, (1.0, 2.0, 3.0));
+    orc_sdk_handle_alloc(ORC_TYPE_F64, &in);
+    ORC_SDK_DECK_INIT(in.items, double, (1.0, 2.0, 3.0));
     oh_update(&in);
 
     OrcHandle proxy = _make_grafted_proxy(in.items);
     orc_sdk_deck_from_proxy(&in, 1, ORC_DECK_PROXY_COPY_ITEMS, &proxy, &out);
 
     double *expected = NULL;
-    DECK_INIT(expected, double, ((1.0), (2.0), (3.0)));
+    ORC_SDK_DECK_INIT(expected, double, ((1.0), (2.0), (3.0)));
     _assert_decks_match(out.items, expected, sizeof(double));
     ORC_SDK_REQUIRE(out.type_id == ORC_TYPE_F64);
 
     deck_free(expected);
     orc_sdk_arr_free(proxy.marks);
-    ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_deck_free(&out));
-    ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_deck_free(&in));
+    ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_handle_free(&out));
+    ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_handle_free(&in));
   }
   { /* Graft a depth-2 deck: ((1, 2), (3)) → (((1, 2)), ((3))). */
     OrcHandle in = {0}, out = {0};
-    orc_sdk_deck_alloc(ORC_TYPE_F64, &in);
-    DECK_INIT(in.items, double, ((1.0, 2.0), (3.0)));
+    orc_sdk_handle_alloc(ORC_TYPE_F64, &in);
+    ORC_SDK_DECK_INIT(in.items, double, ((1.0, 2.0), (3.0)));
     oh_update(&in);
 
     OrcHandle proxy = _make_grafted_proxy(in.items);
     orc_sdk_deck_from_proxy(&in, 1, ORC_DECK_PROXY_COPY_ITEMS, &proxy, &out);
 
     double *expected = NULL;
-    DECK_INIT(expected, double, (((1.0), (2.0)), ((3.0))));
+    ORC_SDK_DECK_INIT(expected, double, (((1.0), (2.0)), ((3.0))));
     _assert_decks_match(out.items, expected, sizeof(double));
 
     deck_free(expected);
     orc_sdk_arr_free(proxy.marks);
-    ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_deck_free(&out));
-    ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_deck_free(&in));
+    ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_handle_free(&out));
+    ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_handle_free(&in));
   }
   { /* Simplify: remove gaps in depth levels. */
     OrcHandle in = {0}, out = {0};
-    orc_sdk_deck_alloc(ORC_TYPE_F64, &in);
-    DECK_INIT(in.items, double, ((1.0, 2.0), (3.0, 4.0)));
+    orc_sdk_handle_alloc(ORC_TYPE_F64, &in);
+    ORC_SDK_DECK_INIT(in.items, double, ((1.0, 2.0), (3.0, 4.0)));
     oh_update(&in);
     /* Graft to create a gap in depth levels, then use simplify proxy. */
     deck_graft((void *)in.items);
@@ -3788,15 +3789,15 @@ void test_deck_from_proxy_copy_items(void)
 
     /* Simplify should match deck_simplify on an equivalent deck. */
     double *expected = NULL;
-    DECK_INIT(expected, double, ((1.0, 2.0), (3.0, 4.0)));
+    ORC_SDK_DECK_INIT(expected, double, ((1.0, 2.0), (3.0, 4.0)));
     deck_graft(expected);
     deck_simplify(expected);
     _assert_decks_match(out.items, expected, sizeof(double));
 
     deck_free(expected);
     orc_sdk_arr_free(proxy.marks);
-    ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_deck_free(&out));
-    ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_deck_free(&in));
+    ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_handle_free(&out));
+    ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_handle_free(&in));
   }
 }
 
@@ -3805,8 +3806,8 @@ void test_deck_from_proxy_shuffle(void)
   /*=== SHUFFLE: copies items one-at-a-time using proxy ItemProxy references. ===*/
   { /* Flat reverse: (1, 2, 3) → (3, 2, 1). */
     OrcHandle in = {0}, out = {0};
-    orc_sdk_deck_alloc(ORC_TYPE_F64, &in);
-    DECK_INIT(in.items, double, (1.0, 2.0, 3.0));
+    orc_sdk_handle_alloc(ORC_TYPE_F64, &in);
+    ORC_SDK_DECK_INIT(in.items, double, (1.0, 2.0, 3.0));
     oh_update(&in);
 
     OrcItemProxy *pdeck = NULL;
@@ -3817,19 +3818,19 @@ void test_deck_from_proxy_shuffle(void)
     orc_sdk_deck_from_proxy(&in, 1, ORC_DECK_PROXY_SHUFFLE, &proxy, &out);
 
     double *expected = NULL;
-    DECK_INIT(expected, double, (3.0, 2.0, 1.0));
+    ORC_SDK_DECK_INIT(expected, double, (3.0, 2.0, 1.0));
     _assert_decks_match(out.items, expected, sizeof(double));
     ORC_SDK_REQUIRE(out.type_id == ORC_TYPE_F64);
 
     deck_free(expected);
     deck_free(pdeck);
-    ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_deck_free(&out));
-    ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_deck_free(&in));
+    ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_handle_free(&out));
+    ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_handle_free(&in));
   }
   { /* Nested reverse: ((1, 2), (3, 4, 5)) → ((2, 1), (5, 4, 3)). */
     OrcHandle in = {0}, out = {0};
-    orc_sdk_deck_alloc(ORC_TYPE_F64, &in);
-    DECK_INIT(in.items, double, ((1.0, 2.0), (3.0, 4.0, 5.0)));
+    orc_sdk_handle_alloc(ORC_TYPE_F64, &in);
+    ORC_SDK_DECK_INIT(in.items, double, ((1.0, 2.0), (3.0, 4.0, 5.0)));
     oh_update(&in);
 
     OrcItemProxy *pdeck = NULL;
@@ -3844,19 +3845,19 @@ void test_deck_from_proxy_shuffle(void)
     orc_sdk_deck_from_proxy(&in, 1, ORC_DECK_PROXY_SHUFFLE, &proxy, &out);
 
     double *expected = NULL;
-    DECK_INIT(expected, double, ((2.0, 1.0), (5.0, 4.0, 3.0)));
+    ORC_SDK_DECK_INIT(expected, double, ((2.0, 1.0), (5.0, 4.0, 3.0)));
     _assert_decks_match(out.items, expected, sizeof(double));
 
     deck_free(expected);
     deck_free(pdeck);
-    ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_deck_free(&out));
-    ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_deck_free(&in));
+    ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_handle_free(&out));
+    ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_handle_free(&in));
   }
   { /* Generic list_item: pick item at index 1 from each sublist.
        ((1, 2, 3), (4, 5)) → (2, 5). */
     OrcHandle in = {0}, out = {0};
-    orc_sdk_deck_alloc(ORC_TYPE_F64, &in);
-    DECK_INIT(in.items, double, ((1.0, 2.0, 3.0), (4.0, 5.0)));
+    orc_sdk_handle_alloc(ORC_TYPE_F64, &in);
+    ORC_SDK_DECK_INIT(in.items, double, ((1.0, 2.0, 3.0), (4.0, 5.0)));
     oh_update(&in);
 
     OrcItemProxy *pdeck = NULL;
@@ -3871,17 +3872,17 @@ void test_deck_from_proxy_shuffle(void)
     ORC_SDK_REQUIRE(actual[0] == 2.0 && actual[1] == 5.0);
 
     deck_free(pdeck);
-    ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_deck_free(&out));
-    ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_deck_free(&in));
+    ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_handle_free(&out));
+    ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_handle_free(&in));
   }
   { /* Multi-input shuffle: interleave from two decks.
        A=(1, 2), B=(10, 20) → (1, 10, 2, 20). */
     OrcHandle a = {0}, b = {0}, out = {0};
-    orc_sdk_deck_alloc(ORC_TYPE_F64, &a);
-    orc_sdk_deck_alloc(ORC_TYPE_F64, &b);
-    DECK_INIT(a.items, double, (1.0, 2.0));
+    orc_sdk_handle_alloc(ORC_TYPE_F64, &a);
+    orc_sdk_handle_alloc(ORC_TYPE_F64, &b);
+    ORC_SDK_DECK_INIT(a.items, double, (1.0, 2.0));
     oh_update(&a);
-    DECK_INIT(b.items, double, (10.0, 20.0));
+    ORC_SDK_DECK_INIT(b.items, double, (10.0, 20.0));
     oh_update(&b);
 
     OrcItemProxy *pdeck = NULL;
@@ -3895,14 +3896,14 @@ void test_deck_from_proxy_shuffle(void)
     orc_sdk_deck_from_proxy(inputs, 2, ORC_DECK_PROXY_SHUFFLE, &proxy, &out);
 
     double *expected = NULL;
-    DECK_INIT(expected, double, (1.0, 10.0, 2.0, 20.0));
+    ORC_SDK_DECK_INIT(expected, double, (1.0, 10.0, 2.0, 20.0));
     _assert_decks_match(out.items, expected, sizeof(double));
 
     deck_free(expected);
     deck_free(pdeck);
-    ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_deck_free(&out));
-    ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_deck_free(&b));
-    ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_deck_free(&a));
+    ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_handle_free(&out));
+    ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_handle_free(&b));
+    ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_handle_free(&a));
   }
 }
 
@@ -3911,8 +3912,8 @@ void test_deck_from_proxy_type_agnostic(void)
   /*=== Verifies orc_deck_from_proxy preserves type across u32, i32, i16. ===*/
   { /* u32 flatten. */
     OrcHandle in = {0}, out = {0};
-    orc_sdk_deck_alloc(ORC_TYPE_U32, &in);
-    DECK_INIT(in.items, uint32_t, ((10, 20), (30)));
+    orc_sdk_handle_alloc(ORC_TYPE_U32, &in);
+    ORC_SDK_DECK_INIT(in.items, uint32_t, ((10, 20), (30)));
     oh_update(&in);
 
     OrcHandle proxy = _make_flattened_proxy(in.items);
@@ -3925,13 +3926,13 @@ void test_deck_from_proxy_type_agnostic(void)
     ORC_SDK_REQUIRE(actual[0] == 10 && actual[1] == 20 && actual[2] == 30);
 
     orc_sdk_arr_free(proxy.marks);
-    ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_deck_free(&out));
-    ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_deck_free(&in));
+    ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_handle_free(&out));
+    ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_handle_free(&in));
   }
   { /* i32 shuffle reverse. */
     OrcHandle in = {0}, out = {0};
-    orc_sdk_deck_alloc(ORC_TYPE_I32, &in);
-    DECK_INIT(in.items, int32_t, (-1, -2, -3, -4));
+    orc_sdk_handle_alloc(ORC_TYPE_I32, &in);
+    ORC_SDK_DECK_INIT(in.items, int32_t, (-1, -2, -3, -4));
     oh_update(&in);
 
     OrcItemProxy *pdeck = NULL;
@@ -3949,13 +3950,13 @@ void test_deck_from_proxy_type_agnostic(void)
                     actual[3] == -1);
 
     deck_free(pdeck);
-    ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_deck_free(&out));
-    ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_deck_free(&in));
+    ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_handle_free(&out));
+    ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_handle_free(&in));
   }
   { /* i16 graft. */
     OrcHandle in = {0}, out = {0};
-    orc_sdk_deck_alloc(ORC_TYPE_I16, &in);
-    DECK_INIT(in.items, int16_t, (10, 20, 30));
+    orc_sdk_handle_alloc(ORC_TYPE_I16, &in);
+    ORC_SDK_DECK_INIT(in.items, int16_t, (10, 20, 30));
     oh_update(&in);
 
     OrcHandle proxy = _make_grafted_proxy(in.items);
@@ -3968,7 +3969,7 @@ void test_deck_from_proxy_type_agnostic(void)
     ORC_SDK_REQUIRE(actual[0] == 10 && actual[1] == 20 && actual[2] == 30);
 
     orc_sdk_arr_free(proxy.marks);
-    ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_deck_free(&out));
-    ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_deck_free(&in));
+    ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_handle_free(&out));
+    ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_handle_free(&in));
   }
 }

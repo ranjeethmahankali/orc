@@ -1396,7 +1396,7 @@ DeckWriter *comb_get_output(void *ptr, size_t const index)
 
 // ========== FFI helper functions ==========
 
-OrcError orc_sdk_deck_alloc(OrcTypeId const id, OrcHandle *const out)
+OrcError orc_sdk_handle_alloc(OrcTypeId const id, OrcHandle *const out)
 {
   if (out == NULL) {
     return ORC_ERROR_INVALID_HANDLE;
@@ -1515,7 +1515,7 @@ static CopyItemsFn _deck_item_get_copy_items_fn(OrcTypeId const type_id)
   }
 }
 
-OrcError orc_sdk_deck_free(OrcHandle *const handle)
+OrcError orc_sdk_handle_free(OrcHandle *const handle)
 {
   if (handle == NULL) {
     return ORC_ERROR_NONE;
@@ -1557,7 +1557,7 @@ OrcError orc_sdk_deck_from_proxy(OrcHandle const   *inputs,
       return ORC_ERROR_TYPE_MISMATCH;
     }
   }
-  OrcError const err = orc_sdk_deck_alloc(id, out);
+  OrcError const err = orc_sdk_handle_alloc(id, out);
   if (err != ORC_ERROR_NONE) {
     return err;
   }
@@ -1567,7 +1567,7 @@ OrcError orc_sdk_deck_from_proxy(OrcHandle const   *inputs,
   case ORC_DECK_PROXY_COPY_ALL: {
     if (n_inputs != 1) {
       // COPY_ALL is only valid with a single input.
-      orc_sdk_deck_free(out);
+      orc_sdk_handle_free(out);
       return ORC_ERROR_INVALID_PROXY;
     }
     size_t const n_items = inputs[0].n_items;
@@ -1593,7 +1593,7 @@ OrcError orc_sdk_deck_from_proxy(OrcHandle const   *inputs,
   case ORC_DECK_PROXY_COPY_ITEMS: {
     if (n_inputs != 1) {
       // COPY_ITEMS is only valid with a single input.
-      orc_sdk_deck_free(out);
+      orc_sdk_handle_free(out);
       return ORC_ERROR_INVALID_PROXY;
     }
     size_t const n_items = inputs[0].n_items;
@@ -1645,7 +1645,7 @@ OrcError orc_sdk_deck_from_proxy(OrcHandle const   *inputs,
     oh_update(out);
   } break;
   default:
-    orc_sdk_deck_free(out);
+    orc_sdk_handle_free(out);
     return ORC_ERROR_INVALID_PROXY;
   }
   return ORC_ERROR_NONE;
