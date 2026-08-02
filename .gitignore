@@ -34,7 +34,7 @@ Cargo.lock
 
 # C SDK stuff
 
-/c/build/
+/build/
 /c/make.old
 /c/make.exe
 /c/make

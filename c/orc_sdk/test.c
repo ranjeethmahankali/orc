@@ -2231,7 +2231,7 @@ void test_dv_binary_deck(void)
   const uint8_t DEPTH = 5;
   size_t       *deck  = _binary_deck(DEPTH);
   ORC_SDK_REQUIRE(DEPTH == orc_sdk_deck_max_depth(deck));
-  ORC_SDK_REQUIRE((1 << DEPTH) == orc_sdk_deck_len(deck));
+  ORC_SDK_REQUIRE((size_t)(1 << DEPTH) == orc_sdk_deck_len(deck));
   ORC_SDK_REQUIRE(_orc_sdk_deck_header(deck)->item_size == sizeof(size_t));
   {  // Iterate from level 5.
     size_t          counter = 0;

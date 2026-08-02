@@ -10,25 +10,23 @@
 
 #include "third_party/nob.h"
 
-#define BUILD_DIR "build/"
 #define SDK_SRC_DIR "orc_sdk/"
-#define TEST_RUNNER_SRC_PATH BUILD_DIR "_test_runner.c"
-#define TEST_RUNNER_BIN_PATH BUILD_DIR "test_runner"
-
 #define DECK_OPS_PLUGIN_SRC_DIR "deck_ops_plugin/"
+
 #if defined(_WIN32) || defined(_WIN64)
-#define DECK_OPS_PLUGIN_OUT BUILD_DIR "deck_ops_plugin.dll"
+#define DECK_OPS_PLUGIN_FILENAME "deck_ops_plugin.dll"
 #elif defined(__APPLE__)
-#define DECK_OPS_PLUGIN_OUT BUILD_DIR "deck_ops_plugin.dylib"
+#define DECK_OPS_PLUGIN_FILENAME "deck_ops_plugin.dylib"
 #else
-#define DECK_OPS_PLUGIN_OUT BUILD_DIR "deck_ops_plugin.so"
+#define DECK_OPS_PLUGIN_FILENAME "deck_ops_plugin.so"
 #endif
 
-static void cc_append_flags(Nob_Cmd *cmd)
+static void cc_append_flags(Nob_Cmd *cmd, bool is_release)
 {
   nob_cc_flags(cmd);
   nob_cmd_append(cmd, "-std=c99", "-pedantic");
-  nob_cmd_append(cmd, "-O3");
+  if (is_release)
+    nob_cmd_append(cmd, "-O3");
   nob_cmd_append(cmd, "-I.");  // Include the current directory.
   nob_cmd_append(cmd,
                  "-Werror",
@@ -113,7 +111,11 @@ static bool list_src_files(Nob_File_Paths *dst, char const *dir)
   return true;
 }
 
-static bool build_and_run_tests(Nob_File_Paths const files, char *const test_filter)
+static bool build_and_run_tests(Nob_File_Paths const files,
+                                char *const          test_filter,
+                                bool                 is_release,
+                                char const          *test_runner_src,
+                                char const          *test_runner_bin)
 {
   Nob_String_Builder contents    = {0};
   Nob_String_Builder sbtestnames = {0};
@@ -176,30 +178,30 @@ static bool build_and_run_tests(Nob_File_Paths const files, char *const test_fil
                        "    printf(\"\\nAll tests passed!\\n\\n\");\n"
                        "    return 0;\n}\n");
   }
-  if (!nob_write_entire_file(TEST_RUNNER_SRC_PATH, sbcode.items, sbcode.count)) {
+  if (!nob_write_entire_file(test_runner_src, sbcode.items, sbcode.count)) {
     nob_log(NOB_ERROR, "Unable to write out the test runner code to file.");
     success = false;
     goto cleanup;
   }
   nob_log(NOB_INFO, "Generated the test runner code.");
 build:
-  if (!nob_needs_rebuild(TEST_RUNNER_BIN_PATH, files.items, files.count) &&
-      !nob_needs_rebuild1(TEST_RUNNER_BIN_PATH, TEST_RUNNER_SRC_PATH)) {
+  if (!nob_needs_rebuild(test_runner_bin, files.items, files.count) &&
+      !nob_needs_rebuild1(test_runner_bin, test_runner_src)) {
     nob_log(NOB_INFO, "Test runner is already up to date. Skipping rebuild.");
     goto run;
   }
   // Now build the test runner.
   cmd.count = 0;
   nob_cc(&cmd);
-  cc_append_flags(&cmd);
-  nob_cc_output(&cmd, TEST_RUNNER_BIN_PATH);
+  cc_append_flags(&cmd, is_release);
+  nob_cc_output(&cmd, test_runner_bin);
   for (size_t i = 0; i < files.count; ++i) {
     Nob_String_View sv = nob_sv_from_cstr(files.items[i]);
     if (nob_sv_end_with(sv, ".c")) {
       nob_cc_inputs(&cmd, files.items[i]);
     }
   }
-  nob_cc_inputs(&cmd, TEST_RUNNER_SRC_PATH);
+  nob_cc_inputs(&cmd, test_runner_src);
   nob_cmd_append(&cmd, "-lm");  // Link math.
   if (!nob_cmd_run_sync(cmd)) {
     nob_log(NOB_ERROR, "Unable to build the test runner");
@@ -209,7 +211,7 @@ build:
   nob_log(NOB_INFO, "Built the test runner. Now running tests...");
 run:
   cmd.count = 0;
-  nob_cmd_append(&cmd, TEST_RUNNER_BIN_PATH);
+  nob_cmd_append(&cmd, test_runner_bin);
   if (!nob_cmd_run_sync(cmd)) {
     nob_log(NOB_ERROR, "Tests failed");
     success = false;
@@ -226,12 +228,25 @@ cleanup:
 int main(int argc, char **argv)
 {
   NOB_GO_REBUILD_URSELF(argc, argv);
-  char *test_filter = NULL;
-  if (argc > 1) {
-    test_filter = argv[1];
+  if (argc > 3) {  // Too many arguments.
+    return -1;
   }
-  int ret = 0;
-  if (!nob_mkdir_if_not_exists(BUILD_DIR)) {
+  bool  is_release  = false;
+  char *test_filter = NULL;
+  for (int i = 1; i < argc; ++i) {
+    if (strcmp(argv[i], "--release") == 0) {
+      is_release = true;
+    }
+    else {
+      test_filter = argv[i];
+    }
+  }
+  char const *build_dir       = is_release ? "../build/release/" : "../build/debug/";
+  char const *test_runner_src = nob_temp_sprintf("%s_test_runner.c", build_dir);
+  char const *test_runner_bin = nob_temp_sprintf("%stest_runner", build_dir);
+  char const *deck_ops_out = nob_temp_sprintf("%s" DECK_OPS_PLUGIN_FILENAME, build_dir);
+  int         ret          = 0;
+  if (!nob_mkdir_if_not_exists("build/") || !nob_mkdir_if_not_exists(build_dir)) {
     ret = 1;
     goto cleanup;
   }
@@ -242,7 +257,8 @@ int main(int argc, char **argv)
       ret = 1;
       goto cleanup;
     }
-    if (!build_and_run_tests(srcfiles, test_filter)) {
+    if (!build_and_run_tests(
+          srcfiles, test_filter, is_release, test_runner_src, test_runner_bin)) {
       ret = 1;
       goto cleanup;
     }
@@ -252,23 +268,21 @@ int main(int argc, char **argv)
      // inputs.
     Nob_Cmd cmd = {0};
     nob_cc(&cmd);
-    cc_append_flags(&cmd);
+    cc_append_flags(&cmd, is_release);
     nob_cmd_append(&cmd, "-shared", "-fPIC");
-    nob_cc_output(&cmd, DECK_OPS_PLUGIN_OUT);
+    nob_cc_output(&cmd, deck_ops_out);
     for (size_t i = 0; i < srcfiles.count; ++i) {
       if (nob_sv_end_with(nob_sv_from_cstr(srcfiles.items[i]), ".c")) {
         nob_cc_inputs(&cmd, srcfiles.items[i]);
       }
     }
     // Check if the SDK source files have been modified.
-    bool const rebuild =
-      nob_needs_rebuild(DECK_OPS_PLUGIN_OUT, srcfiles.items, srcfiles.count);
+    bool const rebuild = nob_needs_rebuild(deck_ops_out, srcfiles.items, srcfiles.count);
     if (!list_src_files(&srcfiles, DECK_OPS_PLUGIN_SRC_DIR)) {
       ret = 1;
       goto cleanup;
     }
-    if (rebuild ||
-        nob_needs_rebuild(DECK_OPS_PLUGIN_OUT, srcfiles.items, srcfiles.count)) {
+    if (rebuild || nob_needs_rebuild(deck_ops_out, srcfiles.items, srcfiles.count)) {
       for (size_t i = 0; i < srcfiles.count; ++i) {
         if (nob_sv_end_with(nob_sv_from_cstr(srcfiles.items[i]), ".c")) {
           nob_cc_inputs(&cmd, srcfiles.items[i]);
