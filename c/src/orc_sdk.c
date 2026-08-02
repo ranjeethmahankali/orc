@@ -1146,6 +1146,52 @@ uint8_t _oh_max_depth(OrcHandle const *handle)
   return 0;
 }
 
+typedef void (*FreeFn)(void *);
+
+static FreeFn _deck_item_get_free_fn(OrcTypeId const type_id)
+{
+  switch (type_id) {
+  case ORC_TYPE_U8:
+  case ORC_TYPE_U16:
+  case ORC_TYPE_U32:
+  case ORC_TYPE_U64:
+    // Scalars.
+  case ORC_TYPE_F32:
+  case ORC_TYPE_F64:
+    // Signed integers.
+  case ORC_TYPE_I8:
+  case ORC_TYPE_I16:
+  case ORC_TYPE_I32:
+  case ORC_TYPE_I64:
+    // Proxy for an item in a tree.
+  case ORC_TYPE_PROXY:
+    return NULL;
+  default:
+    TODO("The plugin should return a function pointer that can free this datatype.");
+  }
+}
+
+OrcError _handle_free_fn(OrcHandle *const handle)
+{
+  if (handle == NULL) {
+    return ORC_ERROR_NONE;
+  }
+  REQUIRE_WITH_MSG(handle->handle == (uint64_t)handle->items,
+                   "In this implementation the handle is just the pointer.");
+  FreeFn const free_fn = _deck_item_get_free_fn(handle->type_id);
+  if (free_fn) {
+    // Free the individual items from the deck before freeing the Deck container itself.
+    size_t const count = deck_len(handle->items);
+    char        *data  = (char *)handle->items;
+    for (size_t i = 0; i < count; ++i, data += handle->item_size) {
+      free_fn(data);
+    }
+  }
+  _deck_free_impl((void *)handle->items);  // Now we can free the deck container.
+  memset(handle, 0, sizeof(OrcHandle));
+  return ORC_ERROR_NONE;
+}
+
 void oh_update(OrcHandle *handle)
 {
   _DeckHeader *h        = _deck_header(handle->items);
@@ -1156,6 +1202,7 @@ void oh_update(OrcHandle *handle)
   handle->stride_offset = h->stride_offset;
   handle->n_marks       = arr_len(h->marks);
   handle->strides       = h->strides;
+  handle->free_fn       = _handle_free_fn;
 }
 
 void *comb_init(OrcHandle const **inputs,
@@ -1465,8 +1512,9 @@ OrcError orc_deck_alloc(OrcTypeId const id, OrcHandle *const out)
   void        *deck_ptr  = _deck_grow_capacity(NULL, out->item_size, INIT_SIZE);
   _DeckHeader *h         = _deck_header(deck_ptr);
   // Assign to the output deck.
-  out->handle = (uint64_t)deck_ptr;
-  out->items  = deck_ptr;
+  out->handle  = (uint64_t)deck_ptr;
+  out->items   = deck_ptr;
+  out->free_fn = _handle_free_fn;
   REQUIRE_WITH_MSG(h->count == 0, "New deck must be empty");
   out->n_items         = h->count;
   out->marks           = h->marks;
@@ -1476,31 +1524,6 @@ OrcError orc_deck_alloc(OrcTypeId const id, OrcHandle *const out)
   out->n_marks = n_marks;
   out->strides = h->strides;
   return ORC_ERROR_NONE;
-}
-
-typedef void (*FreeFn)(void *);
-
-static FreeFn _deck_item_get_free_fn(OrcTypeId const type_id)
-{
-  switch (type_id) {
-  case ORC_TYPE_U8:
-  case ORC_TYPE_U16:
-  case ORC_TYPE_U32:
-  case ORC_TYPE_U64:
-    // Scalars.
-  case ORC_TYPE_F32:
-  case ORC_TYPE_F64:
-    // Signed integers.
-  case ORC_TYPE_I8:
-  case ORC_TYPE_I16:
-  case ORC_TYPE_I32:
-  case ORC_TYPE_I64:
-    // Proxy for an item in a tree.
-  case ORC_TYPE_PROXY:
-    return NULL;
-  default:
-    TODO("The plugin should return a function pointer that can free this datatype.");
-  }
 }
 
 typedef void (*CopyItemsFn)(void const *src, void *dst, size_t const n_items);
@@ -1556,22 +1579,15 @@ static CopyItemsFn _deck_item_get_copy_items_fn(OrcTypeId const type_id)
   }
 }
 
-OrcError orc_deck_free(OrcHandle *const handle)
+OrcError handle_free(OrcHandle *const handle)
 {
-  REQUIRE_WITH_MSG(handle->handle == (uint64_t)handle->items,
-                   "In this implementation the handle is just the pointer.");
-  FreeFn const free_fn = _deck_item_get_free_fn(handle->type_id);
-  if (free_fn) {
-    // Free the individual items from the deck before freeing the Deck container itself.
-    size_t const count = deck_len(handle->items);
-    char        *data  = (char *)handle->items;
-    for (size_t i = 0; i < count; ++i, data += handle->item_size) {
-      free_fn(data);
-    }
+  if (handle == NULL) {
+    return ORC_ERROR_NONE;
   }
-  _deck_free_impl((void *)handle->items);  // Now we can free the deck container.
-  memset(handle, 0, sizeof(OrcHandle));
-  return ORC_ERROR_NONE;
+  if (handle->free_fn == NULL) {
+    return ORC_ERROR_INVALID_HANDLE;
+  }
+  return handle->free_fn(handle);
 }
 
 void _copy_items(OrcTypeId const type_id,
@@ -1615,7 +1631,7 @@ OrcError orc_deck_from_proxy(OrcHandle const   *inputs,
   case ORC_DECK_PROXY_COPY_ALL: {
     if (n_inputs != 1) {
       // COPY_ALL is only valid with a single input.
-      orc_deck_free(out);
+      handle_free(out);
       return ORC_ERROR_INVALID_PROXY;
     }
     size_t const n_items = inputs[0].n_items;
@@ -1641,7 +1657,7 @@ OrcError orc_deck_from_proxy(OrcHandle const   *inputs,
   case ORC_DECK_PROXY_COPY_ITEMS: {
     if (n_inputs != 1) {
       // COPY_ITEMS is only valid with a single input.
-      orc_deck_free(out);
+      handle_free(out);
       return ORC_ERROR_INVALID_PROXY;
     }
     size_t const n_items = inputs[0].n_items;
@@ -1692,7 +1708,7 @@ OrcError orc_deck_from_proxy(OrcHandle const   *inputs,
     oh_update(out);
   } break;
   default:
-    orc_deck_free(out);
+    handle_free(out);
     return ORC_ERROR_INVALID_PROXY;
   }
   return ORC_ERROR_NONE;
