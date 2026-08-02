@@ -614,3 +614,5 @@ void oh_update(OrcHandle *handle);
 // ========== Helpers for implementing plugins ==========
 
 OrcError orc_sdk_deck_alloc(OrcTypeId const id, OrcHandle *const out);
+
+OrcError orc_sdk_deck_free(OrcHandle *const handle);
