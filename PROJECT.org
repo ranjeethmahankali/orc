@@ -116,7 +116,7 @@
   some thought. I went with macros as the first pass in Rust. It is not clear to me what I should go
   with in C++.
 
-* TODO Figure out C SDK and write a simple plugin
+* TODO tj5fbs - Figure out C SDK and write a simple plugin
   :PROPERTIES:
   :CREATED:  2026-08-02 Sun 11:09
   :END:
@@ -127,7 +127,8 @@
   the ~nob~ build system.
 
   Container operations plugin is a prime candidate for writing in C, because it doesn't need any
-  special libraries.
+  special libraries. Don't want to add too many blocks at once, but just a few to make sure the
+  proxy stuff is working nicely across the ABI.
 
 * TODO tiwkbm - Create Toy Demo Apps
   :PROPERTIES:
