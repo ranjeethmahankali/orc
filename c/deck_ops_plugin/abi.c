@@ -1,5 +1,6 @@
-#include <orc_abi.h>
 #include <orc_sdk/orc_sdk.h>
+
+#include "functions.h"
 
 // ==============================
 // Internal state
@@ -11,11 +12,10 @@ static OrcHost const *s_host = NULL;
 // Plugin functions (forward declarations)
 // ==============================
 
-// TODO: implement and add to s_functions below.
-// static void deck_ops_flatten(uint64_t ctx, OrcHandle const *inputs, uint64_t n_inputs,
-//                              OrcHandle *outputs, uint64_t n_outputs);
-
-static OrcFuncInfo const s_functions[] = {{.name = NULL, .desc = NULL, .func = NULL}};
+static OrcFuncInfo const FUNCTIONS[] = {
+  {.name = "flatten_deck",
+   .desc = "Flattens the input deck into one plain list.",
+   .func = flatten_deck}};
 
 // ==============================
 // Required ABI exports
@@ -36,8 +36,8 @@ ORC_PLUGIN_EXPORT OrcError orc_plugin_init(OrcHost const *host,
   plugin_data_out->desc        = "Deck operations: flatten, graft, simplify, etc.";
   plugin_data_out->types       = NULL;
   plugin_data_out->n_types     = 0;
-  plugin_data_out->functions   = s_functions;
-  plugin_data_out->n_functions = sizeof(s_functions) / sizeof(s_functions[0]);
+  plugin_data_out->functions   = FUNCTIONS;
+  plugin_data_out->n_functions = sizeof(FUNCTIONS) / sizeof(FUNCTIONS[0]);
   return ORC_ERROR_NONE;
 }
 
