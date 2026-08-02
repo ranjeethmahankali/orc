@@ -655,6 +655,20 @@ impl<'a, T: TOrcData> DeckView<'a, T> {
         if handle.type_id != T::TYPE_INFO.type_id {
             return Err(Error::DeckTypeMismatch);
         }
+        // # SAFETY: We just checked the type id. Not a water tight test if we're accessing this
+        // data over the FFI boundary, but this is as safe as I can think of making this code at
+        // this time.
+        Ok(unsafe { Self::from_handle_unchecked(handle) })
+    }
+
+    /// Create a deckview from the handle. This is unsafe because `handle.items` is cast directly to
+    /// type `T` without checking.
+    ///
+    /// # SAFETY
+    ///
+    /// The caller is responsible for making sure that the items pointer actually points to data of
+    /// type T, and that `handle.type_id` matches the id of type `T`.
+    pub unsafe fn from_handle_unchecked(handle: &'a OrcHandle) -> Self {
         let (items, marks, stride_offset, strides) = unsafe {
             let items = slice_from_ptr(handle.items.cast(), handle.n_items as usize);
             let marks = slice_from_ptr(handle.marks, handle.n_marks as usize);
@@ -668,7 +682,7 @@ impl<'a, T: TOrcData> DeckView<'a, T> {
         } else {
             handle.n_marks
         } as usize;
-        Ok(Self {
+        Self {
             items,
             cursor: ReadCursor {
                 n_items: handle.n_items as usize,
@@ -679,7 +693,7 @@ impl<'a, T: TOrcData> DeckView<'a, T> {
                 start: 0,
                 end,
             },
-        })
+        }
     }
 }
 
