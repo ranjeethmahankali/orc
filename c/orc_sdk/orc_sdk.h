@@ -39,6 +39,14 @@
 
 #define ORC_SDK_DEBUG(...) (fprintf(stderr, __VA_ARGS__))
 
+// Cross-platform symbol export. Meant for plugins to export functions that host can find
+// when loading them.
+#if defined(_WIN32) || defined(_WIN64)
+#define ORC_PLUGIN_EXPORT __declspec(dllexport)
+#else
+#define ORC_PLUGIN_EXPORT __attribute__((visibility("default")))
+#endif
+
 typedef enum
 {
   OK = 0,
