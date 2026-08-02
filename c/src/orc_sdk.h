@@ -10,7 +10,7 @@
 
 #include "orc_ffi.h"
 
-#define REQUIRE_WITH_MSG(cond, msg)                                                    \
+#define ORC_SDK_REQUIRE_WITH_MSG(cond, msg)                                            \
   do {                                                                                 \
     if (!(cond)) {                                                                     \
       fprintf(stderr, "\n\n%s:%d: REQUIRE FAILED: (%s)\n", __FILE__, __LINE__, #cond); \
@@ -24,9 +24,9 @@
     }                                                                                  \
   } while (0)
 
-#define REQUIRE(cond) REQUIRE_WITH_MSG(cond, NULL)
+#define ORC_SDK_REQUIRE(cond) ORC_SDK_REQUIRE_WITH_MSG(cond, NULL)
 
-#define TODO(msg)                                       \
+#define ORC_SDK_TODO(msg)                               \
   do {                                                  \
     fprintf(stderr, "TODO: %s:%d", __FILE__, __LINE__); \
     if (msg != NULL) {                                  \
@@ -37,7 +37,7 @@
     abort();                                            \
   } while (0)
 
-#define DEBUG(...) (fprintf(stderr, __VA_ARGS__))
+#define ORC_SDK_DEBUG(...) (fprintf(stderr, __VA_ARGS__))
 
 // The purpose of this struct is to check for maximum alignment compatibility of other
 // types.

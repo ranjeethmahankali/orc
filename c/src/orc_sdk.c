@@ -43,7 +43,7 @@ void *_arr_grow(void *ptr, size_t elemsize)
     h->capacity = newcap;
     ptr         = h + 1;
   }
-  REQUIRE_WITH_MSG(h->count <= h->capacity, "Count cannot exceed capacity");
+  ORC_SDK_REQUIRE_WITH_MSG(h->count <= h->capacity, "Count cannot exceed capacity");
   return ptr;
 }
 
@@ -136,8 +136,8 @@ void _arr_fill_impl(void             *arr,
     memcpy(dst, dst - n * elemsize, n * elemsize);
     dst += n * elemsize;
   }
-  REQUIRE_WITH_MSG(dst == (char *)arr + count * elemsize,
-                   "Should have written up to the end of the array.");
+  ORC_SDK_REQUIRE_WITH_MSG(dst == (char *)arr + count * elemsize,
+                           "Should have written up to the end of the array.");
 }
 
 Status _arr_remove_range_impl(void        *ptr,
@@ -476,7 +476,7 @@ uint8_t deck_max_depth(void const *deck)
 
 static void _deck_push_mark(_DeckHeader *h, uint8_t depth, size_t const pos)
 {
-  REQUIRE_WITH_MSG(h != NULL, "This should not be called with a null pointer");
+  ORC_SDK_REQUIRE_WITH_MSG(h != NULL, "This should not be called with a null pointer");
   size_t const n_marks = arr_len(h->marks);
   if (n_marks > 0 && depth > h->marks[0].depth) {
     depth = h->marks[0].depth;
@@ -547,7 +547,7 @@ void *_deck_push_empty(void *ptr, size_t const itemsize, uint8_t const depth)
   if (depth)
     _deck_push_mark(h, depth - 1, h->count);
   h->count++;
-  REQUIRE_WITH_MSG(h->count <= h->capacity, "Count cannot exceed capacity");
+  ORC_SDK_REQUIRE_WITH_MSG(h->count <= h->capacity, "Count cannot exceed capacity");
   return ptr;
 }
 
@@ -698,11 +698,11 @@ void deck_graft(void *ptr)
   OrcMark     *old_marks = h->marks;
   h->marks               = NULL;
   Status const status    = arr_reserve(h->marks, count + h->count);
-  REQUIRE_WITH_MSG(status == OK, "Allocation failed.");
+  ORC_SDK_REQUIRE_WITH_MSG(status == OK, "Allocation failed.");
   uint64_t     prev    = 0;
   size_t const n_marks = arr_len(old_marks);
   for (size_t i = 0; i < n_marks; ++i) {
-    REQUIRE_WITH_MSG(old_marks[i].depth < 255, "Depth cannot exceed 255");
+    ORC_SDK_REQUIRE_WITH_MSG(old_marks[i].depth < 255, "Depth cannot exceed 255");
     uint8_t const  new_depth = old_marks[i].depth + 1;
     uint64_t const current   = old_marks[i].pos;
     for (size_t j = prev; j < current; ++j) {
@@ -774,7 +774,7 @@ char *_deck_to_str(void        *ptr,
       uint8_t const n_left_pad = dmax - h->marks[mi].depth;
       for (uint8_t i = 0; i < n_left_pad; ++i) {
         status = str_push_str(output, TAB);
-        REQUIRE_WITH_MSG(status == OK, "Allocation failed");
+        ORC_SDK_REQUIRE_WITH_MSG(status == OK, "Allocation failed");
       }
     }
     {  // Ruler marking - depth number.
@@ -782,14 +782,14 @@ char *_deck_to_str(void        *ptr,
       char          depth_str[8] = {0};
       snprintf(depth_str, 8, "%3d ", d_current);
       status = str_push_str(output, depth_str);
-      REQUIRE_WITH_MSG(status == OK, "Allocation failed");
+      ORC_SDK_REQUIRE_WITH_MSG(status == OK, "Allocation failed");
       // Ruler line.
       for (uint8_t i = 0; i < d_current; ++i) {
         status = str_push_str(output, "---");
-        REQUIRE_WITH_MSG(status == OK, "Allocation failed");
+        ORC_SDK_REQUIRE_WITH_MSG(status == OK, "Allocation failed");
       }
       status = str_push(output, '|');
-      REQUIRE_WITH_MSG(status == OK, "Allocation failed");
+      ORC_SDK_REQUIRE_WITH_MSG(status == OK, "Allocation failed");
     }
     if (h->marks[mi].pos < next_pos) {  // Items
       // Write the first item without padding.
@@ -799,33 +799,33 @@ char *_deck_to_str(void        *ptr,
       snprint_item(item, item_str, 64);
       item_str[64] = '\0';  // Just to be safe.
       status       = str_push(output, ' ');
-      REQUIRE_WITH_MSG(status == OK, "Allocation failed");
+      ORC_SDK_REQUIRE_WITH_MSG(status == OK, "Allocation failed");
       status = str_push_str(output, item_str);
-      REQUIRE_WITH_MSG(status == OK, "Allocation failed");
+      ORC_SDK_REQUIRE_WITH_MSG(status == OK, "Allocation failed");
       status = str_push(output, '\n');
-      REQUIRE_WITH_MSG(status == OK, "Allocation failed");
+      ORC_SDK_REQUIRE_WITH_MSG(status == OK, "Allocation failed");
       // Write remaining items with padding.
       uint8_t const padding = dmax + 1;
       while (++pos < next_pos) {
         item += item_size;
         for (uint8_t i = 0; i < padding; ++i) {
           status = str_push_str(output, TAB);
-          REQUIRE_WITH_MSG(status == OK, "Allocation failed");
+          ORC_SDK_REQUIRE_WITH_MSG(status == OK, "Allocation failed");
         }
         status = str_push_str(output, "    | ");
-        REQUIRE_WITH_MSG(status == OK, "Allocation failed");
+        ORC_SDK_REQUIRE_WITH_MSG(status == OK, "Allocation failed");
         memset(item_str, 0, 65);
         snprint_item(item, item_str, 64);
         item_str[64] = '\0';  // Just to be safe.
         status       = str_push_str(output, item_str);
-        REQUIRE_WITH_MSG(status == OK, "Allocation failed");
+        ORC_SDK_REQUIRE_WITH_MSG(status == OK, "Allocation failed");
         status = str_push(output, '\n');
-        REQUIRE_WITH_MSG(status == OK, "Allocation failed");
+        ORC_SDK_REQUIRE_WITH_MSG(status == OK, "Allocation failed");
       }
     }
     else {
       status = str_push(output, '\n');
-      REQUIRE_WITH_MSG(status == OK, "Allocation failed");
+      ORC_SDK_REQUIRE_WITH_MSG(status == OK, "Allocation failed");
     }
   }
   return output;
@@ -995,8 +995,8 @@ uint8_t _dw_next_depth(DeckWriter *writer)
 
 DeckWriter dw_child(DeckWriter *writer)
 {
-  REQUIRE_WITH_MSG(writer != NULL && writer->depth > 0,
-                   "Cannot create a child for this writer");
+  ORC_SDK_REQUIRE_WITH_MSG(writer != NULL && writer->depth > 0,
+                           "Cannot create a child for this writer");
   uint8_t depth = writer->depth - 1;
   if (writer->has_next_depth) {
     depth                  = writer->next_depth;
@@ -1128,9 +1128,9 @@ void comb_free(void *ptr)
   if (ptr == NULL)
     return;
   Combinations *comb = (Combinations *)ptr;
-  REQUIRE_WITH_MSG(comb->n_inputs == arr_len(comb->input_depths) &&
-                     comb->n_outputs == arr_len(comb->output_depths),
-                   "Invalid combinations");
+  ORC_SDK_REQUIRE_WITH_MSG(comb->n_inputs == arr_len(comb->input_depths) &&
+                             comb->n_outputs == arr_len(comb->output_depths),
+                           "Invalid combinations");
   arr_free(comb->view_matrix);
   arr_free(comb->input_depths);
   arr_free(comb->writer_matrix);
@@ -1167,7 +1167,8 @@ static FreeFn _deck_item_get_free_fn(OrcTypeId const type_id)
   case ORC_TYPE_PROXY:
     return NULL;
   default:
-    TODO("The plugin should return a function pointer that can free this datatype.");
+    ORC_SDK_TODO(
+      "The plugin should return a function pointer that can free this datatype.");
   }
 }
 
@@ -1176,8 +1177,8 @@ OrcError _handle_free_fn(OrcHandle *const handle)
   if (handle == NULL) {
     return ORC_ERROR_NONE;
   }
-  REQUIRE_WITH_MSG(handle->handle == (uint64_t)handle->items,
-                   "In this implementation the handle is just the pointer.");
+  ORC_SDK_REQUIRE_WITH_MSG(handle->handle == (uint64_t)handle->items,
+                           "In this implementation the handle is just the pointer.");
   FreeFn const free_fn = _deck_item_get_free_fn(handle->type_id);
   if (free_fn) {
     // Free the individual items from the deck before freeing the Deck container itself.
@@ -1194,8 +1195,8 @@ OrcError _handle_free_fn(OrcHandle *const handle)
 
 void oh_update(OrcHandle *handle)
 {
-  REQUIRE_WITH_MSG(handle != NULL, "Invalid handle");
-  REQUIRE_WITH_MSG(handle->type_id != 0, "Invalid type id");
+  ORC_SDK_REQUIRE_WITH_MSG(handle != NULL, "Invalid handle");
+  ORC_SDK_REQUIRE_WITH_MSG(handle->type_id != 0, "Invalid type id");
   _DeckHeader *h        = _deck_header(handle->items);
   handle->handle        = (uint64_t)handle->items;
   handle->n_items       = h->count;
@@ -1238,9 +1239,9 @@ void *comb_init(OrcHandle const **inputs,
   arr_resize(out->writer_matrix, n_outputs * stack_depth);
   arr_resize(out->input_depths, n_inputs);
   arr_resize(out->output_depths, n_outputs);
-  REQUIRE_WITH_MSG(out->view_matrix != NULL && out->writer_matrix != NULL &&
-                     out->input_depths != NULL && out->output_depths != NULL,
-                   "Allocation failed");
+  ORC_SDK_REQUIRE_WITH_MSG(out->view_matrix != NULL && out->writer_matrix != NULL &&
+                             out->input_depths != NULL && out->output_depths != NULL,
+                           "Allocation failed");
   // Populate input views and depths.
   for (size_t i = 0; i < n_inputs; ++i) {
     uint8_t const arg_depth = input_depths[i];
@@ -1253,7 +1254,7 @@ void *comb_init(OrcHandle const **inputs,
       DeckView child = dv_child(dst);
       *(++dst)       = child;
     }
-    REQUIRE(dst->depth == arg_depth);
+    ORC_SDK_REQUIRE(dst->depth == arg_depth);
   }
   // Populate output decks, writers, and depths.
   for (size_t i = 0; i < n_outputs; ++i) {
@@ -1273,7 +1274,7 @@ void *comb_init(OrcHandle const **inputs,
       DeckWriter child = dw_child(dst);
       *(++dst)         = child;
     }
-    REQUIRE(dst->depth == arg_depth);
+    ORC_SDK_REQUIRE(dst->depth == arg_depth);
   }
   out->n_inputs    = n_inputs;
   out->n_outputs   = n_outputs;
@@ -1299,7 +1300,7 @@ void *comb_advance(void *ptr)
       for (size_t i = 0; i < n_outputs; ++i) {
         DeckWriter  *last_writer = comb->writer_matrix + (i + 1) * comb->stack_depth - 1;
         Status const status      = dw_advance(last_writer);
-        REQUIRE(status == OK);
+        ORC_SDK_REQUIRE(status == OK);
       }
       return comb;
     }
@@ -1310,7 +1311,7 @@ void *comb_advance(void *ptr)
     ADVANCED,
     EXHAUSTED
   } state = CONTINUE;
-  REQUIRE(comb->stack_depth > 0);
+  ORC_SDK_REQUIRE(comb->stack_depth > 0);
   size_t stack_top = comb->stack_depth - 1;
   do {
     if (stack_top == 0) {
@@ -1324,7 +1325,7 @@ void *comb_advance(void *ptr)
     for (size_t i = 0; i < n_outputs; ++i) {  // Pop all the outputs.
       DeckWriter  *last_writer = comb->writer_matrix + i * comb->stack_depth + stack_top;
       Status const status      = dw_close(last_writer);
-      REQUIRE(status == OK);
+      ORC_SDK_REQUIRE(status == OK);
     }
     --stack_top;
     // Try to advance lower in the stack.
@@ -1338,7 +1339,7 @@ void *comb_advance(void *ptr)
       for (size_t i = 0; i < n_outputs; ++i) {
         DeckWriter *last_writer = comb->writer_matrix + i * comb->stack_depth + stack_top;
         Status const status     = dw_advance(last_writer);
-        REQUIRE(status == OK);
+        ORC_SDK_REQUIRE(status == OK);
       }
     }
   } while (state == CONTINUE);
@@ -1370,7 +1371,7 @@ void *comb_advance(void *ptr)
   }
   case CONTINUE:  // fall through.
   default:
-    REQUIRE_WITH_MSG(
+    ORC_SDK_REQUIRE_WITH_MSG(
       false,
       "Previous loop can only terminate when either we advance, or exhaust the inputs.");
     return NULL;
@@ -1379,17 +1380,17 @@ void *comb_advance(void *ptr)
 
 DeckView comb_get_input(void *ptr, size_t const index)
 {
-  REQUIRE_WITH_MSG(ptr != NULL, "Invalid combinations");
+  ORC_SDK_REQUIRE_WITH_MSG(ptr != NULL, "Invalid combinations");
   Combinations *comb = (Combinations *)ptr;
-  REQUIRE_WITH_MSG(index < comb->n_inputs, "Index out of bounds");
+  ORC_SDK_REQUIRE_WITH_MSG(index < comb->n_inputs, "Index out of bounds");
   return *(comb->view_matrix + (index + 1) * comb->stack_depth - 1);
 }
 
 DeckWriter *comb_get_output(void *ptr, size_t const index)
 {
-  REQUIRE_WITH_MSG(ptr != NULL, "Invalid combinations");
+  ORC_SDK_REQUIRE_WITH_MSG(ptr != NULL, "Invalid combinations");
   Combinations *comb = (Combinations *)ptr;
-  REQUIRE_WITH_MSG(index < comb->n_outputs, "Index out of bounds");
+  ORC_SDK_REQUIRE_WITH_MSG(index < comb->n_outputs, "Index out of bounds");
   return comb->writer_matrix + (index + 1) * comb->stack_depth - 1;
 }
 
@@ -1437,10 +1438,11 @@ OrcError orc_sdk_deck_alloc(OrcTypeId const id, OrcHandle *const out)
     out->item_size = sizeof(int64_t);
     break;
   default:
-    TODO("The plugin should handle its own types here");
+    ORC_SDK_TODO("The plugin should handle its own types here");
     return ORC_ERROR_TYPE_MISMATCH;
   }
-  REQUIRE_WITH_MSG(out->item_size != 0, "Item size cannot be inferred from the type id.");
+  ORC_SDK_REQUIRE_WITH_MSG(out->item_size != 0,
+                           "Item size cannot be inferred from the type id.");
   size_t const INIT_SIZE = 1;
   void        *deck_ptr  = _deck_grow_capacity(NULL, out->item_size, INIT_SIZE);
   _DeckHeader *h         = _deck_header(deck_ptr);
@@ -1448,12 +1450,12 @@ OrcError orc_sdk_deck_alloc(OrcTypeId const id, OrcHandle *const out)
   out->handle  = (uint64_t)deck_ptr;
   out->items   = deck_ptr;
   out->free_fn = _handle_free_fn;
-  REQUIRE_WITH_MSG(h->count == 0, "New deck must be empty");
+  ORC_SDK_REQUIRE_WITH_MSG(h->count == 0, "New deck must be empty");
   out->n_items         = h->count;
   out->marks           = h->marks;
   out->stride_offset   = h->stride_offset;
   size_t const n_marks = arr_len(h->marks);
-  REQUIRE_WITH_MSG(n_marks == 0, "New deck must have no marks");
+  ORC_SDK_REQUIRE_WITH_MSG(n_marks == 0, "New deck must have no marks");
   out->n_marks = n_marks;
   out->strides = h->strides;
   return ORC_ERROR_NONE;
@@ -1508,7 +1510,8 @@ static CopyItemsFn _deck_item_get_copy_items_fn(OrcTypeId const type_id)
   case ORC_TYPE_PROXY:
     return _copy_items_proxy;
   default:
-    TODO("The plugin should return a function pointer that can free this datatype.");
+    ORC_SDK_TODO(
+      "The plugin should return a function pointer that can free this datatype.");
   }
 }
 
@@ -1529,7 +1532,7 @@ void _copy_items(OrcTypeId const type_id,
                  size_t const    n_items)
 {
   CopyItemsFn const copy_fn = _deck_item_get_copy_items_fn(type_id);
-  REQUIRE(copy_fn != NULL);
+  ORC_SDK_REQUIRE(copy_fn != NULL);
   copy_fn(src, dst, n_items);
 }
 
@@ -1558,8 +1561,8 @@ OrcError orc_sdk_deck_from_proxy(OrcHandle const   *inputs,
   if (err != ORC_ERROR_NONE) {
     return err;
   }
-  REQUIRE_WITH_MSG(out->handle == (uint64_t)out->items,
-                   "In this implementation the handle is just the pointer.");
+  ORC_SDK_REQUIRE_WITH_MSG(out->handle == (uint64_t)out->items,
+                           "In this implementation the handle is just the pointer.");
   switch (proxy_type) {
   case ORC_DECK_PROXY_COPY_ALL: {
     if (n_inputs != 1) {
@@ -1623,8 +1626,9 @@ OrcError orc_sdk_deck_from_proxy(OrcHandle const   *inputs,
     // Copy the data one at a time from by iterating over the proxy.
     OrcItemProxy *proxies = (OrcItemProxy *)proxy->items;
     while (h->count < n_items) {
-      REQUIRE_WITH_MSG(h->count < proxy->n_items && proxies[h->count].tree < n_inputs,
-                       "Index out of bounds");
+      ORC_SDK_REQUIRE_WITH_MSG(
+        h->count < proxy->n_items && proxies[h->count].tree < n_inputs,
+        "Index out of bounds");
       void *src =
         (char *)inputs[proxies[h->count].tree].items + item_size * proxies[h->count].item;
       void *dst = (char *)deck + item_size * h->count;
