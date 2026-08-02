@@ -63,7 +63,7 @@ static inline _OrcSdk_ArrHeader *_orc_sdk_arr_header(void const *ptr)
   return NULL;
 }
 
-static inline size_t _arr_capacity(void *ptr)
+static inline size_t _orc_sdk_arr_capacity(void *ptr)
 {
   _OrcSdk_ArrHeader *h = _orc_sdk_arr_header(ptr);
   if (h)

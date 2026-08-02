@@ -67,29 +67,29 @@ void test_arr_capacity_management(void)
   double *arr = NULL;
   // Reserve initial capacity
   ORC_SDK_REQUIRE(arr_reserve(arr, 4) == OK);
-  ORC_SDK_REQUIRE(_arr_capacity(arr) == 4);
+  ORC_SDK_REQUIRE(_orc_sdk_arr_capacity(arr) == 4);
   // Reserve smaller (should be no-op)
-  size_t old_cap = _arr_capacity(arr);
+  size_t old_cap = _orc_sdk_arr_capacity(arr);
   ORC_SDK_REQUIRE(arr_reserve(arr, 2) == OK);
-  ORC_SDK_REQUIRE(_arr_capacity(arr) == old_cap);
+  ORC_SDK_REQUIRE(_orc_sdk_arr_capacity(arr) == old_cap);
   // Reserve exact current capacity (should be no-op)
   ORC_SDK_REQUIRE(arr_reserve(arr, old_cap) == OK);
-  ORC_SDK_REQUIRE(_arr_capacity(arr) == old_cap);
+  ORC_SDK_REQUIRE(_orc_sdk_arr_capacity(arr) == old_cap);
   // Reserve larger
   ORC_SDK_REQUIRE(arr_reserve(arr, 10) == OK);
-  ORC_SDK_REQUIRE(_arr_capacity(arr) == 10);
+  ORC_SDK_REQUIRE(_orc_sdk_arr_capacity(arr) == 10);
   // Test growth pattern
   arr_free(arr);
   arr = NULL;
   ORC_SDK_REQUIRE(arr_push(arr, 1.0) == OK);
-  size_t cap1 = _arr_capacity(arr);
+  size_t cap1 = _orc_sdk_arr_capacity(arr);
   // Fill to capacity
   while (arr_len(arr) < cap1) {
     arr_push(arr, (double)arr_len(arr));
   }
   // Next push should grow
   arr_push(arr, 999.0);
-  ORC_SDK_REQUIRE(_arr_capacity(arr) > cap1);
+  ORC_SDK_REQUIRE(_orc_sdk_arr_capacity(arr) > cap1);
   arr_free(arr);
 }
 
@@ -271,7 +271,7 @@ void test_arr_resize_zero_fill(void)
   arr_resize(arr, 8);
   ORC_SDK_REQUIRE_WITH_MSG(arr != NULL, "Resize growth should succeed");
   ORC_SDK_REQUIRE_WITH_MSG(arr_len(arr) == 8, "Array should have 8 elements");
-  ORC_SDK_REQUIRE_WITH_MSG(_arr_capacity(arr) >= 8,
+  ORC_SDK_REQUIRE_WITH_MSG(_orc_sdk_arr_capacity(arr) >= 8,
                            "Capacity should accommodate new size");
   // Check original elements unchanged
   for (size_t i = 0; i < 5; i++) {
@@ -287,7 +287,7 @@ void test_arr_resize_zero_fill(void)
   ORC_SDK_REQUIRE_WITH_MSG(arr != NULL, "Resize shrink should succeed");
   ORC_SDK_REQUIRE_WITH_MSG(arr_len(arr) == 3, "Array should have 3 elements");
   // Capacity should remain the same (no reallocation on shrink)
-  ORC_SDK_REQUIRE_WITH_MSG(_arr_capacity(arr) >= 8,
+  ORC_SDK_REQUIRE_WITH_MSG(_orc_sdk_arr_capacity(arr) >= 8,
                            "Capacity should not decrease on shrink");
   // Check remaining elements unchanged
   for (size_t i = 0; i < 3; i++) {
@@ -296,11 +296,11 @@ void test_arr_resize_zero_fill(void)
   }
   // Test resize to same size (no-op)
   size_t len_before = arr_len(arr);
-  size_t cap_before = _arr_capacity(arr);
+  size_t cap_before = _orc_sdk_arr_capacity(arr);
   arr_resize(arr, 3);
   ORC_SDK_REQUIRE_WITH_MSG(arr != NULL, "Resize same size should succeed");
   ORC_SDK_REQUIRE_WITH_MSG(arr_len(arr) == len_before, "Length should be unchanged");
-  ORC_SDK_REQUIRE_WITH_MSG(_arr_capacity(arr) == cap_before,
+  ORC_SDK_REQUIRE_WITH_MSG(_orc_sdk_arr_capacity(arr) == cap_before,
                            "Capacity should be unchanged");
   for (size_t i = 0; i < 3; i++) {
     ORC_SDK_REQUIRE_WITH_MSG(arr[i] == (double)(i + 10), "Elements should be unchanged");
@@ -309,7 +309,8 @@ void test_arr_resize_zero_fill(void)
   arr_resize(arr, 0);
   ORC_SDK_REQUIRE_WITH_MSG(arr != NULL, "Resize to zero should succeed");
   ORC_SDK_REQUIRE_WITH_MSG(arr_len(arr) == 0, "Array should be empty");
-  ORC_SDK_REQUIRE_WITH_MSG(_arr_capacity(arr) >= 8, "Capacity should be preserved");
+  ORC_SDK_REQUIRE_WITH_MSG(_orc_sdk_arr_capacity(arr) >= 8,
+                           "Capacity should be preserved");
   // Test resize from zero back to non-zero - should zero-fill
   arr_resize(arr, 4);
   ORC_SDK_REQUIRE_WITH_MSG(arr != NULL, "Resize from zero should succeed");
@@ -445,11 +446,11 @@ void test_arr_clear(void)
   // Add some elements
   arr_resize(arr, 5);
   ORC_SDK_REQUIRE_WITH_MSG(arr_len(arr) == 5, "Array should have 5 elements");
-  size_t old_capacity = _arr_capacity(arr);
+  size_t old_capacity = _orc_sdk_arr_capacity(arr);
   // Clear the array
   arr_clear(arr);
   ORC_SDK_REQUIRE_WITH_MSG(arr_len(arr) == 0, "Array should be empty after clear");
-  ORC_SDK_REQUIRE_WITH_MSG(_arr_capacity(arr) == old_capacity,
+  ORC_SDK_REQUIRE_WITH_MSG(_orc_sdk_arr_capacity(arr) == old_capacity,
                            "Capacity should be preserved");
   // Verify we can still use the array after clear
   OrcSdk_Status s = arr_push(arr, 2.71);
@@ -635,7 +636,7 @@ void test_arr_pop(void)
   // Test capacity behavior - capacity should not decrease on pop
   double *cap_arr = NULL;
   ORC_SDK_REQUIRE(OK == arr_reserve(cap_arr, 10));
-  size_t initial_capacity = _arr_capacity(cap_arr);
+  size_t initial_capacity = _orc_sdk_arr_capacity(cap_arr);
   // Fill with some elements
   for (int i = 0; i < 5; i++) {
     arr_push(cap_arr, (double)i);
@@ -645,7 +646,7 @@ void test_arr_pop(void)
     arr_pop(cap_arr, &value);
   }
   ORC_SDK_REQUIRE_WITH_MSG(arr_len(cap_arr) == 0, "Array should be empty");
-  ORC_SDK_REQUIRE_WITH_MSG(_arr_capacity(cap_arr) == initial_capacity,
+  ORC_SDK_REQUIRE_WITH_MSG(_orc_sdk_arr_capacity(cap_arr) == initial_capacity,
                            "Capacity should not decrease");
   arr_free(cap_arr);
   // Test push after pop (ensure array is still usable)
@@ -867,7 +868,7 @@ void test_str_capacity_growth(void)
     ORC_SDK_REQUIRE(str_len(s) == i + 1);
     ORC_SDK_REQUIRE(s[str_len(s)] == '\0');
     // Capacity must be at least length + 1 (for null terminator)
-    ORC_SDK_REQUIRE(_arr_capacity(s) >= str_len(s) + 1);
+    ORC_SDK_REQUIRE(_orc_sdk_arr_capacity(s) >= str_len(s) + 1);
   }
   // Verify final content
   for (size_t i = 0; i < n; i++) {
@@ -979,7 +980,7 @@ void test_str_clear_basic(void)
   ORC_SDK_REQUIRE_WITH_MSG(s[0] == '\0', "Null-terminated after clear");
   ORC_SDK_REQUIRE_WITH_MSG(str_is_empty(s), "String is empty after clear");
   // Capacity should be preserved
-  ORC_SDK_REQUIRE(_arr_capacity(s) >= 1);
+  ORC_SDK_REQUIRE(_orc_sdk_arr_capacity(s) >= 1);
   str_free(s);
 }
 
