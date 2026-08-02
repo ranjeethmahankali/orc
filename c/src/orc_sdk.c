@@ -169,15 +169,15 @@ bool orc_sdk_arr_is_empty(void *ptr)
 
 // ========== String ==========
 
-OrcSdk_Status _str_remove_impl(char *const ptr, size_t const idx)
+OrcSdk_Status _orc_str_remove_impl(char *const ptr, size_t const idx)
 {
-  if (idx < str_len(ptr)) {
+  if (idx < orc_str_len(ptr)) {
     return _orc_sdk_arr_remove_impl(ptr, idx, sizeof(char));
   }
   return OUT_OF_BOUNDS;
 }
 
-char *_str_push_impl(char *ptr, char val)
+char *_orc_str_push_impl(char *ptr, char val)
 {
   size_t newlen = orc_sdk_arr_len(ptr) + 1;
   if (newlen < 2) {  // Needs to contain at the very least val and a null terminator.
@@ -193,7 +193,7 @@ char *_str_push_impl(char *ptr, char val)
   return ptr;
 }
 
-void str_clear(char *ptr)
+void orc_str_clear(char *ptr)
 {
   _OrcSdk_ArrHeader *h = _orc_sdk_arr_header(ptr);
   if (h != NULL) {
@@ -202,10 +202,10 @@ void str_clear(char *ptr)
   }
 }
 
-char *_str_push_str_impl(char *ptr, char const *tail)
+char *_orc_str_push_str_impl(char *ptr, char const *tail)
 {
   size_t       extra  = strlen(tail);
-  size_t const oldlen = str_len(ptr);
+  size_t const oldlen = orc_str_len(ptr);
   size_t       newlen = oldlen + extra + 1;  // Add 1 for null terminator.
   arr_resize(ptr, newlen);
   if (ptr == NULL) {
@@ -221,7 +221,7 @@ char *_str_push_str_impl(char *ptr, char const *tail)
   return ptr;
 }
 
-bool str_eq(char *const a, char *const b)
+bool orc_str_eq(char *const a, char *const b)
 {
   if (a == NULL || b == NULL) {
     return a == b;
@@ -773,7 +773,7 @@ char *_deck_to_str(void        *ptr,
     {  // Left padding.
       uint8_t const n_left_pad = dmax - h->marks[mi].depth;
       for (uint8_t i = 0; i < n_left_pad; ++i) {
-        status = str_push_str(output, TAB);
+        status = orc_str_push_str(output, TAB);
         ORC_SDK_REQUIRE_WITH_MSG(status == OK, "Allocation failed");
       }
     }
@@ -781,14 +781,14 @@ char *_deck_to_str(void        *ptr,
       uint8_t const d_current    = h->marks[mi].depth + 1;
       char          depth_str[8] = {0};
       snprintf(depth_str, 8, "%3d ", d_current);
-      status = str_push_str(output, depth_str);
+      status = orc_str_push_str(output, depth_str);
       ORC_SDK_REQUIRE_WITH_MSG(status == OK, "Allocation failed");
       // Ruler line.
       for (uint8_t i = 0; i < d_current; ++i) {
-        status = str_push_str(output, "---");
+        status = orc_str_push_str(output, "---");
         ORC_SDK_REQUIRE_WITH_MSG(status == OK, "Allocation failed");
       }
-      status = str_push(output, '|');
+      status = orc_str_push(output, '|');
       ORC_SDK_REQUIRE_WITH_MSG(status == OK, "Allocation failed");
     }
     if (h->marks[mi].pos < next_pos) {  // Items
@@ -798,33 +798,33 @@ char *_deck_to_str(void        *ptr,
       char   item_str[65] = {0};
       snprint_item(item, item_str, 64);
       item_str[64] = '\0';  // Just to be safe.
-      status       = str_push(output, ' ');
+      status       = orc_str_push(output, ' ');
       ORC_SDK_REQUIRE_WITH_MSG(status == OK, "Allocation failed");
-      status = str_push_str(output, item_str);
+      status = orc_str_push_str(output, item_str);
       ORC_SDK_REQUIRE_WITH_MSG(status == OK, "Allocation failed");
-      status = str_push(output, '\n');
+      status = orc_str_push(output, '\n');
       ORC_SDK_REQUIRE_WITH_MSG(status == OK, "Allocation failed");
       // Write remaining items with padding.
       uint8_t const padding = dmax + 1;
       while (++pos < next_pos) {
         item += item_size;
         for (uint8_t i = 0; i < padding; ++i) {
-          status = str_push_str(output, TAB);
+          status = orc_str_push_str(output, TAB);
           ORC_SDK_REQUIRE_WITH_MSG(status == OK, "Allocation failed");
         }
-        status = str_push_str(output, "    | ");
+        status = orc_str_push_str(output, "    | ");
         ORC_SDK_REQUIRE_WITH_MSG(status == OK, "Allocation failed");
         memset(item_str, 0, 65);
         snprint_item(item, item_str, 64);
         item_str[64] = '\0';  // Just to be safe.
-        status       = str_push_str(output, item_str);
+        status       = orc_str_push_str(output, item_str);
         ORC_SDK_REQUIRE_WITH_MSG(status == OK, "Allocation failed");
-        status = str_push(output, '\n');
+        status = orc_str_push(output, '\n');
         ORC_SDK_REQUIRE_WITH_MSG(status == OK, "Allocation failed");
       }
     }
     else {
-      status = str_push(output, '\n');
+      status = orc_str_push(output, '\n');
       ORC_SDK_REQUIRE_WITH_MSG(status == OK, "Allocation failed");
     }
   }

@@ -191,9 +191,9 @@ bool orc_sdk_arr_is_empty(void *ptr);
 
 // ========== String ==========
 
-#define str_free(ptr) orc_sdk_arr_free((ptr))
+#define orc_str_free(ptr) orc_sdk_arr_free((ptr))
 
-static inline size_t str_len(void *ptr)
+static inline size_t orc_str_len(void *ptr)
 {
   _OrcSdk_ArrHeader *h = _orc_sdk_arr_header(ptr);
   if (h)
@@ -201,7 +201,7 @@ static inline size_t str_len(void *ptr)
   return 0;
 }
 
-OrcSdk_Status _str_remove_impl(char *const ptr, size_t const idx);
+OrcSdk_Status _orc_str_remove_impl(char *const ptr, size_t const idx);
 
 /**
  * @brief Remove a character from a position in a stirng.
@@ -209,9 +209,9 @@ OrcSdk_Status _str_remove_impl(char *const ptr, size_t const idx);
  * @param ptr Pointer to the string. This will be overwritten by the macro.
  * @param idx Index to remove the character at.
  */
-#define str_remove(ptr, idx) _str_remove_impl((ptr), (idx))
+#define orc_str_remove(ptr, idx) _orc_str_remove_impl((ptr), (idx))
 
-char *_str_push_impl(char *, char);
+char *_orc_str_push_impl(char *, char);
 
 /**
  * @brief Push a character to the end of the string.
@@ -220,7 +220,7 @@ char *_str_push_impl(char *, char);
  * happens.
  * @param ch Character to push.
  */
-#define str_push(ptr, ch) (((ptr) = _str_push_impl((ptr), (ch))) ? OK : ALLOC_FAILED)
+#define orc_str_push(ptr, ch) (((ptr) = _orc_str_push_impl((ptr), (ch))) ? OK : ALLOC_FAILED)
 
 /**
  * @brief Get the pointer past the end of the string.
@@ -229,16 +229,16 @@ char *_str_push_impl(char *, char);
  * @return Pointer just past the last character of the string. Points to the null
  * terminator.
  */
-#define str_end(ptr) ((ptr) + str_len((ptr)))
+#define orc_str_end(ptr) ((ptr) + orc_str_len((ptr)))
 
 /**
  * @brief Clear the contents of a string.
  *
  * @param ptr The string to clear.
  */
-void str_clear(char *ptr);
+void orc_str_clear(char *ptr);
 
-char *_str_push_str_impl(char *, char const *);
+char *_orc_str_push_str_impl(char *, char const *);
 
 /**
  * @brief Push the `tail` string at the end of the `ptr` string.
@@ -246,8 +246,8 @@ char *_str_push_str_impl(char *, char const *);
  * @param dst The string to append to.
  * @param tail The string to append.
  */
-#define str_push_str(dst, tail) \
-  (((dst) = _str_push_str_impl((dst), (tail))) ? OK : ALLOC_FAILED)
+#define orc_str_push_str(dst, tail) \
+  (((dst) = _orc_str_push_str_impl((dst), (tail))) ? OK : ALLOC_FAILED)
 
 /**
  * @brief Check if the string is empty.
@@ -255,12 +255,12 @@ char *_str_push_str_impl(char *, char const *);
  * @param ptr The string.
  * @return bool Flag indicating if the string is empty.
  */
-static inline bool str_is_empty(void *ptr)
+static inline bool orc_str_is_empty(void *ptr)
 {
-  return str_len(ptr) == 0;
+  return orc_str_len(ptr) == 0;
 }
 
-bool str_eq(char *const a, char *const b);
+bool orc_str_eq(char *const a, char *const b);
 
 // ========== String views ==========
 

@@ -705,167 +705,167 @@ void test_arr_header_alignment(void)
 void test_str_null_pointer_operations(void)
 {
   char *s = NULL;
-  ORC_SDK_REQUIRE_WITH_MSG(str_len(s) == 0, "Null string has length 0");
-  ORC_SDK_REQUIRE_WITH_MSG(str_end(s) == s, "End of NULL string is itself");
-  ORC_SDK_REQUIRE_WITH_MSG(str_remove(s, 0) == OUT_OF_BOUNDS,
+  ORC_SDK_REQUIRE_WITH_MSG(orc_str_len(s) == 0, "Null string has length 0");
+  ORC_SDK_REQUIRE_WITH_MSG(orc_str_end(s) == s, "End of NULL string is itself");
+  ORC_SDK_REQUIRE_WITH_MSG(orc_str_remove(s, 0) == OUT_OF_BOUNDS,
                            "Cannot remove from NULL string");
   // Should not crash
-  str_free(s);
+  orc_str_free(s);
 }
 
 void test_str_push_basic(void)
 {
   char *s = NULL;
-  ORC_SDK_REQUIRE(str_push(s, 'h') == OK);
-  ORC_SDK_REQUIRE(str_push(s, 'e') == OK);
-  ORC_SDK_REQUIRE(str_push(s, 'l') == OK);
-  ORC_SDK_REQUIRE(str_push(s, 'l') == OK);
-  ORC_SDK_REQUIRE(str_push(s, 'o') == OK);
-  ORC_SDK_REQUIRE_WITH_MSG(str_len(s) == 5, "String length should be 5");
+  ORC_SDK_REQUIRE(orc_str_push(s, 'h') == OK);
+  ORC_SDK_REQUIRE(orc_str_push(s, 'e') == OK);
+  ORC_SDK_REQUIRE(orc_str_push(s, 'l') == OK);
+  ORC_SDK_REQUIRE(orc_str_push(s, 'l') == OK);
+  ORC_SDK_REQUIRE(orc_str_push(s, 'o') == OK);
+  ORC_SDK_REQUIRE_WITH_MSG(orc_str_len(s) == 5, "String length should be 5");
   ORC_SDK_REQUIRE_WITH_MSG(strcmp(s, "hello") == 0, "String content should be 'hello'");
-  ORC_SDK_REQUIRE_WITH_MSG(s[str_len(s)] == '\0', "String must be null-terminated");
-  str_free(s);
+  ORC_SDK_REQUIRE_WITH_MSG(s[orc_str_len(s)] == '\0', "String must be null-terminated");
+  orc_str_free(s);
 }
 
 void test_str_push_from_null(void)
 {
   char *s = NULL;
   // First push allocates
-  ORC_SDK_REQUIRE(str_push(s, 'a') == OK);
+  ORC_SDK_REQUIRE(orc_str_push(s, 'a') == OK);
   ORC_SDK_REQUIRE(s != NULL);
-  ORC_SDK_REQUIRE(str_len(s) == 1);
+  ORC_SDK_REQUIRE(orc_str_len(s) == 1);
   ORC_SDK_REQUIRE(s[0] == 'a');
   ORC_SDK_REQUIRE(s[1] == '\0');
   // Subsequent pushes
-  ORC_SDK_REQUIRE(str_push(s, 'b') == OK);
-  ORC_SDK_REQUIRE(str_len(s) == 2);
+  ORC_SDK_REQUIRE(orc_str_push(s, 'b') == OK);
+  ORC_SDK_REQUIRE(orc_str_len(s) == 2);
   ORC_SDK_REQUIRE(strcmp(s, "ab") == 0);
-  ORC_SDK_REQUIRE(str_push(s, 'c') == OK);
-  ORC_SDK_REQUIRE(str_len(s) == 3);
+  ORC_SDK_REQUIRE(orc_str_push(s, 'c') == OK);
+  ORC_SDK_REQUIRE(orc_str_len(s) == 3);
   ORC_SDK_REQUIRE(strcmp(s, "abc") == 0);
-  str_free(s);
+  orc_str_free(s);
 }
 
-void test_str_remove_basic(void)
+void test_orc_str_remove_basic(void)
 {
   char *s = NULL;
   // Build "abcde"
-  ORC_SDK_REQUIRE(str_push(s, 'a') == OK);
-  ORC_SDK_REQUIRE(str_push(s, 'b') == OK);
-  ORC_SDK_REQUIRE(str_push(s, 'c') == OK);
-  ORC_SDK_REQUIRE(str_push(s, 'd') == OK);
-  ORC_SDK_REQUIRE(str_push(s, 'e') == OK);
+  ORC_SDK_REQUIRE(orc_str_push(s, 'a') == OK);
+  ORC_SDK_REQUIRE(orc_str_push(s, 'b') == OK);
+  ORC_SDK_REQUIRE(orc_str_push(s, 'c') == OK);
+  ORC_SDK_REQUIRE(orc_str_push(s, 'd') == OK);
+  ORC_SDK_REQUIRE(orc_str_push(s, 'e') == OK);
   // Remove middle character 'c' at index 2
-  ORC_SDK_REQUIRE(str_remove(s, 2) == OK);
-  ORC_SDK_REQUIRE(str_len(s) == 4);
+  ORC_SDK_REQUIRE(orc_str_remove(s, 2) == OK);
+  ORC_SDK_REQUIRE(orc_str_len(s) == 4);
   ORC_SDK_REQUIRE(strcmp(s, "abde") == 0);
-  ORC_SDK_REQUIRE(s[str_len(s)] == '\0');
+  ORC_SDK_REQUIRE(s[orc_str_len(s)] == '\0');
   // Remove first character 'a' at index 0
-  ORC_SDK_REQUIRE(str_remove(s, 0) == OK);
-  ORC_SDK_REQUIRE(str_len(s) == 3);
+  ORC_SDK_REQUIRE(orc_str_remove(s, 0) == OK);
+  ORC_SDK_REQUIRE(orc_str_len(s) == 3);
   ORC_SDK_REQUIRE(strcmp(s, "bde") == 0);
-  ORC_SDK_REQUIRE(s[str_len(s)] == '\0');
+  ORC_SDK_REQUIRE(s[orc_str_len(s)] == '\0');
   // Remove last character 'e' at index 2
-  ORC_SDK_REQUIRE(str_remove(s, str_len(s) - 1) == OK);
-  ORC_SDK_REQUIRE(str_len(s) == 2);
+  ORC_SDK_REQUIRE(orc_str_remove(s, orc_str_len(s) - 1) == OK);
+  ORC_SDK_REQUIRE(orc_str_len(s) == 2);
   ORC_SDK_REQUIRE(strcmp(s, "bd") == 0);
-  ORC_SDK_REQUIRE(s[str_len(s)] == '\0');
-  str_free(s);
+  ORC_SDK_REQUIRE(s[orc_str_len(s)] == '\0');
+  orc_str_free(s);
 }
 
-void test_str_remove_boundary_conditions(void)
+void test_orc_str_remove_boundary_conditions(void)
 {
   // Single character string
   char *s = NULL;
-  ORC_SDK_REQUIRE(str_push(s, 'x') == OK);
-  ORC_SDK_REQUIRE(str_remove(s, 0) == OK);
-  ORC_SDK_REQUIRE_WITH_MSG(str_len(s) == 0, "Empty after removing only character");
+  ORC_SDK_REQUIRE(orc_str_push(s, 'x') == OK);
+  ORC_SDK_REQUIRE(orc_str_remove(s, 0) == OK);
+  ORC_SDK_REQUIRE_WITH_MSG(orc_str_len(s) == 0, "Empty after removing only character");
   ORC_SDK_REQUIRE_WITH_MSG(s[0] == '\0', "Still null-terminated when empty");
   // Remove from empty (non-NULL) string
-  ORC_SDK_REQUIRE_WITH_MSG(str_remove(s, 0) == OUT_OF_BOUNDS,
+  ORC_SDK_REQUIRE_WITH_MSG(orc_str_remove(s, 0) == OUT_OF_BOUNDS,
                            "Cannot remove from empty string");
   // One past end
-  ORC_SDK_REQUIRE(str_push(s, 'a') == OK);
-  ORC_SDK_REQUIRE(str_remove(s, str_len(s)) == OUT_OF_BOUNDS);
+  ORC_SDK_REQUIRE(orc_str_push(s, 'a') == OK);
+  ORC_SDK_REQUIRE(orc_str_remove(s, orc_str_len(s)) == OUT_OF_BOUNDS);
   // Way past end
-  ORC_SDK_REQUIRE(str_remove(s, str_len(s) + 10) == OUT_OF_BOUNDS);
+  ORC_SDK_REQUIRE(orc_str_remove(s, orc_str_len(s) + 10) == OUT_OF_BOUNDS);
   // Huge index
-  ORC_SDK_REQUIRE(str_remove(s, SIZE_MAX) == OUT_OF_BOUNDS);
+  ORC_SDK_REQUIRE(orc_str_remove(s, SIZE_MAX) == OUT_OF_BOUNDS);
   // Remove from NULL
   char *null_str = NULL;
-  ORC_SDK_REQUIRE(str_remove(null_str, 0) == OUT_OF_BOUNDS);
-  str_free(s);
+  ORC_SDK_REQUIRE(orc_str_remove(null_str, 0) == OUT_OF_BOUNDS);
+  orc_str_free(s);
 }
 
-void test_str_len_and_end(void)
+void test_orc_str_len_and_end(void)
 {
   char *s = NULL;
-  ORC_SDK_REQUIRE(str_len(s) == 0);
+  ORC_SDK_REQUIRE(orc_str_len(s) == 0);
   // Build "abc"
-  ORC_SDK_REQUIRE(str_push(s, 'a') == OK);
-  ORC_SDK_REQUIRE(str_push(s, 'b') == OK);
-  ORC_SDK_REQUIRE(str_push(s, 'c') == OK);
-  ORC_SDK_REQUIRE(str_len(s) == 3);
-  ORC_SDK_REQUIRE(str_end(s) == s + str_len(s));
-  ORC_SDK_REQUIRE(*str_end(s) == '\0');
+  ORC_SDK_REQUIRE(orc_str_push(s, 'a') == OK);
+  ORC_SDK_REQUIRE(orc_str_push(s, 'b') == OK);
+  ORC_SDK_REQUIRE(orc_str_push(s, 'c') == OK);
+  ORC_SDK_REQUIRE(orc_str_len(s) == 3);
+  ORC_SDK_REQUIRE(orc_str_end(s) == s + orc_str_len(s));
+  ORC_SDK_REQUIRE(*orc_str_end(s) == '\0');
   // After removal
-  ORC_SDK_REQUIRE(str_remove(s, 1) == OK);
-  ORC_SDK_REQUIRE(str_len(s) == 2);
-  ORC_SDK_REQUIRE(str_end(s) == s + str_len(s));
-  ORC_SDK_REQUIRE(*str_end(s) == '\0');
-  str_free(s);
+  ORC_SDK_REQUIRE(orc_str_remove(s, 1) == OK);
+  ORC_SDK_REQUIRE(orc_str_len(s) == 2);
+  ORC_SDK_REQUIRE(orc_str_end(s) == s + orc_str_len(s));
+  ORC_SDK_REQUIRE(*orc_str_end(s) == '\0');
+  orc_str_free(s);
 }
 
-void test_str_free_and_reuse(void)
+void test_orc_str_free_and_reuse(void)
 {
   char *s = NULL;
-  ORC_SDK_REQUIRE(str_push(s, 'a') == OK);
-  ORC_SDK_REQUIRE(str_push(s, 'b') == OK);
-  ORC_SDK_REQUIRE(str_len(s) == 2);
-  str_free(s);
+  ORC_SDK_REQUIRE(orc_str_push(s, 'a') == OK);
+  ORC_SDK_REQUIRE(orc_str_push(s, 'b') == OK);
+  ORC_SDK_REQUIRE(orc_str_len(s) == 2);
+  orc_str_free(s);
   ORC_SDK_REQUIRE_WITH_MSG(s == NULL, "Pointer is NULL after free");
   // Reuse after free
-  ORC_SDK_REQUIRE(str_push(s, 'x') == OK);
+  ORC_SDK_REQUIRE(orc_str_push(s, 'x') == OK);
   ORC_SDK_REQUIRE(s != NULL);
-  ORC_SDK_REQUIRE(str_len(s) == 1);
+  ORC_SDK_REQUIRE(orc_str_len(s) == 1);
   ORC_SDK_REQUIRE(strcmp(s, "x") == 0);
-  str_free(s);
+  orc_str_free(s);
 }
 
 void test_str_push_special_characters(void)
 {
   char *s = NULL;
   // Whitespace characters
-  ORC_SDK_REQUIRE(str_push(s, ' ') == OK);
-  ORC_SDK_REQUIRE(str_push(s, '\t') == OK);
-  ORC_SDK_REQUIRE(str_push(s, '\n') == OK);
-  ORC_SDK_REQUIRE(str_len(s) == 3);
+  ORC_SDK_REQUIRE(orc_str_push(s, ' ') == OK);
+  ORC_SDK_REQUIRE(orc_str_push(s, '\t') == OK);
+  ORC_SDK_REQUIRE(orc_str_push(s, '\n') == OK);
+  ORC_SDK_REQUIRE(orc_str_len(s) == 3);
   ORC_SDK_REQUIRE(s[0] == ' ');
   ORC_SDK_REQUIRE(s[1] == '\t');
   ORC_SDK_REQUIRE(s[2] == '\n');
   ORC_SDK_REQUIRE(s[3] == '\0');
-  str_free(s);
+  orc_str_free(s);
   // Non-ASCII / high bytes
   s = NULL;
-  ORC_SDK_REQUIRE(str_push(s, (char)0xFF) == OK);
-  ORC_SDK_REQUIRE(str_push(s, (char)0x80) == OK);
-  ORC_SDK_REQUIRE(str_push(s, (char)0x01) == OK);
-  ORC_SDK_REQUIRE(str_len(s) == 3);
+  ORC_SDK_REQUIRE(orc_str_push(s, (char)0xFF) == OK);
+  ORC_SDK_REQUIRE(orc_str_push(s, (char)0x80) == OK);
+  ORC_SDK_REQUIRE(orc_str_push(s, (char)0x01) == OK);
+  ORC_SDK_REQUIRE(orc_str_len(s) == 3);
   ORC_SDK_REQUIRE(s[0] == (char)0xFF);
   ORC_SDK_REQUIRE(s[1] == (char)0x80);
   ORC_SDK_REQUIRE(s[2] == (char)0x01);
   ORC_SDK_REQUIRE(s[3] == '\0');
-  str_free(s);
+  orc_str_free(s);
   // Pushing a null byte - the header count still grows,
-  // so str_len reports based on header, not C string length
+  // so orc_str_len reports based on header, not C string length
   s = NULL;
-  ORC_SDK_REQUIRE(str_push(s, 'a') == OK);
-  ORC_SDK_REQUIRE(str_push(s, '\0') == OK);
-  ORC_SDK_REQUIRE(str_push(s, 'b') == OK);
-  ORC_SDK_REQUIRE_WITH_MSG(str_len(s) == 3, "str_len tracks header count, not strlen");
+  ORC_SDK_REQUIRE(orc_str_push(s, 'a') == OK);
+  ORC_SDK_REQUIRE(orc_str_push(s, '\0') == OK);
+  ORC_SDK_REQUIRE(orc_str_push(s, 'b') == OK);
+  ORC_SDK_REQUIRE_WITH_MSG(orc_str_len(s) == 3, "orc_str_len tracks header count, not strlen");
   // But strlen would see only 1
   ORC_SDK_REQUIRE_WITH_MSG(strlen(s) == 1, "C strlen stops at embedded null");
-  str_free(s);
+  orc_str_free(s);
 }
 
 void test_str_capacity_growth(void)
@@ -874,72 +874,72 @@ void test_str_capacity_growth(void)
   size_t const n = 256;
   for (size_t i = 0; i < n; i++) {
     char ch = (char)('a' + (char)(i % 26));
-    ORC_SDK_REQUIRE(str_push(s, ch) == OK);
-    ORC_SDK_REQUIRE(str_len(s) == i + 1);
-    ORC_SDK_REQUIRE(s[str_len(s)] == '\0');
+    ORC_SDK_REQUIRE(orc_str_push(s, ch) == OK);
+    ORC_SDK_REQUIRE(orc_str_len(s) == i + 1);
+    ORC_SDK_REQUIRE(s[orc_str_len(s)] == '\0');
     // Capacity must be at least length + 1 (for null terminator)
-    ORC_SDK_REQUIRE(_orc_sdk_arr_capacity(s) >= str_len(s) + 1);
+    ORC_SDK_REQUIRE(_orc_sdk_arr_capacity(s) >= orc_str_len(s) + 1);
   }
   // Verify final content
   for (size_t i = 0; i < n; i++) {
     char expected = (char)('a' + (char)(i % 26));
     ORC_SDK_REQUIRE(s[i] == expected);
   }
-  ORC_SDK_REQUIRE(str_len(s) == n);
-  str_free(s);
+  ORC_SDK_REQUIRE(orc_str_len(s) == n);
+  orc_str_free(s);
 }
 
 void test_str_mixed_operations(void)
 {
   char *s = NULL;
   // Build "hello"
-  ORC_SDK_REQUIRE(str_push(s, 'h') == OK);
-  ORC_SDK_REQUIRE(str_push(s, 'e') == OK);
-  ORC_SDK_REQUIRE(str_push(s, 'l') == OK);
-  ORC_SDK_REQUIRE(str_push(s, 'l') == OK);
-  ORC_SDK_REQUIRE(str_push(s, 'o') == OK);
+  ORC_SDK_REQUIRE(orc_str_push(s, 'h') == OK);
+  ORC_SDK_REQUIRE(orc_str_push(s, 'e') == OK);
+  ORC_SDK_REQUIRE(orc_str_push(s, 'l') == OK);
+  ORC_SDK_REQUIRE(orc_str_push(s, 'l') == OK);
+  ORC_SDK_REQUIRE(orc_str_push(s, 'o') == OK);
   ORC_SDK_REQUIRE(strcmp(s, "hello") == 0);
   // Remove 'e' at index 1 -> "hllo"
-  ORC_SDK_REQUIRE(str_remove(s, 1) == OK);
+  ORC_SDK_REQUIRE(orc_str_remove(s, 1) == OK);
   ORC_SDK_REQUIRE(strcmp(s, "hllo") == 0);
-  ORC_SDK_REQUIRE(s[str_len(s)] == '\0');
+  ORC_SDK_REQUIRE(s[orc_str_len(s)] == '\0');
   // Push 'e' -> "hlloe"
-  ORC_SDK_REQUIRE(str_push(s, 'e') == OK);
+  ORC_SDK_REQUIRE(orc_str_push(s, 'e') == OK);
   ORC_SDK_REQUIRE(strcmp(s, "hlloe") == 0);
-  ORC_SDK_REQUIRE(s[str_len(s)] == '\0');
+  ORC_SDK_REQUIRE(s[orc_str_len(s)] == '\0');
   // Remove all characters one by one from front
-  size_t len = str_len(s);
+  size_t len = orc_str_len(s);
   for (size_t i = 0; i < len; i++) {
-    ORC_SDK_REQUIRE(str_remove(s, 0) == OK);
+    ORC_SDK_REQUIRE(orc_str_remove(s, 0) == OK);
   }
-  ORC_SDK_REQUIRE(str_len(s) == 0);
+  ORC_SDK_REQUIRE(orc_str_len(s) == 0);
   ORC_SDK_REQUIRE(s[0] == '\0');
   // Push again after emptying
-  ORC_SDK_REQUIRE(str_push(s, 'z') == OK);
-  ORC_SDK_REQUIRE(str_len(s) == 1);
+  ORC_SDK_REQUIRE(orc_str_push(s, 'z') == OK);
+  ORC_SDK_REQUIRE(orc_str_len(s) == 1);
   ORC_SDK_REQUIRE(strcmp(s, "z") == 0);
-  str_free(s);
+  orc_str_free(s);
 }
 
 void test_str_single_character(void)
 {
   char *s = NULL;
-  ORC_SDK_REQUIRE(str_push(s, 'x') == OK);
-  ORC_SDK_REQUIRE(str_len(s) == 1);
+  ORC_SDK_REQUIRE(orc_str_push(s, 'x') == OK);
+  ORC_SDK_REQUIRE(orc_str_len(s) == 1);
   ORC_SDK_REQUIRE(s[0] == 'x');
   ORC_SDK_REQUIRE(s[1] == '\0');
-  ORC_SDK_REQUIRE(str_end(s) == s + 1);
+  ORC_SDK_REQUIRE(orc_str_end(s) == s + 1);
   // Remove it
-  ORC_SDK_REQUIRE(str_remove(s, 0) == OK);
-  ORC_SDK_REQUIRE(str_len(s) == 0);
+  ORC_SDK_REQUIRE(orc_str_remove(s, 0) == OK);
+  ORC_SDK_REQUIRE(orc_str_len(s) == 0);
   ORC_SDK_REQUIRE(s[0] == '\0');
-  ORC_SDK_REQUIRE(str_end(s) == s);
+  ORC_SDK_REQUIRE(orc_str_end(s) == s);
   // Push again - recover from empty
-  ORC_SDK_REQUIRE(str_push(s, 'y') == OK);
-  ORC_SDK_REQUIRE(str_len(s) == 1);
+  ORC_SDK_REQUIRE(orc_str_push(s, 'y') == OK);
+  ORC_SDK_REQUIRE(orc_str_len(s) == 1);
   ORC_SDK_REQUIRE(s[0] == 'y');
   ORC_SDK_REQUIRE(s[1] == '\0');
-  str_free(s);
+  orc_str_free(s);
 }
 
 void test_str_long_string(void)
@@ -948,9 +948,9 @@ void test_str_long_string(void)
   size_t const n = 10000;
   // Build a long string
   for (size_t i = 0; i < n; i++) {
-    ORC_SDK_REQUIRE(str_push(s, (char)('A' + (char)(i % 26))) == OK);
+    ORC_SDK_REQUIRE(orc_str_push(s, (char)('A' + (char)(i % 26))) == OK);
   }
-  ORC_SDK_REQUIRE(str_len(s) == n);
+  ORC_SDK_REQUIRE(orc_str_len(s) == n);
   ORC_SDK_REQUIRE(s[n] == '\0');
   // Verify content
   for (size_t i = 0; i < n; i++) {
@@ -958,169 +958,169 @@ void test_str_long_string(void)
   }
   // Remove 100 characters from the front
   for (size_t i = 0; i < 100; i++) {
-    ORC_SDK_REQUIRE(str_remove(s, 0) == OK);
+    ORC_SDK_REQUIRE(orc_str_remove(s, 0) == OK);
   }
-  ORC_SDK_REQUIRE(str_len(s) == n - 100);
-  ORC_SDK_REQUIRE(s[str_len(s)] == '\0');
+  ORC_SDK_REQUIRE(orc_str_len(s) == n - 100);
+  ORC_SDK_REQUIRE(s[orc_str_len(s)] == '\0');
   // Remove from the end
   for (size_t i = 0; i < 100; i++) {
-    ORC_SDK_REQUIRE(str_remove(s, str_len(s) - 1) == OK);
+    ORC_SDK_REQUIRE(orc_str_remove(s, orc_str_len(s) - 1) == OK);
   }
-  ORC_SDK_REQUIRE(str_len(s) == n - 200);
-  ORC_SDK_REQUIRE(s[str_len(s)] == '\0');
+  ORC_SDK_REQUIRE(orc_str_len(s) == n - 200);
+  ORC_SDK_REQUIRE(s[orc_str_len(s)] == '\0');
   // Remove from middle
-  size_t mid = str_len(s) / 2;
-  ORC_SDK_REQUIRE(str_remove(s, mid) == OK);
-  ORC_SDK_REQUIRE(str_len(s) == n - 201);
-  ORC_SDK_REQUIRE(s[str_len(s)] == '\0');
-  str_free(s);
+  size_t mid = orc_str_len(s) / 2;
+  ORC_SDK_REQUIRE(orc_str_remove(s, mid) == OK);
+  ORC_SDK_REQUIRE(orc_str_len(s) == n - 201);
+  ORC_SDK_REQUIRE(s[orc_str_len(s)] == '\0');
+  orc_str_free(s);
 }
 
-// str_clear tests
+// orc_str_clear tests
 
-void test_str_clear_basic(void)
+void test_orc_str_clear_basic(void)
 {
   char *s = NULL;
-  ORC_SDK_REQUIRE(str_push(s, 'a') == OK);
-  ORC_SDK_REQUIRE(str_push(s, 'b') == OK);
-  ORC_SDK_REQUIRE(str_push(s, 'c') == OK);
-  ORC_SDK_REQUIRE(str_len(s) == 3);
-  str_clear(s);
-  ORC_SDK_REQUIRE_WITH_MSG(str_len(s) == 0, "Length is 0 after clear");
+  ORC_SDK_REQUIRE(orc_str_push(s, 'a') == OK);
+  ORC_SDK_REQUIRE(orc_str_push(s, 'b') == OK);
+  ORC_SDK_REQUIRE(orc_str_push(s, 'c') == OK);
+  ORC_SDK_REQUIRE(orc_str_len(s) == 3);
+  orc_str_clear(s);
+  ORC_SDK_REQUIRE_WITH_MSG(orc_str_len(s) == 0, "Length is 0 after clear");
   ORC_SDK_REQUIRE_WITH_MSG(s[0] == '\0', "Null-terminated after clear");
-  ORC_SDK_REQUIRE_WITH_MSG(str_is_empty(s), "String is empty after clear");
+  ORC_SDK_REQUIRE_WITH_MSG(orc_str_is_empty(s), "String is empty after clear");
   // Capacity should be preserved
   ORC_SDK_REQUIRE(_orc_sdk_arr_capacity(s) >= 1);
-  str_free(s);
+  orc_str_free(s);
 }
 
-void test_str_clear_null(void)
+void test_orc_str_clear_null(void)
 {
   // Should not crash
   char *s = NULL;
-  str_clear(s);
+  orc_str_clear(s);
   ORC_SDK_REQUIRE(s == NULL);
 }
 
-void test_str_clear_and_reuse(void)
+void test_orc_str_clear_and_reuse(void)
 {
   char *s = NULL;
-  ORC_SDK_REQUIRE(str_push(s, 'x') == OK);
-  ORC_SDK_REQUIRE(str_push(s, 'y') == OK);
-  str_clear(s);
-  ORC_SDK_REQUIRE(str_len(s) == 0);
+  ORC_SDK_REQUIRE(orc_str_push(s, 'x') == OK);
+  ORC_SDK_REQUIRE(orc_str_push(s, 'y') == OK);
+  orc_str_clear(s);
+  ORC_SDK_REQUIRE(orc_str_len(s) == 0);
   // Push after clear
-  ORC_SDK_REQUIRE(str_push(s, 'a') == OK);
-  ORC_SDK_REQUIRE(str_len(s) == 1);
+  ORC_SDK_REQUIRE(orc_str_push(s, 'a') == OK);
+  ORC_SDK_REQUIRE(orc_str_len(s) == 1);
   ORC_SDK_REQUIRE(strcmp(s, "a") == 0);
   // Clear and push again
-  str_clear(s);
-  ORC_SDK_REQUIRE(str_push(s, 'b') == OK);
-  ORC_SDK_REQUIRE(str_push(s, 'c') == OK);
+  orc_str_clear(s);
+  ORC_SDK_REQUIRE(orc_str_push(s, 'b') == OK);
+  ORC_SDK_REQUIRE(orc_str_push(s, 'c') == OK);
   ORC_SDK_REQUIRE(strcmp(s, "bc") == 0);
-  str_free(s);
+  orc_str_free(s);
 }
 
-void test_str_clear_already_empty(void)
+void test_orc_str_clear_already_empty(void)
 {
   char *s = NULL;
-  ORC_SDK_REQUIRE(str_push(s, 'a') == OK);
-  ORC_SDK_REQUIRE(str_remove(s, 0) == OK);
-  ORC_SDK_REQUIRE(str_len(s) == 0);
+  ORC_SDK_REQUIRE(orc_str_push(s, 'a') == OK);
+  ORC_SDK_REQUIRE(orc_str_remove(s, 0) == OK);
+  ORC_SDK_REQUIRE(orc_str_len(s) == 0);
   // Clear an already-empty (but allocated) string
-  str_clear(s);
-  ORC_SDK_REQUIRE(str_len(s) == 0);
+  orc_str_clear(s);
+  ORC_SDK_REQUIRE(orc_str_len(s) == 0);
   ORC_SDK_REQUIRE(s[0] == '\0');
-  str_free(s);
+  orc_str_free(s);
 }
 
-// str_push_str tests
+// orc_str_push_str tests
 
 void test_str_push_str_basic(void)
 {
   char *s = NULL;
-  ORC_SDK_REQUIRE(str_push(s, 'h') == OK);
-  ORC_SDK_REQUIRE(str_push(s, 'i') == OK);
-  ORC_SDK_REQUIRE(str_push_str(s, " world") == OK);
-  ORC_SDK_REQUIRE_WITH_MSG(str_len(s) == 8, "Length after push_str");
+  ORC_SDK_REQUIRE(orc_str_push(s, 'h') == OK);
+  ORC_SDK_REQUIRE(orc_str_push(s, 'i') == OK);
+  ORC_SDK_REQUIRE(orc_str_push_str(s, " world") == OK);
+  ORC_SDK_REQUIRE_WITH_MSG(orc_str_len(s) == 8, "Length after push_str");
   ORC_SDK_REQUIRE_WITH_MSG(strcmp(s, "hi world") == 0, "Content after push_str");
-  ORC_SDK_REQUIRE(s[str_len(s)] == '\0');
-  str_free(s);
+  ORC_SDK_REQUIRE(s[orc_str_len(s)] == '\0');
+  orc_str_free(s);
 }
 
 void test_str_push_str_to_null(void)
 {
   // Push string onto NULL pointer
   char *s = NULL;
-  ORC_SDK_REQUIRE(str_push_str(s, "hello") == OK);
+  ORC_SDK_REQUIRE(orc_str_push_str(s, "hello") == OK);
   ORC_SDK_REQUIRE(s != NULL);
-  ORC_SDK_REQUIRE(str_len(s) == 5);
+  ORC_SDK_REQUIRE(orc_str_len(s) == 5);
   ORC_SDK_REQUIRE(strcmp(s, "hello") == 0);
-  ORC_SDK_REQUIRE(s[str_len(s)] == '\0');
-  str_free(s);
+  ORC_SDK_REQUIRE(s[orc_str_len(s)] == '\0');
+  orc_str_free(s);
 }
 
 void test_str_push_str_empty_tail(void)
 {
   // Push empty string onto existing string
   char *s = NULL;
-  ORC_SDK_REQUIRE(str_push_str(s, "abc") == OK);
-  ORC_SDK_REQUIRE(str_push_str(s, "") == OK);
-  ORC_SDK_REQUIRE_WITH_MSG(str_len(s) == 3,
+  ORC_SDK_REQUIRE(orc_str_push_str(s, "abc") == OK);
+  ORC_SDK_REQUIRE(orc_str_push_str(s, "") == OK);
+  ORC_SDK_REQUIRE_WITH_MSG(orc_str_len(s) == 3,
                            "Length unchanged after pushing empty string");
   ORC_SDK_REQUIRE(strcmp(s, "abc") == 0);
-  str_free(s);
+  orc_str_free(s);
 }
 
 void test_str_push_str_empty_tail_to_null(void)
 {
   // Push empty string onto NULL - should allocate an empty string, not fail
   char *s = NULL;
-  ORC_SDK_REQUIRE_WITH_MSG(str_push_str(s, "") == OK,
+  ORC_SDK_REQUIRE_WITH_MSG(orc_str_push_str(s, "") == OK,
                            "Pushing empty to NULL should succeed");
   ORC_SDK_REQUIRE(s != NULL);
-  ORC_SDK_REQUIRE(str_len(s) == 0);
+  ORC_SDK_REQUIRE(orc_str_len(s) == 0);
   ORC_SDK_REQUIRE(s[0] == '\0');
-  str_free(s);
+  orc_str_free(s);
 }
 
 void test_str_push_str_multiple(void)
 {
   char *s = NULL;
-  ORC_SDK_REQUIRE(str_push_str(s, "foo") == OK);
-  ORC_SDK_REQUIRE(str_push_str(s, "bar") == OK);
-  ORC_SDK_REQUIRE(str_push_str(s, "baz") == OK);
-  ORC_SDK_REQUIRE(str_len(s) == 9);
+  ORC_SDK_REQUIRE(orc_str_push_str(s, "foo") == OK);
+  ORC_SDK_REQUIRE(orc_str_push_str(s, "bar") == OK);
+  ORC_SDK_REQUIRE(orc_str_push_str(s, "baz") == OK);
+  ORC_SDK_REQUIRE(orc_str_len(s) == 9);
   ORC_SDK_REQUIRE(strcmp(s, "foobarbaz") == 0);
-  ORC_SDK_REQUIRE(s[str_len(s)] == '\0');
-  str_free(s);
+  ORC_SDK_REQUIRE(s[orc_str_len(s)] == '\0');
+  orc_str_free(s);
 }
 
 void test_str_push_str_after_remove(void)
 {
   char *s = NULL;
-  ORC_SDK_REQUIRE(str_push_str(s, "abcde") == OK);
+  ORC_SDK_REQUIRE(orc_str_push_str(s, "abcde") == OK);
   // Remove middle character
-  ORC_SDK_REQUIRE(str_remove(s, 2) == OK);
+  ORC_SDK_REQUIRE(orc_str_remove(s, 2) == OK);
   ORC_SDK_REQUIRE(strcmp(s, "abde") == 0);
   // Push string after removal
-  ORC_SDK_REQUIRE(str_push_str(s, "XY") == OK);
+  ORC_SDK_REQUIRE(orc_str_push_str(s, "XY") == OK);
   ORC_SDK_REQUIRE(strcmp(s, "abdeXY") == 0);
-  ORC_SDK_REQUIRE(str_len(s) == 6);
-  ORC_SDK_REQUIRE(s[str_len(s)] == '\0');
-  str_free(s);
+  ORC_SDK_REQUIRE(orc_str_len(s) == 6);
+  ORC_SDK_REQUIRE(s[orc_str_len(s)] == '\0');
+  orc_str_free(s);
 }
 
 void test_str_push_str_after_clear(void)
 {
   char *s = NULL;
-  ORC_SDK_REQUIRE(str_push_str(s, "hello") == OK);
-  str_clear(s);
-  ORC_SDK_REQUIRE(str_len(s) == 0);
-  ORC_SDK_REQUIRE(str_push_str(s, "world") == OK);
+  ORC_SDK_REQUIRE(orc_str_push_str(s, "hello") == OK);
+  orc_str_clear(s);
+  ORC_SDK_REQUIRE(orc_str_len(s) == 0);
+  ORC_SDK_REQUIRE(orc_str_push_str(s, "world") == OK);
   ORC_SDK_REQUIRE(strcmp(s, "world") == 0);
-  ORC_SDK_REQUIRE(str_len(s) == 5);
-  str_free(s);
+  ORC_SDK_REQUIRE(orc_str_len(s) == 5);
+  orc_str_free(s);
 }
 
 void test_str_push_str_long(void)
@@ -1128,55 +1128,55 @@ void test_str_push_str_long(void)
   char *s = NULL;
   // Build a long string by appending many times
   for (int i = 0; i < 500; i++) {
-    ORC_SDK_REQUIRE(str_push_str(s, "ab") == OK);
+    ORC_SDK_REQUIRE(orc_str_push_str(s, "ab") == OK);
   }
-  ORC_SDK_REQUIRE(str_len(s) == 1000);
-  ORC_SDK_REQUIRE(s[str_len(s)] == '\0');
+  ORC_SDK_REQUIRE(orc_str_len(s) == 1000);
+  ORC_SDK_REQUIRE(s[orc_str_len(s)] == '\0');
   // Verify pattern
   for (size_t i = 0; i < 1000; i += 2) {
     ORC_SDK_REQUIRE(s[i] == 'a');
     ORC_SDK_REQUIRE(s[i + 1] == 'b');
   }
-  str_free(s);
+  orc_str_free(s);
 }
 
 void test_str_push_str_single_char(void)
 {
-  // Push a single-character string (compare behavior with str_push)
+  // Push a single-character string (compare behavior with orc_str_push)
   char *s = NULL;
-  ORC_SDK_REQUIRE(str_push_str(s, "x") == OK);
-  ORC_SDK_REQUIRE(str_len(s) == 1);
+  ORC_SDK_REQUIRE(orc_str_push_str(s, "x") == OK);
+  ORC_SDK_REQUIRE(orc_str_len(s) == 1);
   ORC_SDK_REQUIRE(strcmp(s, "x") == 0);
-  // Equivalent to str_push
+  // Equivalent to orc_str_push
   char *s2 = NULL;
-  ORC_SDK_REQUIRE(str_push(s2, 'x') == OK);
-  ORC_SDK_REQUIRE(str_len(s2) == 1);
+  ORC_SDK_REQUIRE(orc_str_push(s2, 'x') == OK);
+  ORC_SDK_REQUIRE(orc_str_len(s2) == 1);
   ORC_SDK_REQUIRE(strcmp(s, s2) == 0);
-  str_free(s);
-  str_free(s2);
+  orc_str_free(s);
+  orc_str_free(s2);
 }
 
-// str_is_empty tests
+// orc_str_is_empty tests
 
-void test_str_is_empty_null(void)
+void test_orc_str_is_empty_null(void)
 {
   char *s = NULL;
-  ORC_SDK_REQUIRE_WITH_MSG(str_is_empty(s), "NULL string is empty");
+  ORC_SDK_REQUIRE_WITH_MSG(orc_str_is_empty(s), "NULL string is empty");
 }
 
-void test_str_is_empty_after_operations(void)
+void test_orc_str_is_empty_after_operations(void)
 {
   char *s = NULL;
-  ORC_SDK_REQUIRE(str_is_empty(s));
-  ORC_SDK_REQUIRE(str_push(s, 'a') == OK);
-  ORC_SDK_REQUIRE_WITH_MSG(!str_is_empty(s), "Non-empty after push");
-  ORC_SDK_REQUIRE(str_remove(s, 0) == OK);
-  ORC_SDK_REQUIRE_WITH_MSG(str_is_empty(s), "Empty after removing last char");
-  ORC_SDK_REQUIRE(str_push_str(s, "hi") == OK);
-  ORC_SDK_REQUIRE(!str_is_empty(s));
-  str_clear(s);
-  ORC_SDK_REQUIRE_WITH_MSG(str_is_empty(s), "Empty after clear");
-  str_free(s);
+  ORC_SDK_REQUIRE(orc_str_is_empty(s));
+  ORC_SDK_REQUIRE(orc_str_push(s, 'a') == OK);
+  ORC_SDK_REQUIRE_WITH_MSG(!orc_str_is_empty(s), "Non-empty after push");
+  ORC_SDK_REQUIRE(orc_str_remove(s, 0) == OK);
+  ORC_SDK_REQUIRE_WITH_MSG(orc_str_is_empty(s), "Empty after removing last char");
+  ORC_SDK_REQUIRE(orc_str_push_str(s, "hi") == OK);
+  ORC_SDK_REQUIRE(!orc_str_is_empty(s));
+  orc_str_clear(s);
+  ORC_SDK_REQUIRE_WITH_MSG(orc_str_is_empty(s), "Empty after clear");
+  orc_str_free(s);
 }
 
 // Mixed operations across new and old API
@@ -1184,21 +1184,21 @@ void test_str_is_empty_after_operations(void)
 void test_str_mixed_new_operations(void)
 {
   char *s = NULL;
-  ORC_SDK_REQUIRE(str_push_str(s, "hello") == OK);
-  ORC_SDK_REQUIRE(str_push(s, '!') == OK);
+  ORC_SDK_REQUIRE(orc_str_push_str(s, "hello") == OK);
+  ORC_SDK_REQUIRE(orc_str_push(s, '!') == OK);
   ORC_SDK_REQUIRE(strcmp(s, "hello!") == 0);
-  str_clear(s);
-  ORC_SDK_REQUIRE(str_is_empty(s));
-  ORC_SDK_REQUIRE(str_push(s, 'A') == OK);
-  ORC_SDK_REQUIRE(str_push_str(s, "BC") == OK);
+  orc_str_clear(s);
+  ORC_SDK_REQUIRE(orc_str_is_empty(s));
+  ORC_SDK_REQUIRE(orc_str_push(s, 'A') == OK);
+  ORC_SDK_REQUIRE(orc_str_push_str(s, "BC") == OK);
   ORC_SDK_REQUIRE(strcmp(s, "ABC") == 0);
-  ORC_SDK_REQUIRE(str_remove(s, 1) == OK);
+  ORC_SDK_REQUIRE(orc_str_remove(s, 1) == OK);
   ORC_SDK_REQUIRE(strcmp(s, "AC") == 0);
-  ORC_SDK_REQUIRE(str_push_str(s, "DE") == OK);
+  ORC_SDK_REQUIRE(orc_str_push_str(s, "DE") == OK);
   ORC_SDK_REQUIRE(strcmp(s, "ACDE") == 0);
-  ORC_SDK_REQUIRE(str_len(s) == 4);
-  ORC_SDK_REQUIRE(s[str_len(s)] == '\0');
-  str_free(s);
+  ORC_SDK_REQUIRE(orc_str_len(s) == 4);
+  ORC_SDK_REQUIRE(s[orc_str_len(s)] == '\0');
+  orc_str_free(s);
 }
 
 // String view.
@@ -1496,33 +1496,33 @@ void test_sv_rfind(void)
   ORC_SDK_REQUIRE(sv_rfind(sv4, 'c') == buf4 + 2);
 }
 
-void test_str_eq(void)
+void test_orc_str_eq(void)
 {
   // Equal strings
   char *a = NULL;
   char *b = NULL;
-  ORC_SDK_REQUIRE(str_push_str(a, "hello") == OK);
-  ORC_SDK_REQUIRE(str_push_str(b, "hello") == OK);
-  ORC_SDK_REQUIRE(str_eq(a, b));
+  ORC_SDK_REQUIRE(orc_str_push_str(a, "hello") == OK);
+  ORC_SDK_REQUIRE(orc_str_push_str(b, "hello") == OK);
+  ORC_SDK_REQUIRE(orc_str_eq(a, b));
   // Different strings, same length
-  str_clear(b);
-  ORC_SDK_REQUIRE(str_push_str(b, "world") == OK);
-  ORC_SDK_REQUIRE(!str_eq(a, b));
+  orc_str_clear(b);
+  ORC_SDK_REQUIRE(orc_str_push_str(b, "world") == OK);
+  ORC_SDK_REQUIRE(!orc_str_eq(a, b));
   // Different lengths
-  str_clear(b);
-  ORC_SDK_REQUIRE(str_push_str(b, "hi") == OK);
-  ORC_SDK_REQUIRE(!str_eq(a, b));
+  orc_str_clear(b);
+  ORC_SDK_REQUIRE(orc_str_push_str(b, "hi") == OK);
+  ORC_SDK_REQUIRE(!orc_str_eq(a, b));
   // Both NULL
-  ORC_SDK_REQUIRE(str_eq(NULL, NULL));
+  ORC_SDK_REQUIRE(orc_str_eq(NULL, NULL));
   // One NULL
-  ORC_SDK_REQUIRE(!str_eq(a, NULL));
-  ORC_SDK_REQUIRE(!str_eq(NULL, a));
+  ORC_SDK_REQUIRE(!orc_str_eq(a, NULL));
+  ORC_SDK_REQUIRE(!orc_str_eq(NULL, a));
   // Both empty
-  str_clear(a);
-  str_clear(b);
-  ORC_SDK_REQUIRE(str_eq(a, b));
-  str_free(a);
-  str_free(b);
+  orc_str_clear(a);
+  orc_str_clear(b);
+  ORC_SDK_REQUIRE(orc_str_eq(a, b));
+  orc_str_free(a);
+  orc_str_free(b);
 }
 
 void test_sv_contains_char(void)
@@ -2085,7 +2085,7 @@ void test_deck_printf(void)
                                             "                   | 29\n"
                                             "              1 ---| 30\n"
                                             "                   | 31\n"))));
-  str_free(output);
+  orc_str_free(output);
   // Depth-2 with empty lists.
   DECK_INIT(deck, size_t, ((1, 2, 3), (), (4, 5, 6, 7), (), (8, 9, 10, 11), ()));
   output = deck_to_str(deck, _print_size_t);
@@ -2104,7 +2104,7 @@ void test_deck_printf(void)
                                             "          | 10\n"
                                             "          | 11\n"
                                             "     1 ---|\n"))));
-  str_free(output);
+  orc_str_free(output);
   // Depth-1: Flat list.
   DECK_INIT(deck, size_t, (10, 20, 30));
   output = deck_to_str(deck, _print_size_t);
@@ -2112,12 +2112,12 @@ void test_deck_printf(void)
                         sv_from_str("  1 ---| 10\n"
                                     "       | 20\n"
                                     "       | 30\n")));
-  str_free(output);
+  orc_str_free(output);
   // List with single element.
   DECK_INIT(deck, size_t, (42));
   output = deck_to_str(deck, _print_size_t);
   ORC_SDK_REQUIRE(sv_eq(sv_from_str(output), sv_from_str("  1 ---| 42\n")));
-  str_free(output);
+  orc_str_free(output);
   // All empty depth-2.
   DECK_INIT(deck, size_t, ((), (), ()));
   output = deck_to_str(deck, _print_size_t);
@@ -2125,7 +2125,7 @@ void test_deck_printf(void)
                         sv_from_str("  2 ------|\n"
                                     "     1 ---|\n"
                                     "     1 ---|\n")));
-  str_free(output);
+  orc_str_free(output);
   // Empty deck.
   deck_clear(deck);
   output = deck_to_str(deck, _print_size_t);
