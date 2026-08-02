@@ -8,7 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "orc_abi.h"
+#include "../orc_abi.h"
 
 #define ORC_SDK_REQUIRE_WITH_MSG(cond, msg)                                            \
   do {                                                                                 \

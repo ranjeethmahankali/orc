@@ -4,14 +4,14 @@
 
 #define STB_C_LEXER_IMPLEMENTATION
 
-#include "stb_c_lexer.h"
+#include "third_party/stb_c_lexer.h"
 
 #define NOB_IMPLEMENTATION
 
-#include "nob.h"
+#include "third_party/nob.h"
 
 #define BUILD_DIR "build/"
-#define SRC_DIR "src/"
+#define SDK_SRC_DIR "orc_sdk/"
 #define TEST_RUNNER_SRC_PATH BUILD_DIR "_test_runner.c"
 #define TEST_RUNNER_BIN_PATH BUILD_DIR "test_runner"
 
@@ -86,14 +86,15 @@ void discover_tests(char const         *src,
 bool list_src_files(Nob_File_Paths *dst)
 {
   dst->count = 0;
-  if (!nob_read_entire_dir(SRC_DIR, dst)) {
+  // We read all files and then filter out the ones we don't want to compile.
+  if (!nob_read_entire_dir(SDK_SRC_DIR, dst)) {
     nob_log(NOB_ERROR, "Unable to read test files from the test directory.");
     return false;
   }
   for (size_t i = 0; i < dst->count; ++i) {
     Nob_String_View sv = nob_sv_from_cstr(dst->items[i]);
     if (nob_sv_end_with(sv, ".c") || nob_sv_end_with(sv, ".h")) {
-      dst->items[i] = nob_temp_sprintf("%s%s", SRC_DIR, dst->items[i]);
+      dst->items[i] = nob_temp_sprintf("%s%s", SDK_SRC_DIR, dst->items[i]);
     }
     else {
       nob_da_remove_unordered(dst, i--);
@@ -183,8 +184,9 @@ build:
   nob_cc_output(&cmd, TEST_RUNNER_BIN_PATH);
   for (size_t i = 0; i < files.count; ++i) {
     Nob_String_View sv = nob_sv_from_cstr(files.items[i]);
-    if (nob_sv_end_with(sv, ".c"))
+    if (nob_sv_end_with(sv, ".c")) {
       nob_cc_inputs(&cmd, files.items[i]);
+    }
   }
   nob_cc_inputs(&cmd, TEST_RUNNER_SRC_PATH);
   nob_cmd_append(&cmd, "-lm");  // Link math.
@@ -227,6 +229,12 @@ int main(int argc, char **argv)
     ret = 1;
     goto cleanup;
   }
+
+  // Debugging
+  for (size_t i = 0; i < srcfiles.count; ++i) {
+    nob_log(NOB_INFO, "Found source file %s", srcfiles.items[i]);
+  }
+
   if (!run_tests(srcfiles, test_filter)) {
     ret = 1;
     goto cleanup;
