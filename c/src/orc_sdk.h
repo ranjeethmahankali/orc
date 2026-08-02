@@ -268,53 +268,53 @@ typedef struct
 {
   char *start;
   char *end;
-} StrView;
+} OrcStrView;
 
 #define sv_len(sv) \
   (((sv).start == NULL || (sv).end == NULL) ? 0 : (size_t)((sv).end - (sv).start))
 
-static inline bool sv_is_empty(StrView const sv)
+static inline bool sv_is_empty(OrcStrView const sv)
 {
   return sv.start == sv.end || sv.start == NULL || sv.end == NULL;
 }
 
-StrView sv_from_str(char *str);
+OrcStrView sv_from_str(char *str);
 
-StrView sv_trim_left(StrView sv);
+OrcStrView sv_trim_left(OrcStrView sv);
 
-StrView sv_trim_right(StrView sv);
+OrcStrView sv_trim_right(OrcStrView sv);
 
-static inline StrView sv_trim(StrView sv)
+static inline OrcStrView sv_trim(OrcStrView sv)
 {
   return sv_trim_left(sv_trim_right(sv));
 }
 
-bool sv_starts_with(StrView const sv, char const *const prefix);
+bool sv_starts_with(OrcStrView const sv, char const *const prefix);
 
-bool sv_ends_with(StrView const sv, char const *const suffix);
+bool sv_ends_with(OrcStrView const sv, char const *const suffix);
 
-bool sv_strip_prefix(StrView *sv, char const *const prefix);
+bool sv_strip_prefix(OrcStrView *sv, char const *const prefix);
 
-bool sv_strip_suffix(StrView *sv, char const *const suffix);
+bool sv_strip_suffix(OrcStrView *sv, char const *const suffix);
 
-bool sv_contains_str(StrView const sv, char const *const needle);
+bool sv_contains_str(OrcStrView const sv, char const *const needle);
 
-StrView sv_split_at_delim(StrView *sv, char const delim);
+OrcStrView sv_split_at_delim(OrcStrView *sv, char const delim);
 
 #define sv_split_line(sv) sv_split_at_delim((sv), '\n')
 
-char *sv_find(StrView sv, char const c);
+char *sv_find(OrcStrView sv, char const c);
 
-static inline bool sv_contains_char(StrView sv, char const c)
+static inline bool sv_contains_char(OrcStrView sv, char const c)
 {
   return sv_find(sv, c) != NULL;
 }
 
-char *sv_rfind(StrView sv, char const c);
+char *sv_rfind(OrcStrView sv, char const c);
 
-StrView sv_slice(StrView sv, size_t const start, size_t const end);
+OrcStrView sv_slice(OrcStrView sv, size_t const start, size_t const end);
 
-bool sv_eq(StrView const a, StrView const b);
+bool sv_eq(OrcStrView const a, OrcStrView const b);
 
 // ========== Deck ==========
 

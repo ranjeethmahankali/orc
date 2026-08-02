@@ -238,16 +238,16 @@ bool orc_str_eq(char *const a, char *const b)
 
 // ========== String view ==========
 
-StrView sv_from_str(char *str)
+OrcStrView sv_from_str(char *str)
 {
   char *end = NULL;
   if (str) {
     end = str + strlen(str);
   }
-  return (StrView) {.start = str, .end = end};
+  return (OrcStrView) {.start = str, .end = end};
 }
 
-StrView sv_trim_left(StrView sv)
+OrcStrView sv_trim_left(OrcStrView sv)
 {
   if (sv.start != NULL && sv.end != NULL) {
     while (sv.start < sv.end && isspace((int)(*sv.start))) {
@@ -256,11 +256,11 @@ StrView sv_trim_left(StrView sv)
     return sv;
   }
   else {
-    return (StrView) {0};
+    return (OrcStrView) {0};
   }
 }
 
-StrView sv_trim_right(StrView sv)
+OrcStrView sv_trim_right(OrcStrView sv)
 {
   if (sv.start != NULL && sv.end != NULL) {
     while (sv.end > sv.start && isspace((int)(*(sv.end - 1)))) {
@@ -269,32 +269,32 @@ StrView sv_trim_right(StrView sv)
     return sv;
   }
   else {
-    return (StrView) {0};
+    return (OrcStrView) {0};
   }
 }
 
-StrView sv_split_at_delim(StrView *sv, char const delim)
+OrcStrView sv_split_at_delim(OrcStrView *sv, char const delim)
 {
   if (sv->start != NULL && sv->end != NULL) {
     void *mid = memchr(sv->start, delim, sv_len(*sv));
     if (mid != NULL) {
       char *start = sv->start;
       sv->start   = (char *)mid + 1;
-      return (StrView) {.start = start, .end = mid};
+      return (OrcStrView) {.start = start, .end = mid};
     }
     else {
-      StrView out = *sv;
+      OrcStrView out = *sv;
       sv->start   = NULL;
       sv->end     = NULL;
       return out;
     }
   }
   else {
-    return (StrView) {0};
+    return (OrcStrView) {0};
   }
 }
 
-bool sv_starts_with(StrView const sv, char const *const prefix)
+bool sv_starts_with(OrcStrView const sv, char const *const prefix)
 {
   size_t const n = sv_len(sv);
   if (n == 0 || prefix == NULL) {
@@ -307,7 +307,7 @@ bool sv_starts_with(StrView const sv, char const *const prefix)
   return memcmp(sv.start, prefix, preflen) == 0;
 }
 
-bool sv_ends_with(StrView const sv, char const *const suffix)
+bool sv_ends_with(OrcStrView const sv, char const *const suffix)
 {
   size_t const n = sv_len(sv);
   if (n == 0 || suffix == NULL) {
@@ -320,7 +320,7 @@ bool sv_ends_with(StrView const sv, char const *const suffix)
   return memcmp(sv.end - suflen, suffix, suflen) == 0;
 }
 
-bool sv_contains_str(StrView const sv, char const *const needle)
+bool sv_contains_str(OrcStrView const sv, char const *const needle)
 {
   if (needle == NULL || sv.start == NULL || sv.end == NULL) {
     return false;
@@ -350,7 +350,7 @@ bool sv_contains_str(StrView const sv, char const *const needle)
   } while (true);
 }
 
-char *sv_find(StrView sv, char const c)
+char *sv_find(OrcStrView sv, char const c)
 {
   if (sv.start == NULL || sv.end == NULL) {
     return NULL;
@@ -358,7 +358,7 @@ char *sv_find(StrView sv, char const c)
   return memchr(sv.start, c, sv_len(sv));
 }
 
-char *sv_rfind(StrView sv, char const c)
+char *sv_rfind(OrcStrView sv, char const c)
 {
   if (sv.start != NULL && sv.end != NULL && sv.start < sv.end) {
     char *ptr = sv.end - 1;
@@ -377,7 +377,7 @@ char *sv_rfind(StrView sv, char const c)
   }
 }
 
-bool sv_strip_prefix(StrView *sv, char const *const prefix)
+bool sv_strip_prefix(OrcStrView *sv, char const *const prefix)
 {
   if (sv == NULL) {
     return false;
@@ -399,7 +399,7 @@ bool sv_strip_prefix(StrView *sv, char const *const prefix)
   }
 }
 
-bool sv_strip_suffix(StrView *sv, char const *const suffix)
+bool sv_strip_suffix(OrcStrView *sv, char const *const suffix)
 {
   if (sv == NULL) {
     return false;
@@ -421,7 +421,7 @@ bool sv_strip_suffix(StrView *sv, char const *const suffix)
   }
 }
 
-StrView sv_slice(StrView sv, size_t const start, size_t const end)
+OrcStrView sv_slice(OrcStrView sv, size_t const start, size_t const end)
 {
   if (sv.start == NULL || sv.end == NULL) {
     return sv;
@@ -432,14 +432,14 @@ StrView sv_slice(StrView sv, size_t const start, size_t const end)
     sv.start = start_new;
     sv.end   = end_new;
   }
-  else {  // Invalid indexing, return empty StrView.
+  else {  // Invalid indexing, return empty OrcStrView.
     sv.start = NULL;
     sv.end   = NULL;
   }
   return sv;
 }
 
-bool sv_eq(StrView const a, StrView const b)
+bool sv_eq(OrcStrView const a, OrcStrView const b)
 {
   size_t const n = sv_len(a);
   if (n != sv_len(b)) {
