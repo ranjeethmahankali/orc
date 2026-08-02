@@ -452,7 +452,7 @@ void test_arr_clear(void)
   ORC_SDK_REQUIRE_WITH_MSG(_arr_capacity(arr) == old_capacity,
                            "Capacity should be preserved");
   // Verify we can still use the array after clear
-  Status s = arr_push(arr, 2.71);
+  OrcSdk_Status s = arr_push(arr, 2.71);
   ORC_SDK_REQUIRE_WITH_MSG(s == OK, "Should be able to push after clear");
   ORC_SDK_REQUIRE_WITH_MSG(arr_len(arr) == 1, "Array should have 1 element after push");
   ORC_SDK_REQUIRE_WITH_MSG(arr[0] == 2.71, "Element should be correct");
@@ -476,13 +476,13 @@ void test_arr_remove_range(void)
   int *arr = NULL;
   // Setup test array: [10, 20, 30, 40, 50]
   for (int i = 1; i <= 5; i++) {
-    Status s = arr_push(arr, i * 10);
+    OrcSdk_Status s = arr_push(arr, i * 10);
     ORC_SDK_REQUIRE_WITH_MSG(s == OK, "Setup should succeed");
   }
   ORC_SDK_REQUIRE_WITH_MSG(arr_len(arr) == 5, "Array should have 5 elements");
   // Test 1: Remove middle range [1, 3) -> removes 20, 30
   // Expected: [10, 40, 50]
-  Status result = arr_remove_range(arr, 1, 3);
+  OrcSdk_Status result = arr_remove_range(arr, 1, 3);
   ORC_SDK_REQUIRE_WITH_MSG(result == OK, "Remove middle range should succeed");
   ORC_SDK_REQUIRE_WITH_MSG(arr_len(arr) == 3,
                            "Array should have 3 elements after removing 2");
@@ -571,7 +571,7 @@ void test_arr_pop(void)
   double *arr = NULL;
   double  value;
   // Test pop from empty array (should fail)
-  Status result = arr_pop(arr, &value);
+  OrcSdk_Status result = arr_pop(arr, &value);
   ORC_SDK_REQUIRE_WITH_MSG(result == OUT_OF_BOUNDS, "Pop from empty array should fail");
   // Test pop from NULL array (should fail)
   double *null_arr = NULL;

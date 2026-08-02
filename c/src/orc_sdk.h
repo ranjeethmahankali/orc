@@ -45,7 +45,7 @@ typedef enum
   ALLOC_FAILED,
   OUT_OF_BOUNDS,
   NULL_PTR,
-} Status;
+} OrcSdk_Status;
 
 // ========== Array ==========
 
@@ -92,7 +92,7 @@ static inline size_t arr_len(void *ptr)
 
 void *_arr_grow(void *ptr, size_t elemsize);
 
-Status _arr_remove_impl(void *ptr, size_t const idx, size_t const elemsize);
+OrcSdk_Status _arr_remove_impl(void *ptr, size_t const idx, size_t const elemsize);
 
 /**
  * Remove the element at index idx from the array. This preserves the order of the
@@ -156,10 +156,10 @@ void _arr_fill_impl(void             *arr,
 
 #define arr_fill(ptr, val) _arr_fill_impl((ptr), &(val), arr_len((ptr)), sizeof(*ptr))
 
-Status _arr_remove_range_impl(void        *ptr,
-                              size_t const start,
-                              size_t const stop,
-                              size_t const elemsize);
+OrcSdk_Status _arr_remove_range_impl(void        *ptr,
+                                     size_t const start,
+                                     size_t const stop,
+                                     size_t const elemsize);
 
 /**
  * Remove a range of elements from the array. The range is from `start` (inclusive) to
@@ -198,7 +198,7 @@ static inline size_t str_len(void *ptr)
   return 0;
 }
 
-Status _str_remove_impl(char *const ptr, size_t const idx);
+OrcSdk_Status _str_remove_impl(char *const ptr, size_t const idx);
 
 /**
  * @brief Remove a character from a position in a stirng.
@@ -553,7 +553,7 @@ DeckWriter dw_child(DeckWriter *writer);
 
 uint8_t _dw_next_depth(DeckWriter *writer);
 
-Status _dw_push_impl(DeckWriter *writer, void *item);
+OrcSdk_Status _dw_push_impl(DeckWriter *writer, void *item);
 
 #define dw_push(writer, item) (_dw_push_impl((writer), &(item)))
 
@@ -569,9 +569,9 @@ static inline size_t dw_len(DeckWriter *writer)
   return deck_len(*(writer->deck)) - writer->start;
 }
 
-Status dw_close(DeckWriter *writer);
+OrcSdk_Status dw_close(DeckWriter *writer);
 
-Status dw_advance(DeckWriter *writer);
+OrcSdk_Status dw_advance(DeckWriter *writer);
 
 // ========== Dims (Units) ==========
 

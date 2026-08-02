@@ -10,7 +10,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-int stat_printf(Status const s)
+int stat_printf(OrcSdk_Status const s)
 {
   switch (s) {
   case OK:
@@ -73,7 +73,7 @@ void *_arr_grow_capacity(void *ptr, size_t const elemsize, size_t const nelems)
   return ptr;
 }
 
-Status _arr_remove_impl(void *ptr, size_t const idx, size_t const elemsize)
+OrcSdk_Status _arr_remove_impl(void *ptr, size_t const idx, size_t const elemsize)
 {
   _ArrHeader *h = _arr_header(ptr);
   if (h && (idx < h->count)) {
@@ -140,10 +140,10 @@ void _arr_fill_impl(void             *arr,
                            "Should have written up to the end of the array.");
 }
 
-Status _arr_remove_range_impl(void        *ptr,
-                              size_t const start,
-                              size_t const stop,
-                              size_t const elemsize)
+OrcSdk_Status _arr_remove_range_impl(void        *ptr,
+                                     size_t const start,
+                                     size_t const stop,
+                                     size_t const elemsize)
 {
   _ArrHeader *h = _arr_header(ptr);
   if (h && (start <= stop) && (start <= h->count) && (stop <= h->count)) {
@@ -169,7 +169,7 @@ bool arr_is_empty(void *ptr)
 
 // ========== String ==========
 
-Status _str_remove_impl(char *const ptr, size_t const idx)
+OrcSdk_Status _str_remove_impl(char *const ptr, size_t const idx)
 {
   if (idx < str_len(ptr)) {
     return _arr_remove_impl(ptr, idx, sizeof(char));
@@ -694,10 +694,10 @@ void deck_graft(void *ptr)
   _DeckHeader *h = _deck_header(ptr);
   if (h == NULL)
     return;
-  size_t const count     = arr_len(h->marks);
-  OrcMark     *old_marks = h->marks;
-  h->marks               = NULL;
-  Status const status    = arr_reserve(h->marks, count + h->count);
+  size_t const count         = arr_len(h->marks);
+  OrcMark     *old_marks     = h->marks;
+  h->marks                   = NULL;
+  OrcSdk_Status const status = arr_reserve(h->marks, count + h->count);
   ORC_SDK_REQUIRE_WITH_MSG(status == OK, "Allocation failed.");
   uint64_t     prev    = 0;
   size_t const n_marks = arr_len(old_marks);
@@ -764,7 +764,7 @@ char *_deck_to_str(void        *ptr,
   size_t const      n_marks = arr_len(h->marks);
   uint8_t const     dmax    = n_marks == 0 ? 0 : h->marks[0].depth;
   char const *const TAB     = "   ";
-  Status            status  = OK;
+  OrcSdk_Status     status  = OK;
   for (size_t mi = 0; mi < n_marks; ++mi) {
     size_t next_pos = (mi + 1) < n_marks ? h->marks[mi + 1].pos : h->count;
     if (next_pos > h->count) {
@@ -1012,16 +1012,16 @@ DeckWriter dw_child(DeckWriter *writer)
   };
 }
 
-Status _dw_push_impl(DeckWriter *writer, void *item)
+OrcSdk_Status _dw_push_impl(DeckWriter *writer, void *item)
 {
   *(writer->deck) =
     _deck_push_impl(*(writer->deck), item, writer->item_size, _dw_next_depth(writer));
   return *(writer->deck) == NULL ? ALLOC_FAILED : OK;
 }
 
-Status dw_close(DeckWriter *writer)
+OrcSdk_Status dw_close(DeckWriter *writer)
 {
-  Status status = OK;
+  OrcSdk_Status status = OK;
   if (writer != NULL && writer->has_next_depth) {
     *(writer->deck) =
       _deck_start_new_arr(*(writer->deck), writer->item_size, writer->next_depth);
@@ -1033,7 +1033,7 @@ Status dw_close(DeckWriter *writer)
   return status;
 }
 
-Status dw_advance(DeckWriter *writer)
+OrcSdk_Status dw_advance(DeckWriter *writer)
 {
   if (writer == NULL)
     return NULL_PTR;
@@ -1298,8 +1298,8 @@ void *comb_advance(void *ptr)
     }
     if (any_advanced) {  // At least one input advanced. Advance all the writers.
       for (size_t i = 0; i < n_outputs; ++i) {
-        DeckWriter  *last_writer = comb->writer_matrix + (i + 1) * comb->stack_depth - 1;
-        Status const status      = dw_advance(last_writer);
+        DeckWriter *last_writer = comb->writer_matrix + (i + 1) * comb->stack_depth - 1;
+        OrcSdk_Status const status = dw_advance(last_writer);
         ORC_SDK_REQUIRE(status == OK);
       }
       return comb;
@@ -1323,8 +1323,8 @@ void *comb_advance(void *ptr)
       *last_view          = (DeckView) {0};
     }
     for (size_t i = 0; i < n_outputs; ++i) {  // Pop all the outputs.
-      DeckWriter  *last_writer = comb->writer_matrix + i * comb->stack_depth + stack_top;
-      Status const status      = dw_close(last_writer);
+      DeckWriter *last_writer = comb->writer_matrix + i * comb->stack_depth + stack_top;
+      OrcSdk_Status const status = dw_close(last_writer);
       ORC_SDK_REQUIRE(status == OK);
     }
     --stack_top;
@@ -1338,7 +1338,7 @@ void *comb_advance(void *ptr)
     if (state == ADVANCED) {  // Only advance all the outputs if inputs did.
       for (size_t i = 0; i < n_outputs; ++i) {
         DeckWriter *last_writer = comb->writer_matrix + i * comb->stack_depth + stack_top;
-        Status const status     = dw_advance(last_writer);
+        OrcSdk_Status const status = dw_advance(last_writer);
         ORC_SDK_REQUIRE(status == OK);
       }
     }
