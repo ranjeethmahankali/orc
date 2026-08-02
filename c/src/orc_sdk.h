@@ -105,7 +105,7 @@ OrcSdk_Status _orc_sdk_arr_remove_impl(void        *ptr,
 /**
  * Push a new value to the end of the array.
  */
-#define arr_push(ptr, val)                                      \
+#define orc_sdk_arr_push(ptr, val)                                      \
   (((ptr) = _orc_sdk_arr_grow(ptr, sizeof *(ptr)))              \
      ? ((ptr)[_orc_sdk_arr_header((ptr))->count++] = (val), OK) \
      : ALLOC_FAILED)
@@ -113,13 +113,13 @@ OrcSdk_Status _orc_sdk_arr_remove_impl(void        *ptr,
 /**
  * Get a pointer pointing past the end of the array.
  */
-#define arr_end(ptr) (ptr) + orc_sdk_arr_len((ptr))
+#define orc_sdk_arr_end(ptr) (ptr) + orc_sdk_arr_len((ptr))
 
 /**
  * Removes the element at the index idx from the array. This is faster than
  * orc_sdk_arr_remove, but doesn't preserve the order of the elements.
  */
-#define arr_swap_remove(ptr, idx)                                        \
+#define orc_sdk_arr_swap_remove(ptr, idx)                                        \
   (((ptr) != NULL && (idx) < orc_sdk_arr_len(ptr))                       \
      ? ((ptr)[(idx)] = (ptr)[--(_orc_sdk_arr_header((ptr))->count)], OK) \
      : OUT_OF_BOUNDS)
@@ -129,12 +129,12 @@ void *_orc_sdk_arr_grow_capacity(void *ptr, size_t const elemsize, size_t const 
 /**
  * Reserve memory for the `size` number of elements in the array.
  */
-#define arr_reserve(ptr, size)                                        \
+#define orc_sdk_arr_reserve(ptr, size)                                        \
   (((ptr) = _orc_sdk_arr_grow_capacity((ptr), sizeof *(ptr), (size))) \
      ? OK                                                             \
      : ((size) == 0 ? OK : ALLOC_FAILED))
 
-void *_arr_resize_impl(void *ptr, size_t const elemsize, size_t const count);
+void *_orc_sdk_arr_resize_impl(void *ptr, size_t const elemsize, size_t const count);
 
 /**
  * Resize the array to the given size. If the new size is smaller than the original size,
@@ -142,22 +142,22 @@ void *_arr_resize_impl(void *ptr, size_t const elemsize, size_t const count);
  * is extended, and the newly allocated space is zero'd out. Existing elements remain as
  * they were.
  */
-#define arr_resize(ptr, size) (ptr) = _arr_resize_impl((ptr), sizeof *(ptr), (size))
+#define orc_sdk_arr_resize(ptr, size) (ptr) = _orc_sdk_arr_resize_impl((ptr), sizeof *(ptr), (size))
 
 /**
  * @brief Clear all elements from the array. This doesn't de-allocate the memory.
  *
  * @param ptr Pointer to the array.
  */
-void arr_clear(void *ptr);
+void orc_sdk_arr_clear(void *ptr);
 
-void _arr_fill_impl(void             *arr,
+void _orc_sdk_arr_fill_impl(void             *arr,
                     void const *const elem,
                     size_t const      count,
                     size_t const      elemsize);
 
-#define arr_fill(ptr, val) \
-  _arr_fill_impl((ptr), &(val), orc_sdk_arr_len((ptr)), sizeof(*ptr))
+#define orc_sdk_arr_fill(ptr, val) \
+  _orc_sdk_arr_fill_impl((ptr), &(val), orc_sdk_arr_len((ptr)), sizeof(*ptr))
 
 OrcSdk_Status _orc_sdk_arr_remove_range_impl(void        *ptr,
                                              size_t const start,

@@ -87,7 +87,7 @@ OrcSdk_Status _orc_sdk_arr_remove_impl(void *ptr, size_t const idx, size_t const
   return OUT_OF_BOUNDS;
 }
 
-void *_arr_resize_impl(void *ptr, size_t const elemsize, size_t const count)
+void *_orc_sdk_arr_resize_impl(void *ptr, size_t const elemsize, size_t const count)
 {
   size_t const before = orc_sdk_arr_len(ptr);
   if (before < count) {  // Needs to grow.
@@ -104,14 +104,14 @@ void *_arr_resize_impl(void *ptr, size_t const elemsize, size_t const count)
   return ptr;
 }
 
-void arr_clear(void *ptr)
+void orc_sdk_arr_clear(void *ptr)
 {
   _OrcSdk_ArrHeader *h = _orc_sdk_arr_header(ptr);
   if (h)
     h->count = 0;
 }
 
-void _arr_fill_impl(void             *arr,
+void _orc_sdk_arr_fill_impl(void             *arr,
                     void const *const elem,
                     size_t const      count,
                     size_t const      elemsize)
@@ -183,11 +183,11 @@ char *_orc_str_push_impl(char *ptr, char val)
   if (newlen < 2) {  // Needs to contain at the very least val and a null terminator.
     newlen = 2;
   }
-  arr_resize(ptr, newlen);
+  orc_sdk_arr_resize(ptr, newlen);
   if (ptr == NULL) {
     return NULL;
   }
-  char *end = arr_end(ptr);
+  char *end = orc_sdk_arr_end(ptr);
   *(--end)  = '\0';
   *(--end)  = val;
   return ptr;
@@ -207,7 +207,7 @@ char *_orc_str_push_str_impl(char *ptr, char const *tail)
   size_t       extra  = strlen(tail);
   size_t const oldlen = orc_str_len(ptr);
   size_t       newlen = oldlen + extra + 1;  // Add 1 for null terminator.
-  arr_resize(ptr, newlen);
+  orc_sdk_arr_resize(ptr, newlen);
   if (ptr == NULL) {
     return ptr;
   }
@@ -485,7 +485,7 @@ static void _deck_push_mark(_DeckHeader *h, uint8_t depth, size_t const pos)
   {  // Make sure we have enough pegs.
     size_t const n_old = orc_sdk_arr_len(h->pegs);
     if (n_old < n_strides) {
-      arr_resize(h->pegs, n_strides);
+      orc_sdk_arr_resize(h->pegs, n_strides);
       memset(h->pegs + n_old, 0, (n_strides - n_old) * sizeof(*(h->pegs)));
     }
   }
@@ -501,11 +501,11 @@ static void _deck_push_mark(_DeckHeader *h, uint8_t depth, size_t const pos)
       last_depth = (uint64_t)(h->marks[n - 1].depth);
     }
     size_t const total = last_offset + last_depth;
-    arr_push(h->stride_offset, total);
+    orc_sdk_arr_push(h->stride_offset, total);
   }
   {  // Update strides.
     size_t const n_old = orc_sdk_arr_len(h->strides);
-    arr_resize(h->strides, n_old + n_strides);
+    orc_sdk_arr_resize(h->strides, n_old + n_strides);
     memset(h->strides + n_old, 0xff, n_strides * sizeof(*(h->strides)));
     for (size_t i = 0; i < n_strides; ++i) {
       size_t const peg = h->pegs[i];
@@ -520,7 +520,7 @@ static void _deck_push_mark(_DeckHeader *h, uint8_t depth, size_t const pos)
     }
   }
   OrcMark const mark = (OrcMark) {.depth = depth, .pos = pos};
-  arr_push(h->marks, mark);
+  orc_sdk_arr_push(h->marks, mark);
 }
 
 void *_deck_push_empty(void *ptr, size_t const itemsize, uint8_t const depth)
@@ -583,10 +583,10 @@ void deck_clear(void const *ptr)
   _DeckHeader *h = _deck_header(ptr);
   if (h == NULL)
     return;
-  arr_clear(h->marks);
-  arr_clear(h->stride_offset);
-  arr_clear(h->strides);
-  arr_clear(h->pegs);
+  orc_sdk_arr_clear(h->marks);
+  orc_sdk_arr_clear(h->stride_offset);
+  orc_sdk_arr_clear(h->strides);
+  orc_sdk_arr_clear(h->pegs);
   h->count = 0;
 }
 
@@ -616,11 +616,11 @@ void *_deck_grow_capacity(void *ptr, size_t const itemsize, size_t const n)
     h->capacity = n;
     ptr         = h + 1;
   }
-  if (OK != arr_reserve(h->marks, n)) {
+  if (OK != orc_sdk_arr_reserve(h->marks, n)) {
     _deck_free_impl(ptr);
     return NULL;
   }
-  if (OK != arr_reserve(h->stride_offset, n)) {
+  if (OK != orc_sdk_arr_reserve(h->stride_offset, n)) {
     _deck_free_impl(ptr);
     return NULL;
   }
@@ -633,10 +633,10 @@ void deck_flatten(void *ptr)
   if (h == NULL) {
     return;
   }
-  arr_clear(h->marks);
-  arr_clear(h->stride_offset);
-  arr_clear(h->strides);
-  arr_clear(h->pegs);
+  orc_sdk_arr_clear(h->marks);
+  orc_sdk_arr_clear(h->stride_offset);
+  orc_sdk_arr_clear(h->strides);
+  orc_sdk_arr_clear(h->pegs);
   if (h->count > 1) {
     _deck_push_mark(h, 0, 0);
   }
@@ -646,14 +646,14 @@ static void _deck_calc_strides(_DeckHeader *h)
 {
   if (h == NULL)
     return;
-  arr_clear(h->pegs);
-  arr_clear(h->stride_offset);
-  arr_clear(h->strides);
+  orc_sdk_arr_clear(h->pegs);
+  orc_sdk_arr_clear(h->stride_offset);
+  orc_sdk_arr_clear(h->strides);
   size_t const n_marks = orc_sdk_arr_len(h->marks);
   {  // Exclusive scan of depth.
     size_t acc = 0;
     for (size_t i = 0; i < n_marks; ++i) {
-      arr_push(h->stride_offset, acc);
+      orc_sdk_arr_push(h->stride_offset, acc);
       acc += (size_t)(h->marks[i].depth);
     }
   }
@@ -664,7 +664,7 @@ static void _deck_calc_strides(_DeckHeader *h)
     size_t const last_depth  = n > 0 ? h->marks[n - 1].depth : 0;
     size_t const n_total     = last_offset + last_depth;
     size_t const prevlen     = orc_sdk_arr_len(h->strides);
-    arr_resize(h->strides, n_total);
+    orc_sdk_arr_resize(h->strides, n_total);
     memset(h->strides + prevlen, 0xff, (n_total - prevlen) * sizeof(*(h->strides)));
   }
   {  // Fill strides using pegs.
@@ -672,7 +672,7 @@ static void _deck_calc_strides(_DeckHeader *h)
       size_t const d = h->marks[i].depth;
       size_t       n = orc_sdk_arr_len(h->pegs);
       if (d > n) {
-        arr_resize(h->pegs, d);
+        orc_sdk_arr_resize(h->pegs, d);
         memset(h->pegs + n, 0, (d - n) * sizeof(*(h->pegs)));
       }
       for (size_t j = 0; j < d; ++j) {
@@ -697,7 +697,7 @@ void deck_graft(void *ptr)
   size_t const count         = orc_sdk_arr_len(h->marks);
   OrcMark     *old_marks     = h->marks;
   h->marks                   = NULL;
-  OrcSdk_Status const status = arr_reserve(h->marks, count + h->count);
+  OrcSdk_Status const status = orc_sdk_arr_reserve(h->marks, count + h->count);
   ORC_SDK_REQUIRE_WITH_MSG(status == OK, "Allocation failed.");
   uint64_t     prev    = 0;
   size_t const n_marks = orc_sdk_arr_len(old_marks);
@@ -707,16 +707,16 @@ void deck_graft(void *ptr)
     uint64_t const current   = old_marks[i].pos;
     for (size_t j = prev; j < current; ++j) {
       OrcMark const mark = {.depth = 0, .pos = j};
-      arr_push(h->marks, mark);
+      orc_sdk_arr_push(h->marks, mark);
     }
     OrcMark const mark = {.depth = new_depth, .pos = current};
-    arr_push(h->marks, mark);
+    orc_sdk_arr_push(h->marks, mark);
     prev = current + 1;
   }
   size_t const n_items = h->count;
   for (size_t j = prev; j < n_items; ++j) {
     OrcMark const mark = {.depth = 0, .pos = j};
-    arr_push(h->marks, mark);
+    orc_sdk_arr_push(h->marks, mark);
   }
   orc_sdk_arr_free(old_marks);
   _deck_calc_strides(h);
@@ -730,7 +730,7 @@ void deck_simplify(void *ptr)
   uint8_t      remap[UINT8_MAX + 1] = {0};
   size_t const d_max = orc_sdk_arr_is_empty(h->marks) ? 0 : h->marks[0].depth;
   {
-    OrcMark *end = arr_end(h->marks);
+    OrcMark *end = orc_sdk_arr_end(h->marks);
     for (OrcMark *m = h->marks; m < end; ++m) {
       remap[m->depth] = 1;
     }
@@ -745,7 +745,7 @@ void deck_simplify(void *ptr)
     }
   }
   {  // Replace the mark depth with new values.
-    OrcMark *end = arr_end(h->marks);
+    OrcMark *end = orc_sdk_arr_end(h->marks);
     for (OrcMark *m = h->marks; m < end; ++m) {
       m->depth = remap[m->depth];
     }
@@ -1235,10 +1235,10 @@ void *comb_init(OrcHandle const **inputs,
   Combinations *out         = malloc(sizeof(Combinations));
   memset(out, 0, sizeof(Combinations));
   // Allocate buffers.
-  arr_resize(out->view_matrix, n_inputs * stack_depth);
-  arr_resize(out->writer_matrix, n_outputs * stack_depth);
-  arr_resize(out->input_depths, n_inputs);
-  arr_resize(out->output_depths, n_outputs);
+  orc_sdk_arr_resize(out->view_matrix, n_inputs * stack_depth);
+  orc_sdk_arr_resize(out->writer_matrix, n_outputs * stack_depth);
+  orc_sdk_arr_resize(out->input_depths, n_inputs);
+  orc_sdk_arr_resize(out->output_depths, n_outputs);
   ORC_SDK_REQUIRE_WITH_MSG(out->view_matrix != NULL && out->writer_matrix != NULL &&
                              out->input_depths != NULL && out->output_depths != NULL,
                            "Allocation failed");
@@ -1583,7 +1583,7 @@ OrcError orc_sdk_deck_from_proxy(OrcHandle const   *inputs,
     h->count = n_items;
     // Copy the marks.
     size_t const n_marks = inputs[0].n_marks;
-    h->marks             = _arr_resize_impl(h->marks, sizeof(OrcMark), n_marks);
+    h->marks             = _orc_sdk_arr_resize_impl(h->marks, sizeof(OrcMark), n_marks);
     memcpy(h->marks, inputs[0].marks, sizeof(OrcMark) * n_marks);
     _deck_calc_strides(h);
     // Assign the pointer back to the handle and update the data inside the handle.
@@ -1609,7 +1609,7 @@ OrcError orc_sdk_deck_from_proxy(OrcHandle const   *inputs,
     h->count = n_items;
     // Copy the marks from the proxy, NOT the input.
     size_t const n_marks = proxy->n_marks;
-    h->marks             = _arr_resize_impl(h->marks, sizeof(OrcMark), n_marks);
+    h->marks             = _orc_sdk_arr_resize_impl(h->marks, sizeof(OrcMark), n_marks);
     memcpy(h->marks, proxy->marks, sizeof(OrcMark) * n_marks);
     _deck_calc_strides(h);
     // Update the handle pointer and update the rest of the data inside the handle.
@@ -1637,7 +1637,7 @@ OrcError orc_sdk_deck_from_proxy(OrcHandle const   *inputs,
     }
     // Copy the marks from the proxy, NOT the input.
     size_t const n_marks = proxy->n_marks;
-    h->marks             = _arr_resize_impl(h->marks, sizeof(OrcMark), n_marks);
+    h->marks             = _orc_sdk_arr_resize_impl(h->marks, sizeof(OrcMark), n_marks);
     memcpy(h->marks, proxy->marks, sizeof(OrcMark) * n_marks);
     _deck_calc_strides(h);
     // Update the handle pointer and update the rest of the data inside the handle.
