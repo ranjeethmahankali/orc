@@ -610,3 +610,7 @@ DeckView comb_get_input(void *comb, size_t const index);
 DeckWriter *comb_get_output(void *comb, size_t const index);
 
 void oh_update(OrcHandle *handle);
+
+// ========== Helpers for implementing plugins ==========
+
+OrcError orc_sdk_deck_alloc(OrcTypeId const id, OrcHandle *const out);

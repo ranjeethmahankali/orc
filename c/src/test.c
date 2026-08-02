@@ -3090,9 +3090,9 @@ void test_list_item_combinations(void)
   // Allocate decks - In a real scenario, the host program is allocating these,
   // by calling below functions, defined inside a plugin.
   OrcHandle lists = {0}, indices = {0}, out_items = {0};
-  orc_deck_alloc(ORC_TYPE_F64, &lists);
-  orc_deck_alloc(ORC_TYPE_U32, &indices);
-  orc_deck_alloc(ORC_TYPE_F64, &out_items);
+  orc_sdk_deck_alloc(ORC_TYPE_F64, &lists);
+  orc_sdk_deck_alloc(ORC_TYPE_U32, &indices);
+  orc_sdk_deck_alloc(ORC_TYPE_F64, &out_items);
   REQUIRE_WITH_MSG(
     lists.items != NULL && indices.items != NULL && out_items.items != NULL,
     "Unable to allocate decks");
@@ -3183,9 +3183,9 @@ void test_add_f64_combinations(void)
   /*=== Tests two-input scalar addition: equal lengths, broadcast, and depth-2 inputs.
    * ===*/
   OrcHandle a = {0}, b = {0}, out = {0};
-  orc_deck_alloc(ORC_TYPE_F64, &a);
-  orc_deck_alloc(ORC_TYPE_F64, &b);
-  orc_deck_alloc(ORC_TYPE_F64, &out);
+  orc_sdk_deck_alloc(ORC_TYPE_F64, &a);
+  orc_sdk_deck_alloc(ORC_TYPE_F64, &b);
+  orc_sdk_deck_alloc(ORC_TYPE_F64, &out);
   REQUIRE_WITH_MSG(a.items != NULL && b.items != NULL && out.items != NULL,
                    "Unable to allocate decks");
 
@@ -3331,8 +3331,8 @@ void test_list_length_combinations(void)
    * empty lists producing zeros. ===*/
   OrcHandle in  = {0};
   OrcHandle out = {0};
-  orc_deck_alloc(ORC_TYPE_F64, &in);
-  orc_deck_alloc(ORC_TYPE_U64, &out);
+  orc_sdk_deck_alloc(ORC_TYPE_F64, &in);
+  orc_sdk_deck_alloc(ORC_TYPE_U64, &out);
   REQUIRE_WITH_MSG(in.items != NULL && out.items != NULL, "Unable to allocate decks");
 
   { /* Depth-2 input: 5 lists, some empty (stack_depth=2). */
@@ -3392,10 +3392,10 @@ void test_two_output_combinations(void)
   /*=== Tests multiple-output Combinations: sq+cb (1 in, 2 out) and add+mul (2 in, 2 out).
    * ===*/
   OrcHandle in_a = {0}, in_b = {0}, out1 = {0}, out2 = {0};
-  orc_deck_alloc(ORC_TYPE_F64, &in_a);
-  orc_deck_alloc(ORC_TYPE_F64, &in_b);
-  orc_deck_alloc(ORC_TYPE_F64, &out1);
-  orc_deck_alloc(ORC_TYPE_F64, &out2);
+  orc_sdk_deck_alloc(ORC_TYPE_F64, &in_a);
+  orc_sdk_deck_alloc(ORC_TYPE_F64, &in_b);
+  orc_sdk_deck_alloc(ORC_TYPE_F64, &out1);
+  orc_sdk_deck_alloc(ORC_TYPE_F64, &out2);
   REQUIRE_WITH_MSG(
     in_a.items != NULL && in_b.items != NULL && out1.items != NULL && out2.items != NULL,
     "Unable to allocate decks");
@@ -3459,9 +3459,9 @@ void test_first_add_combinations(void)
   /*=== Tests arg_depth=1: plugin receives depth-1 list views and sums their first
    * elements. ===*/
   OrcHandle a = {0}, b = {0}, out = {0};
-  orc_deck_alloc(ORC_TYPE_F64, &a);
-  orc_deck_alloc(ORC_TYPE_F64, &b);
-  orc_deck_alloc(ORC_TYPE_F64, &out);
+  orc_sdk_deck_alloc(ORC_TYPE_F64, &a);
+  orc_sdk_deck_alloc(ORC_TYPE_F64, &b);
+  orc_sdk_deck_alloc(ORC_TYPE_F64, &out);
   REQUIRE_WITH_MSG(a.items != NULL && b.items != NULL && out.items != NULL,
                    "Unable to allocate decks");
 
@@ -3646,7 +3646,7 @@ void test_deck_from_proxy_copy_items(void)
   /*=== COPY_ITEMS: copies items from input, structure (marks) from proxy. ===*/
   { /* Flatten a depth-2 deck. */
     OrcHandle in = {0}, out = {0};
-    orc_deck_alloc(ORC_TYPE_F64, &in);
+    orc_sdk_deck_alloc(ORC_TYPE_F64, &in);
     DECK_INIT(in.items, double, ((1.0, 2.0), (3.0, 4.0, 5.0)));
     oh_update(&in);
 
@@ -3666,7 +3666,7 @@ void test_deck_from_proxy_copy_items(void)
   }
   { /* Flatten a depth-3 deck. */
     OrcHandle in = {0}, out = {0};
-    orc_deck_alloc(ORC_TYPE_F64, &in);
+    orc_sdk_deck_alloc(ORC_TYPE_F64, &in);
     DECK_INIT(in.items, double, (((1.0, 2.0), (3.0)), ((4.0, 5.0))));
     oh_update(&in);
 
@@ -3684,7 +3684,7 @@ void test_deck_from_proxy_copy_items(void)
   }
   { /* Graft a flat deck: (1, 2, 3) → ((1), (2), (3)). */
     OrcHandle in = {0}, out = {0};
-    orc_deck_alloc(ORC_TYPE_F64, &in);
+    orc_sdk_deck_alloc(ORC_TYPE_F64, &in);
     DECK_INIT(in.items, double, (1.0, 2.0, 3.0));
     oh_update(&in);
 
@@ -3703,7 +3703,7 @@ void test_deck_from_proxy_copy_items(void)
   }
   { /* Graft a depth-2 deck: ((1, 2), (3)) → (((1, 2)), ((3))). */
     OrcHandle in = {0}, out = {0};
-    orc_deck_alloc(ORC_TYPE_F64, &in);
+    orc_sdk_deck_alloc(ORC_TYPE_F64, &in);
     DECK_INIT(in.items, double, ((1.0, 2.0), (3.0)));
     oh_update(&in);
 
@@ -3721,7 +3721,7 @@ void test_deck_from_proxy_copy_items(void)
   }
   { /* Simplify: remove gaps in depth levels. */
     OrcHandle in = {0}, out = {0};
-    orc_deck_alloc(ORC_TYPE_F64, &in);
+    orc_sdk_deck_alloc(ORC_TYPE_F64, &in);
     DECK_INIT(in.items, double, ((1.0, 2.0), (3.0, 4.0)));
     oh_update(&in);
     /* Graft to create a gap in depth levels, then use simplify proxy. */
@@ -3750,7 +3750,7 @@ void test_deck_from_proxy_shuffle(void)
   /*=== SHUFFLE: copies items one-at-a-time using proxy ItemProxy references. ===*/
   { /* Flat reverse: (1, 2, 3) → (3, 2, 1). */
     OrcHandle in = {0}, out = {0};
-    orc_deck_alloc(ORC_TYPE_F64, &in);
+    orc_sdk_deck_alloc(ORC_TYPE_F64, &in);
     DECK_INIT(in.items, double, (1.0, 2.0, 3.0));
     oh_update(&in);
 
@@ -3773,7 +3773,7 @@ void test_deck_from_proxy_shuffle(void)
   }
   { /* Nested reverse: ((1, 2), (3, 4, 5)) → ((2, 1), (5, 4, 3)). */
     OrcHandle in = {0}, out = {0};
-    orc_deck_alloc(ORC_TYPE_F64, &in);
+    orc_sdk_deck_alloc(ORC_TYPE_F64, &in);
     DECK_INIT(in.items, double, ((1.0, 2.0), (3.0, 4.0, 5.0)));
     oh_update(&in);
 
@@ -3800,7 +3800,7 @@ void test_deck_from_proxy_shuffle(void)
   { /* Generic list_item: pick item at index 1 from each sublist.
        ((1, 2, 3), (4, 5)) → (2, 5). */
     OrcHandle in = {0}, out = {0};
-    orc_deck_alloc(ORC_TYPE_F64, &in);
+    orc_sdk_deck_alloc(ORC_TYPE_F64, &in);
     DECK_INIT(in.items, double, ((1.0, 2.0, 3.0), (4.0, 5.0)));
     oh_update(&in);
 
@@ -3822,8 +3822,8 @@ void test_deck_from_proxy_shuffle(void)
   { /* Multi-input shuffle: interleave from two decks.
        A=(1, 2), B=(10, 20) → (1, 10, 2, 20). */
     OrcHandle a = {0}, b = {0}, out = {0};
-    orc_deck_alloc(ORC_TYPE_F64, &a);
-    orc_deck_alloc(ORC_TYPE_F64, &b);
+    orc_sdk_deck_alloc(ORC_TYPE_F64, &a);
+    orc_sdk_deck_alloc(ORC_TYPE_F64, &b);
     DECK_INIT(a.items, double, (1.0, 2.0));
     oh_update(&a);
     DECK_INIT(b.items, double, (10.0, 20.0));
@@ -3856,7 +3856,7 @@ void test_deck_from_proxy_type_agnostic(void)
   /*=== Verifies orc_deck_from_proxy preserves type across u32, i32, i16. ===*/
   { /* u32 flatten. */
     OrcHandle in = {0}, out = {0};
-    orc_deck_alloc(ORC_TYPE_U32, &in);
+    orc_sdk_deck_alloc(ORC_TYPE_U32, &in);
     DECK_INIT(in.items, uint32_t, ((10, 20), (30)));
     oh_update(&in);
 
@@ -3875,7 +3875,7 @@ void test_deck_from_proxy_type_agnostic(void)
   }
   { /* i32 shuffle reverse. */
     OrcHandle in = {0}, out = {0};
-    orc_deck_alloc(ORC_TYPE_I32, &in);
+    orc_sdk_deck_alloc(ORC_TYPE_I32, &in);
     DECK_INIT(in.items, int32_t, (-1, -2, -3, -4));
     oh_update(&in);
 
@@ -3898,7 +3898,7 @@ void test_deck_from_proxy_type_agnostic(void)
   }
   { /* i16 graft. */
     OrcHandle in = {0}, out = {0};
-    orc_deck_alloc(ORC_TYPE_I16, &in);
+    orc_sdk_deck_alloc(ORC_TYPE_I16, &in);
     DECK_INIT(in.items, int16_t, (10, 20, 30));
     oh_update(&in);
 

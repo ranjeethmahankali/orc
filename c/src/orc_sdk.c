@@ -1395,7 +1395,7 @@ DeckWriter *comb_get_output(void *ptr, size_t const index)
 
 // ========== FFI helper functions ==========
 
-OrcError orc_deck_alloc(OrcTypeId const id, OrcHandle *const out)
+OrcError orc_sdk_deck_alloc(OrcTypeId const id, OrcHandle *const out)
 {
   if (out == NULL) {
     return ORC_ERROR_INVALID_HANDLE;
@@ -1554,7 +1554,7 @@ OrcError orc_deck_from_proxy(OrcHandle const   *inputs,
       return ORC_ERROR_TYPE_MISMATCH;
     }
   }
-  OrcError const err = orc_deck_alloc(id, out);
+  OrcError const err = orc_sdk_deck_alloc(id, out);
   if (err != ORC_ERROR_NONE) {
     return err;
   }
