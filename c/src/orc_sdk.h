@@ -521,19 +521,19 @@ typedef struct
   size_t          end;
 } OrcSdk_DeckView;
 
-DeckView _dv_from_deck_impl(void *ptr, size_t const item_size, uint8_t const depth);
+OrcSdk_DeckView _orc_sdk_dv_from_deck_impl(void *ptr, size_t const item_size, uint8_t const depth);
 
-#define dv_from_deck(ptr, depth) _dv_from_deck_impl((ptr), sizeof(*(ptr)), (depth))
+#define dv_from_deck(ptr, depth) _orc_sdk_dv_from_deck_impl((ptr), sizeof(*(ptr)), (depth))
 
-uint8_t dv_depth(DeckView const *const v);
+uint8_t dv_depth(OrcSdk_DeckView const *const v);
 
-size_t dv_len(DeckView const *const v);
+size_t dv_len(OrcSdk_DeckView const *const v);
 
-DeckView dv_child(DeckView const *const v);
+OrcSdk_DeckView dv_child(OrcSdk_DeckView const *const v);
 
-void const *dv_item_ptr(DeckView const *const v);
+void const *dv_item_ptr(OrcSdk_DeckView const *const v);
 
-bool dv_advance(DeckView *const v);
+bool dv_advance(OrcSdk_DeckView *const v);
 
 // ========== DeckWriter ==========
 
@@ -611,7 +611,7 @@ void comb_free(void *comb);
 
 void *comb_advance(void *comb);
 
-DeckView comb_get_input(void *comb, size_t const index);
+OrcSdk_DeckView comb_get_input(void *comb, size_t const index);
 
 DeckWriter *comb_get_output(void *comb, size_t const index);
 

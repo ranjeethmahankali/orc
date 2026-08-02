@@ -831,7 +831,7 @@ char *_orc_sdk_deck_to_str(void        *ptr,
   return output;
 }
 
-// ========== DeckView ==========
+// ========== OrcSdk_DeckView ==========
 
 static size_t _stride(OrcMark const  *marks,
                       uint64_t const *stride_offset,
@@ -861,13 +861,13 @@ static size_t _stride(OrcMark const  *marks,
   }
 }
 
-DeckView _dv_from_deck_impl(void *ptr, size_t const item_size, uint8_t const depth)
+OrcSdk_DeckView _orc_sdk_dv_from_deck_impl(void *ptr, size_t const item_size, uint8_t const depth)
 {
   _OrcSdk_DeckHeader *h = _orc_sdk_deck_header(ptr);
   if (h == NULL)
-    return (DeckView) {0};
+    return (OrcSdk_DeckView) {0};
   size_t const n_marks = orc_sdk_arr_len(h->marks);
-  return (DeckView) {
+  return (OrcSdk_DeckView) {
     .items         = ptr,
     .n_items       = h->count,
     .item_size     = item_size,
@@ -881,12 +881,12 @@ DeckView _dv_from_deck_impl(void *ptr, size_t const item_size, uint8_t const dep
   };
 }
 
-uint8_t dv_depth(DeckView const *const v)
+uint8_t dv_depth(OrcSdk_DeckView const *const v)
 {
   return v->depth;
 }
 
-size_t dv_len(DeckView const *const v)
+size_t dv_len(OrcSdk_DeckView const *const v)
 {
   if (v->start >= v->end) {
     return 0;
@@ -907,7 +907,7 @@ size_t dv_len(DeckView const *const v)
   }
 }
 
-DeckView dv_child(DeckView const *const v)
+OrcSdk_DeckView dv_child(OrcSdk_DeckView const *const v)
 {
   if (v->depth == 0) {
     return *v;
@@ -923,7 +923,7 @@ DeckView dv_child(DeckView const *const v)
     if (next_mark < v->n_marks) {
       end_pos = v->marks[next_mark].pos;
     }
-    return (DeckView) {.items         = v->items,
+    return (OrcSdk_DeckView) {.items         = v->items,
                        .n_items       = v->n_items,
                        .item_size     = v->item_size,
                        .marks         = v->marks,
@@ -935,7 +935,7 @@ DeckView dv_child(DeckView const *const v)
                        .end           = end_pos};
   }
   else {
-    return (DeckView) {
+    return (OrcSdk_DeckView) {
       .items         = v->items,
       .n_items       = v->n_items,
       .item_size     = v->item_size,
@@ -952,7 +952,7 @@ DeckView dv_child(DeckView const *const v)
   }
 }
 
-bool dv_advance(DeckView *const v)
+bool dv_advance(OrcSdk_DeckView *const v)
 {
   if (v->start >= v->end)
     return false;
@@ -971,7 +971,7 @@ bool dv_advance(DeckView *const v)
   return false;
 }
 
-void const *dv_item_ptr(DeckView const *const v)
+void const *dv_item_ptr(OrcSdk_DeckView const *const v)
 {
   size_t const start_pos = v->depth == 0           ? v->start
                            : v->start < v->n_marks ? v->marks[v->start].pos
@@ -1093,12 +1093,12 @@ void dims_pow(OrcDims const a, int const pow, OrcDims out)
 
 // ========== Combinations ==========
 
-DeckView _dv_from_oh(OrcHandle const *const handle, uint8_t const depth)
+OrcSdk_DeckView _dv_from_oh(OrcHandle const *const handle, uint8_t const depth)
 {
   if (handle == NULL)
-    return (DeckView) {0};
+    return (OrcSdk_DeckView) {0};
   else
-    return (DeckView) {
+    return (OrcSdk_DeckView) {
       .items         = handle->items,
       .n_items       = (size_t)handle->n_items,
       .item_size     = (size_t)handle->item_size,
@@ -1114,7 +1114,7 @@ DeckView _dv_from_oh(OrcHandle const *const handle, uint8_t const depth)
 
 typedef struct
 {
-  DeckView   *view_matrix;
+  OrcSdk_DeckView   *view_matrix;
   uint8_t    *input_depths;
   size_t      n_inputs;
   DeckWriter *writer_matrix;
@@ -1246,12 +1246,12 @@ void *comb_init(OrcHandle const **inputs,
   for (size_t i = 0; i < n_inputs; ++i) {
     uint8_t const arg_depth = input_depths[i];
     out->input_depths[i]    = arg_depth;
-    DeckView *dst           = out->view_matrix + i * stack_depth;
+    OrcSdk_DeckView *dst           = out->view_matrix + i * stack_depth;
     // The first view.
     *dst = _dv_from_oh(inputs[i], arg_depth + max_delta);
     // Telescope the views until we reach the target depth.
     for (size_t d = 1; d < stack_depth; ++d) {
-      DeckView child = dv_child(dst);
+      OrcSdk_DeckView child = dv_child(dst);
       *(++dst)       = child;
     }
     ORC_SDK_REQUIRE(dst->depth == arg_depth);
@@ -1292,7 +1292,7 @@ void *comb_advance(void *ptr)
   {  // Try to advance all the input views and check if at least one input advances.
     bool any_advanced = false;
     for (size_t i = 0; i < n_inputs; ++i) {
-      DeckView  *last_view = comb->view_matrix + (i + 1) * comb->stack_depth - 1;
+      OrcSdk_DeckView  *last_view = comb->view_matrix + (i + 1) * comb->stack_depth - 1;
       bool const advanced  = dv_advance(last_view);
       any_advanced         = any_advanced || advanced;
     }
@@ -1319,8 +1319,8 @@ void *comb_advance(void *ptr)
       break;
     }
     for (size_t i = 0; i < n_inputs; ++i) {  // Pop all the inputs.
-      DeckView *last_view = comb->view_matrix + i * comb->stack_depth + stack_top;
-      *last_view          = (DeckView) {0};
+      OrcSdk_DeckView *last_view = comb->view_matrix + i * comb->stack_depth + stack_top;
+      *last_view          = (OrcSdk_DeckView) {0};
     }
     for (size_t i = 0; i < n_outputs; ++i) {  // Pop all the outputs.
       DeckWriter *last_writer = comb->writer_matrix + i * comb->stack_depth + stack_top;
@@ -1330,7 +1330,7 @@ void *comb_advance(void *ptr)
     --stack_top;
     // Try to advance lower in the stack.
     for (size_t i = 0; i < n_inputs; ++i) {  // Advance all the inputs.
-      DeckView *last_view = comb->view_matrix + i * comb->stack_depth + stack_top;
+      OrcSdk_DeckView *last_view = comb->view_matrix + i * comb->stack_depth + stack_top;
       if (dv_advance(last_view)) {
         state = ADVANCED;
       }
@@ -1347,9 +1347,9 @@ void *comb_advance(void *ptr)
   case ADVANCED: {
     // Telescope the inputs to the desired depth.
     for (size_t i = 0; i < n_inputs; ++i) {
-      DeckView *prev = comb->view_matrix + i * comb->stack_depth + stack_top;
+      OrcSdk_DeckView *prev = comb->view_matrix + i * comb->stack_depth + stack_top;
       for (size_t d = stack_top + 1; d < comb->stack_depth; ++d) {
-        DeckView *dst = prev + 1;
+        OrcSdk_DeckView *dst = prev + 1;
         *dst          = dv_child(prev);
         prev          = dst;
       }
@@ -1378,7 +1378,7 @@ void *comb_advance(void *ptr)
   }
 }
 
-DeckView comb_get_input(void *ptr, size_t const index)
+OrcSdk_DeckView comb_get_input(void *ptr, size_t const index)
 {
   ORC_SDK_REQUIRE_WITH_MSG(ptr != NULL, "Invalid combinations");
   Combinations *comb = (Combinations *)ptr;

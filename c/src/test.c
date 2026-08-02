@@ -2197,12 +2197,12 @@ void test_deck_init(void)
   orc_sdk_deck_free(deck);
 }
 
-// ========== DeckView ==========
+// ========== OrcSdk_DeckView ==========
 
-void _print_deck_view(DeckView const *v)  // DEBUG
+void _print_deck_view(OrcSdk_DeckView const *v)  // DEBUG
 {
   fprintf(stderr,
-          "\nDeckView {\n"
+          "\nOrcSdk_DeckView {\n"
           "  items:         %p;\n"
           "  n_items:       %zu;\n"
           "  item_size:     %zu;\n"
@@ -2235,23 +2235,23 @@ void test_dv_binary_deck(void)
   ORC_SDK_REQUIRE(_orc_sdk_deck_header(deck)->item_size == sizeof(size_t));
   {  // Iterate from level 5.
     size_t   counter = 0;
-    DeckView v5      = dv_from_deck(deck, 5);
+    OrcSdk_DeckView v5      = dv_from_deck(deck, 5);
     do {
       ORC_SDK_REQUIRE(5 == dv_depth(&v5));
       ORC_SDK_REQUIRE(32 == dv_len(&v5));
-      DeckView v4 = dv_child(&v5);
+      OrcSdk_DeckView v4 = dv_child(&v5);
       do {
         ORC_SDK_REQUIRE(4 == dv_depth(&v4));
         ORC_SDK_REQUIRE(16 == dv_len(&v4));
-        DeckView v3 = dv_child(&v4);
+        OrcSdk_DeckView v3 = dv_child(&v4);
         do {
           ORC_SDK_REQUIRE(3 == dv_depth(&v3));
           ORC_SDK_REQUIRE(8 == dv_len(&v3));
-          DeckView v2 = dv_child(&v3);
+          OrcSdk_DeckView v2 = dv_child(&v3);
           do {
             ORC_SDK_REQUIRE(2 == dv_depth(&v2));
             ORC_SDK_REQUIRE(4 == dv_len(&v2));
-            DeckView v1 = dv_child(&v2);
+            OrcSdk_DeckView v1 = dv_child(&v2);
             do {
               ORC_SDK_REQUIRE(1 == dv_depth(&v1));
               ORC_SDK_REQUIRE(2 == dv_len(&v1));
@@ -2269,20 +2269,20 @@ void test_dv_binary_deck(void)
     ORC_SDK_REQUIRE(counter == 32);
   }
   {  // Iterate from level 4.
-    DeckView v4      = dv_from_deck(deck, 4);
+    OrcSdk_DeckView v4      = dv_from_deck(deck, 4);
     size_t   counter = 0;
     do {
       ORC_SDK_REQUIRE(4 == dv_depth(&v4));
       ORC_SDK_REQUIRE(16 == dv_len(&v4));
-      DeckView v3 = dv_child(&v4);
+      OrcSdk_DeckView v3 = dv_child(&v4);
       do {
         ORC_SDK_REQUIRE(3 == dv_depth(&v3));
         ORC_SDK_REQUIRE(8 == dv_len(&v3));
-        DeckView v2 = dv_child(&v3);
+        OrcSdk_DeckView v2 = dv_child(&v3);
         do {
           ORC_SDK_REQUIRE(2 == dv_depth(&v2));
           ORC_SDK_REQUIRE(4 == dv_len(&v2));
-          DeckView v1 = dv_child(&v2);
+          OrcSdk_DeckView v1 = dv_child(&v2);
           do {
             ORC_SDK_REQUIRE(1 == dv_depth(&v1));
             ORC_SDK_REQUIRE(2 == dv_len(&v1));
@@ -2299,20 +2299,20 @@ void test_dv_binary_deck(void)
     ORC_SDK_REQUIRE(counter == 32);
   }
   {  // Iterate from level 3.
-    DeckView v3      = dv_from_deck(deck, 3);
+    OrcSdk_DeckView v3      = dv_from_deck(deck, 3);
     size_t   counter = 0;
     do {
       ORC_SDK_REQUIRE(3 == dv_depth(&v3));
       ORC_SDK_REQUIRE(8 == dv_len(&v3));
-      DeckView v2 = dv_child(&v3);
+      OrcSdk_DeckView v2 = dv_child(&v3);
       do {
         ORC_SDK_REQUIRE(2 == dv_depth(&v2));
         ORC_SDK_REQUIRE(4 == dv_len(&v2));
-        DeckView v1 = dv_child(&v2);
+        OrcSdk_DeckView v1 = dv_child(&v2);
         do {
           ORC_SDK_REQUIRE(1 == dv_depth(&v1));
           ORC_SDK_REQUIRE(2 == dv_len(&v1));
-          DeckView v0 = dv_child(&v1);
+          OrcSdk_DeckView v0 = dv_child(&v1);
           do {
             size_t const *item = dv_item_ptr(&v0);
             ORC_SDK_REQUIRE(item != NULL);
@@ -2329,7 +2329,7 @@ void test_dv_binary_deck(void)
 
 void test_dw_basic_depth2(void)
 {
-  // Build ((0,1,2),(3,4,5),(6,7,8)) via DeckWriter, then verify via DeckView.
+  // Build ((0,1,2),(3,4,5),(6,7,8)) via DeckWriter, then verify via OrcSdk_DeckView.
   uint32_t *deck    = NULL;
   uint32_t  counter = 0;
   {
@@ -2346,11 +2346,11 @@ void test_dw_basic_depth2(void)
   ORC_SDK_REQUIRE(orc_sdk_deck_len(deck) == 9);
   ORC_SDK_REQUIRE(orc_sdk_deck_max_depth(deck) == 2);
   ORC_SDK_REQUIRE(_orc_sdk_deck_header(deck)->item_size == sizeof(uint32_t));
-  // Read back via DeckView.
+  // Read back via OrcSdk_DeckView.
   counter     = 0;
-  DeckView v2 = dv_from_deck(deck, 2);
+  OrcSdk_DeckView v2 = dv_from_deck(deck, 2);
   do {
-    DeckView v1 = dv_child(&v2);
+    OrcSdk_DeckView v1 = dv_child(&v2);
     do {
       uint32_t const *items = dv_item_ptr(&v1);
       for (size_t i = 0; i < dv_len(&v1); ++i) {
@@ -2389,11 +2389,11 @@ void test_dw_depth3_nested(void)
   ORC_SDK_REQUIRE(_orc_sdk_deck_header(deck)->item_size == sizeof(uint32_t));
   // Read back: iterate depth 3 → 2 → 1 → items.
   counter     = 0;
-  DeckView v3 = dv_from_deck(deck, 3);
+  OrcSdk_DeckView v3 = dv_from_deck(deck, 3);
   do {
-    DeckView v2 = dv_child(&v3);
+    OrcSdk_DeckView v2 = dv_child(&v3);
     do {
-      DeckView v1 = dv_child(&v2);
+      OrcSdk_DeckView v1 = dv_child(&v2);
       do {
         uint32_t const *items = dv_item_ptr(&v1);
         for (size_t i = 0; i < dv_len(&v1); ++i) {
@@ -2439,8 +2439,8 @@ void test_dw_unbalanced_tree(void)
   ORC_SDK_REQUIRE(orc_sdk_deck_len(deck) == 6);
   ORC_SDK_REQUIRE(_orc_sdk_deck_header(deck)->item_size == sizeof(uint32_t));
   // Verify structure.
-  DeckView outer = dv_from_deck(deck, 2);
-  DeckView g1    = dv_child(&outer);
+  OrcSdk_DeckView outer = dv_from_deck(deck, 2);
+  OrcSdk_DeckView g1    = dv_child(&outer);
   ORC_SDK_REQUIRE(dv_len(&g1) == 1);
   ORC_SDK_REQUIRE(*(uint32_t *)dv_item_ptr(&g1) == 1);
   dv_advance(&g1);
@@ -2452,9 +2452,9 @@ void test_dw_unbalanced_tree(void)
   // Let's just verify sequentially.
   uint32_t expected[] = {1, 2, 3, 4, 5, 6};
   size_t   idx        = 0;
-  DeckView top        = dv_from_deck(deck, 2);
+  OrcSdk_DeckView top        = dv_from_deck(deck, 2);
   do {
-    DeckView inner = dv_child(&top);
+    OrcSdk_DeckView inner = dv_child(&top);
     do {
       uint32_t const *items = dv_item_ptr(&inner);
       for (size_t i = 0; i < dv_len(&inner); ++i) {
@@ -2506,9 +2506,9 @@ void test_dw_empty_groups(void)
   // Verify: 5 inner groups, sizes 0,2,0,1,0.
   size_t   group_sizes[] = {0, 2, 0, 1, 0};
   size_t   gi            = 0;
-  DeckView top           = dv_from_deck(deck, 2);
+  OrcSdk_DeckView top           = dv_from_deck(deck, 2);
   do {
-    DeckView inner = dv_child(&top);
+    OrcSdk_DeckView inner = dv_child(&top);
     do {
       ORC_SDK_REQUIRE(dv_len(&inner) == group_sizes[gi++]);
     } while (dv_advance(&inner));
@@ -2559,12 +2559,12 @@ void test_dw_nested_empty(void)
   ORC_SDK_REQUIRE(_orc_sdk_deck_header(deck)->item_size == sizeof(uint32_t));
   // Verify structure by iterating depth 3 → 2 → 1.
   // Expected: (((), (1,2)), ((3,)), (()))
-  DeckView v3 = dv_from_deck(deck, 3);
+  OrcSdk_DeckView v3 = dv_from_deck(deck, 3);
   // Only one top-level group.
-  DeckView mid = dv_child(&v3);
+  OrcSdk_DeckView mid = dv_child(&v3);
   // First mid group: ((), (1,2))
   {
-    DeckView inner = dv_child(&mid);
+    OrcSdk_DeckView inner = dv_child(&mid);
     ORC_SDK_REQUIRE(dv_len(&inner) == 0);  // empty
     ORC_SDK_REQUIRE(dv_advance(&inner));
     ORC_SDK_REQUIRE(dv_len(&inner) == 2);
@@ -2576,7 +2576,7 @@ void test_dw_nested_empty(void)
   ORC_SDK_REQUIRE(dv_advance(&mid));
   // Second mid group: ((3,))
   {
-    DeckView inner = dv_child(&mid);
+    OrcSdk_DeckView inner = dv_child(&mid);
     ORC_SDK_REQUIRE(dv_len(&inner) == 1);
     ORC_SDK_REQUIRE(*(uint32_t *)dv_item_ptr(&inner) == 3);
     ORC_SDK_REQUIRE(!dv_advance(&inner));
@@ -2584,7 +2584,7 @@ void test_dw_nested_empty(void)
   ORC_SDK_REQUIRE(dv_advance(&mid));
   // Third mid group: (())
   {
-    DeckView inner = dv_child(&mid);
+    OrcSdk_DeckView inner = dv_child(&mid);
     ORC_SDK_REQUIRE(dv_len(&inner) == 0);
     ORC_SDK_REQUIRE(!dv_advance(&inner));
   }
@@ -2610,11 +2610,11 @@ void test_dw_single_element_deep(void)
   ORC_SDK_REQUIRE(_orc_sdk_deck_header(deck)->item_size == sizeof(uint32_t));
   ORC_SDK_REQUIRE(deck[0] == 42);
   // Unwrap all the way down.
-  DeckView v5 = dv_from_deck(deck, 5);
-  DeckView v4 = dv_child(&v5);
-  DeckView v3 = dv_child(&v4);
-  DeckView v2 = dv_child(&v3);
-  DeckView v1 = dv_child(&v2);
+  OrcSdk_DeckView v5 = dv_from_deck(deck, 5);
+  OrcSdk_DeckView v4 = dv_child(&v5);
+  OrcSdk_DeckView v3 = dv_child(&v4);
+  OrcSdk_DeckView v2 = dv_child(&v3);
+  OrcSdk_DeckView v1 = dv_child(&v2);
   ORC_SDK_REQUIRE(dv_len(&v1) == 1);
   ORC_SDK_REQUIRE(*(uint32_t *)dv_item_ptr(&v1) == 42);
   orc_sdk_deck_free(deck);
@@ -2694,9 +2694,9 @@ void test_dw_append_to_existing(void)
   ORC_SDK_REQUIRE(_orc_sdk_deck_header(deck)->item_size == sizeof(uint32_t));
   // Verify: ((1,2),(3,4),(5,6))
   uint32_t counter = 0;
-  DeckView top     = dv_from_deck(deck, 2);
+  OrcSdk_DeckView top     = dv_from_deck(deck, 2);
   do {
-    DeckView inner = dv_child(&top);
+    OrcSdk_DeckView inner = dv_child(&top);
     size_t   n     = 0;
     do {
       uint32_t const *items = dv_item_ptr(&inner);
@@ -2730,7 +2730,7 @@ void test_dw_flat_depth1(void)
     ORC_SDK_REQUIRE(deck[i] == i * 10);
   }
   // Verify via view: one group with 5 items.
-  DeckView v1 = dv_from_deck(deck, 1);
+  OrcSdk_DeckView v1 = dv_from_deck(deck, 1);
   ORC_SDK_REQUIRE(dv_len(&v1) == 5);
   ORC_SDK_REQUIRE(!dv_advance(&v1));
   orc_sdk_deck_free(deck);
@@ -2806,9 +2806,9 @@ void test_dw_close_idempotent(void)
   // Verify: ((1), (), (2))
   size_t   group_sizes[] = {1, 0, 1};
   size_t   gi            = 0;
-  DeckView top           = dv_from_deck(deck, 2);
+  OrcSdk_DeckView top           = dv_from_deck(deck, 2);
   do {
-    DeckView inner = dv_child(&top);
+    OrcSdk_DeckView inner = dv_child(&top);
     do {
       ORC_SDK_REQUIRE(dv_len(&inner) == group_sizes[gi++]);
     } while (dv_advance(&inner));
@@ -2846,11 +2846,11 @@ void test_dw_all_empty_depth3(void)
   ORC_SDK_REQUIRE(orc_sdk_deck_max_depth(deck) == 3);
   ORC_SDK_REQUIRE(_orc_sdk_deck_header(deck)->item_size == sizeof(uint32_t));
   // Verify: one top group, two mid groups, inner groups all empty.
-  DeckView v3  = dv_from_deck(deck, 3);
-  DeckView mid = dv_child(&v3);
+  OrcSdk_DeckView v3  = dv_from_deck(deck, 3);
+  OrcSdk_DeckView mid = dv_child(&v3);
   // First mid: 2 empty children.
   {
-    DeckView inner = dv_child(&mid);
+    OrcSdk_DeckView inner = dv_child(&mid);
     ORC_SDK_REQUIRE(dv_len(&inner) == 0);
     ORC_SDK_REQUIRE(dv_advance(&inner));
     ORC_SDK_REQUIRE(dv_len(&inner) == 0);
@@ -2859,7 +2859,7 @@ void test_dw_all_empty_depth3(void)
   ORC_SDK_REQUIRE(dv_advance(&mid));
   // Second mid: 1 empty child.
   {
-    DeckView inner = dv_child(&mid);
+    OrcSdk_DeckView inner = dv_child(&mid);
     ORC_SDK_REQUIRE(dv_len(&inner) == 0);
     ORC_SDK_REQUIRE(!dv_advance(&inner));
   }
@@ -2988,7 +2988,7 @@ void _plugin_function_list_element(OrcHandle const *list_handle,
                                  1);
   while (combinations) {  // List processing iterations.
     // Get inputs for the current combination.
-    DeckView list_input  = comb_get_input(combinations, 0),
+    OrcSdk_DeckView list_input  = comb_get_input(combinations, 0),
              index_input = comb_get_input(combinations, 1);
     ORC_SDK_REQUIRE(list_input.depth == 1);
     ORC_SDK_REQUIRE(index_input.depth == 0);
@@ -3021,7 +3021,7 @@ void _plugin_function_add_f64(OrcHandle const *a_handle,
                                  (uint8_t const[]) {0},
                                  1);
   while (combinations) {
-    DeckView a_input = comb_get_input(combinations, 0),
+    OrcSdk_DeckView a_input = comb_get_input(combinations, 0),
              b_input = comb_get_input(combinations, 1);
     ORC_SDK_REQUIRE(a_input.depth == 0);
     ORC_SDK_REQUIRE(b_input.depth == 0);
@@ -3052,7 +3052,7 @@ void _plugin_function_sq_cb(OrcHandle const *in_handle,
                                  (uint8_t const[]) {0, 0},
                                  2);
   while (combinations) {
-    DeckView in_input = comb_get_input(combinations, 0);
+    OrcSdk_DeckView in_input = comb_get_input(combinations, 0);
     ORC_SDK_REQUIRE(in_input.depth == 0);
     DeckWriter *out_sq = comb_get_output(combinations, 0);
     DeckWriter *out_cb = comb_get_output(combinations, 1);
@@ -3086,7 +3086,7 @@ void _plugin_function_add_mul(OrcHandle const *a_handle,
                                  (uint8_t const[]) {0, 0},
                                  2);
   while (combinations) {
-    DeckView a_input = comb_get_input(combinations, 0),
+    OrcSdk_DeckView a_input = comb_get_input(combinations, 0),
              b_input = comb_get_input(combinations, 1);
     ORC_SDK_REQUIRE(a_input.depth == 0);
     ORC_SDK_REQUIRE(b_input.depth == 0);
@@ -3120,7 +3120,7 @@ void _plugin_function_first_add(OrcHandle const *a_handle,
                                  (uint8_t const[]) {0},
                                  1);
   while (combinations) {
-    DeckView a_input = comb_get_input(combinations, 0),
+    OrcSdk_DeckView a_input = comb_get_input(combinations, 0),
              b_input = comb_get_input(combinations, 1);
     ORC_SDK_REQUIRE(a_input.depth == 1);
     ORC_SDK_REQUIRE(b_input.depth == 1);
@@ -3369,7 +3369,7 @@ void _plugin_function_list_length(OrcHandle const *in_handle, OrcHandle *out_han
                                  (uint8_t const[]) {0},
                                  1);
   while (combinations) {
-    DeckView    list_input = comb_get_input(combinations, 0);
+    OrcSdk_DeckView    list_input = comb_get_input(combinations, 0);
     DeckWriter *out        = comb_get_output(combinations, 0);
     ORC_SDK_REQUIRE(list_input.depth == 1);
     ORC_SDK_REQUIRE(out->depth == 0);
