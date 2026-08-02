@@ -53,11 +53,11 @@ typedef struct
 {
   size_t count;
   size_t capacity;
-} _ArrHeader;
+} _OrcSdk_ArrHeader;
 
-static inline _ArrHeader *_arr_header(void const *ptr)
+static inline _OrcSdk_ArrHeader *_orc_sdk_arr_header(void const *ptr)
 {
-  _ArrHeader *h = (_ArrHeader *)ptr;
+  _OrcSdk_ArrHeader *h = (_OrcSdk_ArrHeader *)ptr;
   if (h)
     return --h;
   return NULL;
@@ -65,7 +65,7 @@ static inline _ArrHeader *_arr_header(void const *ptr)
 
 static inline size_t _arr_capacity(void *ptr)
 {
-  _ArrHeader *h = _arr_header(ptr);
+  _OrcSdk_ArrHeader *h = _orc_sdk_arr_header(ptr);
   if (h)
     return h->capacity;
   return 0;
@@ -74,7 +74,7 @@ static inline size_t _arr_capacity(void *ptr)
 /**
  * Free the array and assign the pointer to NULL.
  */
-#define arr_free(ptr) (free(_arr_header((ptr))), (ptr) = NULL)
+#define arr_free(ptr) (free(_orc_sdk_arr_header((ptr))), (ptr) = NULL)
 
 /**
  * @brief Get the length of the array.
@@ -84,7 +84,7 @@ static inline size_t _arr_capacity(void *ptr)
  */
 static inline size_t arr_len(void *ptr)
 {
-  _ArrHeader *h = _arr_header(ptr);
+  _OrcSdk_ArrHeader *h = _orc_sdk_arr_header(ptr);
   if (h)
     return h->count;
   return 0;
@@ -103,9 +103,9 @@ OrcSdk_Status _arr_remove_impl(void *ptr, size_t const idx, size_t const elemsiz
 /**
  * Push a new value to the end of the array.
  */
-#define arr_push(ptr, val)                              \
-  (((ptr) = _arr_grow(ptr, sizeof *(ptr)))              \
-     ? ((ptr)[_arr_header((ptr))->count++] = (val), OK) \
+#define arr_push(ptr, val)                                      \
+  (((ptr) = _arr_grow(ptr, sizeof *(ptr)))                      \
+     ? ((ptr)[_orc_sdk_arr_header((ptr))->count++] = (val), OK) \
      : ALLOC_FAILED)
 
 /**
@@ -117,9 +117,9 @@ OrcSdk_Status _arr_remove_impl(void *ptr, size_t const idx, size_t const elemsiz
  * Removes the element at the index idx from the array. This is faster than arr_remove,
  * but doesn't preserve the order of the elements.
  */
-#define arr_swap_remove(ptr, idx)                                \
-  (((ptr) != NULL && (idx) < arr_len(ptr))                       \
-     ? ((ptr)[(idx)] = (ptr)[--(_arr_header((ptr))->count)], OK) \
+#define arr_swap_remove(ptr, idx)                                        \
+  (((ptr) != NULL && (idx) < arr_len(ptr))                               \
+     ? ((ptr)[(idx)] = (ptr)[--(_orc_sdk_arr_header((ptr))->count)], OK) \
      : OUT_OF_BOUNDS)
 
 void *_arr_grow_capacity(void *ptr, size_t const elemsize, size_t const nelems);
@@ -173,9 +173,9 @@ OrcSdk_Status _arr_remove_range_impl(void        *ptr,
  * returned if the array was not empty. OUT_OF_BOUNDS status is returned if the array was
  * empty.
  */
-#define arr_pop(ptr, dst)                                \
-  (((ptr) != NULL && arr_len((ptr)) > 0)                 \
-     ? (*dst = (ptr)[--(_arr_header((ptr)))->count], OK) \
+#define arr_pop(ptr, dst)                                        \
+  (((ptr) != NULL && arr_len((ptr)) > 0)                         \
+     ? (*dst = (ptr)[--(_orc_sdk_arr_header((ptr)))->count], OK) \
      : OUT_OF_BOUNDS)
 
 /**
@@ -192,7 +192,7 @@ bool arr_is_empty(void *ptr);
 
 static inline size_t str_len(void *ptr)
 {
-  _ArrHeader *h = _arr_header(ptr);
+  _OrcSdk_ArrHeader *h = _orc_sdk_arr_header(ptr);
   if (h)
     return h->count == 0 ? 0 : h->count - 1;
   return 0;

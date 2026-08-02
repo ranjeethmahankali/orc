@@ -26,7 +26,7 @@ int stat_printf(OrcSdk_Status const s)
 
 void *_arr_grow(void *ptr, size_t elemsize)
 {
-  _ArrHeader *h = _arr_header(ptr);
+  _OrcSdk_ArrHeader *h = _orc_sdk_arr_header(ptr);
   if (h == NULL) {
     h = malloc(sizeof *h + elemsize);
     if (h == NULL)
@@ -54,7 +54,7 @@ void *_arr_grow_capacity(void *ptr, size_t const elemsize, size_t const nelems)
   if (ptr == NULL && nelems == 0) {
     return ptr;  // Return NULL, which is valid for an empty array
   }
-  _ArrHeader *h = _arr_header(ptr);
+  _OrcSdk_ArrHeader *h = _orc_sdk_arr_header(ptr);
   if (h == NULL) {
     h = malloc(sizeof *h + elemsize * nelems);
     if (h == NULL)
@@ -75,7 +75,7 @@ void *_arr_grow_capacity(void *ptr, size_t const elemsize, size_t const nelems)
 
 OrcSdk_Status _arr_remove_impl(void *ptr, size_t const idx, size_t const elemsize)
 {
-  _ArrHeader *h = _arr_header(ptr);
+  _OrcSdk_ArrHeader *h = _orc_sdk_arr_header(ptr);
   if (h && (idx < h->count)) {
     void        *dst = (char *)ptr + idx * elemsize;
     void        *src = (char *)dst + elemsize;
@@ -98,7 +98,7 @@ void *_arr_resize_impl(void *ptr, size_t const elemsize, size_t const count)
     char *dst = (char *)ptr + (before * elemsize);
     memset(dst, 0, (count - before) * elemsize);
   }
-  _ArrHeader *h = _arr_header(ptr);
+  _OrcSdk_ArrHeader *h = _orc_sdk_arr_header(ptr);
   if (h)
     h->count = count;
   return ptr;
@@ -106,7 +106,7 @@ void *_arr_resize_impl(void *ptr, size_t const elemsize, size_t const count)
 
 void arr_clear(void *ptr)
 {
-  _ArrHeader *h = _arr_header(ptr);
+  _OrcSdk_ArrHeader *h = _orc_sdk_arr_header(ptr);
   if (h)
     h->count = 0;
 }
@@ -145,7 +145,7 @@ OrcSdk_Status _arr_remove_range_impl(void        *ptr,
                                      size_t const stop,
                                      size_t const elemsize)
 {
-  _ArrHeader *h = _arr_header(ptr);
+  _OrcSdk_ArrHeader *h = _orc_sdk_arr_header(ptr);
   if (h && (start <= stop) && (start <= h->count) && (stop <= h->count)) {
     if (start == stop || start == h->count) {
       return OK;
@@ -163,7 +163,7 @@ OrcSdk_Status _arr_remove_range_impl(void        *ptr,
 
 bool arr_is_empty(void *ptr)
 {
-  _ArrHeader *h = _arr_header(ptr);
+  _OrcSdk_ArrHeader *h = _orc_sdk_arr_header(ptr);
   return h == NULL || h->count == 0;
 }
 
@@ -195,7 +195,7 @@ char *_str_push_impl(char *ptr, char val)
 
 void str_clear(char *ptr)
 {
-  _ArrHeader *h = _arr_header(ptr);
+  _OrcSdk_ArrHeader *h = _orc_sdk_arr_header(ptr);
   if (h != NULL) {
     h->count = 1;
     ptr[0]   = '\0';

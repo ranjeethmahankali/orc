@@ -681,7 +681,7 @@ void test_arr_fibonacci(void)
 void test_arr_header_alignment(void)
 {
   ORC_SDK_REQUIRE_WITH_MSG(
-    (sizeof(_ArrHeader) % sizeof(_MaxAlignCompat)) == 0,
+    (sizeof(_OrcSdk_ArrHeader) % sizeof(_MaxAlignCompat)) == 0,
     "Array header must align with the platform's maximum alignment to be compatible "
     "with arbitrary types inside the container. This doesn't guarantee alignment with "
     "SIMD types. The containers are not meant to be used with SIMD types.");
