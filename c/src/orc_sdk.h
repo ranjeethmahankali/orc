@@ -90,21 +90,23 @@ static inline size_t orc_sdk_arr_len(void *ptr)
   return 0;
 }
 
-void *_arr_grow(void *ptr, size_t elemsize);
+void *_orc_sdk_arr_grow(void *ptr, size_t elemsize);
 
-OrcSdk_Status _arr_remove_impl(void *ptr, size_t const idx, size_t const elemsize);
+OrcSdk_Status _orc_sdk_arr_remove_impl(void        *ptr,
+                                       size_t const idx,
+                                       size_t const elemsize);
 
 /**
  * Remove the element at index idx from the array. This preserves the order of the
  * remaining elements.
  */
-#define arr_remove(ptr, idx) _arr_remove_impl((ptr), (idx), sizeof *(ptr))
+#define orc_sdk_arr_remove(ptr, idx) _orc_sdk_arr_remove_impl((ptr), (idx), sizeof *(ptr))
 
 /**
  * Push a new value to the end of the array.
  */
 #define arr_push(ptr, val)                                      \
-  (((ptr) = _arr_grow(ptr, sizeof *(ptr)))                      \
+  (((ptr) = _orc_sdk_arr_grow(ptr, sizeof *(ptr)))              \
      ? ((ptr)[_orc_sdk_arr_header((ptr))->count++] = (val), OK) \
      : ALLOC_FAILED)
 
@@ -114,22 +116,22 @@ OrcSdk_Status _arr_remove_impl(void *ptr, size_t const idx, size_t const elemsiz
 #define arr_end(ptr) (ptr) + orc_sdk_arr_len((ptr))
 
 /**
- * Removes the element at the index idx from the array. This is faster than arr_remove,
- * but doesn't preserve the order of the elements.
+ * Removes the element at the index idx from the array. This is faster than
+ * orc_sdk_arr_remove, but doesn't preserve the order of the elements.
  */
 #define arr_swap_remove(ptr, idx)                                        \
   (((ptr) != NULL && (idx) < orc_sdk_arr_len(ptr))                       \
      ? ((ptr)[(idx)] = (ptr)[--(_orc_sdk_arr_header((ptr))->count)], OK) \
      : OUT_OF_BOUNDS)
 
-void *_arr_grow_capacity(void *ptr, size_t const elemsize, size_t const nelems);
+void *_orc_sdk_arr_grow_capacity(void *ptr, size_t const elemsize, size_t const nelems);
 
 /**
  * Reserve memory for the `size` number of elements in the array.
  */
-#define arr_reserve(ptr, size)                                \
-  (((ptr) = _arr_grow_capacity((ptr), sizeof *(ptr), (size))) \
-     ? OK                                                     \
+#define arr_reserve(ptr, size)                                        \
+  (((ptr) = _orc_sdk_arr_grow_capacity((ptr), sizeof *(ptr), (size))) \
+     ? OK                                                             \
      : ((size) == 0 ? OK : ALLOC_FAILED))
 
 void *_arr_resize_impl(void *ptr, size_t const elemsize, size_t const count);
@@ -157,24 +159,24 @@ void _arr_fill_impl(void             *arr,
 #define arr_fill(ptr, val) \
   _arr_fill_impl((ptr), &(val), orc_sdk_arr_len((ptr)), sizeof(*ptr))
 
-OrcSdk_Status _arr_remove_range_impl(void        *ptr,
-                                     size_t const start,
-                                     size_t const stop,
-                                     size_t const elemsize);
+OrcSdk_Status _orc_sdk_arr_remove_range_impl(void        *ptr,
+                                             size_t const start,
+                                             size_t const stop,
+                                             size_t const elemsize);
 
 /**
  * Remove a range of elements from the array. The range is from `start` (inclusive) to
  * `stop` (exclusive).
  */
-#define arr_remove_range(ptr, start, stop) \
-  _arr_remove_range_impl(ptr, start, stop, sizeof *(ptr))
+#define orc_sdk_arr_remove_range(ptr, start, stop) \
+  _orc_sdk_arr_remove_range_impl(ptr, start, stop, sizeof *(ptr))
 
 /**
  * Remove the last element of the array and assign it to the `dst` pointer. OK status is
  * returned if the array was not empty. OUT_OF_BOUNDS status is returned if the array was
  * empty.
  */
-#define arr_pop(ptr, dst)                                        \
+#define orc_sdk_arr_pop(ptr, dst)                                \
   (((ptr) != NULL && orc_sdk_arr_len((ptr)) > 0)                 \
      ? (*dst = (ptr)[--(_orc_sdk_arr_header((ptr)))->count], OK) \
      : OUT_OF_BOUNDS)
@@ -185,7 +187,7 @@ OrcSdk_Status _arr_remove_range_impl(void        *ptr,
  * @param ptr Pointer to the array.
  * @return bool True if the array is empty.
  */
-bool arr_is_empty(void *ptr);
+bool orc_sdk_arr_is_empty(void *ptr);
 
 // ========== String ==========
 

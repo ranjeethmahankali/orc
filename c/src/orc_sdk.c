@@ -24,7 +24,7 @@ int stat_printf(OrcSdk_Status const s)
   }
 }
 
-void *_arr_grow(void *ptr, size_t elemsize)
+void *_orc_sdk_arr_grow(void *ptr, size_t elemsize)
 {
   _OrcSdk_ArrHeader *h = _orc_sdk_arr_header(ptr);
   if (h == NULL) {
@@ -47,7 +47,7 @@ void *_arr_grow(void *ptr, size_t elemsize)
   return ptr;
 }
 
-void *_arr_grow_capacity(void *ptr, size_t const elemsize, size_t const nelems)
+void *_orc_sdk_arr_grow_capacity(void *ptr, size_t const elemsize, size_t const nelems)
 {
   // Handle the special case where ptr is NULL and nelems is 0
   // No allocation needed, just return the NULL ptr
@@ -73,7 +73,7 @@ void *_arr_grow_capacity(void *ptr, size_t const elemsize, size_t const nelems)
   return ptr;
 }
 
-OrcSdk_Status _arr_remove_impl(void *ptr, size_t const idx, size_t const elemsize)
+OrcSdk_Status _orc_sdk_arr_remove_impl(void *ptr, size_t const idx, size_t const elemsize)
 {
   _OrcSdk_ArrHeader *h = _orc_sdk_arr_header(ptr);
   if (h && (idx < h->count)) {
@@ -91,7 +91,7 @@ void *_arr_resize_impl(void *ptr, size_t const elemsize, size_t const count)
 {
   size_t const before = orc_sdk_arr_len(ptr);
   if (before < count) {  // Needs to grow.
-    ptr = _arr_grow_capacity(ptr, elemsize, count);
+    ptr = _orc_sdk_arr_grow_capacity(ptr, elemsize, count);
     if (ptr == NULL) {
       return NULL;
     }
@@ -140,10 +140,10 @@ void _arr_fill_impl(void             *arr,
                            "Should have written up to the end of the array.");
 }
 
-OrcSdk_Status _arr_remove_range_impl(void        *ptr,
-                                     size_t const start,
-                                     size_t const stop,
-                                     size_t const elemsize)
+OrcSdk_Status _orc_sdk_arr_remove_range_impl(void        *ptr,
+                                             size_t const start,
+                                             size_t const stop,
+                                             size_t const elemsize)
 {
   _OrcSdk_ArrHeader *h = _orc_sdk_arr_header(ptr);
   if (h && (start <= stop) && (start <= h->count) && (stop <= h->count)) {
@@ -161,7 +161,7 @@ OrcSdk_Status _arr_remove_range_impl(void        *ptr,
   return OUT_OF_BOUNDS;
 }
 
-bool arr_is_empty(void *ptr)
+bool orc_sdk_arr_is_empty(void *ptr)
 {
   _OrcSdk_ArrHeader *h = _orc_sdk_arr_header(ptr);
   return h == NULL || h->count == 0;
@@ -172,7 +172,7 @@ bool arr_is_empty(void *ptr)
 OrcSdk_Status _str_remove_impl(char *const ptr, size_t const idx)
 {
   if (idx < str_len(ptr)) {
-    return _arr_remove_impl(ptr, idx, sizeof(char));
+    return _orc_sdk_arr_remove_impl(ptr, idx, sizeof(char));
   }
   return OUT_OF_BOUNDS;
 }
@@ -468,7 +468,7 @@ void _deck_free_impl(void *ptr)
 uint8_t deck_max_depth(void const *deck)
 {
   _DeckHeader *h = _deck_header(deck);
-  if (h != NULL && !arr_is_empty(h->marks)) {
+  if (h != NULL && !orc_sdk_arr_is_empty(h->marks)) {
     return h->marks[0].depth + 1;
   }
   return 0;
@@ -728,7 +728,7 @@ void deck_simplify(void *ptr)
   if (h == NULL)
     return;
   uint8_t      remap[UINT8_MAX + 1] = {0};
-  size_t const d_max                = arr_is_empty(h->marks) ? 0 : h->marks[0].depth;
+  size_t const d_max = orc_sdk_arr_is_empty(h->marks) ? 0 : h->marks[0].depth;
   {
     OrcMark *end = arr_end(h->marks);
     for (OrcMark *m = h->marks; m < end; ++m) {

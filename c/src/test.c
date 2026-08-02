@@ -215,7 +215,7 @@ void test_arr_ordered_remove(void)
   }
   // Remove middle element (index 2, value 30)
   // Should shift [40, 50] left to fill the gap
-  ORC_SDK_REQUIRE(arr_remove(arr, 2) == OK);
+  ORC_SDK_REQUIRE(orc_sdk_arr_remove(arr, 2) == OK);
   ORC_SDK_REQUIRE(orc_sdk_arr_len(arr) == 4);
   ORC_SDK_REQUIRE_WITH_MSG(arr[0] == 10, "First element should be unchanged");
   ORC_SDK_REQUIRE_WITH_MSG(arr[1] == 20, "Second element should be unchanged");
@@ -223,34 +223,34 @@ void test_arr_ordered_remove(void)
   ORC_SDK_REQUIRE_WITH_MSG(arr[3] == 50, "Fourth element should be 50 (was 5th)");
   // Remove first element
   // Should shift [20, 40, 50] left
-  ORC_SDK_REQUIRE(arr_remove(arr, 0) == OK);
+  ORC_SDK_REQUIRE(orc_sdk_arr_remove(arr, 0) == OK);
   ORC_SDK_REQUIRE(orc_sdk_arr_len(arr) == 3);
   ORC_SDK_REQUIRE_WITH_MSG(arr[0] == 20, "First element should now be 20");
   ORC_SDK_REQUIRE_WITH_MSG(arr[1] == 40, "Second element should be 40");
   ORC_SDK_REQUIRE_WITH_MSG(arr[2] == 50, "Third element should be 50");
   // Remove last element
   // Should just decrease count, no shifting needed
-  ORC_SDK_REQUIRE(arr_remove(arr, 2) == OK);
+  ORC_SDK_REQUIRE(orc_sdk_arr_remove(arr, 2) == OK);
   ORC_SDK_REQUIRE(orc_sdk_arr_len(arr) == 2);
   ORC_SDK_REQUIRE_WITH_MSG(arr[0] == 20, "First element unchanged");
   ORC_SDK_REQUIRE_WITH_MSG(arr[1] == 40, "Second element unchanged");
   // Remove from single-element array
-  arr_remove(arr, 0);
-  arr_remove(arr, 0);
+  orc_sdk_arr_remove(arr, 0);
+  orc_sdk_arr_remove(arr, 0);
   ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_len(arr) == 0, "Array should be empty");
   // Test bounds checking
-  ORC_SDK_REQUIRE_WITH_MSG(arr_remove(arr, 0) == OUT_OF_BOUNDS,
+  ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_remove(arr, 0) == OUT_OF_BOUNDS,
                            "Remove from empty array should fail");
   // Add one element and test invalid indices
   arr_push(arr, 100);
-  ORC_SDK_REQUIRE_WITH_MSG(arr_remove(arr, 1) == OUT_OF_BOUNDS,
+  ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_remove(arr, 1) == OUT_OF_BOUNDS,
                            "Remove past end should fail");
-  ORC_SDK_REQUIRE_WITH_MSG(arr_remove(arr, SIZE_MAX) == OUT_OF_BOUNDS,
+  ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_remove(arr, SIZE_MAX) == OUT_OF_BOUNDS,
                            "Remove huge index should fail");
   orc_sdk_arr_free(arr);
   // Test with NULL pointer
   int *null_arr = NULL;
-  ORC_SDK_REQUIRE_WITH_MSG(arr_remove(null_arr, 0) == OUT_OF_BOUNDS,
+  ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_remove(null_arr, 0) == OUT_OF_BOUNDS,
                            "Remove from NULL should fail");
 }
 
@@ -490,7 +490,7 @@ void test_arr_remove_range(void)
   ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_len(arr) == 5, "Array should have 5 elements");
   // Test 1: Remove middle range [1, 3) -> removes 20, 30
   // Expected: [10, 40, 50]
-  OrcSdk_Status result = arr_remove_range(arr, 1, 3);
+  OrcSdk_Status result = orc_sdk_arr_remove_range(arr, 1, 3);
   ORC_SDK_REQUIRE_WITH_MSG(result == OK, "Remove middle range should succeed");
   ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_len(arr) == 3,
                            "Array should have 3 elements after removing 2");
@@ -499,19 +499,19 @@ void test_arr_remove_range(void)
   ORC_SDK_REQUIRE_WITH_MSG(arr[2] == 50, "Third element should be 50 (was 5th)");
   // Test 2: Remove from beginning [0, 1) -> removes 10
   // Expected: [40, 50]
-  result = arr_remove_range(arr, 0, 1);
+  result = orc_sdk_arr_remove_range(arr, 0, 1);
   ORC_SDK_REQUIRE_WITH_MSG(result == OK, "Remove from beginning should succeed");
   ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_len(arr) == 2, "Array should have 2 elements");
   ORC_SDK_REQUIRE_WITH_MSG(arr[0] == 40, "First element should be 40");
   ORC_SDK_REQUIRE_WITH_MSG(arr[1] == 50, "Second element should be 50");
   // Test 3: Remove from end [1, 2) -> removes 50
   // Expected: [40]
-  result = arr_remove_range(arr, 1, 2);
+  result = orc_sdk_arr_remove_range(arr, 1, 2);
   ORC_SDK_REQUIRE_WITH_MSG(result == OK, "Remove from end should succeed");
   ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_len(arr) == 1, "Array should have 1 element");
   ORC_SDK_REQUIRE_WITH_MSG(arr[0] == 40, "Remaining element should be 40");
   // Test 4: Remove entire array [0, 1)
-  result = arr_remove_range(arr, 0, 1);
+  result = orc_sdk_arr_remove_range(arr, 0, 1);
   ORC_SDK_REQUIRE_WITH_MSG(result == OK, "Remove entire array should succeed");
   ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_len(arr) == 0, "Array should be empty");
   // Test 5: Empty range operations
@@ -521,37 +521,37 @@ void test_arr_remove_range(void)
   arr_push(arr, 300);
   ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_len(arr) == 3, "Array should have 3 elements");
   // Remove empty range at beginning [0, 0)
-  result = arr_remove_range(arr, 0, 0);
+  result = orc_sdk_arr_remove_range(arr, 0, 0);
   ORC_SDK_REQUIRE_WITH_MSG(result == OK, "Empty range at beginning should succeed");
   ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_len(arr) == 3, "Array length should be unchanged");
   // Remove empty range in middle [1, 1)
-  result = arr_remove_range(arr, 1, 1);
+  result = orc_sdk_arr_remove_range(arr, 1, 1);
   ORC_SDK_REQUIRE_WITH_MSG(result == OK, "Empty range in middle should succeed");
   ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_len(arr) == 3, "Array length should be unchanged");
   // Remove empty range at end [3, 3)
-  result = arr_remove_range(arr, 3, 3);
+  result = orc_sdk_arr_remove_range(arr, 3, 3);
   ORC_SDK_REQUIRE_WITH_MSG(result == OK, "Empty range at end should succeed");
   ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_len(arr) == 3, "Array length should be unchanged");
   // Test 6: Error cases - out of bounds
   // Start index too large
-  result = arr_remove_range(arr, 4, 4);
+  result = orc_sdk_arr_remove_range(arr, 4, 4);
   ORC_SDK_REQUIRE_WITH_MSG(result == OUT_OF_BOUNDS, "Start beyond array should fail");
   // Stop index too large
-  result = arr_remove_range(arr, 1, 5);
+  result = orc_sdk_arr_remove_range(arr, 1, 5);
   ORC_SDK_REQUIRE_WITH_MSG(result == OUT_OF_BOUNDS, "Stop beyond array should fail");
   // Invalid range (stop < start)
-  result = arr_remove_range(arr, 2, 1);
+  result = orc_sdk_arr_remove_range(arr, 2, 1);
   ORC_SDK_REQUIRE_WITH_MSG(result == OUT_OF_BOUNDS, "Invalid range should fail");
   // Test 7: Remove everything [0, length)
-  result = arr_remove_range(arr, 0, orc_sdk_arr_len(arr));
+  result = orc_sdk_arr_remove_range(arr, 0, orc_sdk_arr_len(arr));
   ORC_SDK_REQUIRE_WITH_MSG(result == OK, "Remove all elements should succeed");
   ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_len(arr) == 0, "Array should be empty");
   orc_sdk_arr_free(arr);
   // Test 8: Operations on NULL array
   int *null_arr = NULL;
-  result        = arr_remove_range(null_arr, 0, 0);
+  result        = orc_sdk_arr_remove_range(null_arr, 0, 0);
   ORC_SDK_REQUIRE_WITH_MSG(result == OUT_OF_BOUNDS, "Remove from NULL array should fail");
-  result = arr_remove_range(null_arr, 0, 1);
+  result = orc_sdk_arr_remove_range(null_arr, 0, 1);
   ORC_SDK_REQUIRE_WITH_MSG(result == OUT_OF_BOUNDS, "Remove from NULL array should fail");
   // Test 9: Large range removal
   int *large_arr = NULL;
@@ -561,7 +561,7 @@ void test_arr_remove_range(void)
   ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_len(large_arr) == 10,
                            "Large array should have 10 elements");
   // Remove middle chunk [3, 7) -> removes 3, 4, 5, 6
-  result = arr_remove_range(large_arr, 3, 7);
+  result = orc_sdk_arr_remove_range(large_arr, 3, 7);
   ORC_SDK_REQUIRE_WITH_MSG(result == OK, "Large range removal should succeed");
   ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_len(large_arr) == 6,
                            "Array should have 6 elements remaining");
@@ -579,11 +579,11 @@ void test_arr_pop(void)
   double *arr = NULL;
   double  value;
   // Test pop from empty array (should fail)
-  OrcSdk_Status result = arr_pop(arr, &value);
+  OrcSdk_Status result = orc_sdk_arr_pop(arr, &value);
   ORC_SDK_REQUIRE_WITH_MSG(result == OUT_OF_BOUNDS, "Pop from empty array should fail");
   // Test pop from NULL array (should fail)
   double *null_arr = NULL;
-  result           = arr_pop(null_arr, &value);
+  result           = orc_sdk_arr_pop(null_arr, &value);
   ORC_SDK_REQUIRE_WITH_MSG(result == OUT_OF_BOUNDS, "Pop from NULL array should fail");
   // Setup array with known values: [10.0, 20.0, 30.0]
   ORC_SDK_REQUIRE_WITH_MSG(arr_push(arr, 10.0) == OK, "Push should succeed");
@@ -591,7 +591,7 @@ void test_arr_pop(void)
   ORC_SDK_REQUIRE_WITH_MSG(arr_push(arr, 30.0) == OK, "Push should succeed");
   ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_len(arr) == 3, "Array should have 3 elements");
   // Test pop from array with multiple elements
-  result = arr_pop(arr, &value);
+  result = orc_sdk_arr_pop(arr, &value);
   ORC_SDK_REQUIRE_WITH_MSG(result == OK, "Pop should succeed");
   ORC_SDK_REQUIRE_WITH_MSG(value == 30.0, "Popped value should be 30.0 (last element)");
   ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_len(arr) == 2,
@@ -599,20 +599,20 @@ void test_arr_pop(void)
   ORC_SDK_REQUIRE_WITH_MSG(arr[0] == 10.0 && arr[1] == 20.0,
                            "Remaining elements should be correct");
   // Test sequential pops
-  result = arr_pop(arr, &value);
+  result = orc_sdk_arr_pop(arr, &value);
   ORC_SDK_REQUIRE_WITH_MSG(result == OK, "Second pop should succeed");
   ORC_SDK_REQUIRE_WITH_MSG(value == 20.0, "Popped value should be 20.0");
   ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_len(arr) == 1,
                            "Array should have 1 element after second pop");
   ORC_SDK_REQUIRE_WITH_MSG(arr[0] == 10.0, "Remaining element should be 10.0");
   // Test pop from single-element array
-  result = arr_pop(arr, &value);
+  result = orc_sdk_arr_pop(arr, &value);
   ORC_SDK_REQUIRE_WITH_MSG(result == OK, "Pop from single element should succeed");
   ORC_SDK_REQUIRE_WITH_MSG(value == 10.0, "Popped value should be 10.0");
   ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_len(arr) == 0,
                            "Array should be empty after popping last element");
   // Test pop from now-empty array (should fail)
-  result = arr_pop(arr, &value);
+  result = orc_sdk_arr_pop(arr, &value);
   ORC_SDK_REQUIRE_WITH_MSG(result == OUT_OF_BOUNDS, "Pop from empty array should fail");
   orc_sdk_arr_free(arr);
   // Test with different data types
@@ -620,7 +620,7 @@ void test_arr_pop(void)
   int  int_value;
   ORC_SDK_REQUIRE_WITH_MSG(arr_push(int_arr, 42) == OK, "Int push should succeed");
   ORC_SDK_REQUIRE_WITH_MSG(arr_push(int_arr, 99) == OK, "Int push should succeed");
-  result = arr_pop(int_arr, &int_value);
+  result = orc_sdk_arr_pop(int_arr, &int_value);
   ORC_SDK_REQUIRE_WITH_MSG(result == OK, "Int pop should succeed");
   ORC_SDK_REQUIRE_WITH_MSG(int_value == 99, "Popped int value should be 99");
   ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_len(int_arr) == 1,
@@ -636,7 +636,7 @@ void test_arr_pop(void)
                            "String push should succeed");
   ORC_SDK_REQUIRE_WITH_MSG(arr_push(str_arr, strings[2]) == OK,
                            "String push should succeed");
-  result = arr_pop(str_arr, &str_value);
+  result = orc_sdk_arr_pop(str_arr, &str_value);
   ORC_SDK_REQUIRE_WITH_MSG(result == OK, "String pop should succeed");
   ORC_SDK_REQUIRE_WITH_MSG(str_value == strings[2], "Popped string should be 'third'");
   ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_len(str_arr) == 2,
@@ -652,7 +652,7 @@ void test_arr_pop(void)
   }
   // Pop all elements
   for (int i = 0; i < 5; i++) {
-    arr_pop(cap_arr, &value);
+    orc_sdk_arr_pop(cap_arr, &value);
   }
   ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_len(cap_arr) == 0, "Array should be empty");
   ORC_SDK_REQUIRE_WITH_MSG(_orc_sdk_arr_capacity(cap_arr) == initial_capacity,
@@ -662,7 +662,7 @@ void test_arr_pop(void)
   double *reuse_arr = NULL;
   arr_push(reuse_arr, 1.0);
   arr_push(reuse_arr, 2.0);
-  arr_pop(reuse_arr, &value);
+  orc_sdk_arr_pop(reuse_arr, &value);
   ORC_SDK_REQUIRE_WITH_MSG(value == 2.0, "Popped value should be 2.0");
   arr_push(reuse_arr, 3.0);
   ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_len(reuse_arr) == 2,
