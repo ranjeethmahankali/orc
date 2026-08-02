@@ -305,16 +305,16 @@ OrcStrView orc_sv_split_at_delim(OrcStrView *sv, char const delim);
 
 char *orc_sv_find(OrcStrView sv, char const c);
 
-static inline bool sv_contains_char(OrcStrView sv, char const c)
+static inline bool orc_sv_contains_char(OrcStrView sv, char const c)
 {
   return orc_sv_find(sv, c) != NULL;
 }
 
-char *sv_rfind(OrcStrView sv, char const c);
+char *orc_sv_rfind(OrcStrView sv, char const c);
 
-OrcStrView sv_slice(OrcStrView sv, size_t const start, size_t const end);
+OrcStrView orc_sv_slice(OrcStrView sv, size_t const start, size_t const end);
 
-bool sv_eq(OrcStrView const a, OrcStrView const b);
+bool orc_sv_eq(OrcStrView const a, OrcStrView const b);
 
 // ========== Deck ==========
 

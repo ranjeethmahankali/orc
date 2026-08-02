@@ -1464,36 +1464,36 @@ void test_orc_sv_find(void)
   ORC_SDK_REQUIRE(orc_sv_find(sv2, 'y') == NULL);
 }
 
-void test_sv_rfind(void)
+void test_orc_sv_rfind(void)
 {
   char    buf[] = "hello";
   OrcStrView sv    = orc_sv_from_str(buf);
   // Finds last occurrence
-  ORC_SDK_REQUIRE(sv_rfind(sv, 'l') == buf + 3);
-  ORC_SDK_REQUIRE(sv_rfind(sv, 'h') == buf);
-  ORC_SDK_REQUIRE(sv_rfind(sv, 'o') == buf + 4);
-  ORC_SDK_REQUIRE(sv_rfind(sv, 'z') == NULL);
+  ORC_SDK_REQUIRE(orc_sv_rfind(sv, 'l') == buf + 3);
+  ORC_SDK_REQUIRE(orc_sv_rfind(sv, 'h') == buf);
+  ORC_SDK_REQUIRE(orc_sv_rfind(sv, 'o') == buf + 4);
+  ORC_SDK_REQUIRE(orc_sv_rfind(sv, 'z') == NULL);
   // All same characters
   char    buf2[] = "aaaa";
   OrcStrView sv2    = orc_sv_from_str(buf2);
-  ORC_SDK_REQUIRE(sv_rfind(sv2, 'a') == buf2 + 3);
+  ORC_SDK_REQUIRE(orc_sv_rfind(sv2, 'a') == buf2 + 3);
   // Empty view (regression: out-of-bounds dereference)
   OrcStrView empty = orc_sv_from_str("");
-  ORC_SDK_REQUIRE(sv_rfind(empty, 'a') == NULL);
+  ORC_SDK_REQUIRE(orc_sv_rfind(empty, 'a') == NULL);
   // NULL view
   OrcStrView null_sv = (OrcStrView) {0};
-  ORC_SDK_REQUIRE(sv_rfind(null_sv, 'a') == NULL);
+  ORC_SDK_REQUIRE(orc_sv_rfind(null_sv, 'a') == NULL);
   // Single char view
   char    buf3[] = "x";
   OrcStrView sv3    = orc_sv_from_str(buf3);
-  ORC_SDK_REQUIRE(sv_rfind(sv3, 'x') == buf3);
-  ORC_SDK_REQUIRE(sv_rfind(sv3, 'y') == NULL);
+  ORC_SDK_REQUIRE(orc_sv_rfind(sv3, 'x') == buf3);
+  ORC_SDK_REQUIRE(orc_sv_rfind(sv3, 'y') == NULL);
   // Only first char matches
   char    buf4[] = "abc";
   OrcStrView sv4    = orc_sv_from_str(buf4);
-  ORC_SDK_REQUIRE(sv_rfind(sv4, 'a') == buf4);
+  ORC_SDK_REQUIRE(orc_sv_rfind(sv4, 'a') == buf4);
   // Only last char matches
-  ORC_SDK_REQUIRE(sv_rfind(sv4, 'c') == buf4 + 2);
+  ORC_SDK_REQUIRE(orc_sv_rfind(sv4, 'c') == buf4 + 2);
 }
 
 void test_orc_str_eq(void)
@@ -1525,16 +1525,16 @@ void test_orc_str_eq(void)
   orc_str_free(b);
 }
 
-void test_sv_contains_char(void)
+void test_orc_sv_contains_char(void)
 {
   char    buf[] = "hello";
   OrcStrView sv    = orc_sv_from_str(buf);
-  ORC_SDK_REQUIRE(sv_contains_char(sv, 'h'));
-  ORC_SDK_REQUIRE(sv_contains_char(sv, 'o'));
-  ORC_SDK_REQUIRE(!sv_contains_char(sv, 'z'));
+  ORC_SDK_REQUIRE(orc_sv_contains_char(sv, 'h'));
+  ORC_SDK_REQUIRE(orc_sv_contains_char(sv, 'o'));
+  ORC_SDK_REQUIRE(!orc_sv_contains_char(sv, 'z'));
   // Empty and NULL views
-  ORC_SDK_REQUIRE(!sv_contains_char(orc_sv_from_str(""), 'a'));
-  ORC_SDK_REQUIRE(!sv_contains_char((OrcStrView) {0}, 'a'));
+  ORC_SDK_REQUIRE(!orc_sv_contains_char(orc_sv_from_str(""), 'a'));
+  ORC_SDK_REQUIRE(!orc_sv_contains_char((OrcStrView) {0}, 'a'));
 }
 
 void test_orc_sv_strip_prefix(void)
@@ -1603,83 +1603,83 @@ void test_orc_sv_strip_suffix(void)
   ORC_SDK_REQUIRE(!orc_sv_strip_suffix(NULL, "a"));
 }
 
-void test_sv_slice(void)
+void test_orc_sv_slice(void)
 {
   char    buf[] = "hello world";
   OrcStrView sv    = orc_sv_from_str(buf);
   // Slice from middle
-  OrcStrView mid = sv_slice(sv, 2, 7);
+  OrcStrView mid = orc_sv_slice(sv, 2, 7);
   ORC_SDK_REQUIRE(orc_sv_len(mid) == 5);
   ORC_SDK_REQUIRE(memcmp(mid.start, "llo w", 5) == 0);
   // Slice from start
-  OrcStrView head = sv_slice(sv, 0, 5);
+  OrcStrView head = orc_sv_slice(sv, 0, 5);
   ORC_SDK_REQUIRE(orc_sv_len(head) == 5);
   ORC_SDK_REQUIRE(memcmp(head.start, "hello", 5) == 0);
   // Slice to end
-  OrcStrView tail = sv_slice(sv, 6, 11);
+  OrcStrView tail = orc_sv_slice(sv, 6, 11);
   ORC_SDK_REQUIRE(orc_sv_len(tail) == 5);
   ORC_SDK_REQUIRE(memcmp(tail.start, "world", 5) == 0);
   // Full slice
-  OrcStrView full = sv_slice(sv, 0, 11);
+  OrcStrView full = orc_sv_slice(sv, 0, 11);
   ORC_SDK_REQUIRE(orc_sv_len(full) == 11);
   ORC_SDK_REQUIRE(memcmp(full.start, "hello world", 11) == 0);
   // Empty slice (start == end)
-  OrcStrView empty_slice = sv_slice(sv, 3, 3);
+  OrcStrView empty_slice = orc_sv_slice(sv, 3, 3);
   ORC_SDK_REQUIRE(orc_sv_is_empty(empty_slice));
   ORC_SDK_REQUIRE(empty_slice.start != NULL);
   // Single char slice
-  OrcStrView one = sv_slice(sv, 0, 1);
+  OrcStrView one = orc_sv_slice(sv, 0, 1);
   ORC_SDK_REQUIRE(orc_sv_len(one) == 1);
   ORC_SDK_REQUIRE(*one.start == 'h');
   // Invalid: end > view length
-  OrcStrView bad1 = sv_slice(sv, 0, 100);
+  OrcStrView bad1 = orc_sv_slice(sv, 0, 100);
   ORC_SDK_REQUIRE(bad1.start == NULL);
   ORC_SDK_REQUIRE(bad1.end == NULL);
   // Invalid: start > end
-  OrcStrView bad2 = sv_slice(sv, 5, 2);
+  OrcStrView bad2 = orc_sv_slice(sv, 5, 2);
   ORC_SDK_REQUIRE(bad2.start == NULL);
   ORC_SDK_REQUIRE(bad2.end == NULL);
   // NULL view
   OrcStrView null_sv = (OrcStrView) {0};
-  OrcStrView bad3    = sv_slice(null_sv, 0, 1);
+  OrcStrView bad3    = orc_sv_slice(null_sv, 0, 1);
   ORC_SDK_REQUIRE(bad3.start == NULL);
 }
 
-void test_sv_eq(void)
+void test_orc_sv_eq(void)
 {
   char    buf1[] = "hello";
   char    buf2[] = "hello";
   OrcStrView a      = orc_sv_from_str(buf1);
   OrcStrView b      = orc_sv_from_str(buf2);
   // Equal views (different backing memory)
-  ORC_SDK_REQUIRE(sv_eq(a, b));
+  ORC_SDK_REQUIRE(orc_sv_eq(a, b));
   // Same view
-  ORC_SDK_REQUIRE(sv_eq(a, a));
+  ORC_SDK_REQUIRE(orc_sv_eq(a, a));
   // Different content, same length
   char    buf3[] = "world";
   OrcStrView c      = orc_sv_from_str(buf3);
-  ORC_SDK_REQUIRE(!sv_eq(a, c));
+  ORC_SDK_REQUIRE(!orc_sv_eq(a, c));
   // Different lengths
   char    buf4[] = "hi";
   OrcStrView d      = orc_sv_from_str(buf4);
-  ORC_SDK_REQUIRE(!sv_eq(a, d));
+  ORC_SDK_REQUIRE(!orc_sv_eq(a, d));
   // Both empty
   OrcStrView e1 = orc_sv_from_str("");
   OrcStrView e2 = orc_sv_from_str("");
-  ORC_SDK_REQUIRE(sv_eq(e1, e2));
+  ORC_SDK_REQUIRE(orc_sv_eq(e1, e2));
   // Both NULL
   OrcStrView n1 = (OrcStrView) {0};
   OrcStrView n2 = (OrcStrView) {0};
-  ORC_SDK_REQUIRE(sv_eq(n1, n2));
+  ORC_SDK_REQUIRE(orc_sv_eq(n1, n2));
   // One empty, one NULL (both have len 0)
-  ORC_SDK_REQUIRE(sv_eq(e1, n1));
+  ORC_SDK_REQUIRE(orc_sv_eq(e1, n1));
   // Empty vs non-empty
-  ORC_SDK_REQUIRE(!sv_eq(e1, a));
+  ORC_SDK_REQUIRE(!orc_sv_eq(e1, a));
   // Compare sub-slices
-  OrcStrView sub    = sv_slice(a, 0, 3);
+  OrcStrView sub    = orc_sv_slice(a, 0, 3);
   char    buf5[] = "hel";
   OrcStrView match  = orc_sv_from_str(buf5);
-  ORC_SDK_REQUIRE(sv_eq(sub, match));
+  ORC_SDK_REQUIRE(orc_sv_eq(sub, match));
 }
 
 void test_deck_header_alignment(void)
@@ -2052,7 +2052,7 @@ void test_deck_printf(void)
   size_t *deck = _binary_deck(5);
   ORC_SDK_REQUIRE(_deck_header(deck)->item_size == sizeof(size_t));
   char *output = deck_to_str(deck, _print_size_t);
-  ORC_SDK_REQUIRE(sv_eq(orc_sv_trim(orc_sv_from_str(output)),
+  ORC_SDK_REQUIRE(orc_sv_eq(orc_sv_trim(orc_sv_from_str(output)),
                         orc_sv_trim(orc_sv_from_str("  5 ---------------| 0\n"
                                             "                   | 1\n"
                                             "              1 ---| 2\n"
@@ -2089,7 +2089,7 @@ void test_deck_printf(void)
   // Depth-2 with empty lists.
   DECK_INIT(deck, size_t, ((1, 2, 3), (), (4, 5, 6, 7), (), (8, 9, 10, 11), ()));
   output = deck_to_str(deck, _print_size_t);
-  ORC_SDK_REQUIRE(sv_eq(orc_sv_trim(orc_sv_from_str(output)),
+  ORC_SDK_REQUIRE(orc_sv_eq(orc_sv_trim(orc_sv_from_str(output)),
                         orc_sv_trim(orc_sv_from_str("  2 ------| 1\n"
                                             "          | 2\n"
                                             "          | 3\n"
@@ -2108,7 +2108,7 @@ void test_deck_printf(void)
   // Depth-1: Flat list.
   DECK_INIT(deck, size_t, (10, 20, 30));
   output = deck_to_str(deck, _print_size_t);
-  ORC_SDK_REQUIRE(sv_eq(orc_sv_from_str(output),
+  ORC_SDK_REQUIRE(orc_sv_eq(orc_sv_from_str(output),
                         orc_sv_from_str("  1 ---| 10\n"
                                     "       | 20\n"
                                     "       | 30\n")));
@@ -2116,12 +2116,12 @@ void test_deck_printf(void)
   // List with single element.
   DECK_INIT(deck, size_t, (42));
   output = deck_to_str(deck, _print_size_t);
-  ORC_SDK_REQUIRE(sv_eq(orc_sv_from_str(output), orc_sv_from_str("  1 ---| 42\n")));
+  ORC_SDK_REQUIRE(orc_sv_eq(orc_sv_from_str(output), orc_sv_from_str("  1 ---| 42\n")));
   orc_str_free(output);
   // All empty depth-2.
   DECK_INIT(deck, size_t, ((), (), ()));
   output = deck_to_str(deck, _print_size_t);
-  ORC_SDK_REQUIRE(sv_eq(orc_sv_from_str(output),
+  ORC_SDK_REQUIRE(orc_sv_eq(orc_sv_from_str(output),
                         orc_sv_from_str("  2 ------|\n"
                                     "     1 ---|\n"
                                     "     1 ---|\n")));
@@ -2133,7 +2133,7 @@ void test_deck_printf(void)
   // Depth-3 with nested empty.
   DECK_INIT(deck, size_t, (((1, 2), ()), (()), ((3))));
   output = deck_to_str(deck, _print_size_t);
-  ORC_SDK_REQUIRE(sv_eq(orc_sv_from_str(output),
+  ORC_SDK_REQUIRE(orc_sv_eq(orc_sv_from_str(output),
                         orc_sv_from_str("  3 ---------| 1\n"
                                     "             | 2\n"
                                     "        1 ---|\n"

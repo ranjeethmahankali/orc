@@ -358,7 +358,7 @@ char *orc_sv_find(OrcStrView sv, char const c)
   return memchr(sv.start, c, orc_sv_len(sv));
 }
 
-char *sv_rfind(OrcStrView sv, char const c)
+char *orc_sv_rfind(OrcStrView sv, char const c)
 {
   if (sv.start != NULL && sv.end != NULL && sv.start < sv.end) {
     char *ptr = sv.end - 1;
@@ -421,7 +421,7 @@ bool orc_sv_strip_suffix(OrcStrView *sv, char const *const suffix)
   }
 }
 
-OrcStrView sv_slice(OrcStrView sv, size_t const start, size_t const end)
+OrcStrView orc_sv_slice(OrcStrView sv, size_t const start, size_t const end)
 {
   if (sv.start == NULL || sv.end == NULL) {
     return sv;
@@ -439,7 +439,7 @@ OrcStrView sv_slice(OrcStrView sv, size_t const start, size_t const end)
   return sv;
 }
 
-bool sv_eq(OrcStrView const a, OrcStrView const b)
+bool orc_sv_eq(OrcStrView const a, OrcStrView const b)
 {
   size_t const n = orc_sv_len(a);
   if (n != orc_sv_len(b)) {
