@@ -3,13 +3,79 @@
 #include <assert.h>
 #include <ctype.h>
 #include <limits.h>
+#include <orc_abi.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+
 #include <string.h>
-#include "orc_abi.h"
+
+static void *_default_alloc(uint64_t const size, uint64_t const alignment)
+{
+  if (alignment <= ORC_SDK_MALLOC_DEFAULT_ALIGN) {
+    return malloc((size_t)size);
+  }
+  /* Over-allocate: sizeof(void*) bytes for stashing the raw pointer,
+     plus (alignment - 1) bytes for worst-case alignment padding. */
+  size_t const total = (size_t)size + sizeof(void *) + (size_t)alignment - 1u;
+  void        *raw   = malloc(total);
+  if (!raw) {
+    return NULL;
+  }
+  uintptr_t addr         = (uintptr_t)raw + sizeof(void *);
+  uintptr_t aligned      = (addr + (size_t)alignment - 1u) & ~((size_t)alignment - 1u);
+  ((void **)aligned)[-1] = raw;
+  return (void *)aligned;
+}
+
+static void _default_dealloc(void *ptr, uint64_t const size, uint64_t const alignment)
+{
+  (void)size;
+  if (alignment <= ORC_SDK_MALLOC_DEFAULT_ALIGN) {
+    free(ptr);
+    return;
+  }
+  free(((void **)ptr)[-1]);
+}
+
+static OrcHost HOST = {
+  .abi_version = ORC_ABI_VERSION,
+  .memory_api  = {.alloc = _default_alloc, .dealloc = _default_dealloc},
+  .callbacks   = {0}};
+static bool HOST_INIT = false;
+
+void *orc_sdk_alloc(uint64_t const size, uint64_t const alignment)
+{
+  return HOST.memory_api.alloc(size, alignment);
+}
+
+void orc_sdk_free(void *ptr, uint64_t const size, uint64_t const alignment)
+{
+  HOST.memory_api.dealloc(ptr, size, alignment);
+}
+
+void *orc_sdk_realloc(void          *ptr,
+                      uint64_t const old_size,
+                      uint64_t const new_size,
+                      uint64_t const alignment)
+{
+  if (new_size == 0) {
+    HOST.memory_api.dealloc(ptr, old_size, alignment);
+    return NULL;
+  }
+  void *new_ptr = HOST.memory_api.alloc(new_size, alignment);
+  if (!new_ptr) {
+    return NULL;
+  }
+  if (ptr) {
+    uint64_t const copy_size = old_size < new_size ? old_size : new_size;
+    memcpy(new_ptr, ptr, (size_t)copy_size);
+    HOST.memory_api.dealloc(ptr, old_size, alignment);
+  }
+  return new_ptr;
+}
 
 void *_orc_sdk_arr_grow(void *ptr, size_t elemsize)
 {
@@ -1142,9 +1208,14 @@ uint8_t _oh_max_depth(OrcHandle const *handle)
 
 static OrcSdkTypeCallbacksGetterFn PLUGIN_TYPE_FN = NULL;
 
-void orc_sdk_set_type_callbacks(OrcSdkTypeCallbacksGetterFn getter)
+void orc_sdk_init(OrcHost const              *host,
+                  OrcSdkTypeCallbacksGetterFn type_fn)
 {
-  PLUGIN_TYPE_FN = getter;
+  if (host) {
+    HOST      = *host;
+    HOST_INIT = true;
+  }
+  PLUGIN_TYPE_FN = type_fn;
 }
 
 bool _is_type_info_valid(OrcSdkTypeInfo const *info)

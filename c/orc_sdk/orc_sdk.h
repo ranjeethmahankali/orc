@@ -39,6 +39,12 @@
 
 #define ORC_SDK_DEBUG(...) (fprintf(stderr, __VA_ARGS__))
 
+/* malloc guarantees alignment to 2*sizeof(void*) on most platforms (16 on
+   64-bit). We use this as the threshold: requests at or below this alignment
+   go straight to malloc; larger alignments get the over-allocate-and-align
+   treatment. */
+#define ORC_SDK_MALLOC_DEFAULT_ALIGN (2u * sizeof(void *))
+
 // Cross-platform symbol export. Meant for plugins to export functions that host can find
 // when loading them.
 #if defined(_WIN32) || defined(_WIN64)
@@ -46,6 +52,15 @@
 #else
 #define ORC_PLUGIN_EXPORT __attribute__((visibility("default")))
 #endif
+
+// ========== Memory ==========
+
+void *orc_sdk_alloc(uint64_t const size, uint64_t const alignment);
+void  orc_sdk_free(void *ptr, uint64_t const size, uint64_t const alignment);
+void *orc_sdk_realloc(void          *ptr,
+                      uint64_t const old_size,
+                      uint64_t const new_size,
+                      uint64_t const alignment);
 
 // ========== Array ==========
 
@@ -645,7 +660,8 @@ typedef struct
 
 typedef OrcSdkTypeInfo (*OrcSdkTypeCallbacksGetterFn)(OrcTypeId const id);
 
-void orc_sdk_set_type_callbacks(OrcSdkTypeCallbacksGetterFn getter);
+void orc_sdk_init(OrcHost const              *host,
+                  OrcSdkTypeCallbacksGetterFn type_fn);
 
 OrcError orc_sdk_handle_alloc(OrcTypeId const type_id, OrcHandle *const out);
 

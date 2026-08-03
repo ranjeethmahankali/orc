@@ -3,12 +3,6 @@
 #include "functions.h"
 
 // ==============================
-// Internal state
-// ==============================
-
-static OrcHost const *HOST = NULL;
-
-// ==============================
 // Plugin functions (forward declarations)
 // ==============================
 
@@ -28,10 +22,7 @@ ORC_PLUGIN_EXPORT OrcError orc_plugin_init(OrcHost const *host,
   if (host->abi_version != ORC_ABI_VERSION) {
     return ORC_ERROR_ABI_VERSION_MISMATCH;
   }
-  if (HOST != NULL) {
-    return ORC_ERROR_PLUGIN_ALREADY_INITIALIZED;
-  }
-  HOST                         = host;
+  orc_sdk_init(host, NULL);
   plugin_data_out->abi_version = ORC_ABI_VERSION;
   plugin_data_out->name        = "deck_ops";
   plugin_data_out->desc        = "Deck/Container operations.";
