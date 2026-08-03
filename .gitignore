@@ -31,6 +31,8 @@ Cargo.lock
 /.claude
 /.projectile-cache.eld
 /.DS_Store
+/.cache
+/compile_commands.json
 
 # C SDK stuff
 

@@ -41,7 +41,7 @@ static void _default_dealloc(void *ptr, uint64_t const size, uint64_t const alig
 }
 
 static OrcHost HOST = {
-  .abi_version = ORC_ABI_VERSION,
+  .abi_version = 0,
   .memory_api  = {.alloc = _default_alloc, .dealloc = _default_dealloc},
   .callbacks   = {0}};
 static bool HOST_INIT = false;
@@ -1219,6 +1219,7 @@ static OrcSdkTypeCallbacksGetterFn PLUGIN_TYPE_FN = NULL;
 void orc_sdk_init(OrcHost const *host, OrcSdkTypeCallbacksGetterFn type_fn)
 {
   if (host) {
+    HOST.abi_version = ORC_ABI_VERSION;
     if (host->memory_api.alloc != NULL && host->memory_api.dealloc != NULL) {
       HOST.memory_api = host->memory_api;
     }
