@@ -8,7 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "orc_abi.h"
+#include <orc_abi.h>
 
 #define ORC_SDK_REQUIRE_WITH_MSG(cond, msg)                                            \
   do {                                                                                 \
@@ -39,13 +39,20 @@
 
 #define ORC_SDK_DEBUG(...) (fprintf(stderr, __VA_ARGS__))
 
-typedef enum
-{
-  OK = 0,
-  ALLOC_FAILED,
-  OUT_OF_BOUNDS,
-  NULL_PTR,
-} OrcSdk_Status;
+/* malloc guarantees alignment to 2*sizeof(void*) on most platforms (16 on
+   64-bit). We use this as the threshold: requests at or below this alignment
+   go straight to malloc; larger alignments get the over-allocate-and-align
+   treatment. */
+#define ORC_SDK_MALLOC_DEFAULT_ALIGN (2u * sizeof(void *))
+
+// ========== Memory ==========
+
+void *orc_sdk_alloc(uint64_t const size, uint64_t const alignment);
+void  orc_sdk_free(void *ptr, uint64_t const size, uint64_t const alignment);
+void *orc_sdk_realloc(void          *ptr,
+                      uint64_t const old_size,
+                      uint64_t const new_size,
+                      uint64_t const alignment);
 
 // ========== Array ==========
 
@@ -74,7 +81,15 @@ static inline size_t _orc_sdk_arr_capacity(void *ptr)
 /**
  * Free the array and assign the pointer to NULL.
  */
-#define orc_sdk_arr_free(ptr) (free(_orc_sdk_arr_header((ptr))), (ptr) = NULL)
+#define orc_sdk_arr_free(ptr)                                     \
+  do {                                                            \
+    _OrcSdk_ArrHeader *_h_ = _orc_sdk_arr_header((ptr));          \
+    if (_h_)                                                      \
+      orc_sdk_free(_h_,                                           \
+                   sizeof(*_h_) + _h_->capacity * sizeof(*(ptr)), \
+                   ORC_SDK_MALLOC_DEFAULT_ALIGN);                 \
+    (ptr) = NULL;                                                 \
+  } while (0)
 
 /**
  * @brief Get the length of the array.
@@ -92,9 +107,7 @@ static inline size_t orc_sdk_arr_len(void *ptr)
 
 void *_orc_sdk_arr_grow(void *ptr, size_t elemsize);
 
-OrcSdk_Status _orc_sdk_arr_remove_impl(void        *ptr,
-                                       size_t const idx,
-                                       size_t const elemsize);
+OrcError _orc_sdk_arr_remove_impl(void *ptr, size_t const idx, size_t const elemsize);
 
 /**
  * Remove the element at index idx from the array. This preserves the order of the
@@ -105,10 +118,10 @@ OrcSdk_Status _orc_sdk_arr_remove_impl(void        *ptr,
 /**
  * Push a new value to the end of the array.
  */
-#define orc_sdk_arr_push(ptr, val)                              \
-  (((ptr) = _orc_sdk_arr_grow(ptr, sizeof *(ptr)))              \
-     ? ((ptr)[_orc_sdk_arr_header((ptr))->count++] = (val), OK) \
-     : ALLOC_FAILED)
+#define orc_sdk_arr_push(ptr, val)                                          \
+  (((ptr) = _orc_sdk_arr_grow(ptr, sizeof *(ptr)))                          \
+     ? ((ptr)[_orc_sdk_arr_header((ptr))->count++] = (val), ORC_ERROR_NONE) \
+     : ORC_ERROR_ALLOC_FAILED)
 
 /**
  * Get a pointer pointing past the end of the array.
@@ -119,10 +132,10 @@ OrcSdk_Status _orc_sdk_arr_remove_impl(void        *ptr,
  * Removes the element at the index idx from the array. This is faster than
  * orc_sdk_arr_remove, but doesn't preserve the order of the elements.
  */
-#define orc_sdk_arr_swap_remove(ptr, idx)                                \
-  (((ptr) != NULL && (idx) < orc_sdk_arr_len(ptr))                       \
-     ? ((ptr)[(idx)] = (ptr)[--(_orc_sdk_arr_header((ptr))->count)], OK) \
-     : OUT_OF_BOUNDS)
+#define orc_sdk_arr_swap_remove(ptr, idx)                                            \
+  (((ptr) != NULL && (idx) < orc_sdk_arr_len(ptr))                                   \
+     ? ((ptr)[(idx)] = (ptr)[--(_orc_sdk_arr_header((ptr))->count)], ORC_ERROR_NONE) \
+     : ORC_ERROR_OUT_OF_BOUNDS)
 
 void *_orc_sdk_arr_grow_capacity(void *ptr, size_t const elemsize, size_t const nelems);
 
@@ -131,8 +144,8 @@ void *_orc_sdk_arr_grow_capacity(void *ptr, size_t const elemsize, size_t const 
  */
 #define orc_sdk_arr_reserve(ptr, size)                                \
   (((ptr) = _orc_sdk_arr_grow_capacity((ptr), sizeof *(ptr), (size))) \
-     ? OK                                                             \
-     : ((size) == 0 ? OK : ALLOC_FAILED))
+     ? ORC_ERROR_NONE                                                 \
+     : ((size) == 0 ? ORC_ERROR_NONE : ORC_ERROR_ALLOC_FAILED))
 
 void *_orc_sdk_arr_resize_impl(void *ptr, size_t const elemsize, size_t const count);
 
@@ -160,10 +173,10 @@ void _orc_sdk_arr_fill_impl(void             *arr,
 #define orc_sdk_arr_fill(ptr, val) \
   _orc_sdk_arr_fill_impl((ptr), &(val), orc_sdk_arr_len((ptr)), sizeof(*ptr))
 
-OrcSdk_Status _orc_sdk_arr_remove_range_impl(void        *ptr,
-                                             size_t const start,
-                                             size_t const stop,
-                                             size_t const elemsize);
+OrcError _orc_sdk_arr_remove_range_impl(void        *ptr,
+                                        size_t const start,
+                                        size_t const stop,
+                                        size_t const elemsize);
 
 /**
  * Remove a range of elements from the array. The range is from `start` (inclusive) to
@@ -173,14 +186,14 @@ OrcSdk_Status _orc_sdk_arr_remove_range_impl(void        *ptr,
   _orc_sdk_arr_remove_range_impl(ptr, start, stop, sizeof *(ptr))
 
 /**
- * Remove the last element of the array and assign it to the `dst` pointer. OK status is
- * returned if the array was not empty. OUT_OF_BOUNDS status is returned if the array was
- * empty.
+ * Remove the last element of the array and assign it to the `dst` pointer. ORC_ERROR_NONE
+ * status is returned if the array was not empty. ORC_ERROR_OUT_OF_BOUNDS status is
+ * returned if the array was empty.
  */
-#define orc_sdk_arr_pop(ptr, dst)                                \
-  (((ptr) != NULL && orc_sdk_arr_len((ptr)) > 0)                 \
-     ? (*dst = (ptr)[--(_orc_sdk_arr_header((ptr)))->count], OK) \
-     : OUT_OF_BOUNDS)
+#define orc_sdk_arr_pop(ptr, dst)                                            \
+  (((ptr) != NULL && orc_sdk_arr_len((ptr)) > 0)                             \
+     ? (*dst = (ptr)[--(_orc_sdk_arr_header((ptr)))->count], ORC_ERROR_NONE) \
+     : ORC_ERROR_OUT_OF_BOUNDS)
 
 /**
  * @brief Check if the array is empty.
@@ -202,7 +215,7 @@ static inline size_t orc_str_len(void *ptr)
   return 0;
 }
 
-OrcSdk_Status _orc_str_remove_impl(char *const ptr, size_t const idx);
+OrcError _orc_str_remove_impl(char *const ptr, size_t const idx);
 
 /**
  * @brief Remove a character from a position in a stirng.
@@ -222,7 +235,7 @@ char *_orc_str_push_impl(char *, char);
  * @param ch Character to push.
  */
 #define orc_str_push(ptr, ch) \
-  (((ptr) = _orc_str_push_impl((ptr), (ch))) ? OK : ALLOC_FAILED)
+  (((ptr) = _orc_str_push_impl((ptr), (ch))) ? ORC_ERROR_NONE : ORC_ERROR_ALLOC_FAILED)
 
 /**
  * @brief Get the pointer past the end of the string.
@@ -248,8 +261,9 @@ char *_orc_str_push_str_impl(char *, char const *);
  * @param dst The string to append to.
  * @param tail The string to append.
  */
-#define orc_str_push_str(dst, tail) \
-  (((dst) = _orc_str_push_str_impl((dst), (tail))) ? OK : ALLOC_FAILED)
+#define orc_str_push_str(dst, tail)                                 \
+  (((dst) = _orc_str_push_str_impl((dst), (tail))) ? ORC_ERROR_NONE \
+                                                   : ORC_ERROR_ALLOC_FAILED)
 
 /**
  * @brief Check if the string is empty.
@@ -366,14 +380,15 @@ void *_orc_sdk_deck_push_impl(void         *ptr,
 
 #define orc_sdk_deck_push(ptr, item, depth)                                 \
   (((ptr) = _orc_sdk_deck_push_impl((ptr), &(item), sizeof(*ptr), (depth))) \
-     ? OK                                                                   \
-     : ALLOC_FAILED)
+     ? ORC_ERROR_NONE                                                       \
+     : ORC_ERROR_ALLOC_FAILED)
 
 void *_orc_sdk_deck_start_new_arr(void *ptr, size_t const itemsize, uint8_t const depth);
 
-#define orc_sdk_deck_start_arr(ptr, depth)                                    \
-  (((ptr) = _orc_sdk_deck_start_new_arr((ptr), sizeof(*(ptr)), (depth))) ? OK \
-                                                                         : ALLOC_FAILED)
+#define orc_sdk_deck_start_arr(ptr, depth)                               \
+  (((ptr) = _orc_sdk_deck_start_new_arr((ptr), sizeof(*(ptr)), (depth))) \
+     ? ORC_ERROR_NONE                                                    \
+     : ORC_ERROR_ALLOC_FAILED)
 
 void orc_sdk_deck_clear(void const *ptr);
 
@@ -381,8 +396,8 @@ void *_orc_sdk_deck_grow_capacity(void *ptr, size_t const itemsize, size_t const
 
 #define orc_sdk_deck_reserve(ptr, size)                                \
   (((ptr) = _orc_sdk_deck_grow_capacity((ptr), sizeof *(ptr), (size))) \
-     ? OK                                                              \
-     : ((size) == 0 ? OK : ALLOC_FAILED))
+     ? ORC_ERROR_NONE                                                  \
+     : ((size) == 0 ? ORC_ERROR_NONE : ORC_ERROR_ALLOC_FAILED))
 
 void orc_sdk_deck_flatten(void *ptr);
 
@@ -580,7 +595,7 @@ OrcSdk_DeckWriter orc_sdk_dw_child(OrcSdk_DeckWriter *writer);
 
 uint8_t _orc_sdk_dw_next_depth(OrcSdk_DeckWriter *writer);
 
-OrcSdk_Status _orc_sdk_dw_push_impl(OrcSdk_DeckWriter *writer, void *item);
+OrcError _orc_sdk_dw_push_impl(OrcSdk_DeckWriter *writer, void *item);
 
 #define orc_sdk_dw_push(writer, item) (_orc_sdk_dw_push_impl((writer), &(item)))
 
@@ -596,9 +611,9 @@ static inline size_t orc_sdk_dw_len(OrcSdk_DeckWriter *writer)
   return orc_sdk_deck_len(*(writer->deck)) - writer->start;
 }
 
-OrcSdk_Status orc_sdk_dw_close(OrcSdk_DeckWriter *writer);
+OrcError orc_sdk_dw_close(OrcSdk_DeckWriter *writer);
 
-OrcSdk_Status orc_sdk_dw_advance(OrcSdk_DeckWriter *writer);
+OrcError orc_sdk_dw_advance(OrcSdk_DeckWriter *writer);
 
 // ========== Dims (Units) ==========
 
@@ -629,9 +644,25 @@ OrcSdk_DeckWriter *orc_sdk_comb_get_output(void *comb, size_t const index);
 
 void orc_sdk_oh_update(OrcHandle *handle);
 
-// ========== Helpers for implementing plugins ==========
+OrcError orc_sdk_oh_ensure_alloc(OrcTypeId const type_id, OrcHandle *handle);
 
-OrcError orc_sdk_handle_alloc(OrcTypeId const id, OrcHandle *const out);
+// ========== ABI helpers ==========
+
+typedef void (*ItemFreeFn)(void *);
+typedef void (*CopyItemsFn)(void const *src, void *dst, size_t const n_items);
+
+typedef struct
+{
+  uint64_t    item_size;  // Must be non zero.
+  CopyItemsFn copy_fn;    // Must be non-NULL.
+  ItemFreeFn  free_fn;    // NULL for value types that don't own any resources.
+} OrcSdkTypeInfo;
+
+typedef OrcSdkTypeInfo (*OrcSdkTypeCallbacksGetterFn)(OrcTypeId const id);
+
+void orc_sdk_init(OrcHost const *host, OrcSdkTypeCallbacksGetterFn type_fn);
+
+OrcError orc_sdk_handle_alloc(OrcTypeId const type_id, OrcHandle *const out);
 
 OrcError orc_sdk_handle_free(OrcHandle *const handle);
 

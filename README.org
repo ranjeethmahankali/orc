@@ -1,0 +1,28 @@
+* Building the C SDK and Plugins
+  :PROPERTIES:
+  :CREATED:  2026-08-03 Mon 15:08
+  :END:
+
+  Run these commands from the project root. To configure once:
+
+  #+begin_src sh :results raw
+    cmake -S c/ -B build/
+  #+end_src
+
+  For a debug build after configuring:
+
+  #+begin_src sh :results raw
+    cmake --build build/ --config Debug
+  #+end_src
+
+  For a release build after configuring:
+
+  #+begin_src sh :results raw
+    cmake --build build/ --config Release
+  #+end_src
+
+  To generate compile_commands.json (useful for Clangd LSP):
+
+  #+begin_src sh :results raw
+    cmake -S c/ -B build/compdb -G Ninja -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DCMAKE_BUILD_TYPE=Debug
+  #+end_src

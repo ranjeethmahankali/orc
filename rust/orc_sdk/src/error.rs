@@ -11,6 +11,9 @@ pub enum Error {
     ABIVersionMismatch,
     InvalidProxy,
     CannotLoadPlugins,
+    OutOfBounds,
+    AllocFailed,
+    NullPointer,
     Unknown,
 }
 
@@ -27,6 +30,9 @@ impl Error {
             crate::ORC_ERROR_CONCURRENCY_PROBLEM => Err(Error::ConcurrencyProblem),
             crate::ORC_ERROR_INVALID_PROXY => Err(Error::InvalidProxy),
             crate::ORC_ERROR_CANNOT_LOAD_PLUGINS => Err(Error::CannotLoadPlugins),
+            crate::ORC_ERROR_OUT_OF_BOUNDS => Err(Error::OutOfBounds),
+            crate::ORC_ERROR_ALLOC_FAILED => Err(Error::AllocFailed),
+            crate::ORC_ERROR_NULL_PTR => Err(Error::NullPointer),
             _ => Err(Error::Unknown),
         }
     }
@@ -44,7 +50,10 @@ impl std::fmt::Display for Error {
             Error::ABIVersionMismatch => write!(f, "Abi version mismatch"),
             Error::InvalidProxy => write!(f, "Invalid proxy"),
             Error::CannotLoadPlugins => write!(f, "Cannot load plugins"),
+            Error::OutOfBounds => write!(f, "Memory out of bounds"),
+            Error::AllocFailed => write!(f, "Memory allocation failed"),
             Error::Unknown => write!(f, "Unknown error"),
+            Error::NullPointer => write!(f, "Null pointer"),
         }
     }
 }
@@ -63,6 +72,9 @@ impl From<Error> for OrcError {
             Error::ConcurrencyProblem => crate::ORC_ERROR_CONCURRENCY_PROBLEM,
             Error::InvalidProxy => crate::ORC_ERROR_INVALID_PROXY,
             Error::CannotLoadPlugins => crate::ORC_ERROR_CANNOT_LOAD_PLUGINS,
+            Error::OutOfBounds => crate::ORC_ERROR_OUT_OF_BOUNDS,
+            Error::AllocFailed => crate::ORC_ERROR_ALLOC_FAILED,
+            Error::NullPointer => crate::ORC_ERROR_NULL_PTR,
             Error::Unknown => crate::ORC_ERROR_UNKNOWN,
         }
     }

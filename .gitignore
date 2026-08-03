@@ -31,14 +31,13 @@ Cargo.lock
 /.claude
 /.projectile-cache.eld
 /.DS_Store
+/.cache
+/compile_commands.json
 
 # C SDK stuff
 
-/c/build/
-/c/nob
-/c/nob.old
-/c/nob.exe
-/c/run_tests.old
-/c/run_tests.exe
-/c/run_tests
-/c/nob.exe.old
+/build/
+/c/make.old
+/c/make.exe
+/c/make
+/c/make.exe.old

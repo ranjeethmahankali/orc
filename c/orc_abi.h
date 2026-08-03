@@ -1,3 +1,5 @@
+#pragma once
+
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -10,6 +12,14 @@
   ((((uint64_t)(major)) << 42) | (((uint64_t)(minor)) << 21) | ((uint64_t)(patch)))
 
 static const uint64_t ORC_ABI_VERSION = ORC_VERSION_PACK(0, 0, 1);
+
+// Cross-platform symbol export. Meant for plugins to export functions that host can find
+// when loading them.
+#if defined(_WIN32) || defined(_WIN64)
+#define ORC_PLUGIN_EXPORT __declspec(dllexport)
+#else
+#define ORC_PLUGIN_EXPORT __attribute__((visibility("default")))
+#endif
 
 // ==============================
 // Types and Functions.
@@ -127,6 +137,9 @@ typedef uint32_t OrcError;
 #define ORC_ERROR_CONCURRENCY_PROBLEM 0xff07u
 #define ORC_ERROR_INVALID_PROXY 0xff08u
 #define ORC_ERROR_CANNOT_LOAD_PLUGINS 0xff09u
+#define ORC_ERROR_OUT_OF_BOUNDS 0xff0au
+#define ORC_ERROR_ALLOC_FAILED 0xff0bu
+#define ORC_ERROR_NULL_PTR 0xff0cu
 #define ORC_ERROR_UNKNOWN 0xffffu
 
 typedef uint8_t OrcProxyType;
@@ -165,14 +178,15 @@ typedef struct
 // ===========================================================
 
 // Loading the plugin, and register the host with the plugin.
-OrcError orc_plugin_init(OrcHost const *host, OrcPlugin *plugin_data_out);
+ORC_PLUGIN_EXPORT OrcError orc_plugin_init(OrcHost const *host,
+                                           OrcPlugin     *plugin_data_out);
 
-OrcError orc_deck_alloc(OrcTypeId const id, OrcHandle *const out);
+ORC_PLUGIN_EXPORT OrcError orc_deck_alloc(OrcTypeId const id, OrcHandle *const out);
 
-OrcError orc_deck_free(OrcHandle *const handle);
+ORC_PLUGIN_EXPORT OrcError orc_deck_free(OrcHandle *const handle);
 
-OrcError orc_deck_from_proxy(OrcHandle const   *inputs,
-                             uint64_t const     n_inputs,
-                             OrcProxyType const proxy_type,
-                             OrcHandle const   *proxy,
-                             OrcHandle         *out);
+ORC_PLUGIN_EXPORT OrcError orc_deck_from_proxy(OrcHandle const   *inputs,
+                                               uint64_t const     n_inputs,
+                                               OrcProxyType const proxy_type,
+                                               OrcHandle const   *proxy,
+                                               OrcHandle         *out);
