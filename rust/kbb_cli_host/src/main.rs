@@ -7,7 +7,6 @@ use std::ffi::{CStr, c_void};
 
 unsafe extern "C" fn host_alloc(size: u64, alignment: u64) -> *mut c_void {
     let layout = Layout::from_size_align(size as usize, alignment as usize).unwrap();
-    println!("Making an allocation: {:?}", layout);
     unsafe { alloc(layout) as *mut c_void }
 }
 
