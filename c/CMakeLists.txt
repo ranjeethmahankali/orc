@@ -33,6 +33,7 @@ target_include_directories(unity PUBLIC third_party)
 # orc_sdk_obj — object library
 add_library(orc_sdk_obj OBJECT orc_sdk/orc_sdk.c)
 target_include_directories(orc_sdk_obj PUBLIC .)
+set_target_properties(orc_sdk_obj PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 # deck_ops_plugin — shared library
 add_library(deck_ops_plugin SHARED
