@@ -60,14 +60,21 @@ fn main() -> Result<(), Error> {
         }
     }
     // Test the add function.
-    let math_plugin = &plugins[0];
-    let add_fn = math_plugin.functions()[0].func;
+    let math_plugin = plugins
+        .iter()
+        .find(|p| p.name() == "math_plugin")
+        .expect("Cannot find math_plugin. It might not have loaded correctly.");
+    let add_fn = math_plugin
+        .functions()
+        .iter()
+        .find(|f| f.name == "add")
+        .expect("Cannot find the add function in the math plugin.");
     let a: Deck<f64> = deck![1.0, 2.0, 3.0];
     let b: Deck<f64> = deck![10.0, 20.0, 30.0];
     let mut out_handle = math_plugin.alloc_deck(orc_sdk::ORC_TYPE_F64)?;
     let inputs: &[OrcHandle] = &[handle_from_deck(&a, 0, None), handle_from_deck(&b, 1, None)];
     unsafe {
-        add_fn(0, inputs.as_ptr(), inputs.len() as u64, &mut out_handle, 1);
+        (add_fn.func)(0, inputs.as_ptr(), inputs.len() as u64, &mut out_handle, 1);
     }
     // Print the output data.
     println!("Output deck: \n{}", out_handle.display::<f64>());
