@@ -277,12 +277,13 @@ int main(int argc, char **argv)
       }
     }
     // Check if the SDK source files have been modified.
-    bool const rebuild = nob_needs_rebuild(deck_ops_out, srcfiles.items, srcfiles.count);
+    bool const sdk_rebuild =
+      nob_needs_rebuild(deck_ops_out, srcfiles.items, srcfiles.count);
     if (!list_src_files(&srcfiles, DECK_OPS_PLUGIN_SRC_DIR)) {
       ret = 1;
       goto cleanup;
     }
-    if (rebuild || nob_needs_rebuild(deck_ops_out, srcfiles.items, srcfiles.count)) {
+    if (sdk_rebuild || nob_needs_rebuild(deck_ops_out, srcfiles.items, srcfiles.count)) {
       for (size_t i = 0; i < srcfiles.count; ++i) {
         if (nob_sv_end_with(nob_sv_from_cstr(srcfiles.items[i]), ".c")) {
           nob_cc_inputs(&cmd, srcfiles.items[i]);
