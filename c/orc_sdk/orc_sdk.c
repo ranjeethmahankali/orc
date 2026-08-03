@@ -1217,11 +1217,21 @@ void orc_sdk_oh_update(OrcHandle *handle)
   handle->free_fn       = _oh_free_fn;
 }
 
-void orc_sdk_oh_ensure_alloc(OrcTypeId const type_id, OrcHandle *handle)
+OrcError orc_sdk_oh_ensure_alloc(OrcTypeId const type_id, OrcHandle *handle)
 {
-  (void)type_id;
-  (void)handle;
-  ORC_SDK_TODO("Not implemented");
+  if (handle->handle == 0 && handle->items == NULL) {
+    return orc_sdk_handle_alloc(type_id, handle);
+  }
+  // The deck is already allocated. If the type doesn't match, we free it and reallocate.
+  if (handle->type_id != type_id) {
+    OrcError const err = orc_sdk_handle_free(handle);
+    if (err) {
+      return err;
+    }
+    return orc_sdk_handle_alloc(type_id, handle);
+  }
+  // No need to allocate.
+  return ORC_ERROR_NONE;
 }
 
 void *orc_sdk_comb_init(OrcHandle const **inputs,
