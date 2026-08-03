@@ -81,7 +81,7 @@ void *_orc_sdk_arr_grow(void *ptr, size_t elemsize)
 {
   _OrcSdk_ArrHeader *h = _orc_sdk_arr_header(ptr);
   if (h == NULL) {
-    h = malloc(sizeof *h + elemsize);
+    h = orc_sdk_alloc(sizeof *h + elemsize, ORC_SDK_MALLOC_DEFAULT_ALIGN);
     if (h == NULL)
       return NULL;
     h->count    = 0;
@@ -89,8 +89,10 @@ void *_orc_sdk_arr_grow(void *ptr, size_t elemsize)
     ptr         = h + 1;
   }
   else if (h->count == h->capacity) {
-    size_t const newcap = h->capacity * 2;
-    h                   = realloc(h, sizeof *h + newcap * elemsize);
+    size_t const newcap   = h->capacity * 2;
+    size_t const old_size = sizeof *h + h->capacity * elemsize;
+    size_t const new_size = sizeof *h + newcap * elemsize;
+    h = orc_sdk_realloc(h, old_size, new_size, ORC_SDK_MALLOC_DEFAULT_ALIGN);
     if (h == NULL)
       return NULL;
     h->capacity = newcap;
@@ -109,7 +111,7 @@ void *_orc_sdk_arr_grow_capacity(void *ptr, size_t const elemsize, size_t const 
   }
   _OrcSdk_ArrHeader *h = _orc_sdk_arr_header(ptr);
   if (h == NULL) {
-    h = malloc(sizeof *h + elemsize * nelems);
+    h = orc_sdk_alloc(sizeof *h + elemsize * nelems, ORC_SDK_MALLOC_DEFAULT_ALIGN);
     if (h == NULL)
       return NULL;
     h->count    = 0;
@@ -117,7 +119,9 @@ void *_orc_sdk_arr_grow_capacity(void *ptr, size_t const elemsize, size_t const 
     ptr         = h + 1;
   }
   else if (h->capacity < nelems) {
-    h = realloc(h, sizeof *h + nelems * elemsize);
+    size_t const old_size = sizeof *h + h->capacity * elemsize;
+    size_t const new_size = sizeof *h + nelems * elemsize;
+    h = orc_sdk_realloc(h, old_size, new_size, ORC_SDK_MALLOC_DEFAULT_ALIGN);
     if (h == NULL)
       return NULL;
     h->capacity = nelems;
@@ -514,7 +518,7 @@ void _orc_sdk_deck_free_impl(void *ptr)
     orc_sdk_arr_free(h->stride_offset);
     orc_sdk_arr_free(h->strides);
     orc_sdk_arr_free(h->pegs);
-    free(h);
+    orc_sdk_free(h, sizeof *h + h->capacity * h->item_size, ORC_SDK_MALLOC_DEFAULT_ALIGN);
   }
 }
 
@@ -583,7 +587,7 @@ void *_orc_sdk_deck_push_empty(void *ptr, size_t const itemsize, uint8_t const d
   _OrcSdk_DeckHeader *h = _orc_sdk_deck_header(ptr);
   if (h == NULL) {
     size_t const bufsize = sizeof *h + itemsize;
-    h                    = malloc(bufsize);
+    h                    = orc_sdk_alloc(bufsize, ORC_SDK_MALLOC_DEFAULT_ALIGN);
     if (h == NULL)
       return NULL;
     memset(h, 0, bufsize);
@@ -592,8 +596,10 @@ void *_orc_sdk_deck_push_empty(void *ptr, size_t const itemsize, uint8_t const d
     ptr          = (void *)(h + 1);
   }
   else if (h->count == h->capacity) {
-    size_t const newcap = h->capacity * 2;
-    h                   = realloc(h, sizeof *h + newcap * itemsize);
+    size_t const newcap   = h->capacity * 2;
+    size_t const old_size = sizeof *h + h->capacity * itemsize;
+    size_t const new_size = sizeof *h + newcap * itemsize;
+    h = orc_sdk_realloc(h, old_size, new_size, ORC_SDK_MALLOC_DEFAULT_ALIGN);
     if (h == NULL)
       return NULL;
     h->capacity = newcap;
@@ -623,7 +629,7 @@ void *_orc_sdk_deck_start_new_arr(void *ptr, size_t const itemsize, uint8_t cons
   _OrcSdk_DeckHeader *h = _orc_sdk_deck_header(ptr);
   if (h == NULL) {
     size_t const bufsize = sizeof *h + itemsize;
-    h                    = malloc(bufsize);
+    h                    = orc_sdk_alloc(bufsize, ORC_SDK_MALLOC_DEFAULT_ALIGN);
     if (h == NULL)
       return NULL;
     memset(h, 0, bufsize);
@@ -658,7 +664,7 @@ void *_orc_sdk_deck_grow_capacity(void *ptr, size_t const itemsize, size_t const
   _OrcSdk_DeckHeader *h = _orc_sdk_deck_header(ptr);
   if (h == NULL) {
     size_t const bufsize = sizeof *h + itemsize * n;
-    h                    = malloc(bufsize);
+    h                    = orc_sdk_alloc(bufsize, ORC_SDK_MALLOC_DEFAULT_ALIGN);
     if (h == NULL)
       return NULL;
     memset(h, 0, bufsize);
@@ -668,7 +674,9 @@ void *_orc_sdk_deck_grow_capacity(void *ptr, size_t const itemsize, size_t const
     ptr          = h + 1;
   }
   else if (h->capacity < n) {
-    h = realloc(h, sizeof *h + n * itemsize);
+    size_t const old_size = sizeof *h + h->capacity * itemsize;
+    size_t const new_size = sizeof *h + n * itemsize;
+    h = orc_sdk_realloc(h, old_size, new_size, ORC_SDK_MALLOC_DEFAULT_ALIGN);
     if (h == NULL)
       return NULL;
     h->capacity = n;
@@ -1195,7 +1203,7 @@ void orc_sdk_comb_free(void *ptr)
   orc_sdk_arr_free(comb->input_depths);
   orc_sdk_arr_free(comb->writer_matrix);
   orc_sdk_arr_free(comb->output_depths);
-  free(comb);
+  orc_sdk_free(comb, sizeof(Combinations), ORC_SDK_MALLOC_DEFAULT_ALIGN);
 }
 
 uint8_t _oh_max_depth(OrcHandle const *handle)
@@ -1332,7 +1340,7 @@ void *orc_sdk_comb_init(OrcHandle const **inputs,
   }
   // Initialize output combinations structure.
   size_t const  stack_depth = max_delta + 1;
-  Combinations *out         = malloc(sizeof(Combinations));
+  Combinations *out         = orc_sdk_alloc(sizeof(Combinations), ORC_SDK_MALLOC_DEFAULT_ALIGN);
   memset(out, 0, sizeof(Combinations));
   // Allocate buffers.
   orc_sdk_arr_resize(out->view_matrix, n_inputs * stack_depth);

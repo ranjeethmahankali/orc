@@ -89,7 +89,14 @@ static inline size_t _orc_sdk_arr_capacity(void *ptr)
 /**
  * Free the array and assign the pointer to NULL.
  */
-#define orc_sdk_arr_free(ptr) (free(_orc_sdk_arr_header((ptr))), (ptr) = NULL)
+#define orc_sdk_arr_free(ptr)                                                       \
+  do {                                                                              \
+    _OrcSdk_ArrHeader *_h_ = _orc_sdk_arr_header((ptr));                            \
+    if (_h_)                                                                        \
+      orc_sdk_free(_h_, sizeof(*_h_) + _h_->capacity * sizeof(*(ptr)),              \
+                   ORC_SDK_MALLOC_DEFAULT_ALIGN);                                   \
+    (ptr) = NULL;                                                                   \
+  } while (0)
 
 /**
  * @brief Get the length of the array.
