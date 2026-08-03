@@ -129,6 +129,9 @@ typedef uint32_t OrcError;
 #define ORC_ERROR_CONCURRENCY_PROBLEM 0xff07u
 #define ORC_ERROR_INVALID_PROXY 0xff08u
 #define ORC_ERROR_CANNOT_LOAD_PLUGINS 0xff09u
+#define ORC_ERROR_OUT_OF_BOUNDS 0xff0au
+#define ORC_ERROR_ALLOC_FAILED 0xff0bu
+#define ORC_ERROR_NULL_PTR 0xff0cu
 #define ORC_ERROR_UNKNOWN 0xffffu
 
 typedef uint8_t OrcProxyType;
