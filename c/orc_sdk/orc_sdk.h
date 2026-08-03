@@ -637,9 +637,23 @@ OrcSdk_DeckWriter *orc_sdk_comb_get_output(void *comb, size_t const index);
 
 void orc_sdk_oh_update(OrcHandle *handle);
 
-// ========== Helpers for implementing plugins ==========
+// ========== ABI helpers ==========
 
-OrcError orc_sdk_handle_alloc(OrcTypeId const id, OrcHandle *const out);
+typedef void (*ItemFreeFn)(void *);
+typedef void (*CopyItemsFn)(void const *src, void *dst, size_t const n_items);
+
+typedef struct
+{
+  uint64_t    item_size;  // Must be non zero.
+  CopyItemsFn copy_fn;    // Must be non-NULL.
+  ItemFreeFn  free_fn;    // NULL for value types that don't own any resources.
+} OrcSdkTypeInfo;
+
+typedef OrcSdkTypeInfo (*OrcSdkTypeCallbacksGetterFn)(OrcTypeId const id);
+
+void orc_sdk_set_type_callbacks(OrcSdkTypeCallbacksGetterFn getter);
+
+OrcError orc_sdk_handle_alloc(OrcTypeId const type_id, OrcHandle *const out);
 
 OrcError orc_sdk_handle_free(OrcHandle *const handle);
 

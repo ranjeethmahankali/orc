@@ -23,7 +23,8 @@ static OrcFuncInfo const FUNCTIONS[] = {
 
 ORC_PLUGIN_EXPORT OrcError orc_plugin_init(OrcHost const *host,
                                            OrcPlugin     *plugin_data_out)
-{
+{ /* This plugin doesn't define any custom types. So we don't have to register
+     item_size_fn, copy_fn, free_fn etc. with the SDK.*/
   if (host->abi_version != ORC_ABI_VERSION) {
     return ORC_ERROR_ABI_VERSION_MISMATCH;
   }
@@ -33,7 +34,7 @@ ORC_PLUGIN_EXPORT OrcError orc_plugin_init(OrcHost const *host,
   s_host                       = host;
   plugin_data_out->abi_version = ORC_ABI_VERSION;
   plugin_data_out->name        = "deck_ops";
-  plugin_data_out->desc        = "Deck operations: flatten, graft, simplify, etc.";
+  plugin_data_out->desc        = "Deck/Container operations.";
   plugin_data_out->types       = NULL;
   plugin_data_out->n_types     = 0;
   plugin_data_out->functions   = FUNCTIONS;
@@ -43,17 +44,12 @@ ORC_PLUGIN_EXPORT OrcError orc_plugin_init(OrcHost const *host,
 
 ORC_PLUGIN_EXPORT OrcError orc_deck_alloc(OrcTypeId const id, OrcHandle *const out)
 {
-  // This plugin defines no custom types.
-  (void)id;
-  (void)out;
-  return ORC_ERROR_TYPE_MISMATCH;
+  return orc_sdk_handle_alloc(id, out);
 }
 
 ORC_PLUGIN_EXPORT OrcError orc_deck_free(OrcHandle *const handle)
 {
-  // This plugin defines no custom types.
-  (void)handle;
-  return ORC_ERROR_TYPE_MISMATCH;
+  return orc_sdk_handle_free(handle);
 }
 
 ORC_PLUGIN_EXPORT OrcError orc_deck_from_proxy(OrcHandle const   *inputs,
@@ -62,11 +58,5 @@ ORC_PLUGIN_EXPORT OrcError orc_deck_from_proxy(OrcHandle const   *inputs,
                                                OrcHandle const   *proxy,
                                                OrcHandle         *out)
 {
-  // This plugin defines no custom types.
-  (void)inputs;
-  (void)n_inputs;
-  (void)proxy_type;
-  (void)proxy;
-  (void)out;
-  return ORC_ERROR_TYPE_MISMATCH;
+  return orc_sdk_deck_from_proxy(inputs, n_inputs, proxy_type, proxy, out);
 }

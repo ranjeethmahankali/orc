@@ -1153,11 +1153,27 @@ uint8_t _oh_max_depth(OrcHandle const *handle)
   return 0;
 }
 
-typedef void (*FreeFn)(void *);
+static OrcSdkTypeCallbacksGetterFn PLUGIN_TYPE_CALLBACKS_FN = NULL;
 
-static FreeFn _deck_item_get_free_fn(OrcTypeId const type_id)
+void orc_sdk_set_type_callbacks(OrcSdkTypeCallbacksGetterFn getter)
 {
-  switch (type_id) {
+  PLUGIN_TYPE_CALLBACKS_FN = getter;
+}
+
+bool _is_type_info_valid(OrcSdkTypeInfo const *info)
+{
+  return info->copy_fn != NULL && info->item_size != 0;
+}
+
+OrcError _handle_free_fn(OrcHandle *const handle)
+{
+  if (handle == NULL) {
+    return ORC_ERROR_NONE;
+  }
+  ORC_SDK_REQUIRE_WITH_MSG(handle->handle == (uint64_t)handle->items,
+                           "In this implementation the handle is just the pointer.");
+  ItemFreeFn free_fn = NULL;
+  switch (handle->type_id) {
   case ORC_TYPE_U8:
   case ORC_TYPE_U16:
   case ORC_TYPE_U32:
@@ -1172,21 +1188,17 @@ static FreeFn _deck_item_get_free_fn(OrcTypeId const type_id)
   case ORC_TYPE_I64:
     // Proxy for an item in a tree.
   case ORC_TYPE_PROXY:
-    return NULL;
+    break;
   default:
-    ORC_SDK_TODO(
-      "The plugin should return a function pointer that can free this datatype.");
+    if (PLUGIN_TYPE_CALLBACKS_FN) {
+      OrcSdkTypeInfo info = PLUGIN_TYPE_CALLBACKS_FN(handle->type_id);
+      if (!_is_type_info_valid(&info)) {
+        return ORC_ERROR_TYPE_MISMATCH;
+      }
+      free_fn = info.free_fn;
+    }
+    break;
   }
-}
-
-OrcError _handle_free_fn(OrcHandle *const handle)
-{
-  if (handle == NULL) {
-    return ORC_ERROR_NONE;
-  }
-  ORC_SDK_REQUIRE_WITH_MSG(handle->handle == (uint64_t)handle->items,
-                           "In this implementation the handle is just the pointer.");
-  FreeFn const free_fn = _deck_item_get_free_fn(handle->type_id);
   if (free_fn) {
     // Free the individual items from the deck before freeing the Deck container itself.
     size_t const count = orc_sdk_deck_len(handle->items);
@@ -1412,7 +1424,6 @@ OrcError orc_sdk_handle_alloc(OrcTypeId const id, OrcHandle *const out)
     return ORC_ERROR_INVALID_HANDLE;
   }
   out->item_size = 0;
-  out->type_id   = id;
   switch (id) {
     // Unsigned integers.
   case ORC_TYPE_U8:
@@ -1447,12 +1458,22 @@ OrcError orc_sdk_handle_alloc(OrcTypeId const id, OrcHandle *const out)
   case ORC_TYPE_I64:
     out->item_size = sizeof(int64_t);
     break;
-  default:
-    ORC_SDK_TODO("The plugin should handle its own types here");
-    return ORC_ERROR_TYPE_MISMATCH;
+  default: {
+    if (PLUGIN_TYPE_CALLBACKS_FN) {
+      OrcSdkTypeInfo info = PLUGIN_TYPE_CALLBACKS_FN(id);
+      if (!_is_type_info_valid(&info)) {
+        return ORC_ERROR_TYPE_MISMATCH;
+      }
+      out->item_size = info.item_size;
+    }
+    else {
+      return ORC_ERROR_TYPE_MISMATCH;
+    }
+  }
   }
   ORC_SDK_REQUIRE_WITH_MSG(out->item_size != 0,
                            "Item size cannot be inferred from the type id.");
+  out->type_id           = id;
   size_t const INIT_SIZE = 1;
   void        *deck_ptr  = _orc_sdk_deck_grow_capacity(NULL, out->item_size, INIT_SIZE);
   _OrcSdk_DeckHeader *h  = _orc_sdk_deck_header(deck_ptr);
@@ -1471,7 +1492,16 @@ OrcError orc_sdk_handle_alloc(OrcTypeId const id, OrcHandle *const out)
   return ORC_ERROR_NONE;
 }
 
-typedef void (*CopyItemsFn)(void const *src, void *dst, size_t const n_items);
+OrcError orc_sdk_handle_free(OrcHandle *const handle)
+{
+  if (handle == NULL) {
+    return ORC_ERROR_NONE;
+  }
+  if (handle->free_fn == NULL) {
+    return ORC_ERROR_INVALID_HANDLE;
+  }
+  return handle->free_fn(handle);
+}
 
 #define DEFINE_TRIVIAL_COPY_FN(suffix, type)                                         \
   static void _copy_items_##suffix(void const *src, void *dst, size_t const n_items) \
@@ -1491,59 +1521,64 @@ DEFINE_TRIVIAL_COPY_FN(i32, int32_t)
 DEFINE_TRIVIAL_COPY_FN(i64, int64_t)
 DEFINE_TRIVIAL_COPY_FN(proxy, OrcItemProxy)
 
-static CopyItemsFn _deck_item_get_copy_items_fn(OrcTypeId const type_id)
+OrcError _copy_items(OrcTypeId const type_id,
+                     void const     *src,
+                     void           *dst,
+                     size_t const    n_items)
 {
+  CopyItemsFn copy_fn = NULL;
   switch (type_id) {
   case ORC_TYPE_U8:
-    return _copy_items_u8;
+    copy_fn = _copy_items_u8;
+    break;
   case ORC_TYPE_U16:
-    return _copy_items_u16;
+    copy_fn = _copy_items_u16;
+    break;
   case ORC_TYPE_U32:
-    return _copy_items_u32;
+    copy_fn = _copy_items_u32;
+    break;
   case ORC_TYPE_U64:
-    return _copy_items_u64;
+    copy_fn = _copy_items_u64;
+    break;
     // Scalars.
   case ORC_TYPE_F32:
-    return _copy_items_f32;
+    copy_fn = _copy_items_f32;
+    break;
   case ORC_TYPE_F64:
-    return _copy_items_f64;
+    copy_fn = _copy_items_f64;
+    break;
     // Signed integers.
   case ORC_TYPE_I8:
-    return _copy_items_i8;
+    copy_fn = _copy_items_i8;
+    break;
   case ORC_TYPE_I16:
-    return _copy_items_i16;
+    copy_fn = _copy_items_i16;
+    break;
   case ORC_TYPE_I32:
-    return _copy_items_i32;
+    copy_fn = _copy_items_i32;
+    break;
   case ORC_TYPE_I64:
-    return _copy_items_i64;
+    copy_fn = _copy_items_i64;
+    break;
     // Proxy for an item in a tree.
   case ORC_TYPE_PROXY:
-    return _copy_items_proxy;
+    copy_fn = _copy_items_proxy;
+    break;
   default:
-    ORC_SDK_TODO(
-      "The plugin should return a function pointer that can free this datatype.");
+    if (PLUGIN_TYPE_CALLBACKS_FN) {
+      OrcSdkTypeInfo info = PLUGIN_TYPE_CALLBACKS_FN(type_id);
+      if (!_is_type_info_valid(&info)) {
+        return ORC_ERROR_TYPE_MISMATCH;
+      }
+      copy_fn = info.copy_fn;
+    }
+    else {
+      return ORC_ERROR_TYPE_MISMATCH;
+    }
+    break;
   }
-}
-
-OrcError orc_sdk_handle_free(OrcHandle *const handle)
-{
-  if (handle == NULL) {
-    return ORC_ERROR_NONE;
-  }
-  if (handle->free_fn == NULL) {
-    return ORC_ERROR_INVALID_HANDLE;
-  }
-  return handle->free_fn(handle);
-}
-
-void _copy_items(OrcTypeId const type_id,
-                 void const     *src,
-                 void           *dst,
-                 size_t const    n_items)
-{
-  CopyItemsFn const copy_fn = _deck_item_get_copy_items_fn(type_id);
-  ORC_SDK_REQUIRE(copy_fn != NULL);
   copy_fn(src, dst, n_items);
+  return ORC_ERROR_NONE;
 }
 
 OrcError orc_sdk_deck_from_proxy(OrcHandle const   *inputs,
@@ -1588,7 +1623,10 @@ OrcError orc_sdk_deck_from_proxy(OrcHandle const   *inputs,
     out->type_id = id;
     {  // Copy the data.
       memset(deck, 0, item_size * n_items);
-      _copy_items(id, inputs[0].items, deck, n_items);
+      OrcError const e = _copy_items(id, inputs[0].items, deck, n_items);
+      if (e) {
+        return e;
+      }
     }
     h->count = n_items;
     // Copy the marks.
@@ -1614,7 +1652,10 @@ OrcError orc_sdk_deck_from_proxy(OrcHandle const   *inputs,
     out->type_id = id;
     {  // Copy the data.
       memset(deck, 0, item_size * n_items);
-      _copy_items(id, inputs[0].items, deck, n_items);
+      OrcError const e = _copy_items(id, inputs[0].items, deck, n_items);
+      if (e) {
+        return e;
+      }
     }
     h->count = n_items;
     // Copy the marks from the proxy, NOT the input.
@@ -1641,8 +1682,11 @@ OrcError orc_sdk_deck_from_proxy(OrcHandle const   *inputs,
         "Index out of bounds");
       void *src =
         (char *)inputs[proxies[h->count].tree].items + item_size * proxies[h->count].item;
-      void *dst = (char *)deck + item_size * h->count;
-      _copy_items(id, src, dst, 1);
+      void          *dst = (char *)deck + item_size * h->count;
+      OrcError const e   = _copy_items(id, src, dst, 1);
+      if (e) {
+        return e;
+      }
       ++h->count;
     }
     // Copy the marks from the proxy, NOT the input.
