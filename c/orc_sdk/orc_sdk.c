@@ -1219,7 +1219,10 @@ void orc_sdk_oh_update(OrcHandle *handle)
 
 OrcError orc_sdk_oh_ensure_alloc(OrcTypeId const type_id, OrcHandle *handle)
 {
-  if (handle->handle == 0 && handle->items == NULL) {
+  if ((handle->handle == 0) != (handle->items == NULL)) {
+    return ORC_ERROR_INVALID_HANDLE;
+  }
+  if (handle->items == NULL) {
     return orc_sdk_handle_alloc(type_id, handle);
   }
   // The deck is already allocated. If the type doesn't match, we free it and reallocate.
