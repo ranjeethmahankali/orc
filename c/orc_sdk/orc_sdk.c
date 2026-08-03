@@ -1233,7 +1233,7 @@ OrcError orc_sdk_oh_ensure_alloc(OrcTypeId const type_id, OrcHandle *handle)
     }
     return orc_sdk_handle_alloc(type_id, handle);
   }
-  // No need to allocate.
+  // No need to allocate. Handle already points to an allocated deck, of the correct type.
   return ORC_ERROR_NONE;
 }
 
