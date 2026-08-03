@@ -246,7 +246,7 @@ int main(int argc, char **argv)
   char const *test_runner_bin = nob_temp_sprintf("%stest_runner", build_dir);
   char const *deck_ops_out = nob_temp_sprintf("%s" DECK_OPS_PLUGIN_FILENAME, build_dir);
   int         ret          = 0;
-  if (!nob_mkdir_if_not_exists("build/") || !nob_mkdir_if_not_exists(build_dir)) {
+  if (!nob_mkdir_if_not_exists("../build/") || !nob_mkdir_if_not_exists(build_dir)) {
     ret = 1;
     goto cleanup;
   }
