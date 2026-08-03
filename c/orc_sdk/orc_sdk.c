@@ -1219,7 +1219,12 @@ static OrcSdkTypeCallbacksGetterFn PLUGIN_TYPE_FN = NULL;
 void orc_sdk_init(OrcHost const *host, OrcSdkTypeCallbacksGetterFn type_fn)
 {
   if (host) {
-    HOST.abi_version = ORC_ABI_VERSION;
+    ORC_SDK_REQUIRE_WITH_MSG(
+      host->abi_version == ORC_ABI_VERSION,
+      "The host's ABI version doesn't match what this plugin was compiled with. The "
+      "plugin should have checked the ABI version of the host before calling "
+      "orc_sdk_init. This should never happen.");
+    HOST.abi_version = host->abi_version;
     if (host->memory_api.alloc != NULL && host->memory_api.dealloc != NULL) {
       HOST.memory_api = host->memory_api;
     }
