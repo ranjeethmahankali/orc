@@ -13,6 +13,14 @@
 
 static const uint64_t ORC_ABI_VERSION = ORC_VERSION_PACK(0, 0, 1);
 
+// Cross-platform symbol export. Meant for plugins to export functions that host can find
+// when loading them.
+#if defined(_WIN32) || defined(_WIN64)
+#define ORC_PLUGIN_EXPORT __declspec(dllexport)
+#else
+#define ORC_PLUGIN_EXPORT __attribute__((visibility("default")))
+#endif
+
 // ==============================
 // Types and Functions.
 // ==============================
@@ -170,14 +178,15 @@ typedef struct
 // ===========================================================
 
 // Loading the plugin, and register the host with the plugin.
-OrcError orc_plugin_init(OrcHost const *host, OrcPlugin *plugin_data_out);
+ORC_PLUGIN_EXPORT OrcError orc_plugin_init(OrcHost const *host,
+                                           OrcPlugin     *plugin_data_out);
 
-OrcError orc_deck_alloc(OrcTypeId const id, OrcHandle *const out);
+ORC_PLUGIN_EXPORT OrcError orc_deck_alloc(OrcTypeId const id, OrcHandle *const out);
 
-OrcError orc_deck_free(OrcHandle *const handle);
+ORC_PLUGIN_EXPORT OrcError orc_deck_free(OrcHandle *const handle);
 
-OrcError orc_deck_from_proxy(OrcHandle const   *inputs,
-                             uint64_t const     n_inputs,
-                             OrcProxyType const proxy_type,
-                             OrcHandle const   *proxy,
-                             OrcHandle         *out);
+ORC_PLUGIN_EXPORT OrcError orc_deck_from_proxy(OrcHandle const   *inputs,
+                                               uint64_t const     n_inputs,
+                                               OrcProxyType const proxy_type,
+                                               OrcHandle const   *proxy,
+                                               OrcHandle         *out);

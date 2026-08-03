@@ -15,8 +15,7 @@ static OrcFuncInfo const FUNCTIONS[] = {
 // Required ABI exports
 // ==============================
 
-ORC_PLUGIN_EXPORT OrcError orc_plugin_init(OrcHost const *host,
-                                           OrcPlugin     *plugin_data_out)
+OrcError orc_plugin_init(OrcHost const *host, OrcPlugin *plugin_data_out)
 { /* This plugin doesn't define any custom types. So we don't have to register
      item_size_fn, copy_fn, free_fn etc. with the SDK.*/
   if (host->abi_version != ORC_ABI_VERSION) {
@@ -33,21 +32,21 @@ ORC_PLUGIN_EXPORT OrcError orc_plugin_init(OrcHost const *host,
   return ORC_ERROR_NONE;
 }
 
-ORC_PLUGIN_EXPORT OrcError orc_deck_alloc(OrcTypeId const id, OrcHandle *const out)
+OrcError orc_deck_alloc(OrcTypeId const id, OrcHandle *const out)
 {
   return orc_sdk_handle_alloc(id, out);
 }
 
-ORC_PLUGIN_EXPORT OrcError orc_deck_free(OrcHandle *const handle)
+OrcError orc_deck_free(OrcHandle *const handle)
 {
   return orc_sdk_handle_free(handle);
 }
 
-ORC_PLUGIN_EXPORT OrcError orc_deck_from_proxy(OrcHandle const   *inputs,
-                                               uint64_t const     n_inputs,
-                                               OrcProxyType const proxy_type,
-                                               OrcHandle const   *proxy,
-                                               OrcHandle         *out)
+OrcError orc_deck_from_proxy(OrcHandle const   *inputs,
+                             uint64_t const     n_inputs,
+                             OrcProxyType const proxy_type,
+                             OrcHandle const   *proxy,
+                             OrcHandle         *out)
 {
   return orc_sdk_deck_from_proxy(inputs, n_inputs, proxy_type, proxy, out);
 }

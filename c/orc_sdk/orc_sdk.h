@@ -45,14 +45,6 @@
    treatment. */
 #define ORC_SDK_MALLOC_DEFAULT_ALIGN (2u * sizeof(void *))
 
-// Cross-platform symbol export. Meant for plugins to export functions that host can find
-// when loading them.
-#if defined(_WIN32) || defined(_WIN64)
-#define ORC_PLUGIN_EXPORT __declspec(dllexport)
-#else
-#define ORC_PLUGIN_EXPORT __attribute__((visibility("default")))
-#endif
-
 // ========== Memory ==========
 
 void *orc_sdk_alloc(uint64_t const size, uint64_t const alignment);
@@ -89,13 +81,14 @@ static inline size_t _orc_sdk_arr_capacity(void *ptr)
 /**
  * Free the array and assign the pointer to NULL.
  */
-#define orc_sdk_arr_free(ptr)                                                       \
-  do {                                                                              \
-    _OrcSdk_ArrHeader *_h_ = _orc_sdk_arr_header((ptr));                            \
-    if (_h_)                                                                        \
-      orc_sdk_free(_h_, sizeof(*_h_) + _h_->capacity * sizeof(*(ptr)),              \
-                   ORC_SDK_MALLOC_DEFAULT_ALIGN);                                   \
-    (ptr) = NULL;                                                                   \
+#define orc_sdk_arr_free(ptr)                                     \
+  do {                                                            \
+    _OrcSdk_ArrHeader *_h_ = _orc_sdk_arr_header((ptr));          \
+    if (_h_)                                                      \
+      orc_sdk_free(_h_,                                           \
+                   sizeof(*_h_) + _h_->capacity * sizeof(*(ptr)), \
+                   ORC_SDK_MALLOC_DEFAULT_ALIGN);                 \
+    (ptr) = NULL;                                                 \
   } while (0)
 
 /**
@@ -667,8 +660,7 @@ typedef struct
 
 typedef OrcSdkTypeInfo (*OrcSdkTypeCallbacksGetterFn)(OrcTypeId const id);
 
-void orc_sdk_init(OrcHost const              *host,
-                  OrcSdkTypeCallbacksGetterFn type_fn);
+void orc_sdk_init(OrcHost const *host, OrcSdkTypeCallbacksGetterFn type_fn);
 
 OrcError orc_sdk_handle_alloc(OrcTypeId const type_id, OrcHandle *const out);
 

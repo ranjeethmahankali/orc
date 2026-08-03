@@ -13,7 +13,7 @@
 #define SDK_SRC_DIR "orc_sdk/"
 #define DECK_OPS_PLUGIN_SRC_DIR "deck_ops_plugin/"
 
-#if defined(_WIN32) || defined(_WIN64)
+#if defined(_WIN32) || defined(_WIN64) || defined(__CYGWIN__)
 #define DECK_OPS_PLUGIN_FILENAME "deck_ops_plugin.dll"
 #elif defined(__APPLE__)
 #define DECK_OPS_PLUGIN_FILENAME "deck_ops_plugin.dylib"
