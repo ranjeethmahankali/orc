@@ -637,6 +637,8 @@ OrcSdk_DeckWriter *orc_sdk_comb_get_output(void *comb, size_t const index);
 
 void orc_sdk_oh_update(OrcHandle *handle);
 
+void orc_sdk_oh_ensure_alloc(OrcTypeId const type_id, OrcHandle *handle);
+
 // ========== ABI helpers ==========
 
 typedef void (*ItemFreeFn)(void *);

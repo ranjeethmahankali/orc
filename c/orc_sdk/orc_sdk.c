@@ -1230,6 +1230,11 @@ void orc_sdk_oh_update(OrcHandle *handle)
   handle->free_fn       = _oh_free_fn;
 }
 
+void orc_sdk_oh_ensure_alloc(OrcTypeId const type_id, OrcHandle *handle)
+{
+  ORC_SDK_TODO("Not implemented");
+}
+
 void *orc_sdk_comb_init(OrcHandle const **inputs,
                         uint8_t const    *input_depths,
                         size_t const      n_inputs,
