@@ -7,8 +7,6 @@
 // Required ABI exports
 // ==============================
 
-static OrcFuncInfo *FUNCTIONS = NULL;
-
 OrcError orc_plugin_init(OrcHost const *host, OrcPlugin *plugin_data_out)
 { /* This plugin doesn't define any custom types. So we don't have to register
      item_size_fn, copy_fn, free_fn etc. with the SDK.*/
@@ -23,6 +21,7 @@ OrcError orc_plugin_init(OrcHost const *host, OrcPlugin *plugin_data_out)
   plugin_data_out->types   = NULL;
   plugin_data_out->n_types = 0;
   // Register functions.
+  static OrcFuncInfo *FUNCTIONS = NULL;
   orc_sdk_arr_push(FUNCTIONS, FLATTEN_DECK_INFO);
   plugin_data_out->functions   = FUNCTIONS;
   plugin_data_out->n_functions = orc_sdk_arr_len(FUNCTIONS);
