@@ -12,6 +12,7 @@ fn main() {
         .no_partialeq("OrcFuncInfo") // This contains a function pointer and doesn't require comparison.
         .no_partialeq("OrcHost.*") // This contains function pointers, and doesn't require comparison.
         .no_partialeq("OrcHandle") // This contains function pointers, and doesn't require comparison.
+        .no_copy("OrcHandle") // OrcHandle owns heap memory; implicit copies would alias it.
         .generate()
         .expect("Unable to generate bindings");
     // Write bindings to the output directory.
