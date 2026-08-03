@@ -116,6 +116,34 @@
   some thought. I went with macros as the first pass in Rust. It is not clear to me what I should go
   with in C++.
 
+* TODO tiwkbm - Create Toy Demo Apps
+  :PROPERTIES:
+  :CREATED:  2026-07-28 Tue 16:45
+  :END:
+  :LOGBOOK:
+  - State "TODO"       from "NEXT"       [2026-07-31 Fri 20:46]
+  - State "NEXT"       from "TODO"       [2026-07-30 Thu 18:36]
+  :END:
+
+  Not that the plugin architecture is fleshed out, I can build a few toy host applications, and toy
+  plugins, and demonstrate the flexibility and power of this design to both Product / Customer
+  facing side as well as the engineering side.
+
+  <2026-07-30 Thu 18:35> Made quite some progress with the orc_fn macro to make it easier to
+  implement simple blocks. The macro is now able to handle templated Rust functions too, but still
+  requires some more testing before I feel confident about it.
+
+  <2026-07-31 Fri 18:22> The orc_fn proc macro mostly took shape. Trying to simplify the code a bit,
+  and maybe add some tests. The proxy deck functions need more thought, and need to be fleshed
+  out. Also the type ids require more thought. Plugins will need the ability to work with arbitrary
+  types defined in other plugins. Which means plugins cannot rely on their own type ids. The handle
+  cannot just communicate OrcTypeId. It needs to have a unique integer id that the host assigns to
+  that type, after loading all the plugins, and the plugins need to know that mapped id for their
+  own types after plugin_init.... It will get a bit more complicated than it currently is.
+
+  <2026-07-31 Fri 20:45> Trying to temporarily stop on this task, and finish a few other smaller
+  tasks before continuing.
+
 * TODO Improve Function Metadata
   :PROPERTIES:
   :CREATED:  2026-08-02 Sun 19:14
@@ -126,14 +154,14 @@
   wildly variadic and type agnostic. The metatdata should allow the functions to express that
   somehow.
 
-* TODO More general use of handles for data that is not decks
+* TODO Testing and CI
   :PROPERTIES:
-  :CREATED:  2026-08-02 Sun 20:05
+  :CREATED:  2026-08-03 Mon 17:47
   :END:
 
-  Plugins should be allowed to use the handles to point to data that is not a deck. All the deck
-  specific pointers and parameters should not be read by the host or any other plugin when this is
-  the case. I am thinking this can be achieved with either a boolean flag.
+  I am making fast progress, adding lots of code. I have some tests, but I need to test a lot
+  more. All the plugin code should be thoroughly tested. All the new SDK code should be tested. I
+  should look through the ABI carefully, and make sure each feature is tested.
 
 * NEXT tj5fbs - Figure out C SDK and write a simple plugin
   :PROPERTIES:
@@ -180,33 +208,23 @@
   - [ ] Write simple container operation block in C.
   - [ ] Test running plugins with a custom allocator.
 
-* TODO tiwkbm - Create Toy Demo Apps
+* CLOSED More general use of handles for data that is not decks
+  CLOSED: [2026-08-03 Mon 17:46]
   :PROPERTIES:
-  :CREATED:  2026-07-28 Tue 16:45
+  :CREATED:  2026-08-02 Sun 20:05
   :END:
   :LOGBOOK:
-  - State "TODO"       from "NEXT"       [2026-07-31 Fri 20:46]
-  - State "NEXT"       from "TODO"       [2026-07-30 Thu 18:36]
+  - State "CLOSED"     from "TODO"       [2026-08-03 Mon 17:46]
   :END:
 
-  Not that the plugin architecture is fleshed out, I can build a few toy host applications, and toy
-  plugins, and demonstrate the flexibility and power of this design to both Product / Customer
-  facing side as well as the engineering side.
+  Plugins should be allowed to use the handles to point to data that is not a deck. All the deck
+  specific pointers and parameters should not be read by the host or any other plugin when this is
+  the case. I am thinking this can be achieved with either a boolean flag.
 
-  <2026-07-30 Thu 18:35> Made quite some progress with the orc_fn macro to make it easier to
-  implement simple blocks. The macro is now able to handle templated Rust functions too, but still
-  requires some more testing before I feel confident about it.
-
-  <2026-07-31 Fri 18:22> The orc_fn proc macro mostly took shape. Trying to simplify the code a bit,
-  and maybe add some tests. The proxy deck functions need more thought, and need to be fleshed
-  out. Also the type ids require more thought. Plugins will need the ability to work with arbitrary
-  types defined in other plugins. Which means plugins cannot rely on their own type ids. The handle
-  cannot just communicate OrcTypeId. It needs to have a unique integer id that the host assigns to
-  that type, after loading all the plugins, and the plugins need to know that mapped id for their
-  own types after plugin_init.... It will get a bit more complicated than it currently is.
-
-  <2026-07-31 Fri 20:45> Trying to temporarily stop on this task, and finish a few other smaller
-  tasks before continuing.
+  This is making things more complicated than it is worth. I am going to put this off for now. I
+  think the plugins that want to do this can still do it. They just need to populate the handle data
+  to imply the deck has just 1 item. That is very easy to do. So adding a whole other property for
+  that, and all the branching that comes with it, is not worth it.
 
 * DONE tj2fe7 - Proxy decks through the ABI
   CLOSED: [2026-08-02 Sun 11:23]
