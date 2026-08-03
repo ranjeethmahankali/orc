@@ -1219,7 +1219,22 @@ static OrcSdkTypeCallbacksGetterFn PLUGIN_TYPE_FN = NULL;
 void orc_sdk_init(OrcHost const *host, OrcSdkTypeCallbacksGetterFn type_fn)
 {
   if (host) {
-    HOST      = *host;
+    if (host->memory_api.alloc != NULL && host->memory_api.dealloc != NULL) {
+      HOST.memory_api = host->memory_api;
+    }
+    if (host->callbacks.report_progress) {
+      HOST.callbacks.report_progress = host->callbacks.report_progress;
+    }
+    if (host->callbacks.report_message) {
+      HOST.callbacks.report_message = host->callbacks.report_message;
+    }
+    if (host->callbacks.check_cancellation) {
+      HOST.callbacks.check_cancellation = host->callbacks.check_cancellation;
+    }
+    if (host->callbacks.report_intermediate_output) {
+      HOST.callbacks.report_intermediate_output =
+        host->callbacks.report_intermediate_output;
+    }
     HOST_INIT = true;
   }
   PLUGIN_TYPE_FN = type_fn;

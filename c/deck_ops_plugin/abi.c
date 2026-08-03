@@ -1,19 +1,13 @@
 #include <orc_sdk/orc_sdk.h>
+#include <stdlib.h>
 
 #include "functions.h"
 
 // ==============================
-// Plugin functions (forward declarations)
-// ==============================
-
-static OrcFuncInfo const FUNCTIONS[] = {
-  {.name = "flatten_deck",
-   .desc = "Flattens the input deck into one plain list.",
-   .func = flatten_deck}};
-
-// ==============================
 // Required ABI exports
 // ==============================
+
+static OrcFuncInfo *FUNCTIONS = NULL;
 
 OrcError orc_plugin_init(OrcHost const *host, OrcPlugin *plugin_data_out)
 { /* This plugin doesn't define any custom types. So we don't have to register
@@ -25,10 +19,14 @@ OrcError orc_plugin_init(OrcHost const *host, OrcPlugin *plugin_data_out)
   plugin_data_out->abi_version = ORC_ABI_VERSION;
   plugin_data_out->name        = "deck_ops";
   plugin_data_out->desc        = "Deck/Container operations.";
-  plugin_data_out->types       = NULL;
-  plugin_data_out->n_types     = 0;
+  // Register custom types - none at the moment.
+  plugin_data_out->types   = NULL;
+  plugin_data_out->n_types = 0;
+  // Register functions.
+  orc_sdk_arr_push(FUNCTIONS, FLATTEN_DECK_INFO);
   plugin_data_out->functions   = FUNCTIONS;
-  plugin_data_out->n_functions = sizeof(FUNCTIONS) / sizeof(FUNCTIONS[0]);
+  plugin_data_out->n_functions = orc_sdk_arr_len(FUNCTIONS);
+  ORC_SDK_DEBUG("Registering %zu functions...\n", plugin_data_out->n_functions);
   return ORC_ERROR_NONE;
 }
 
