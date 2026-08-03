@@ -126,6 +126,15 @@
   wildly variadic and type agnostic. The metatdata should allow the functions to express that
   somehow.
 
+* TODO More general use of handles for data that is not decks
+  :PROPERTIES:
+  :CREATED:  2026-08-02 Sun 20:05
+  :END:
+
+  Plugins should be allowed to use the handles to point to data that is not a deck. All the deck
+  specific pointers and parameters should not be read by the host or any other plugin when this is
+  the case. I am thinking this can be achieved with either a boolean flag.
+
 * NEXT tj5fbs - Figure out C SDK and write a simple plugin
   :PROPERTIES:
   :CREATED:  2026-08-02 Sun 11:09
