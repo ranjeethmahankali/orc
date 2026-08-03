@@ -1216,8 +1216,7 @@ uint8_t _oh_max_depth(OrcHandle const *handle)
 
 static OrcSdkTypeCallbacksGetterFn PLUGIN_TYPE_FN = NULL;
 
-void orc_sdk_init(OrcHost const              *host,
-                  OrcSdkTypeCallbacksGetterFn type_fn)
+void orc_sdk_init(OrcHost const *host, OrcSdkTypeCallbacksGetterFn type_fn)
 {
   if (host) {
     HOST      = *host;
@@ -1340,7 +1339,7 @@ void *orc_sdk_comb_init(OrcHandle const **inputs,
   }
   // Initialize output combinations structure.
   size_t const  stack_depth = max_delta + 1;
-  Combinations *out         = orc_sdk_alloc(sizeof(Combinations), ORC_SDK_MALLOC_DEFAULT_ALIGN);
+  Combinations *out = orc_sdk_alloc(sizeof(Combinations), ORC_SDK_MALLOC_DEFAULT_ALIGN);
   memset(out, 0, sizeof(Combinations));
   // Allocate buffers.
   orc_sdk_arr_resize(out->view_matrix, n_inputs * stack_depth);
