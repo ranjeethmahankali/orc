@@ -161,6 +161,15 @@
 
   <2026-08-02 Sun 14:02> LLM namespaced the entire public API of orc_sdk.
 
+  <2026-08-02 Sun 22:38> Made more progress. Overhauled the project structure to build multiple C
+  projects with nob. Created a stubbed out plugin project. Hashed out many details in regards to the
+  SDK / plugin boundary. Addressed almost all TODOs that were in the SDK code.
+
+  - [ ] Upon plugin init, the plugin should set an allocator within the SDK, it it receives one from
+    the host. All the SDK code should be scoured for alloc, free, and realloc calls. Those should be
+    wired through the host's API. SDK should have the usual allcoators, if the host doesn't provide
+    one.
+
 * TODO tiwkbm - Create Toy Demo Apps
   :PROPERTIES:
   :CREATED:  2026-07-28 Tue 16:45
