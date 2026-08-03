@@ -163,6 +163,11 @@
   more. All the plugin code should be thoroughly tested. All the new SDK code should be tested. I
   should look through the ABI carefully, and make sure each feature is tested.
 
+* TODO Implement Container Op Blocks in C
+  :PROPERTIES:
+  :CREATED:  2026-08-03 Mon 18:22
+  :END:
+
 * NEXT tj5fbs - Figure out C SDK and write a simple plugin
   :PROPERTIES:
   :CREATED:  2026-08-02 Sun 11:09
@@ -205,8 +210,8 @@
   properly. Fixed many small gaps in the C SDK along the way. All that is left to do is to write a
   simple block in C. And test running DLLs with a custom allocator.
 
-  - [ ] Write simple container operation block in C.
   - [ ] Test running plugins with a custom allocator.
+  - [ ] Write simple container operation block in C.
 
 * CLOSED More general use of handles for data that is not decks
   CLOSED: [2026-08-03 Mon 17:46]

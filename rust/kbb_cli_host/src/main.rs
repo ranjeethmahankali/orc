@@ -2,13 +2,25 @@ use orc_sdk::{
     Deck, Error, ORC_ABI_VERSION, OrcHandle, OrcHost, OrcHostCallbackAPI, OrcHostMemoryAPI, deck,
     handle_from_deck,
 };
-use std::ffi::CStr;
+use std::alloc::{Layout, alloc, dealloc};
+use std::ffi::{CStr, c_void};
+
+unsafe extern "C" fn host_alloc(size: u64, alignment: u64) -> *mut c_void {
+    let layout = Layout::from_size_align(size as usize, alignment as usize).unwrap();
+    println!("Making an allocation: {:?}", layout);
+    unsafe { alloc(layout) as *mut c_void }
+}
+
+unsafe extern "C" fn host_dealloc(ptr: *mut c_void, size: u64, alignment: u64) {
+    let layout = Layout::from_size_align(size as usize, alignment as usize).unwrap();
+    unsafe { dealloc(ptr as *mut u8, layout) }
+}
 
 const HOST: OrcHost = OrcHost {
     abi_version: ORC_ABI_VERSION,
     memory_api: OrcHostMemoryAPI {
-        alloc: None,
-        dealloc: None,
+        alloc: Some(host_alloc),
+        dealloc: Some(host_dealloc),
     },
     callbacks: OrcHostCallbackAPI {
         report_progress: None,
@@ -59,16 +71,16 @@ fn main() -> Result<(), Error> {
             println!("  - {}\n    {}", func.name, func.desc);
         }
     }
-    // Test the add function.
+    // --- Test math_plugin (Rust) ---
     let math_plugin = plugins
         .iter()
         .find(|p| p.name() == "math_plugin")
-        .expect("Cannot find math_plugin. It might not have loaded correctly.");
+        .expect("math_plugin not found");
     let add_fn = math_plugin
         .functions()
         .iter()
         .find(|f| f.name == "add")
-        .expect("Cannot find the add function in the math plugin.");
+        .expect("add function not found in math_plugin");
     let a: Deck<f64> = deck![1.0, 2.0, 3.0];
     let b: Deck<f64> = deck![10.0, 20.0, 30.0];
     let mut out_handle = math_plugin.alloc_deck(orc_sdk::ORC_TYPE_F64)?;
@@ -76,8 +88,24 @@ fn main() -> Result<(), Error> {
     unsafe {
         (add_fn.func)(0, inputs.as_ptr(), inputs.len() as u64, &mut out_handle, 1);
     }
-    // Print the output data.
-    println!("Output deck: \n{}", out_handle.display::<f64>());
+    println!(
+        "math_plugin add([1,2,3], [10,20,30]):\n{}",
+        out_handle.display::<f64>()
+    );
     math_plugin.free_deck(&mut out_handle)?;
+
+    // --- Test deck_ops_plugin (C) ---
+    let deck_ops = plugins
+        .iter()
+        .find(|p| p.name() == "deck_ops")
+        .expect("deck_ops plugin not found");
+    println!(
+        "\ndeck_ops plugin loaded OK ({} function(s))",
+        deck_ops.functions().len()
+    );
+    for f in deck_ops.functions().iter() {
+        println!("  - {}: {}", f.name, f.desc);
+    }
+
     Ok(())
 }
