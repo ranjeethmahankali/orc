@@ -165,10 +165,20 @@
   projects with nob. Created a stubbed out plugin project. Hashed out many details in regards to the
   SDK / plugin boundary. Addressed almost all TODOs that were in the SDK code.
 
-  - [ ] Upon plugin init, the plugin should set an allocator within the SDK, it it receives one from
+  - [X] Upon plugin init, the plugin should set an allocator within the SDK, it it receives one from
     the host. All the SDK code should be scoured for alloc, free, and realloc calls. Those should be
     wired through the host's API. SDK should have the usual allcoators, if the host doesn't provide
     one.
+
+  <2026-08-03 Mon 15:45> Did the allocator refactor. Tried to load the C plugin into a Rust
+  host. Works on Linux, but didn't work on Windows. Turned out I was using cygwin-gcc with it's own
+  runtime, and the dlls built that way don't work like that on Windows. So I ditched nob.h, and
+  started using cmake. Now everything builds and runs on Windows and Linux. The DLL loads
+  properly. Fixed many small gaps in the C SDK along the way. All that is left to do is to write a
+  simple block in C. And test running DLLs with a custom allocator.
+
+  - [ ] Write simple container operation block in C.
+  - [ ] Test running plugins with a custom allocator.
 
 * TODO tiwkbm - Create Toy Demo Apps
   :PROPERTIES:
