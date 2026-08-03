@@ -22,10 +22,11 @@ void test_arr_null_pointer_operations(void)
                            "Null pointer represents an empty array");
   ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_end(null_arr) == null_arr,
                            "End of a NULL is itself");
-  ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_swap_remove(null_arr, 0) == OUT_OF_BOUNDS,
-                           "Cannot remove from empty array");
+  ORC_SDK_REQUIRE_WITH_MSG(
+    orc_sdk_arr_swap_remove(null_arr, 0) == ORC_ERROR_OUT_OF_BOUNDS,
+    "Cannot remove from empty array");
   double *arr = NULL;
-  ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_reserve(arr, 10) == OK,
+  ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_reserve(arr, 10) == ORC_ERROR_NONE,
                            "Reserve starting with NULL");
   ORC_SDK_REQUIRE_WITH_MSG(arr != NULL, "Should be allocated after reserve");
   orc_sdk_arr_free(arr);
@@ -37,11 +38,13 @@ void test_arr_null_pointer_operations(void)
 void test_arr_empty_array_operations(void)
 {
   double *arr = NULL;
-  ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_reserve(arr, 0) == OK, "Empty array reserve");
+  ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_reserve(arr, 0) == ORC_ERROR_NONE,
+                           "Empty array reserve");
   ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_len(arr) == 0, "Length after reserved is zero");
-  ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_swap_remove(arr, 0) == OUT_OF_BOUNDS,
+  ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_swap_remove(arr, 0) == ORC_ERROR_OUT_OF_BOUNDS,
                            "Cannot remove from empty array");
-  ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_push(arr, 1.0) == OK, "Push into empty array");
+  ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_push(arr, 1.0) == ORC_ERROR_NONE,
+                           "Push into empty array");
   ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_len(arr) == 1, "Array after pushing");
   orc_sdk_arr_free(arr);
 }
@@ -51,17 +54,19 @@ void test_arr_index_boundary_conditions(void)
   double *arr = NULL;
   orc_sdk_arr_push(arr, 1.0);
   // Single element array
-  ORC_SDK_REQUIRE(orc_sdk_arr_swap_remove(arr, 0) == OK);
+  ORC_SDK_REQUIRE(orc_sdk_arr_swap_remove(arr, 0) == ORC_ERROR_NONE);
   ORC_SDK_REQUIRE(orc_sdk_arr_len(arr) == 0);
-  ORC_SDK_REQUIRE(orc_sdk_arr_swap_remove(arr, 0) == OUT_OF_BOUNDS);  // Empty array
+  ORC_SDK_REQUIRE(orc_sdk_arr_swap_remove(arr, 0) ==
+                  ORC_ERROR_OUT_OF_BOUNDS);  // Empty array
   // Add elements back
   orc_sdk_arr_push(arr, 1.0);
   orc_sdk_arr_push(arr, 2.0);
   ORC_SDK_REQUIRE(orc_sdk_arr_swap_remove(arr, orc_sdk_arr_len(arr)) ==
-                  OUT_OF_BOUNDS);  // One past end
+                  ORC_ERROR_OUT_OF_BOUNDS);  // One past end
   ORC_SDK_REQUIRE(orc_sdk_arr_swap_remove(arr, orc_sdk_arr_len(arr) + 10) ==
-                  OUT_OF_BOUNDS);  // Way past end
-  ORC_SDK_REQUIRE(orc_sdk_arr_swap_remove(arr, SIZE_MAX) == OUT_OF_BOUNDS);  // Huge index
+                  ORC_ERROR_OUT_OF_BOUNDS);  // Way past end
+  ORC_SDK_REQUIRE(orc_sdk_arr_swap_remove(arr, SIZE_MAX) ==
+                  ORC_ERROR_OUT_OF_BOUNDS);  // Huge index
   orc_sdk_arr_free(arr);
 }
 
@@ -69,22 +74,22 @@ void test_arr_capacity_management(void)
 {
   double *arr = NULL;
   // Reserve initial capacity
-  ORC_SDK_REQUIRE(orc_sdk_arr_reserve(arr, 4) == OK);
+  ORC_SDK_REQUIRE(orc_sdk_arr_reserve(arr, 4) == ORC_ERROR_NONE);
   ORC_SDK_REQUIRE(_orc_sdk_arr_capacity(arr) == 4);
   // Reserve smaller (should be no-op)
   size_t old_cap = _orc_sdk_arr_capacity(arr);
-  ORC_SDK_REQUIRE(orc_sdk_arr_reserve(arr, 2) == OK);
+  ORC_SDK_REQUIRE(orc_sdk_arr_reserve(arr, 2) == ORC_ERROR_NONE);
   ORC_SDK_REQUIRE(_orc_sdk_arr_capacity(arr) == old_cap);
   // Reserve exact current capacity (should be no-op)
-  ORC_SDK_REQUIRE(orc_sdk_arr_reserve(arr, old_cap) == OK);
+  ORC_SDK_REQUIRE(orc_sdk_arr_reserve(arr, old_cap) == ORC_ERROR_NONE);
   ORC_SDK_REQUIRE(_orc_sdk_arr_capacity(arr) == old_cap);
   // Reserve larger
-  ORC_SDK_REQUIRE(orc_sdk_arr_reserve(arr, 10) == OK);
+  ORC_SDK_REQUIRE(orc_sdk_arr_reserve(arr, 10) == ORC_ERROR_NONE);
   ORC_SDK_REQUIRE(_orc_sdk_arr_capacity(arr) == 10);
   // Test growth pattern
   orc_sdk_arr_free(arr);
   arr = NULL;
-  ORC_SDK_REQUIRE(orc_sdk_arr_push(arr, 1.0) == OK);
+  ORC_SDK_REQUIRE(orc_sdk_arr_push(arr, 1.0) == ORC_ERROR_NONE);
   size_t cap1 = _orc_sdk_arr_capacity(arr);
   // Fill to capacity
   while (orc_sdk_arr_len(arr) < cap1) {
@@ -113,16 +118,16 @@ void test_arr_swap_remove_correctness(void)
   }
   // Remove middle element (index 2, value 2.0)
   // Should replace with last element (value 4.0)
-  ORC_SDK_REQUIRE(orc_sdk_arr_swap_remove(arr, 2) == OK);
+  ORC_SDK_REQUIRE(orc_sdk_arr_swap_remove(arr, 2) == ORC_ERROR_NONE);
   ORC_SDK_REQUIRE(orc_sdk_arr_len(arr) == 4);
   ORC_SDK_REQUIRE(arr[2] == 4.0);  // Last element moved here
   // Remove first element
-  ORC_SDK_REQUIRE(orc_sdk_arr_swap_remove(arr, 0) == OK);
+  ORC_SDK_REQUIRE(orc_sdk_arr_swap_remove(arr, 0) == ORC_ERROR_NONE);
   ORC_SDK_REQUIRE(orc_sdk_arr_len(arr) == 3);
   ORC_SDK_REQUIRE(arr[0] == 3.0);  // Last element moved to front
   // Remove last element
   size_t last_idx = orc_sdk_arr_len(arr) - 1;
-  ORC_SDK_REQUIRE(orc_sdk_arr_swap_remove(arr, last_idx) == OK);
+  ORC_SDK_REQUIRE(orc_sdk_arr_swap_remove(arr, last_idx) == ORC_ERROR_NONE);
   ORC_SDK_REQUIRE(orc_sdk_arr_len(arr) == 2);
   // Remove from single-element array
   orc_sdk_arr_swap_remove(arr, 0);
@@ -137,7 +142,7 @@ void test_arr_memory_stress(void)
   const size_t LARGE_SIZE = 1000;
   // Push many elements
   for (size_t i = 0; i < LARGE_SIZE; i++) {
-    ORC_SDK_REQUIRE(orc_sdk_arr_push(arr, (double)i) == OK);
+    ORC_SDK_REQUIRE(orc_sdk_arr_push(arr, (double)i) == ORC_ERROR_NONE);
   }
   // Verify all elements
   ORC_SDK_REQUIRE(orc_sdk_arr_len(arr) == LARGE_SIZE);
@@ -159,24 +164,24 @@ void test_arr_different_types(void)
 {
   // Test with int
   int *ints = NULL;
-  ORC_SDK_REQUIRE(orc_sdk_arr_push(ints, 42) == OK);
-  ORC_SDK_REQUIRE(orc_sdk_arr_push(ints, -17) == OK);
+  ORC_SDK_REQUIRE(orc_sdk_arr_push(ints, 42) == ORC_ERROR_NONE);
+  ORC_SDK_REQUIRE(orc_sdk_arr_push(ints, -17) == ORC_ERROR_NONE);
   ORC_SDK_REQUIRE(orc_sdk_arr_len(ints) == 2);
   ORC_SDK_REQUIRE(ints[0] == 42);
   ORC_SDK_REQUIRE(ints[1] == -17);
   orc_sdk_arr_free(ints);
   // Test with char
   char *chars = NULL;
-  ORC_SDK_REQUIRE(orc_sdk_arr_push(chars, 'A') == OK);
-  ORC_SDK_REQUIRE(orc_sdk_arr_push(chars, 'B') == OK);
+  ORC_SDK_REQUIRE(orc_sdk_arr_push(chars, 'A') == ORC_ERROR_NONE);
+  ORC_SDK_REQUIRE(orc_sdk_arr_push(chars, 'B') == ORC_ERROR_NONE);
   ORC_SDK_REQUIRE(chars[0] == 'A');
   ORC_SDK_REQUIRE(chars[1] == 'B');
   orc_sdk_arr_free(chars);
   // Test with pointers
   const char  *strings[] = {"hello", "world"};
   const char **str_ptrs  = NULL;
-  ORC_SDK_REQUIRE(orc_sdk_arr_push(str_ptrs, strings[0]) == OK);
-  ORC_SDK_REQUIRE(orc_sdk_arr_push(str_ptrs, strings[1]) == OK);
+  ORC_SDK_REQUIRE(orc_sdk_arr_push(str_ptrs, strings[0]) == ORC_ERROR_NONE);
+  ORC_SDK_REQUIRE(orc_sdk_arr_push(str_ptrs, strings[1]) == ORC_ERROR_NONE);
   ORC_SDK_REQUIRE(str_ptrs[0] == strings[0]);
   ORC_SDK_REQUIRE(str_ptrs[1] == strings[1]);
   orc_sdk_arr_free(str_ptrs);
@@ -189,8 +194,8 @@ void test_arr_different_types(void)
   Point *points = NULL;
   Point  p1     = {10, 20, 3.14};
   Point  p2     = {-5, 15, 2.71};
-  ORC_SDK_REQUIRE(orc_sdk_arr_push(points, p1) == OK);
-  ORC_SDK_REQUIRE(orc_sdk_arr_push(points, p2) == OK);
+  ORC_SDK_REQUIRE(orc_sdk_arr_push(points, p1) == ORC_ERROR_NONE);
+  ORC_SDK_REQUIRE(orc_sdk_arr_push(points, p2) == ORC_ERROR_NONE);
   ORC_SDK_REQUIRE(points[0].x == 10);
   ORC_SDK_REQUIRE(points[0].y == 20);
   ORC_SDK_REQUIRE(points[0].value == 3.14);
@@ -200,7 +205,7 @@ void test_arr_different_types(void)
   orc_sdk_arr_free(points);
   // Test alignment by checking data pointer alignment
   long long *longs = NULL;
-  ORC_SDK_REQUIRE(orc_sdk_arr_push(longs, 123456789LL) == OK);
+  ORC_SDK_REQUIRE(orc_sdk_arr_push(longs, 123456789LL) == ORC_ERROR_NONE);
   // Check that data pointer is properly aligned for long long
   uintptr_t addr = (uintptr_t)longs;
   ORC_SDK_REQUIRE_WITH_MSG(addr % sizeof(long long) == 0,
@@ -213,11 +218,11 @@ void test_arr_ordered_remove(void)
   int *arr = NULL;
   // Setup: [10, 20, 30, 40, 50]
   for (int i = 1; i <= 5; i++) {
-    ORC_SDK_REQUIRE(orc_sdk_arr_push(arr, i * 10) == OK);
+    ORC_SDK_REQUIRE(orc_sdk_arr_push(arr, i * 10) == ORC_ERROR_NONE);
   }
   // Remove middle element (index 2, value 30)
   // Should shift [40, 50] left to fill the gap
-  ORC_SDK_REQUIRE(orc_sdk_arr_remove(arr, 2) == OK);
+  ORC_SDK_REQUIRE(orc_sdk_arr_remove(arr, 2) == ORC_ERROR_NONE);
   ORC_SDK_REQUIRE(orc_sdk_arr_len(arr) == 4);
   ORC_SDK_REQUIRE_WITH_MSG(arr[0] == 10, "First element should be unchanged");
   ORC_SDK_REQUIRE_WITH_MSG(arr[1] == 20, "Second element should be unchanged");
@@ -225,14 +230,14 @@ void test_arr_ordered_remove(void)
   ORC_SDK_REQUIRE_WITH_MSG(arr[3] == 50, "Fourth element should be 50 (was 5th)");
   // Remove first element
   // Should shift [20, 40, 50] left
-  ORC_SDK_REQUIRE(orc_sdk_arr_remove(arr, 0) == OK);
+  ORC_SDK_REQUIRE(orc_sdk_arr_remove(arr, 0) == ORC_ERROR_NONE);
   ORC_SDK_REQUIRE(orc_sdk_arr_len(arr) == 3);
   ORC_SDK_REQUIRE_WITH_MSG(arr[0] == 20, "First element should now be 20");
   ORC_SDK_REQUIRE_WITH_MSG(arr[1] == 40, "Second element should be 40");
   ORC_SDK_REQUIRE_WITH_MSG(arr[2] == 50, "Third element should be 50");
   // Remove last element
   // Should just decrease count, no shifting needed
-  ORC_SDK_REQUIRE(orc_sdk_arr_remove(arr, 2) == OK);
+  ORC_SDK_REQUIRE(orc_sdk_arr_remove(arr, 2) == ORC_ERROR_NONE);
   ORC_SDK_REQUIRE(orc_sdk_arr_len(arr) == 2);
   ORC_SDK_REQUIRE_WITH_MSG(arr[0] == 20, "First element unchanged");
   ORC_SDK_REQUIRE_WITH_MSG(arr[1] == 40, "Second element unchanged");
@@ -241,18 +246,18 @@ void test_arr_ordered_remove(void)
   orc_sdk_arr_remove(arr, 0);
   ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_len(arr) == 0, "Array should be empty");
   // Test bounds checking
-  ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_remove(arr, 0) == OUT_OF_BOUNDS,
+  ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_remove(arr, 0) == ORC_ERROR_OUT_OF_BOUNDS,
                            "Remove from empty array should fail");
   // Add one element and test invalid indices
   orc_sdk_arr_push(arr, 100);
-  ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_remove(arr, 1) == OUT_OF_BOUNDS,
+  ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_remove(arr, 1) == ORC_ERROR_OUT_OF_BOUNDS,
                            "Remove past end should fail");
-  ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_remove(arr, SIZE_MAX) == OUT_OF_BOUNDS,
+  ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_remove(arr, SIZE_MAX) == ORC_ERROR_OUT_OF_BOUNDS,
                            "Remove huge index should fail");
   orc_sdk_arr_free(arr);
   // Test with NULL pointer
   int *null_arr = NULL;
-  ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_remove(null_arr, 0) == OUT_OF_BOUNDS,
+  ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_remove(null_arr, 0) == ORC_ERROR_OUT_OF_BOUNDS,
                            "Remove from NULL should fail");
 }
 
@@ -460,8 +465,8 @@ void test_orc_sdk_arr_clear(void)
   ORC_SDK_REQUIRE_WITH_MSG(_orc_sdk_arr_capacity(arr) == old_capacity,
                            "Capacity should be preserved");
   // Verify we can still use the array after clear
-  OrcSdk_Status s = orc_sdk_arr_push(arr, 2.71);
-  ORC_SDK_REQUIRE_WITH_MSG(s == OK, "Should be able to push after clear");
+  OrcError s = orc_sdk_arr_push(arr, 2.71);
+  ORC_SDK_REQUIRE_WITH_MSG(s == ORC_ERROR_NONE, "Should be able to push after clear");
   ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_len(arr) == 1,
                            "Array should have 1 element after push");
   ORC_SDK_REQUIRE_WITH_MSG(arr[0] == 2.71, "Element should be correct");
@@ -473,7 +478,7 @@ void test_orc_sdk_arr_clear(void)
   ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_len(arr) == 0,
                            "Array should be empty after second clear");
   // Test operations on cleared array
-  ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_swap_remove(arr, 0) == OUT_OF_BOUNDS,
+  ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_swap_remove(arr, 0) == ORC_ERROR_OUT_OF_BOUNDS,
                            "Remove from cleared array should fail");
   orc_sdk_arr_free(arr);
   // Test clear on NULL pointer (should not crash)
@@ -486,14 +491,15 @@ void test_arr_remove_range(void)
   int *arr = NULL;
   // Setup test array: [10, 20, 30, 40, 50]
   for (int i = 1; i <= 5; i++) {
-    OrcSdk_Status s = orc_sdk_arr_push(arr, i * 10);
-    ORC_SDK_REQUIRE_WITH_MSG(s == OK, "Setup should succeed");
+    OrcError s = orc_sdk_arr_push(arr, i * 10);
+    ORC_SDK_REQUIRE_WITH_MSG(s == ORC_ERROR_NONE, "Setup should succeed");
   }
   ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_len(arr) == 5, "Array should have 5 elements");
   // Test 1: Remove middle range [1, 3) -> removes 20, 30
   // Expected: [10, 40, 50]
-  OrcSdk_Status result = orc_sdk_arr_remove_range(arr, 1, 3);
-  ORC_SDK_REQUIRE_WITH_MSG(result == OK, "Remove middle range should succeed");
+  OrcError result = orc_sdk_arr_remove_range(arr, 1, 3);
+  ORC_SDK_REQUIRE_WITH_MSG(result == ORC_ERROR_NONE,
+                           "Remove middle range should succeed");
   ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_len(arr) == 3,
                            "Array should have 3 elements after removing 2");
   ORC_SDK_REQUIRE_WITH_MSG(arr[0] == 10, "First element should be unchanged");
@@ -502,19 +508,21 @@ void test_arr_remove_range(void)
   // Test 2: Remove from beginning [0, 1) -> removes 10
   // Expected: [40, 50]
   result = orc_sdk_arr_remove_range(arr, 0, 1);
-  ORC_SDK_REQUIRE_WITH_MSG(result == OK, "Remove from beginning should succeed");
+  ORC_SDK_REQUIRE_WITH_MSG(result == ORC_ERROR_NONE,
+                           "Remove from beginning should succeed");
   ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_len(arr) == 2, "Array should have 2 elements");
   ORC_SDK_REQUIRE_WITH_MSG(arr[0] == 40, "First element should be 40");
   ORC_SDK_REQUIRE_WITH_MSG(arr[1] == 50, "Second element should be 50");
   // Test 3: Remove from end [1, 2) -> removes 50
   // Expected: [40]
   result = orc_sdk_arr_remove_range(arr, 1, 2);
-  ORC_SDK_REQUIRE_WITH_MSG(result == OK, "Remove from end should succeed");
+  ORC_SDK_REQUIRE_WITH_MSG(result == ORC_ERROR_NONE, "Remove from end should succeed");
   ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_len(arr) == 1, "Array should have 1 element");
   ORC_SDK_REQUIRE_WITH_MSG(arr[0] == 40, "Remaining element should be 40");
   // Test 4: Remove entire array [0, 1)
   result = orc_sdk_arr_remove_range(arr, 0, 1);
-  ORC_SDK_REQUIRE_WITH_MSG(result == OK, "Remove entire array should succeed");
+  ORC_SDK_REQUIRE_WITH_MSG(result == ORC_ERROR_NONE,
+                           "Remove entire array should succeed");
   ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_len(arr) == 0, "Array should be empty");
   // Test 5: Empty range operations
   // Add elements back
@@ -524,37 +532,45 @@ void test_arr_remove_range(void)
   ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_len(arr) == 3, "Array should have 3 elements");
   // Remove empty range at beginning [0, 0)
   result = orc_sdk_arr_remove_range(arr, 0, 0);
-  ORC_SDK_REQUIRE_WITH_MSG(result == OK, "Empty range at beginning should succeed");
+  ORC_SDK_REQUIRE_WITH_MSG(result == ORC_ERROR_NONE,
+                           "Empty range at beginning should succeed");
   ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_len(arr) == 3, "Array length should be unchanged");
   // Remove empty range in middle [1, 1)
   result = orc_sdk_arr_remove_range(arr, 1, 1);
-  ORC_SDK_REQUIRE_WITH_MSG(result == OK, "Empty range in middle should succeed");
+  ORC_SDK_REQUIRE_WITH_MSG(result == ORC_ERROR_NONE,
+                           "Empty range in middle should succeed");
   ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_len(arr) == 3, "Array length should be unchanged");
   // Remove empty range at end [3, 3)
   result = orc_sdk_arr_remove_range(arr, 3, 3);
-  ORC_SDK_REQUIRE_WITH_MSG(result == OK, "Empty range at end should succeed");
+  ORC_SDK_REQUIRE_WITH_MSG(result == ORC_ERROR_NONE, "Empty range at end should succeed");
   ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_len(arr) == 3, "Array length should be unchanged");
   // Test 6: Error cases - out of bounds
   // Start index too large
   result = orc_sdk_arr_remove_range(arr, 4, 4);
-  ORC_SDK_REQUIRE_WITH_MSG(result == OUT_OF_BOUNDS, "Start beyond array should fail");
+  ORC_SDK_REQUIRE_WITH_MSG(result == ORC_ERROR_OUT_OF_BOUNDS,
+                           "Start beyond array should fail");
   // Stop index too large
   result = orc_sdk_arr_remove_range(arr, 1, 5);
-  ORC_SDK_REQUIRE_WITH_MSG(result == OUT_OF_BOUNDS, "Stop beyond array should fail");
+  ORC_SDK_REQUIRE_WITH_MSG(result == ORC_ERROR_OUT_OF_BOUNDS,
+                           "Stop beyond array should fail");
   // Invalid range (stop < start)
   result = orc_sdk_arr_remove_range(arr, 2, 1);
-  ORC_SDK_REQUIRE_WITH_MSG(result == OUT_OF_BOUNDS, "Invalid range should fail");
+  ORC_SDK_REQUIRE_WITH_MSG(result == ORC_ERROR_OUT_OF_BOUNDS,
+                           "Invalid range should fail");
   // Test 7: Remove everything [0, length)
   result = orc_sdk_arr_remove_range(arr, 0, orc_sdk_arr_len(arr));
-  ORC_SDK_REQUIRE_WITH_MSG(result == OK, "Remove all elements should succeed");
+  ORC_SDK_REQUIRE_WITH_MSG(result == ORC_ERROR_NONE,
+                           "Remove all elements should succeed");
   ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_len(arr) == 0, "Array should be empty");
   orc_sdk_arr_free(arr);
   // Test 8: Operations on NULL array
   int *null_arr = NULL;
   result        = orc_sdk_arr_remove_range(null_arr, 0, 0);
-  ORC_SDK_REQUIRE_WITH_MSG(result == OUT_OF_BOUNDS, "Remove from NULL array should fail");
+  ORC_SDK_REQUIRE_WITH_MSG(result == ORC_ERROR_OUT_OF_BOUNDS,
+                           "Remove from NULL array should fail");
   result = orc_sdk_arr_remove_range(null_arr, 0, 1);
-  ORC_SDK_REQUIRE_WITH_MSG(result == OUT_OF_BOUNDS, "Remove from NULL array should fail");
+  ORC_SDK_REQUIRE_WITH_MSG(result == ORC_ERROR_OUT_OF_BOUNDS,
+                           "Remove from NULL array should fail");
   // Test 9: Large range removal
   int *large_arr = NULL;
   for (int i = 0; i < 10; i++) {
@@ -564,7 +580,8 @@ void test_arr_remove_range(void)
                            "Large array should have 10 elements");
   // Remove middle chunk [3, 7) -> removes 3, 4, 5, 6
   result = orc_sdk_arr_remove_range(large_arr, 3, 7);
-  ORC_SDK_REQUIRE_WITH_MSG(result == OK, "Large range removal should succeed");
+  ORC_SDK_REQUIRE_WITH_MSG(result == ORC_ERROR_NONE,
+                           "Large range removal should succeed");
   ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_len(large_arr) == 6,
                            "Array should have 6 elements remaining");
   // Verify elements: should be [0, 1, 2, 7, 8, 9]
@@ -581,20 +598,25 @@ void test_arr_pop(void)
   double *arr = NULL;
   double  value;
   // Test pop from empty array (should fail)
-  OrcSdk_Status result = orc_sdk_arr_pop(arr, &value);
-  ORC_SDK_REQUIRE_WITH_MSG(result == OUT_OF_BOUNDS, "Pop from empty array should fail");
+  OrcError result = orc_sdk_arr_pop(arr, &value);
+  ORC_SDK_REQUIRE_WITH_MSG(result == ORC_ERROR_OUT_OF_BOUNDS,
+                           "Pop from empty array should fail");
   // Test pop from NULL array (should fail)
   double *null_arr = NULL;
   result           = orc_sdk_arr_pop(null_arr, &value);
-  ORC_SDK_REQUIRE_WITH_MSG(result == OUT_OF_BOUNDS, "Pop from NULL array should fail");
+  ORC_SDK_REQUIRE_WITH_MSG(result == ORC_ERROR_OUT_OF_BOUNDS,
+                           "Pop from NULL array should fail");
   // Setup array with known values: [10.0, 20.0, 30.0]
-  ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_push(arr, 10.0) == OK, "Push should succeed");
-  ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_push(arr, 20.0) == OK, "Push should succeed");
-  ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_push(arr, 30.0) == OK, "Push should succeed");
+  ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_push(arr, 10.0) == ORC_ERROR_NONE,
+                           "Push should succeed");
+  ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_push(arr, 20.0) == ORC_ERROR_NONE,
+                           "Push should succeed");
+  ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_push(arr, 30.0) == ORC_ERROR_NONE,
+                           "Push should succeed");
   ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_len(arr) == 3, "Array should have 3 elements");
   // Test pop from array with multiple elements
   result = orc_sdk_arr_pop(arr, &value);
-  ORC_SDK_REQUIRE_WITH_MSG(result == OK, "Pop should succeed");
+  ORC_SDK_REQUIRE_WITH_MSG(result == ORC_ERROR_NONE, "Pop should succeed");
   ORC_SDK_REQUIRE_WITH_MSG(value == 30.0, "Popped value should be 30.0 (last element)");
   ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_len(arr) == 2,
                            "Array should have 2 elements after pop");
@@ -602,30 +624,32 @@ void test_arr_pop(void)
                            "Remaining elements should be correct");
   // Test sequential pops
   result = orc_sdk_arr_pop(arr, &value);
-  ORC_SDK_REQUIRE_WITH_MSG(result == OK, "Second pop should succeed");
+  ORC_SDK_REQUIRE_WITH_MSG(result == ORC_ERROR_NONE, "Second pop should succeed");
   ORC_SDK_REQUIRE_WITH_MSG(value == 20.0, "Popped value should be 20.0");
   ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_len(arr) == 1,
                            "Array should have 1 element after second pop");
   ORC_SDK_REQUIRE_WITH_MSG(arr[0] == 10.0, "Remaining element should be 10.0");
   // Test pop from single-element array
   result = orc_sdk_arr_pop(arr, &value);
-  ORC_SDK_REQUIRE_WITH_MSG(result == OK, "Pop from single element should succeed");
+  ORC_SDK_REQUIRE_WITH_MSG(result == ORC_ERROR_NONE,
+                           "Pop from single element should succeed");
   ORC_SDK_REQUIRE_WITH_MSG(value == 10.0, "Popped value should be 10.0");
   ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_len(arr) == 0,
                            "Array should be empty after popping last element");
   // Test pop from now-empty array (should fail)
   result = orc_sdk_arr_pop(arr, &value);
-  ORC_SDK_REQUIRE_WITH_MSG(result == OUT_OF_BOUNDS, "Pop from empty array should fail");
+  ORC_SDK_REQUIRE_WITH_MSG(result == ORC_ERROR_OUT_OF_BOUNDS,
+                           "Pop from empty array should fail");
   orc_sdk_arr_free(arr);
   // Test with different data types
   int *int_arr = NULL;
   int  int_value;
-  ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_push(int_arr, 42) == OK,
+  ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_push(int_arr, 42) == ORC_ERROR_NONE,
                            "Int push should succeed");
-  ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_push(int_arr, 99) == OK,
+  ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_push(int_arr, 99) == ORC_ERROR_NONE,
                            "Int push should succeed");
   result = orc_sdk_arr_pop(int_arr, &int_value);
-  ORC_SDK_REQUIRE_WITH_MSG(result == OK, "Int pop should succeed");
+  ORC_SDK_REQUIRE_WITH_MSG(result == ORC_ERROR_NONE, "Int pop should succeed");
   ORC_SDK_REQUIRE_WITH_MSG(int_value == 99, "Popped int value should be 99");
   ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_len(int_arr) == 1,
                            "Int array should have 1 element left");
@@ -634,21 +658,21 @@ void test_arr_pop(void)
   const char  *strings[] = {"first", "second", "third"};
   const char **str_arr   = NULL;
   const char  *str_value;
-  ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_push(str_arr, strings[0]) == OK,
+  ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_push(str_arr, strings[0]) == ORC_ERROR_NONE,
                            "String push should succeed");
-  ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_push(str_arr, strings[1]) == OK,
+  ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_push(str_arr, strings[1]) == ORC_ERROR_NONE,
                            "String push should succeed");
-  ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_push(str_arr, strings[2]) == OK,
+  ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_push(str_arr, strings[2]) == ORC_ERROR_NONE,
                            "String push should succeed");
   result = orc_sdk_arr_pop(str_arr, &str_value);
-  ORC_SDK_REQUIRE_WITH_MSG(result == OK, "String pop should succeed");
+  ORC_SDK_REQUIRE_WITH_MSG(result == ORC_ERROR_NONE, "String pop should succeed");
   ORC_SDK_REQUIRE_WITH_MSG(str_value == strings[2], "Popped string should be 'third'");
   ORC_SDK_REQUIRE_WITH_MSG(orc_sdk_arr_len(str_arr) == 2,
                            "String array should have 2 elements left");
   orc_sdk_arr_free(str_arr);
   // Test capacity behavior - capacity should not decrease on pop
   double *cap_arr = NULL;
-  ORC_SDK_REQUIRE(OK == orc_sdk_arr_reserve(cap_arr, 10));
+  ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_arr_reserve(cap_arr, 10));
   size_t initial_capacity = _orc_sdk_arr_capacity(cap_arr);
   // Fill with some elements
   for (int i = 0; i < 5; i++) {
@@ -679,11 +703,12 @@ void test_arr_pop(void)
 void test_arr_fibonacci(void)
 {
   uint32_t *fibo = NULL;
-  ORC_SDK_REQUIRE(orc_sdk_arr_push(fibo, 1) == OK);
-  ORC_SDK_REQUIRE(orc_sdk_arr_push(fibo, 1) == OK);
+  ORC_SDK_REQUIRE(orc_sdk_arr_push(fibo, 1) == ORC_ERROR_NONE);
+  ORC_SDK_REQUIRE(orc_sdk_arr_push(fibo, 1) == ORC_ERROR_NONE);
   for (size_t i = 0; i < 10; ++i) {
     size_t const len = orc_sdk_arr_len(fibo);
-    ORC_SDK_REQUIRE(orc_sdk_arr_push(fibo, fibo[len - 2] + fibo[len - 1]) == OK);
+    ORC_SDK_REQUIRE(orc_sdk_arr_push(fibo, fibo[len - 2] + fibo[len - 1]) ==
+                    ORC_ERROR_NONE);
   }
   ORC_SDK_REQUIRE(orc_sdk_arr_len(fibo) == 12);
   uint32_t const expected[12] = {1, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89, 144};
@@ -711,7 +736,7 @@ void test_str_null_pointer_operations(void)
   char *s = NULL;
   ORC_SDK_REQUIRE_WITH_MSG(orc_str_len(s) == 0, "Null string has length 0");
   ORC_SDK_REQUIRE_WITH_MSG(orc_str_end(s) == s, "End of NULL string is itself");
-  ORC_SDK_REQUIRE_WITH_MSG(orc_str_remove(s, 0) == OUT_OF_BOUNDS,
+  ORC_SDK_REQUIRE_WITH_MSG(orc_str_remove(s, 0) == ORC_ERROR_OUT_OF_BOUNDS,
                            "Cannot remove from NULL string");
   // Should not crash
   orc_str_free(s);
@@ -720,11 +745,11 @@ void test_str_null_pointer_operations(void)
 void test_str_push_basic(void)
 {
   char *s = NULL;
-  ORC_SDK_REQUIRE(orc_str_push(s, 'h') == OK);
-  ORC_SDK_REQUIRE(orc_str_push(s, 'e') == OK);
-  ORC_SDK_REQUIRE(orc_str_push(s, 'l') == OK);
-  ORC_SDK_REQUIRE(orc_str_push(s, 'l') == OK);
-  ORC_SDK_REQUIRE(orc_str_push(s, 'o') == OK);
+  ORC_SDK_REQUIRE(orc_str_push(s, 'h') == ORC_ERROR_NONE);
+  ORC_SDK_REQUIRE(orc_str_push(s, 'e') == ORC_ERROR_NONE);
+  ORC_SDK_REQUIRE(orc_str_push(s, 'l') == ORC_ERROR_NONE);
+  ORC_SDK_REQUIRE(orc_str_push(s, 'l') == ORC_ERROR_NONE);
+  ORC_SDK_REQUIRE(orc_str_push(s, 'o') == ORC_ERROR_NONE);
   ORC_SDK_REQUIRE_WITH_MSG(orc_str_len(s) == 5, "String length should be 5");
   ORC_SDK_REQUIRE_WITH_MSG(strcmp(s, "hello") == 0, "String content should be 'hello'");
   ORC_SDK_REQUIRE_WITH_MSG(s[orc_str_len(s)] == '\0', "String must be null-terminated");
@@ -735,16 +760,16 @@ void test_str_push_from_null(void)
 {
   char *s = NULL;
   // First push allocates
-  ORC_SDK_REQUIRE(orc_str_push(s, 'a') == OK);
+  ORC_SDK_REQUIRE(orc_str_push(s, 'a') == ORC_ERROR_NONE);
   ORC_SDK_REQUIRE(s != NULL);
   ORC_SDK_REQUIRE(orc_str_len(s) == 1);
   ORC_SDK_REQUIRE(s[0] == 'a');
   ORC_SDK_REQUIRE(s[1] == '\0');
   // Subsequent pushes
-  ORC_SDK_REQUIRE(orc_str_push(s, 'b') == OK);
+  ORC_SDK_REQUIRE(orc_str_push(s, 'b') == ORC_ERROR_NONE);
   ORC_SDK_REQUIRE(orc_str_len(s) == 2);
   ORC_SDK_REQUIRE(strcmp(s, "ab") == 0);
-  ORC_SDK_REQUIRE(orc_str_push(s, 'c') == OK);
+  ORC_SDK_REQUIRE(orc_str_push(s, 'c') == ORC_ERROR_NONE);
   ORC_SDK_REQUIRE(orc_str_len(s) == 3);
   ORC_SDK_REQUIRE(strcmp(s, "abc") == 0);
   orc_str_free(s);
@@ -754,23 +779,23 @@ void test_orc_str_remove_basic(void)
 {
   char *s = NULL;
   // Build "abcde"
-  ORC_SDK_REQUIRE(orc_str_push(s, 'a') == OK);
-  ORC_SDK_REQUIRE(orc_str_push(s, 'b') == OK);
-  ORC_SDK_REQUIRE(orc_str_push(s, 'c') == OK);
-  ORC_SDK_REQUIRE(orc_str_push(s, 'd') == OK);
-  ORC_SDK_REQUIRE(orc_str_push(s, 'e') == OK);
+  ORC_SDK_REQUIRE(orc_str_push(s, 'a') == ORC_ERROR_NONE);
+  ORC_SDK_REQUIRE(orc_str_push(s, 'b') == ORC_ERROR_NONE);
+  ORC_SDK_REQUIRE(orc_str_push(s, 'c') == ORC_ERROR_NONE);
+  ORC_SDK_REQUIRE(orc_str_push(s, 'd') == ORC_ERROR_NONE);
+  ORC_SDK_REQUIRE(orc_str_push(s, 'e') == ORC_ERROR_NONE);
   // Remove middle character 'c' at index 2
-  ORC_SDK_REQUIRE(orc_str_remove(s, 2) == OK);
+  ORC_SDK_REQUIRE(orc_str_remove(s, 2) == ORC_ERROR_NONE);
   ORC_SDK_REQUIRE(orc_str_len(s) == 4);
   ORC_SDK_REQUIRE(strcmp(s, "abde") == 0);
   ORC_SDK_REQUIRE(s[orc_str_len(s)] == '\0');
   // Remove first character 'a' at index 0
-  ORC_SDK_REQUIRE(orc_str_remove(s, 0) == OK);
+  ORC_SDK_REQUIRE(orc_str_remove(s, 0) == ORC_ERROR_NONE);
   ORC_SDK_REQUIRE(orc_str_len(s) == 3);
   ORC_SDK_REQUIRE(strcmp(s, "bde") == 0);
   ORC_SDK_REQUIRE(s[orc_str_len(s)] == '\0');
   // Remove last character 'e' at index 2
-  ORC_SDK_REQUIRE(orc_str_remove(s, orc_str_len(s) - 1) == OK);
+  ORC_SDK_REQUIRE(orc_str_remove(s, orc_str_len(s) - 1) == ORC_ERROR_NONE);
   ORC_SDK_REQUIRE(orc_str_len(s) == 2);
   ORC_SDK_REQUIRE(strcmp(s, "bd") == 0);
   ORC_SDK_REQUIRE(s[orc_str_len(s)] == '\0');
@@ -781,23 +806,23 @@ void test_orc_str_remove_boundary_conditions(void)
 {
   // Single character string
   char *s = NULL;
-  ORC_SDK_REQUIRE(orc_str_push(s, 'x') == OK);
-  ORC_SDK_REQUIRE(orc_str_remove(s, 0) == OK);
+  ORC_SDK_REQUIRE(orc_str_push(s, 'x') == ORC_ERROR_NONE);
+  ORC_SDK_REQUIRE(orc_str_remove(s, 0) == ORC_ERROR_NONE);
   ORC_SDK_REQUIRE_WITH_MSG(orc_str_len(s) == 0, "Empty after removing only character");
   ORC_SDK_REQUIRE_WITH_MSG(s[0] == '\0', "Still null-terminated when empty");
   // Remove from empty (non-NULL) string
-  ORC_SDK_REQUIRE_WITH_MSG(orc_str_remove(s, 0) == OUT_OF_BOUNDS,
+  ORC_SDK_REQUIRE_WITH_MSG(orc_str_remove(s, 0) == ORC_ERROR_OUT_OF_BOUNDS,
                            "Cannot remove from empty string");
   // One past end
-  ORC_SDK_REQUIRE(orc_str_push(s, 'a') == OK);
-  ORC_SDK_REQUIRE(orc_str_remove(s, orc_str_len(s)) == OUT_OF_BOUNDS);
+  ORC_SDK_REQUIRE(orc_str_push(s, 'a') == ORC_ERROR_NONE);
+  ORC_SDK_REQUIRE(orc_str_remove(s, orc_str_len(s)) == ORC_ERROR_OUT_OF_BOUNDS);
   // Way past end
-  ORC_SDK_REQUIRE(orc_str_remove(s, orc_str_len(s) + 10) == OUT_OF_BOUNDS);
+  ORC_SDK_REQUIRE(orc_str_remove(s, orc_str_len(s) + 10) == ORC_ERROR_OUT_OF_BOUNDS);
   // Huge index
-  ORC_SDK_REQUIRE(orc_str_remove(s, SIZE_MAX) == OUT_OF_BOUNDS);
+  ORC_SDK_REQUIRE(orc_str_remove(s, SIZE_MAX) == ORC_ERROR_OUT_OF_BOUNDS);
   // Remove from NULL
   char *null_str = NULL;
-  ORC_SDK_REQUIRE(orc_str_remove(null_str, 0) == OUT_OF_BOUNDS);
+  ORC_SDK_REQUIRE(orc_str_remove(null_str, 0) == ORC_ERROR_OUT_OF_BOUNDS);
   orc_str_free(s);
 }
 
@@ -806,14 +831,14 @@ void test_orc_str_len_and_end(void)
   char *s = NULL;
   ORC_SDK_REQUIRE(orc_str_len(s) == 0);
   // Build "abc"
-  ORC_SDK_REQUIRE(orc_str_push(s, 'a') == OK);
-  ORC_SDK_REQUIRE(orc_str_push(s, 'b') == OK);
-  ORC_SDK_REQUIRE(orc_str_push(s, 'c') == OK);
+  ORC_SDK_REQUIRE(orc_str_push(s, 'a') == ORC_ERROR_NONE);
+  ORC_SDK_REQUIRE(orc_str_push(s, 'b') == ORC_ERROR_NONE);
+  ORC_SDK_REQUIRE(orc_str_push(s, 'c') == ORC_ERROR_NONE);
   ORC_SDK_REQUIRE(orc_str_len(s) == 3);
   ORC_SDK_REQUIRE(orc_str_end(s) == s + orc_str_len(s));
   ORC_SDK_REQUIRE(*orc_str_end(s) == '\0');
   // After removal
-  ORC_SDK_REQUIRE(orc_str_remove(s, 1) == OK);
+  ORC_SDK_REQUIRE(orc_str_remove(s, 1) == ORC_ERROR_NONE);
   ORC_SDK_REQUIRE(orc_str_len(s) == 2);
   ORC_SDK_REQUIRE(orc_str_end(s) == s + orc_str_len(s));
   ORC_SDK_REQUIRE(*orc_str_end(s) == '\0');
@@ -823,13 +848,13 @@ void test_orc_str_len_and_end(void)
 void test_orc_str_free_and_reuse(void)
 {
   char *s = NULL;
-  ORC_SDK_REQUIRE(orc_str_push(s, 'a') == OK);
-  ORC_SDK_REQUIRE(orc_str_push(s, 'b') == OK);
+  ORC_SDK_REQUIRE(orc_str_push(s, 'a') == ORC_ERROR_NONE);
+  ORC_SDK_REQUIRE(orc_str_push(s, 'b') == ORC_ERROR_NONE);
   ORC_SDK_REQUIRE(orc_str_len(s) == 2);
   orc_str_free(s);
   ORC_SDK_REQUIRE_WITH_MSG(s == NULL, "Pointer is NULL after free");
   // Reuse after free
-  ORC_SDK_REQUIRE(orc_str_push(s, 'x') == OK);
+  ORC_SDK_REQUIRE(orc_str_push(s, 'x') == ORC_ERROR_NONE);
   ORC_SDK_REQUIRE(s != NULL);
   ORC_SDK_REQUIRE(orc_str_len(s) == 1);
   ORC_SDK_REQUIRE(strcmp(s, "x") == 0);
@@ -840,9 +865,9 @@ void test_str_push_special_characters(void)
 {
   char *s = NULL;
   // Whitespace characters
-  ORC_SDK_REQUIRE(orc_str_push(s, ' ') == OK);
-  ORC_SDK_REQUIRE(orc_str_push(s, '\t') == OK);
-  ORC_SDK_REQUIRE(orc_str_push(s, '\n') == OK);
+  ORC_SDK_REQUIRE(orc_str_push(s, ' ') == ORC_ERROR_NONE);
+  ORC_SDK_REQUIRE(orc_str_push(s, '\t') == ORC_ERROR_NONE);
+  ORC_SDK_REQUIRE(orc_str_push(s, '\n') == ORC_ERROR_NONE);
   ORC_SDK_REQUIRE(orc_str_len(s) == 3);
   ORC_SDK_REQUIRE(s[0] == ' ');
   ORC_SDK_REQUIRE(s[1] == '\t');
@@ -851,9 +876,9 @@ void test_str_push_special_characters(void)
   orc_str_free(s);
   // Non-ASCII / high bytes
   s = NULL;
-  ORC_SDK_REQUIRE(orc_str_push(s, (char)0xFF) == OK);
-  ORC_SDK_REQUIRE(orc_str_push(s, (char)0x80) == OK);
-  ORC_SDK_REQUIRE(orc_str_push(s, (char)0x01) == OK);
+  ORC_SDK_REQUIRE(orc_str_push(s, (char)0xFF) == ORC_ERROR_NONE);
+  ORC_SDK_REQUIRE(orc_str_push(s, (char)0x80) == ORC_ERROR_NONE);
+  ORC_SDK_REQUIRE(orc_str_push(s, (char)0x01) == ORC_ERROR_NONE);
   ORC_SDK_REQUIRE(orc_str_len(s) == 3);
   ORC_SDK_REQUIRE(s[0] == (char)0xFF);
   ORC_SDK_REQUIRE(s[1] == (char)0x80);
@@ -863,9 +888,9 @@ void test_str_push_special_characters(void)
   // Pushing a null byte - the header count still grows,
   // so orc_str_len reports based on header, not C string length
   s = NULL;
-  ORC_SDK_REQUIRE(orc_str_push(s, 'a') == OK);
-  ORC_SDK_REQUIRE(orc_str_push(s, '\0') == OK);
-  ORC_SDK_REQUIRE(orc_str_push(s, 'b') == OK);
+  ORC_SDK_REQUIRE(orc_str_push(s, 'a') == ORC_ERROR_NONE);
+  ORC_SDK_REQUIRE(orc_str_push(s, '\0') == ORC_ERROR_NONE);
+  ORC_SDK_REQUIRE(orc_str_push(s, 'b') == ORC_ERROR_NONE);
   ORC_SDK_REQUIRE_WITH_MSG(orc_str_len(s) == 3,
                            "orc_str_len tracks header count, not strlen");
   // But strlen would see only 1
@@ -879,7 +904,7 @@ void test_str_capacity_growth(void)
   size_t const n = 256;
   for (size_t i = 0; i < n; i++) {
     char ch = (char)('a' + (char)(i % 26));
-    ORC_SDK_REQUIRE(orc_str_push(s, ch) == OK);
+    ORC_SDK_REQUIRE(orc_str_push(s, ch) == ORC_ERROR_NONE);
     ORC_SDK_REQUIRE(orc_str_len(s) == i + 1);
     ORC_SDK_REQUIRE(s[orc_str_len(s)] == '\0');
     // Capacity must be at least length + 1 (for null terminator)
@@ -898,29 +923,29 @@ void test_str_mixed_operations(void)
 {
   char *s = NULL;
   // Build "hello"
-  ORC_SDK_REQUIRE(orc_str_push(s, 'h') == OK);
-  ORC_SDK_REQUIRE(orc_str_push(s, 'e') == OK);
-  ORC_SDK_REQUIRE(orc_str_push(s, 'l') == OK);
-  ORC_SDK_REQUIRE(orc_str_push(s, 'l') == OK);
-  ORC_SDK_REQUIRE(orc_str_push(s, 'o') == OK);
+  ORC_SDK_REQUIRE(orc_str_push(s, 'h') == ORC_ERROR_NONE);
+  ORC_SDK_REQUIRE(orc_str_push(s, 'e') == ORC_ERROR_NONE);
+  ORC_SDK_REQUIRE(orc_str_push(s, 'l') == ORC_ERROR_NONE);
+  ORC_SDK_REQUIRE(orc_str_push(s, 'l') == ORC_ERROR_NONE);
+  ORC_SDK_REQUIRE(orc_str_push(s, 'o') == ORC_ERROR_NONE);
   ORC_SDK_REQUIRE(strcmp(s, "hello") == 0);
   // Remove 'e' at index 1 -> "hllo"
-  ORC_SDK_REQUIRE(orc_str_remove(s, 1) == OK);
+  ORC_SDK_REQUIRE(orc_str_remove(s, 1) == ORC_ERROR_NONE);
   ORC_SDK_REQUIRE(strcmp(s, "hllo") == 0);
   ORC_SDK_REQUIRE(s[orc_str_len(s)] == '\0');
   // Push 'e' -> "hlloe"
-  ORC_SDK_REQUIRE(orc_str_push(s, 'e') == OK);
+  ORC_SDK_REQUIRE(orc_str_push(s, 'e') == ORC_ERROR_NONE);
   ORC_SDK_REQUIRE(strcmp(s, "hlloe") == 0);
   ORC_SDK_REQUIRE(s[orc_str_len(s)] == '\0');
   // Remove all characters one by one from front
   size_t len = orc_str_len(s);
   for (size_t i = 0; i < len; i++) {
-    ORC_SDK_REQUIRE(orc_str_remove(s, 0) == OK);
+    ORC_SDK_REQUIRE(orc_str_remove(s, 0) == ORC_ERROR_NONE);
   }
   ORC_SDK_REQUIRE(orc_str_len(s) == 0);
   ORC_SDK_REQUIRE(s[0] == '\0');
   // Push again after emptying
-  ORC_SDK_REQUIRE(orc_str_push(s, 'z') == OK);
+  ORC_SDK_REQUIRE(orc_str_push(s, 'z') == ORC_ERROR_NONE);
   ORC_SDK_REQUIRE(orc_str_len(s) == 1);
   ORC_SDK_REQUIRE(strcmp(s, "z") == 0);
   orc_str_free(s);
@@ -929,18 +954,18 @@ void test_str_mixed_operations(void)
 void test_str_single_character(void)
 {
   char *s = NULL;
-  ORC_SDK_REQUIRE(orc_str_push(s, 'x') == OK);
+  ORC_SDK_REQUIRE(orc_str_push(s, 'x') == ORC_ERROR_NONE);
   ORC_SDK_REQUIRE(orc_str_len(s) == 1);
   ORC_SDK_REQUIRE(s[0] == 'x');
   ORC_SDK_REQUIRE(s[1] == '\0');
   ORC_SDK_REQUIRE(orc_str_end(s) == s + 1);
   // Remove it
-  ORC_SDK_REQUIRE(orc_str_remove(s, 0) == OK);
+  ORC_SDK_REQUIRE(orc_str_remove(s, 0) == ORC_ERROR_NONE);
   ORC_SDK_REQUIRE(orc_str_len(s) == 0);
   ORC_SDK_REQUIRE(s[0] == '\0');
   ORC_SDK_REQUIRE(orc_str_end(s) == s);
   // Push again - recover from empty
-  ORC_SDK_REQUIRE(orc_str_push(s, 'y') == OK);
+  ORC_SDK_REQUIRE(orc_str_push(s, 'y') == ORC_ERROR_NONE);
   ORC_SDK_REQUIRE(orc_str_len(s) == 1);
   ORC_SDK_REQUIRE(s[0] == 'y');
   ORC_SDK_REQUIRE(s[1] == '\0');
@@ -953,7 +978,7 @@ void test_str_long_string(void)
   size_t const n = 10000;
   // Build a long string
   for (size_t i = 0; i < n; i++) {
-    ORC_SDK_REQUIRE(orc_str_push(s, (char)('A' + (char)(i % 26))) == OK);
+    ORC_SDK_REQUIRE(orc_str_push(s, (char)('A' + (char)(i % 26))) == ORC_ERROR_NONE);
   }
   ORC_SDK_REQUIRE(orc_str_len(s) == n);
   ORC_SDK_REQUIRE(s[n] == '\0');
@@ -963,19 +988,19 @@ void test_str_long_string(void)
   }
   // Remove 100 characters from the front
   for (size_t i = 0; i < 100; i++) {
-    ORC_SDK_REQUIRE(orc_str_remove(s, 0) == OK);
+    ORC_SDK_REQUIRE(orc_str_remove(s, 0) == ORC_ERROR_NONE);
   }
   ORC_SDK_REQUIRE(orc_str_len(s) == n - 100);
   ORC_SDK_REQUIRE(s[orc_str_len(s)] == '\0');
   // Remove from the end
   for (size_t i = 0; i < 100; i++) {
-    ORC_SDK_REQUIRE(orc_str_remove(s, orc_str_len(s) - 1) == OK);
+    ORC_SDK_REQUIRE(orc_str_remove(s, orc_str_len(s) - 1) == ORC_ERROR_NONE);
   }
   ORC_SDK_REQUIRE(orc_str_len(s) == n - 200);
   ORC_SDK_REQUIRE(s[orc_str_len(s)] == '\0');
   // Remove from middle
   size_t mid = orc_str_len(s) / 2;
-  ORC_SDK_REQUIRE(orc_str_remove(s, mid) == OK);
+  ORC_SDK_REQUIRE(orc_str_remove(s, mid) == ORC_ERROR_NONE);
   ORC_SDK_REQUIRE(orc_str_len(s) == n - 201);
   ORC_SDK_REQUIRE(s[orc_str_len(s)] == '\0');
   orc_str_free(s);
@@ -986,9 +1011,9 @@ void test_str_long_string(void)
 void test_orc_str_clear_basic(void)
 {
   char *s = NULL;
-  ORC_SDK_REQUIRE(orc_str_push(s, 'a') == OK);
-  ORC_SDK_REQUIRE(orc_str_push(s, 'b') == OK);
-  ORC_SDK_REQUIRE(orc_str_push(s, 'c') == OK);
+  ORC_SDK_REQUIRE(orc_str_push(s, 'a') == ORC_ERROR_NONE);
+  ORC_SDK_REQUIRE(orc_str_push(s, 'b') == ORC_ERROR_NONE);
+  ORC_SDK_REQUIRE(orc_str_push(s, 'c') == ORC_ERROR_NONE);
   ORC_SDK_REQUIRE(orc_str_len(s) == 3);
   orc_str_clear(s);
   ORC_SDK_REQUIRE_WITH_MSG(orc_str_len(s) == 0, "Length is 0 after clear");
@@ -1010,18 +1035,18 @@ void test_orc_str_clear_null(void)
 void test_orc_str_clear_and_reuse(void)
 {
   char *s = NULL;
-  ORC_SDK_REQUIRE(orc_str_push(s, 'x') == OK);
-  ORC_SDK_REQUIRE(orc_str_push(s, 'y') == OK);
+  ORC_SDK_REQUIRE(orc_str_push(s, 'x') == ORC_ERROR_NONE);
+  ORC_SDK_REQUIRE(orc_str_push(s, 'y') == ORC_ERROR_NONE);
   orc_str_clear(s);
   ORC_SDK_REQUIRE(orc_str_len(s) == 0);
   // Push after clear
-  ORC_SDK_REQUIRE(orc_str_push(s, 'a') == OK);
+  ORC_SDK_REQUIRE(orc_str_push(s, 'a') == ORC_ERROR_NONE);
   ORC_SDK_REQUIRE(orc_str_len(s) == 1);
   ORC_SDK_REQUIRE(strcmp(s, "a") == 0);
   // Clear and push again
   orc_str_clear(s);
-  ORC_SDK_REQUIRE(orc_str_push(s, 'b') == OK);
-  ORC_SDK_REQUIRE(orc_str_push(s, 'c') == OK);
+  ORC_SDK_REQUIRE(orc_str_push(s, 'b') == ORC_ERROR_NONE);
+  ORC_SDK_REQUIRE(orc_str_push(s, 'c') == ORC_ERROR_NONE);
   ORC_SDK_REQUIRE(strcmp(s, "bc") == 0);
   orc_str_free(s);
 }
@@ -1029,8 +1054,8 @@ void test_orc_str_clear_and_reuse(void)
 void test_orc_str_clear_already_empty(void)
 {
   char *s = NULL;
-  ORC_SDK_REQUIRE(orc_str_push(s, 'a') == OK);
-  ORC_SDK_REQUIRE(orc_str_remove(s, 0) == OK);
+  ORC_SDK_REQUIRE(orc_str_push(s, 'a') == ORC_ERROR_NONE);
+  ORC_SDK_REQUIRE(orc_str_remove(s, 0) == ORC_ERROR_NONE);
   ORC_SDK_REQUIRE(orc_str_len(s) == 0);
   // Clear an already-empty (but allocated) string
   orc_str_clear(s);
@@ -1044,9 +1069,9 @@ void test_orc_str_clear_already_empty(void)
 void test_str_push_str_basic(void)
 {
   char *s = NULL;
-  ORC_SDK_REQUIRE(orc_str_push(s, 'h') == OK);
-  ORC_SDK_REQUIRE(orc_str_push(s, 'i') == OK);
-  ORC_SDK_REQUIRE(orc_str_push_str(s, " world") == OK);
+  ORC_SDK_REQUIRE(orc_str_push(s, 'h') == ORC_ERROR_NONE);
+  ORC_SDK_REQUIRE(orc_str_push(s, 'i') == ORC_ERROR_NONE);
+  ORC_SDK_REQUIRE(orc_str_push_str(s, " world") == ORC_ERROR_NONE);
   ORC_SDK_REQUIRE_WITH_MSG(orc_str_len(s) == 8, "Length after push_str");
   ORC_SDK_REQUIRE_WITH_MSG(strcmp(s, "hi world") == 0, "Content after push_str");
   ORC_SDK_REQUIRE(s[orc_str_len(s)] == '\0');
@@ -1057,7 +1082,7 @@ void test_str_push_str_to_null(void)
 {
   // Push string onto NULL pointer
   char *s = NULL;
-  ORC_SDK_REQUIRE(orc_str_push_str(s, "hello") == OK);
+  ORC_SDK_REQUIRE(orc_str_push_str(s, "hello") == ORC_ERROR_NONE);
   ORC_SDK_REQUIRE(s != NULL);
   ORC_SDK_REQUIRE(orc_str_len(s) == 5);
   ORC_SDK_REQUIRE(strcmp(s, "hello") == 0);
@@ -1069,8 +1094,8 @@ void test_str_push_str_empty_tail(void)
 {
   // Push empty string onto existing string
   char *s = NULL;
-  ORC_SDK_REQUIRE(orc_str_push_str(s, "abc") == OK);
-  ORC_SDK_REQUIRE(orc_str_push_str(s, "") == OK);
+  ORC_SDK_REQUIRE(orc_str_push_str(s, "abc") == ORC_ERROR_NONE);
+  ORC_SDK_REQUIRE(orc_str_push_str(s, "") == ORC_ERROR_NONE);
   ORC_SDK_REQUIRE_WITH_MSG(orc_str_len(s) == 3,
                            "Length unchanged after pushing empty string");
   ORC_SDK_REQUIRE(strcmp(s, "abc") == 0);
@@ -1081,7 +1106,7 @@ void test_str_push_str_empty_tail_to_null(void)
 {
   // Push empty string onto NULL - should allocate an empty string, not fail
   char *s = NULL;
-  ORC_SDK_REQUIRE_WITH_MSG(orc_str_push_str(s, "") == OK,
+  ORC_SDK_REQUIRE_WITH_MSG(orc_str_push_str(s, "") == ORC_ERROR_NONE,
                            "Pushing empty to NULL should succeed");
   ORC_SDK_REQUIRE(s != NULL);
   ORC_SDK_REQUIRE(orc_str_len(s) == 0);
@@ -1092,9 +1117,9 @@ void test_str_push_str_empty_tail_to_null(void)
 void test_str_push_str_multiple(void)
 {
   char *s = NULL;
-  ORC_SDK_REQUIRE(orc_str_push_str(s, "foo") == OK);
-  ORC_SDK_REQUIRE(orc_str_push_str(s, "bar") == OK);
-  ORC_SDK_REQUIRE(orc_str_push_str(s, "baz") == OK);
+  ORC_SDK_REQUIRE(orc_str_push_str(s, "foo") == ORC_ERROR_NONE);
+  ORC_SDK_REQUIRE(orc_str_push_str(s, "bar") == ORC_ERROR_NONE);
+  ORC_SDK_REQUIRE(orc_str_push_str(s, "baz") == ORC_ERROR_NONE);
   ORC_SDK_REQUIRE(orc_str_len(s) == 9);
   ORC_SDK_REQUIRE(strcmp(s, "foobarbaz") == 0);
   ORC_SDK_REQUIRE(s[orc_str_len(s)] == '\0');
@@ -1104,12 +1129,12 @@ void test_str_push_str_multiple(void)
 void test_str_push_str_after_remove(void)
 {
   char *s = NULL;
-  ORC_SDK_REQUIRE(orc_str_push_str(s, "abcde") == OK);
+  ORC_SDK_REQUIRE(orc_str_push_str(s, "abcde") == ORC_ERROR_NONE);
   // Remove middle character
-  ORC_SDK_REQUIRE(orc_str_remove(s, 2) == OK);
+  ORC_SDK_REQUIRE(orc_str_remove(s, 2) == ORC_ERROR_NONE);
   ORC_SDK_REQUIRE(strcmp(s, "abde") == 0);
   // Push string after removal
-  ORC_SDK_REQUIRE(orc_str_push_str(s, "XY") == OK);
+  ORC_SDK_REQUIRE(orc_str_push_str(s, "XY") == ORC_ERROR_NONE);
   ORC_SDK_REQUIRE(strcmp(s, "abdeXY") == 0);
   ORC_SDK_REQUIRE(orc_str_len(s) == 6);
   ORC_SDK_REQUIRE(s[orc_str_len(s)] == '\0');
@@ -1119,10 +1144,10 @@ void test_str_push_str_after_remove(void)
 void test_str_push_str_after_clear(void)
 {
   char *s = NULL;
-  ORC_SDK_REQUIRE(orc_str_push_str(s, "hello") == OK);
+  ORC_SDK_REQUIRE(orc_str_push_str(s, "hello") == ORC_ERROR_NONE);
   orc_str_clear(s);
   ORC_SDK_REQUIRE(orc_str_len(s) == 0);
-  ORC_SDK_REQUIRE(orc_str_push_str(s, "world") == OK);
+  ORC_SDK_REQUIRE(orc_str_push_str(s, "world") == ORC_ERROR_NONE);
   ORC_SDK_REQUIRE(strcmp(s, "world") == 0);
   ORC_SDK_REQUIRE(orc_str_len(s) == 5);
   orc_str_free(s);
@@ -1133,7 +1158,7 @@ void test_str_push_str_long(void)
   char *s = NULL;
   // Build a long string by appending many times
   for (int i = 0; i < 500; i++) {
-    ORC_SDK_REQUIRE(orc_str_push_str(s, "ab") == OK);
+    ORC_SDK_REQUIRE(orc_str_push_str(s, "ab") == ORC_ERROR_NONE);
   }
   ORC_SDK_REQUIRE(orc_str_len(s) == 1000);
   ORC_SDK_REQUIRE(s[orc_str_len(s)] == '\0');
@@ -1149,12 +1174,12 @@ void test_str_push_str_single_char(void)
 {
   // Push a single-character string (compare behavior with orc_str_push)
   char *s = NULL;
-  ORC_SDK_REQUIRE(orc_str_push_str(s, "x") == OK);
+  ORC_SDK_REQUIRE(orc_str_push_str(s, "x") == ORC_ERROR_NONE);
   ORC_SDK_REQUIRE(orc_str_len(s) == 1);
   ORC_SDK_REQUIRE(strcmp(s, "x") == 0);
   // Equivalent to orc_str_push
   char *s2 = NULL;
-  ORC_SDK_REQUIRE(orc_str_push(s2, 'x') == OK);
+  ORC_SDK_REQUIRE(orc_str_push(s2, 'x') == ORC_ERROR_NONE);
   ORC_SDK_REQUIRE(orc_str_len(s2) == 1);
   ORC_SDK_REQUIRE(strcmp(s, s2) == 0);
   orc_str_free(s);
@@ -1173,11 +1198,11 @@ void test_orc_str_is_empty_after_operations(void)
 {
   char *s = NULL;
   ORC_SDK_REQUIRE(orc_str_is_empty(s));
-  ORC_SDK_REQUIRE(orc_str_push(s, 'a') == OK);
+  ORC_SDK_REQUIRE(orc_str_push(s, 'a') == ORC_ERROR_NONE);
   ORC_SDK_REQUIRE_WITH_MSG(!orc_str_is_empty(s), "Non-empty after push");
-  ORC_SDK_REQUIRE(orc_str_remove(s, 0) == OK);
+  ORC_SDK_REQUIRE(orc_str_remove(s, 0) == ORC_ERROR_NONE);
   ORC_SDK_REQUIRE_WITH_MSG(orc_str_is_empty(s), "Empty after removing last char");
-  ORC_SDK_REQUIRE(orc_str_push_str(s, "hi") == OK);
+  ORC_SDK_REQUIRE(orc_str_push_str(s, "hi") == ORC_ERROR_NONE);
   ORC_SDK_REQUIRE(!orc_str_is_empty(s));
   orc_str_clear(s);
   ORC_SDK_REQUIRE_WITH_MSG(orc_str_is_empty(s), "Empty after clear");
@@ -1189,17 +1214,17 @@ void test_orc_str_is_empty_after_operations(void)
 void test_str_mixed_new_operations(void)
 {
   char *s = NULL;
-  ORC_SDK_REQUIRE(orc_str_push_str(s, "hello") == OK);
-  ORC_SDK_REQUIRE(orc_str_push(s, '!') == OK);
+  ORC_SDK_REQUIRE(orc_str_push_str(s, "hello") == ORC_ERROR_NONE);
+  ORC_SDK_REQUIRE(orc_str_push(s, '!') == ORC_ERROR_NONE);
   ORC_SDK_REQUIRE(strcmp(s, "hello!") == 0);
   orc_str_clear(s);
   ORC_SDK_REQUIRE(orc_str_is_empty(s));
-  ORC_SDK_REQUIRE(orc_str_push(s, 'A') == OK);
-  ORC_SDK_REQUIRE(orc_str_push_str(s, "BC") == OK);
+  ORC_SDK_REQUIRE(orc_str_push(s, 'A') == ORC_ERROR_NONE);
+  ORC_SDK_REQUIRE(orc_str_push_str(s, "BC") == ORC_ERROR_NONE);
   ORC_SDK_REQUIRE(strcmp(s, "ABC") == 0);
-  ORC_SDK_REQUIRE(orc_str_remove(s, 1) == OK);
+  ORC_SDK_REQUIRE(orc_str_remove(s, 1) == ORC_ERROR_NONE);
   ORC_SDK_REQUIRE(strcmp(s, "AC") == 0);
-  ORC_SDK_REQUIRE(orc_str_push_str(s, "DE") == OK);
+  ORC_SDK_REQUIRE(orc_str_push_str(s, "DE") == ORC_ERROR_NONE);
   ORC_SDK_REQUIRE(strcmp(s, "ACDE") == 0);
   ORC_SDK_REQUIRE(orc_str_len(s) == 4);
   ORC_SDK_REQUIRE(s[orc_str_len(s)] == '\0');
@@ -1506,16 +1531,16 @@ void test_orc_str_eq(void)
   // Equal strings
   char *a = NULL;
   char *b = NULL;
-  ORC_SDK_REQUIRE(orc_str_push_str(a, "hello") == OK);
-  ORC_SDK_REQUIRE(orc_str_push_str(b, "hello") == OK);
+  ORC_SDK_REQUIRE(orc_str_push_str(a, "hello") == ORC_ERROR_NONE);
+  ORC_SDK_REQUIRE(orc_str_push_str(b, "hello") == ORC_ERROR_NONE);
   ORC_SDK_REQUIRE(orc_str_eq(a, b));
   // Different strings, same length
   orc_str_clear(b);
-  ORC_SDK_REQUIRE(orc_str_push_str(b, "world") == OK);
+  ORC_SDK_REQUIRE(orc_str_push_str(b, "world") == ORC_ERROR_NONE);
   ORC_SDK_REQUIRE(!orc_str_eq(a, b));
   // Different lengths
   orc_str_clear(b);
-  ORC_SDK_REQUIRE(orc_str_push_str(b, "hi") == OK);
+  ORC_SDK_REQUIRE(orc_str_push_str(b, "hi") == ORC_ERROR_NONE);
   ORC_SDK_REQUIRE(!orc_str_eq(a, b));
   // Both NULL
   ORC_SDK_REQUIRE(orc_str_eq(NULL, NULL));
@@ -1705,7 +1730,7 @@ static size_t *_binary_deck(uint8_t depth)
     uint8_t tz = (i > 0) ? (uint8_t)__builtin_ctzll(i) : depth;
     if (tz > depth)
       tz = depth;
-    ORC_SDK_REQUIRE(orc_sdk_deck_push(deck, i, tz) == OK);
+    ORC_SDK_REQUIRE(orc_sdk_deck_push(deck, i, tz) == ORC_ERROR_NONE);
   }
   return deck;
 }
@@ -1716,14 +1741,14 @@ void test_deck_basic_push_and_length(void)
   ORC_SDK_REQUIRE(orc_sdk_deck_len(deck) == 0);
   ORC_SDK_REQUIRE(orc_sdk_deck_max_depth(deck) == 0);
   ORC_SDK_REQUIRE(orc_sdk_deck_is_empty(deck));
-  ORC_SDK_REQUIRE(orc_sdk_deck_push(deck, ((size_t) {7}), 1) == OK);
+  ORC_SDK_REQUIRE(orc_sdk_deck_push(deck, ((size_t) {7}), 1) == ORC_ERROR_NONE);
   ORC_SDK_REQUIRE(orc_sdk_deck_len(deck) == 1);
   ORC_SDK_REQUIRE(orc_sdk_deck_max_depth(deck) == 1);
   ORC_SDK_REQUIRE(!orc_sdk_deck_is_empty(deck));
   ORC_SDK_REQUIRE(_orc_sdk_deck_header(deck)->item_size == sizeof(size_t));
   ORC_SDK_REQUIRE(deck[0] == 7);
-  ORC_SDK_REQUIRE(orc_sdk_deck_push(deck, ((size_t) {8}), 0) == OK);
-  ORC_SDK_REQUIRE(orc_sdk_deck_push(deck, ((size_t) {9}), 0) == OK);
+  ORC_SDK_REQUIRE(orc_sdk_deck_push(deck, ((size_t) {8}), 0) == ORC_ERROR_NONE);
+  ORC_SDK_REQUIRE(orc_sdk_deck_push(deck, ((size_t) {9}), 0) == ORC_ERROR_NONE);
   ORC_SDK_REQUIRE(orc_sdk_deck_len(deck) == 3);
   ORC_SDK_REQUIRE(_orc_sdk_deck_header(deck)->item_size == sizeof(size_t));
   ORC_SDK_REQUIRE(deck[0] == 7);
@@ -1772,8 +1797,8 @@ void test_orc_sdk_deck_clear(void)
   ORC_SDK_REQUIRE(orc_sdk_deck_max_depth(deck) == 0);
   ORC_SDK_REQUIRE(_orc_sdk_deck_header(deck)->item_size == sizeof(size_t));
   // Re-use after clear.
-  ORC_SDK_REQUIRE(orc_sdk_deck_push(deck, ((size_t) {1}), 1) == OK);
-  ORC_SDK_REQUIRE(orc_sdk_deck_push(deck, ((size_t) {2}), 0) == OK);
+  ORC_SDK_REQUIRE(orc_sdk_deck_push(deck, ((size_t) {1}), 1) == ORC_ERROR_NONE);
+  ORC_SDK_REQUIRE(orc_sdk_deck_push(deck, ((size_t) {2}), 0) == ORC_ERROR_NONE);
   ORC_SDK_REQUIRE(orc_sdk_deck_len(deck) == 2);
   ORC_SDK_REQUIRE(orc_sdk_deck_max_depth(deck) == 1);
   ORC_SDK_REQUIRE(_orc_sdk_deck_header(deck)->item_size == sizeof(size_t));
@@ -1805,7 +1830,7 @@ void test_orc_sdk_deck_flatten(void)
   orc_sdk_deck_free(deck);
   // Flatten a single-element deck pushed at depth 0: no marks.
   size_t *deck2 = NULL;
-  ORC_SDK_REQUIRE(orc_sdk_deck_push(deck2, ((size_t) {5}), 0) == OK);
+  ORC_SDK_REQUIRE(orc_sdk_deck_push(deck2, ((size_t) {5}), 0) == ORC_ERROR_NONE);
   ORC_SDK_REQUIRE(_orc_sdk_deck_header(deck2)->item_size == sizeof(size_t));
   orc_sdk_deck_flatten(deck2);
   ORC_SDK_REQUIRE(orc_sdk_deck_max_depth(deck2) == 0);
@@ -1817,12 +1842,12 @@ void test_orc_sdk_deck_flatten(void)
 void test_orc_sdk_deck_reserve(void)
 {
   size_t *deck = NULL;
-  ORC_SDK_REQUIRE(orc_sdk_deck_reserve(deck, 32) == OK);
+  ORC_SDK_REQUIRE(orc_sdk_deck_reserve(deck, 32) == ORC_ERROR_NONE);
   ORC_SDK_REQUIRE(deck != NULL);
   ORC_SDK_REQUIRE(orc_sdk_deck_len(deck) == 0);
   ORC_SDK_REQUIRE(_orc_sdk_deck_header(deck)->item_size == sizeof(size_t));
   for (size_t i = 0; i < 32; ++i) {
-    ORC_SDK_REQUIRE(orc_sdk_deck_push(deck, i, (i == 0) ? 1 : 0) == OK);
+    ORC_SDK_REQUIRE(orc_sdk_deck_push(deck, i, (i == 0) ? 1 : 0) == ORC_ERROR_NONE);
   }
   ORC_SDK_REQUIRE(orc_sdk_deck_len(deck) == 32);
   ORC_SDK_REQUIRE(_orc_sdk_deck_header(deck)->item_size == sizeof(size_t));
@@ -1837,10 +1862,11 @@ void test_deck_depth_clamping(void)
   // Depth higher than the first mark's depth should be clamped.
   size_t *deck = NULL;
   ORC_SDK_REQUIRE(orc_sdk_deck_push(deck, ((size_t) {0}), 2) ==
-                  OK);  // first mark: internal depth 1
-  ORC_SDK_REQUIRE(orc_sdk_deck_push(deck, ((size_t) {1}), 0) == OK);
-  ORC_SDK_REQUIRE(orc_sdk_deck_push(deck, ((size_t) {2}), 5) == OK);  // should be clamped
-  ORC_SDK_REQUIRE(orc_sdk_deck_push(deck, ((size_t) {3}), 0) == OK);
+                  ORC_ERROR_NONE);  // first mark: internal depth 1
+  ORC_SDK_REQUIRE(orc_sdk_deck_push(deck, ((size_t) {1}), 0) == ORC_ERROR_NONE);
+  ORC_SDK_REQUIRE(orc_sdk_deck_push(deck, ((size_t) {2}), 5) ==
+                  ORC_ERROR_NONE);  // should be clamped
+  ORC_SDK_REQUIRE(orc_sdk_deck_push(deck, ((size_t) {3}), 0) == ORC_ERROR_NONE);
   ORC_SDK_REQUIRE(orc_sdk_deck_len(deck) == 4);
   ORC_SDK_REQUIRE(orc_sdk_deck_max_depth(deck) == 2);
   _OrcSdk_DeckHeader *h = _orc_sdk_deck_header(deck);
@@ -1855,7 +1881,7 @@ void test_deck_single_element(void)
 {
   // Depth 0: bare leaf, no marks.
   size_t *deck = NULL;
-  ORC_SDK_REQUIRE(orc_sdk_deck_push(deck, ((size_t) {42}), 0) == OK);
+  ORC_SDK_REQUIRE(orc_sdk_deck_push(deck, ((size_t) {42}), 0) == ORC_ERROR_NONE);
   ORC_SDK_REQUIRE(orc_sdk_deck_len(deck) == 1);
   ORC_SDK_REQUIRE(orc_sdk_deck_max_depth(deck) == 0);
   ORC_SDK_REQUIRE(_orc_sdk_deck_header(deck)->item_size == sizeof(size_t));
@@ -1864,7 +1890,7 @@ void test_deck_single_element(void)
   orc_sdk_deck_free(deck);
   // Depth 1.
   size_t *deck2 = NULL;
-  ORC_SDK_REQUIRE(orc_sdk_deck_push(deck2, ((size_t) {7}), 1) == OK);
+  ORC_SDK_REQUIRE(orc_sdk_deck_push(deck2, ((size_t) {7}), 1) == ORC_ERROR_NONE);
   ORC_SDK_REQUIRE(orc_sdk_deck_len(deck2) == 1);
   ORC_SDK_REQUIRE(orc_sdk_deck_max_depth(deck2) == 1);
   ORC_SDK_REQUIRE(_orc_sdk_deck_header(deck2)->item_size == sizeof(size_t));
@@ -1884,7 +1910,7 @@ void test_deck_many_pushes(void)
   size_t *deck = NULL;
   size_t  n    = 1000;
   for (size_t i = 0; i < n; ++i) {
-    ORC_SDK_REQUIRE(orc_sdk_deck_push(deck, i, (i == 0) ? 1 : 0) == OK);
+    ORC_SDK_REQUIRE(orc_sdk_deck_push(deck, i, (i == 0) ? 1 : 0) == ORC_ERROR_NONE);
   }
   ORC_SDK_REQUIRE(orc_sdk_deck_len(deck) == n);
   ORC_SDK_REQUIRE(orc_sdk_deck_max_depth(deck) == 1);
@@ -1935,7 +1961,7 @@ void test_orc_sdk_deck_graft(void)
   // Graft a flat (depth-1) deck: each item gets wrapped.
   size_t *deck3 = NULL;
   for (size_t i = 0; i < 3; ++i) {
-    ORC_SDK_REQUIRE(orc_sdk_deck_push(deck3, i, (i == 0) ? 1 : 0) == OK);
+    ORC_SDK_REQUIRE(orc_sdk_deck_push(deck3, i, (i == 0) ? 1 : 0) == ORC_ERROR_NONE);
   }
   ORC_SDK_REQUIRE(orc_sdk_deck_max_depth(deck3) == 1);
   orc_sdk_deck_graft(deck3);
@@ -1980,10 +2006,12 @@ void test_orc_sdk_deck_simplify(void)
   // Should be remapped to 0 and 1.
   {
     size_t *deck = NULL;
-    ORC_SDK_REQUIRE(orc_sdk_deck_push(deck, ((size_t) {0}), 5) == OK);  // mark depth = 4
-    ORC_SDK_REQUIRE(orc_sdk_deck_push(deck, ((size_t) {1}), 0) == OK);
-    ORC_SDK_REQUIRE(orc_sdk_deck_push(deck, ((size_t) {2}), 2) == OK);  // mark depth = 1
-    ORC_SDK_REQUIRE(orc_sdk_deck_push(deck, ((size_t) {3}), 0) == OK);
+    ORC_SDK_REQUIRE(orc_sdk_deck_push(deck, ((size_t) {0}), 5) ==
+                    ORC_ERROR_NONE);  // mark depth = 4
+    ORC_SDK_REQUIRE(orc_sdk_deck_push(deck, ((size_t) {1}), 0) == ORC_ERROR_NONE);
+    ORC_SDK_REQUIRE(orc_sdk_deck_push(deck, ((size_t) {2}), 2) ==
+                    ORC_ERROR_NONE);  // mark depth = 1
+    ORC_SDK_REQUIRE(orc_sdk_deck_push(deck, ((size_t) {3}), 0) == ORC_ERROR_NONE);
     _OrcSdk_DeckHeader *h = _orc_sdk_deck_header(deck);
     ORC_SDK_REQUIRE(orc_sdk_arr_len(h->marks) == 2);
     // Before simplify: depths are 4 and 1 (clamped from external 5 and 2).
@@ -2005,10 +2033,10 @@ void test_orc_sdk_deck_simplify(void)
   // Simplify is idempotent.
   {
     size_t *deck = NULL;
-    ORC_SDK_REQUIRE(orc_sdk_deck_push(deck, ((size_t) {0}), 5) == OK);
-    ORC_SDK_REQUIRE(orc_sdk_deck_push(deck, ((size_t) {1}), 0) == OK);
-    ORC_SDK_REQUIRE(orc_sdk_deck_push(deck, ((size_t) {2}), 2) == OK);
-    ORC_SDK_REQUIRE(orc_sdk_deck_push(deck, ((size_t) {3}), 0) == OK);
+    ORC_SDK_REQUIRE(orc_sdk_deck_push(deck, ((size_t) {0}), 5) == ORC_ERROR_NONE);
+    ORC_SDK_REQUIRE(orc_sdk_deck_push(deck, ((size_t) {1}), 0) == ORC_ERROR_NONE);
+    ORC_SDK_REQUIRE(orc_sdk_deck_push(deck, ((size_t) {2}), 2) == ORC_ERROR_NONE);
+    ORC_SDK_REQUIRE(orc_sdk_deck_push(deck, ((size_t) {3}), 0) == ORC_ERROR_NONE);
     orc_sdk_deck_simplify(deck);
     _OrcSdk_DeckHeader *h  = _orc_sdk_deck_header(deck);
     uint8_t const       d0 = h->marks[0].depth;
@@ -2338,7 +2366,7 @@ void test_dw_basic_depth2(void)
     for (int g = 0; g < 3; ++g) {
       OrcSdk_DeckWriter c = orc_sdk_dw_child(&w);
       for (int i = 0; i < 3; ++i) {
-        ORC_SDK_REQUIRE(orc_sdk_dw_push(&c, counter) == OK);
+        ORC_SDK_REQUIRE(orc_sdk_dw_push(&c, counter) == ORC_ERROR_NONE);
         counter++;
       }
       ORC_SDK_REQUIRE(orc_sdk_dw_len(&c) == 3);
@@ -2378,7 +2406,7 @@ void test_dw_depth3_nested(void)
         OrcSdk_DeckWriter w1 = orc_sdk_dw_child(&w2);
         ORC_SDK_REQUIRE(w1.depth == 1);
         for (int c = 0; c < 3; ++c) {
-          ORC_SDK_REQUIRE(orc_sdk_dw_push(&w1, counter) == OK);
+          ORC_SDK_REQUIRE(orc_sdk_dw_push(&w1, counter) == ORC_ERROR_NONE);
           counter++;
         }
         ORC_SDK_REQUIRE(orc_sdk_dw_len(&w1) == 3);
@@ -2416,25 +2444,25 @@ void test_dw_unbalanced_tree(void)
     {
       OrcSdk_DeckWriter c = orc_sdk_dw_child(&w);
       uint32_t          v = 1;
-      ORC_SDK_REQUIRE(orc_sdk_dw_push(&c, v) == OK);
+      ORC_SDK_REQUIRE(orc_sdk_dw_push(&c, v) == ORC_ERROR_NONE);
     }
     {
       OrcSdk_DeckWriter c = orc_sdk_dw_child(&w);
       uint32_t          v;
       v = 2;
-      ORC_SDK_REQUIRE(orc_sdk_dw_push(&c, v) == OK);
+      ORC_SDK_REQUIRE(orc_sdk_dw_push(&c, v) == ORC_ERROR_NONE);
       v = 3;
-      ORC_SDK_REQUIRE(orc_sdk_dw_push(&c, v) == OK);
+      ORC_SDK_REQUIRE(orc_sdk_dw_push(&c, v) == ORC_ERROR_NONE);
       v = 4;
-      ORC_SDK_REQUIRE(orc_sdk_dw_push(&c, v) == OK);
+      ORC_SDK_REQUIRE(orc_sdk_dw_push(&c, v) == ORC_ERROR_NONE);
     }
     {
       OrcSdk_DeckWriter c = orc_sdk_dw_child(&w);
       uint32_t          v;
       v = 5;
-      ORC_SDK_REQUIRE(orc_sdk_dw_push(&c, v) == OK);
+      ORC_SDK_REQUIRE(orc_sdk_dw_push(&c, v) == ORC_ERROR_NONE);
       v = 6;
-      ORC_SDK_REQUIRE(orc_sdk_dw_push(&c, v) == OK);
+      ORC_SDK_REQUIRE(orc_sdk_dw_push(&c, v) == ORC_ERROR_NONE);
     }
   }
   ORC_SDK_REQUIRE(orc_sdk_deck_len(deck) == 6);
@@ -2481,9 +2509,9 @@ void test_dw_empty_groups(void)
       OrcSdk_DeckWriter c = orc_sdk_dw_child(&w);
       uint32_t          v;
       v = 1;
-      ORC_SDK_REQUIRE(orc_sdk_dw_push(&c, v) == OK);
+      ORC_SDK_REQUIRE(orc_sdk_dw_push(&c, v) == ORC_ERROR_NONE);
       v = 2;
-      ORC_SDK_REQUIRE(orc_sdk_dw_push(&c, v) == OK);
+      ORC_SDK_REQUIRE(orc_sdk_dw_push(&c, v) == ORC_ERROR_NONE);
     }
     {
       OrcSdk_DeckWriter c = orc_sdk_dw_child(&w);
@@ -2492,7 +2520,7 @@ void test_dw_empty_groups(void)
     {
       OrcSdk_DeckWriter c = orc_sdk_dw_child(&w);
       uint32_t          v = 3;
-      ORC_SDK_REQUIRE(orc_sdk_dw_push(&c, v) == OK);
+      ORC_SDK_REQUIRE(orc_sdk_dw_push(&c, v) == ORC_ERROR_NONE);
     }
     {
       OrcSdk_DeckWriter c = orc_sdk_dw_child(&w);
@@ -2534,9 +2562,9 @@ void test_dw_nested_empty(void)
         OrcSdk_DeckWriter w1 = orc_sdk_dw_child(&w2);
         uint32_t          v;
         v = 1;
-        ORC_SDK_REQUIRE(orc_sdk_dw_push(&w1, v) == OK);
+        ORC_SDK_REQUIRE(orc_sdk_dw_push(&w1, v) == ORC_ERROR_NONE);
         v = 2;
-        ORC_SDK_REQUIRE(orc_sdk_dw_push(&w1, v) == OK);
+        ORC_SDK_REQUIRE(orc_sdk_dw_push(&w1, v) == ORC_ERROR_NONE);
       }
     }
     {
@@ -2544,7 +2572,7 @@ void test_dw_nested_empty(void)
       {
         OrcSdk_DeckWriter w1 = orc_sdk_dw_child(&w2);
         uint32_t          v  = 3;
-        ORC_SDK_REQUIRE(orc_sdk_dw_push(&w1, v) == OK);
+        ORC_SDK_REQUIRE(orc_sdk_dw_push(&w1, v) == ORC_ERROR_NONE);
       }
     }
     {
@@ -2604,7 +2632,7 @@ void test_dw_single_element_deep(void)
     OrcSdk_DeckWriter w2 = orc_sdk_dw_child(&w3);
     OrcSdk_DeckWriter w1 = orc_sdk_dw_child(&w2);
     uint32_t          v  = 42;
-    ORC_SDK_REQUIRE(orc_sdk_dw_push(&w1, v) == OK);
+    ORC_SDK_REQUIRE(orc_sdk_dw_push(&w1, v) == ORC_ERROR_NONE);
   }
   ORC_SDK_REQUIRE(orc_sdk_deck_len(deck) == 1);
   ORC_SDK_REQUIRE(orc_sdk_deck_max_depth(deck) == 5);
@@ -2674,13 +2702,13 @@ void test_dw_append_to_existing(void)
   uint32_t *deck = NULL;
   uint32_t  v;
   v = 1;
-  ORC_SDK_REQUIRE(OK == orc_sdk_deck_push(deck, v, 2));
+  ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_deck_push(deck, v, 2));
   v = 2;
-  ORC_SDK_REQUIRE(OK == orc_sdk_deck_push(deck, v, 0));
+  ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_deck_push(deck, v, 0));
   v = 3;
-  ORC_SDK_REQUIRE(OK == orc_sdk_deck_push(deck, v, 1));
+  ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_deck_push(deck, v, 1));
   v = 4;
-  ORC_SDK_REQUIRE(OK == orc_sdk_deck_push(deck, v, 0));
+  ORC_SDK_REQUIRE(ORC_ERROR_NONE == orc_sdk_deck_push(deck, v, 0));
   ORC_SDK_REQUIRE(orc_sdk_deck_len(deck) == 4);
   ORC_SDK_REQUIRE(_orc_sdk_deck_header(deck)->item_size == sizeof(uint32_t));
   // Append another depth-1 group.
@@ -3822,12 +3850,15 @@ void test_deck_from_proxy_shuffle(void)
     orc_sdk_oh_update(&in);
 
     OrcItemProxy *pdeck = NULL;
-    ORC_SDK_REQUIRE(
-      orc_sdk_deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 2}), 1) == OK);
-    ORC_SDK_REQUIRE(
-      orc_sdk_deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 1}), 0) == OK);
-    ORC_SDK_REQUIRE(
-      orc_sdk_deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 0}), 0) == OK);
+    ORC_SDK_REQUIRE(orc_sdk_deck_push(pdeck,
+                                      ((OrcItemProxy) {.tree = 0, .item = 2}),
+                                      1) == ORC_ERROR_NONE);
+    ORC_SDK_REQUIRE(orc_sdk_deck_push(pdeck,
+                                      ((OrcItemProxy) {.tree = 0, .item = 1}),
+                                      0) == ORC_ERROR_NONE);
+    ORC_SDK_REQUIRE(orc_sdk_deck_push(pdeck,
+                                      ((OrcItemProxy) {.tree = 0, .item = 0}),
+                                      0) == ORC_ERROR_NONE);
     OrcHandle proxy = _make_shuffle_proxy(pdeck);
     orc_sdk_deck_from_proxy(&in, 1, ORC_DECK_PROXY_SHUFFLE, &proxy, &out);
 
@@ -3849,17 +3880,22 @@ void test_deck_from_proxy_shuffle(void)
 
     OrcItemProxy *pdeck = NULL;
     /* First sublist reversed: flat indices 1, 0. */
-    ORC_SDK_REQUIRE(
-      orc_sdk_deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 1}), 2) == OK);
-    ORC_SDK_REQUIRE(
-      orc_sdk_deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 0}), 0) == OK);
+    ORC_SDK_REQUIRE(orc_sdk_deck_push(pdeck,
+                                      ((OrcItemProxy) {.tree = 0, .item = 1}),
+                                      2) == ORC_ERROR_NONE);
+    ORC_SDK_REQUIRE(orc_sdk_deck_push(pdeck,
+                                      ((OrcItemProxy) {.tree = 0, .item = 0}),
+                                      0) == ORC_ERROR_NONE);
     /* Second sublist reversed: flat indices 4, 3, 2. */
-    ORC_SDK_REQUIRE(
-      orc_sdk_deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 4}), 1) == OK);
-    ORC_SDK_REQUIRE(
-      orc_sdk_deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 3}), 0) == OK);
-    ORC_SDK_REQUIRE(
-      orc_sdk_deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 2}), 0) == OK);
+    ORC_SDK_REQUIRE(orc_sdk_deck_push(pdeck,
+                                      ((OrcItemProxy) {.tree = 0, .item = 4}),
+                                      1) == ORC_ERROR_NONE);
+    ORC_SDK_REQUIRE(orc_sdk_deck_push(pdeck,
+                                      ((OrcItemProxy) {.tree = 0, .item = 3}),
+                                      0) == ORC_ERROR_NONE);
+    ORC_SDK_REQUIRE(orc_sdk_deck_push(pdeck,
+                                      ((OrcItemProxy) {.tree = 0, .item = 2}),
+                                      0) == ORC_ERROR_NONE);
     OrcHandle proxy = _make_shuffle_proxy(pdeck);
     orc_sdk_deck_from_proxy(&in, 1, ORC_DECK_PROXY_SHUFFLE, &proxy, &out);
 
@@ -3880,10 +3916,12 @@ void test_deck_from_proxy_shuffle(void)
     orc_sdk_oh_update(&in);
 
     OrcItemProxy *pdeck = NULL;
-    ORC_SDK_REQUIRE(
-      orc_sdk_deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 1}), 1) == OK);
-    ORC_SDK_REQUIRE(
-      orc_sdk_deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 4}), 0) == OK);
+    ORC_SDK_REQUIRE(orc_sdk_deck_push(pdeck,
+                                      ((OrcItemProxy) {.tree = 0, .item = 1}),
+                                      1) == ORC_ERROR_NONE);
+    ORC_SDK_REQUIRE(orc_sdk_deck_push(pdeck,
+                                      ((OrcItemProxy) {.tree = 0, .item = 4}),
+                                      0) == ORC_ERROR_NONE);
     OrcHandle proxy = _make_shuffle_proxy(pdeck);
     orc_sdk_deck_from_proxy(&in, 1, ORC_DECK_PROXY_SHUFFLE, &proxy, &out);
 
@@ -3907,14 +3945,18 @@ void test_deck_from_proxy_shuffle(void)
     orc_sdk_oh_update(&b);
 
     OrcItemProxy *pdeck = NULL;
-    ORC_SDK_REQUIRE(
-      orc_sdk_deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 0}), 1) == OK);
-    ORC_SDK_REQUIRE(
-      orc_sdk_deck_push(pdeck, ((OrcItemProxy) {.tree = 1, .item = 0}), 0) == OK);
-    ORC_SDK_REQUIRE(
-      orc_sdk_deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 1}), 0) == OK);
-    ORC_SDK_REQUIRE(
-      orc_sdk_deck_push(pdeck, ((OrcItemProxy) {.tree = 1, .item = 1}), 0) == OK);
+    ORC_SDK_REQUIRE(orc_sdk_deck_push(pdeck,
+                                      ((OrcItemProxy) {.tree = 0, .item = 0}),
+                                      1) == ORC_ERROR_NONE);
+    ORC_SDK_REQUIRE(orc_sdk_deck_push(pdeck,
+                                      ((OrcItemProxy) {.tree = 1, .item = 0}),
+                                      0) == ORC_ERROR_NONE);
+    ORC_SDK_REQUIRE(orc_sdk_deck_push(pdeck,
+                                      ((OrcItemProxy) {.tree = 0, .item = 1}),
+                                      0) == ORC_ERROR_NONE);
+    ORC_SDK_REQUIRE(orc_sdk_deck_push(pdeck,
+                                      ((OrcItemProxy) {.tree = 1, .item = 1}),
+                                      0) == ORC_ERROR_NONE);
     OrcHandle proxy = _make_shuffle_proxy(pdeck);
 
     OrcHandle inputs[2] = {a, b};
@@ -3961,14 +4003,18 @@ void test_deck_from_proxy_type_agnostic(void)
     orc_sdk_oh_update(&in);
 
     OrcItemProxy *pdeck = NULL;
-    ORC_SDK_REQUIRE(
-      orc_sdk_deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 3}), 1) == OK);
-    ORC_SDK_REQUIRE(
-      orc_sdk_deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 2}), 0) == OK);
-    ORC_SDK_REQUIRE(
-      orc_sdk_deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 1}), 0) == OK);
-    ORC_SDK_REQUIRE(
-      orc_sdk_deck_push(pdeck, ((OrcItemProxy) {.tree = 0, .item = 0}), 0) == OK);
+    ORC_SDK_REQUIRE(orc_sdk_deck_push(pdeck,
+                                      ((OrcItemProxy) {.tree = 0, .item = 3}),
+                                      1) == ORC_ERROR_NONE);
+    ORC_SDK_REQUIRE(orc_sdk_deck_push(pdeck,
+                                      ((OrcItemProxy) {.tree = 0, .item = 2}),
+                                      0) == ORC_ERROR_NONE);
+    ORC_SDK_REQUIRE(orc_sdk_deck_push(pdeck,
+                                      ((OrcItemProxy) {.tree = 0, .item = 1}),
+                                      0) == ORC_ERROR_NONE);
+    ORC_SDK_REQUIRE(orc_sdk_deck_push(pdeck,
+                                      ((OrcItemProxy) {.tree = 0, .item = 0}),
+                                      0) == ORC_ERROR_NONE);
     OrcHandle proxy = _make_shuffle_proxy(pdeck);
     orc_sdk_deck_from_proxy(&in, 1, ORC_DECK_PROXY_SHUFFLE, &proxy, &out);
 

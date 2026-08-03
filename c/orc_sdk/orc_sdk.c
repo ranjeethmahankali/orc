@@ -9,20 +9,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-int stat_printf(OrcSdk_Status const s)
-{
-  switch (s) {
-  case OK:
-    return printf("[OK]");
-  case ALLOC_FAILED:
-    return printf("[ERROR] Failed to allocate memory");
-  case OUT_OF_BOUNDS:
-    return printf("[ERROR] Index is out of bounds");
-  default:  // Weird.
-    return -1;
-  }
-}
+#include "orc_abi.h"
 
 void *_orc_sdk_arr_grow(void *ptr, size_t elemsize)
 {
@@ -73,7 +60,7 @@ void *_orc_sdk_arr_grow_capacity(void *ptr, size_t const elemsize, size_t const 
   return ptr;
 }
 
-OrcSdk_Status _orc_sdk_arr_remove_impl(void *ptr, size_t const idx, size_t const elemsize)
+OrcError _orc_sdk_arr_remove_impl(void *ptr, size_t const idx, size_t const elemsize)
 {
   _OrcSdk_ArrHeader *h = _orc_sdk_arr_header(ptr);
   if (h && (idx < h->count)) {
@@ -82,9 +69,9 @@ OrcSdk_Status _orc_sdk_arr_remove_impl(void *ptr, size_t const idx, size_t const
     size_t const len = --(h->count) - idx;
     if (len)
       memmove(dst, src, len * elemsize);
-    return OK;
+    return ORC_ERROR_NONE;
   }
-  return OUT_OF_BOUNDS;
+  return ORC_ERROR_OUT_OF_BOUNDS;
 }
 
 void *_orc_sdk_arr_resize_impl(void *ptr, size_t const elemsize, size_t const count)
@@ -140,15 +127,15 @@ void _orc_sdk_arr_fill_impl(void             *arr,
                            "Should have written up to the end of the array.");
 }
 
-OrcSdk_Status _orc_sdk_arr_remove_range_impl(void        *ptr,
-                                             size_t const start,
-                                             size_t const stop,
-                                             size_t const elemsize)
+OrcError _orc_sdk_arr_remove_range_impl(void        *ptr,
+                                        size_t const start,
+                                        size_t const stop,
+                                        size_t const elemsize)
 {
   _OrcSdk_ArrHeader *h = _orc_sdk_arr_header(ptr);
   if (h && (start <= stop) && (start <= h->count) && (stop <= h->count)) {
     if (start == stop || start == h->count) {
-      return OK;
+      return ORC_ERROR_NONE;
     }
     char        *dst      = (char *)ptr + start * elemsize;
     size_t const nremoved = stop - start;
@@ -156,9 +143,9 @@ OrcSdk_Status _orc_sdk_arr_remove_range_impl(void        *ptr,
     if (nshift)
       memmove(dst, dst + nremoved * elemsize, nshift * elemsize);
     h->count -= nremoved;
-    return OK;
+    return ORC_ERROR_NONE;
   }
-  return OUT_OF_BOUNDS;
+  return ORC_ERROR_OUT_OF_BOUNDS;
 }
 
 bool orc_sdk_arr_is_empty(void *ptr)
@@ -169,12 +156,12 @@ bool orc_sdk_arr_is_empty(void *ptr)
 
 // ========== String ==========
 
-OrcSdk_Status _orc_str_remove_impl(char *const ptr, size_t const idx)
+OrcError _orc_str_remove_impl(char *const ptr, size_t const idx)
 {
   if (idx < orc_str_len(ptr)) {
     return _orc_sdk_arr_remove_impl(ptr, idx, sizeof(char));
   }
-  return OUT_OF_BOUNDS;
+  return ORC_ERROR_OUT_OF_BOUNDS;
 }
 
 char *_orc_str_push_impl(char *ptr, char val)
@@ -621,11 +608,11 @@ void *_orc_sdk_deck_grow_capacity(void *ptr, size_t const itemsize, size_t const
     h->capacity = n;
     ptr         = h + 1;
   }
-  if (OK != orc_sdk_arr_reserve(h->marks, n)) {
+  if (ORC_ERROR_NONE != orc_sdk_arr_reserve(h->marks, n)) {
     _orc_sdk_deck_free_impl(ptr);
     return NULL;
   }
-  if (OK != orc_sdk_arr_reserve(h->stride_offset, n)) {
+  if (ORC_ERROR_NONE != orc_sdk_arr_reserve(h->stride_offset, n)) {
     _orc_sdk_deck_free_impl(ptr);
     return NULL;
   }
@@ -699,11 +686,11 @@ void orc_sdk_deck_graft(void *ptr)
   _OrcSdk_DeckHeader *h = _orc_sdk_deck_header(ptr);
   if (h == NULL)
     return;
-  size_t const count         = orc_sdk_arr_len(h->marks);
-  OrcMark     *old_marks     = h->marks;
-  h->marks                   = NULL;
-  OrcSdk_Status const status = orc_sdk_arr_reserve(h->marks, count + h->count);
-  ORC_SDK_REQUIRE_WITH_MSG(status == OK, "Allocation failed.");
+  size_t const count     = orc_sdk_arr_len(h->marks);
+  OrcMark     *old_marks = h->marks;
+  h->marks               = NULL;
+  OrcError const status  = orc_sdk_arr_reserve(h->marks, count + h->count);
+  ORC_SDK_REQUIRE_WITH_MSG(status == ORC_ERROR_NONE, "Allocation failed.");
   uint64_t     prev    = 0;
   size_t const n_marks = orc_sdk_arr_len(old_marks);
   for (size_t i = 0; i < n_marks; ++i) {
@@ -769,7 +756,7 @@ char *_orc_sdk_deck_to_str(void        *ptr,
   size_t const      n_marks = orc_sdk_arr_len(h->marks);
   uint8_t const     dmax    = n_marks == 0 ? 0 : h->marks[0].depth;
   char const *const TAB     = "   ";
-  OrcSdk_Status     status  = OK;
+  OrcError          status  = ORC_ERROR_NONE;
   for (size_t mi = 0; mi < n_marks; ++mi) {
     size_t next_pos = (mi + 1) < n_marks ? h->marks[mi + 1].pos : h->count;
     if (next_pos > h->count) {
@@ -779,7 +766,7 @@ char *_orc_sdk_deck_to_str(void        *ptr,
       uint8_t const n_left_pad = dmax - h->marks[mi].depth;
       for (uint8_t i = 0; i < n_left_pad; ++i) {
         status = orc_str_push_str(output, TAB);
-        ORC_SDK_REQUIRE_WITH_MSG(status == OK, "Allocation failed");
+        ORC_SDK_REQUIRE_WITH_MSG(status == ORC_ERROR_NONE, "Allocation failed");
       }
     }
     {  // Ruler marking - depth number.
@@ -787,14 +774,14 @@ char *_orc_sdk_deck_to_str(void        *ptr,
       char          depth_str[8] = {0};
       snprintf(depth_str, 8, "%3d ", d_current);
       status = orc_str_push_str(output, depth_str);
-      ORC_SDK_REQUIRE_WITH_MSG(status == OK, "Allocation failed");
+      ORC_SDK_REQUIRE_WITH_MSG(status == ORC_ERROR_NONE, "Allocation failed");
       // Ruler line.
       for (uint8_t i = 0; i < d_current; ++i) {
         status = orc_str_push_str(output, "---");
-        ORC_SDK_REQUIRE_WITH_MSG(status == OK, "Allocation failed");
+        ORC_SDK_REQUIRE_WITH_MSG(status == ORC_ERROR_NONE, "Allocation failed");
       }
       status = orc_str_push(output, '|');
-      ORC_SDK_REQUIRE_WITH_MSG(status == OK, "Allocation failed");
+      ORC_SDK_REQUIRE_WITH_MSG(status == ORC_ERROR_NONE, "Allocation failed");
     }
     if (h->marks[mi].pos < next_pos) {  // Items
       // Write the first item without padding.
@@ -804,33 +791,33 @@ char *_orc_sdk_deck_to_str(void        *ptr,
       snprint_item(item, item_str, 64);
       item_str[64] = '\0';  // Just to be safe.
       status       = orc_str_push(output, ' ');
-      ORC_SDK_REQUIRE_WITH_MSG(status == OK, "Allocation failed");
+      ORC_SDK_REQUIRE_WITH_MSG(status == ORC_ERROR_NONE, "Allocation failed");
       status = orc_str_push_str(output, item_str);
-      ORC_SDK_REQUIRE_WITH_MSG(status == OK, "Allocation failed");
+      ORC_SDK_REQUIRE_WITH_MSG(status == ORC_ERROR_NONE, "Allocation failed");
       status = orc_str_push(output, '\n');
-      ORC_SDK_REQUIRE_WITH_MSG(status == OK, "Allocation failed");
+      ORC_SDK_REQUIRE_WITH_MSG(status == ORC_ERROR_NONE, "Allocation failed");
       // Write remaining items with padding.
       uint8_t const padding = dmax + 1;
       while (++pos < next_pos) {
         item += item_size;
         for (uint8_t i = 0; i < padding; ++i) {
           status = orc_str_push_str(output, TAB);
-          ORC_SDK_REQUIRE_WITH_MSG(status == OK, "Allocation failed");
+          ORC_SDK_REQUIRE_WITH_MSG(status == ORC_ERROR_NONE, "Allocation failed");
         }
         status = orc_str_push_str(output, "    | ");
-        ORC_SDK_REQUIRE_WITH_MSG(status == OK, "Allocation failed");
+        ORC_SDK_REQUIRE_WITH_MSG(status == ORC_ERROR_NONE, "Allocation failed");
         memset(item_str, 0, 65);
         snprint_item(item, item_str, 64);
         item_str[64] = '\0';  // Just to be safe.
         status       = orc_str_push_str(output, item_str);
-        ORC_SDK_REQUIRE_WITH_MSG(status == OK, "Allocation failed");
+        ORC_SDK_REQUIRE_WITH_MSG(status == ORC_ERROR_NONE, "Allocation failed");
         status = orc_str_push(output, '\n');
-        ORC_SDK_REQUIRE_WITH_MSG(status == OK, "Allocation failed");
+        ORC_SDK_REQUIRE_WITH_MSG(status == ORC_ERROR_NONE, "Allocation failed");
       }
     }
     else {
       status = orc_str_push(output, '\n');
-      ORC_SDK_REQUIRE_WITH_MSG(status == OK, "Allocation failed");
+      ORC_SDK_REQUIRE_WITH_MSG(status == ORC_ERROR_NONE, "Allocation failed");
     }
   }
   return output;
@@ -1019,42 +1006,42 @@ OrcSdk_DeckWriter orc_sdk_dw_child(OrcSdk_DeckWriter *writer)
   };
 }
 
-OrcSdk_Status _orc_sdk_dw_push_impl(OrcSdk_DeckWriter *writer, void *item)
+OrcError _orc_sdk_dw_push_impl(OrcSdk_DeckWriter *writer, void *item)
 {
   *(writer->deck) = _orc_sdk_deck_push_impl(
     *(writer->deck), item, writer->item_size, _orc_sdk_dw_next_depth(writer));
-  return *(writer->deck) == NULL ? ALLOC_FAILED : OK;
+  return *(writer->deck) == NULL ? ORC_ERROR_ALLOC_FAILED : ORC_ERROR_NONE;
 }
 
-OrcSdk_Status orc_sdk_dw_close(OrcSdk_DeckWriter *writer)
+OrcError orc_sdk_dw_close(OrcSdk_DeckWriter *writer)
 {
-  OrcSdk_Status status = OK;
+  OrcError status = ORC_ERROR_NONE;
   if (writer != NULL && writer->has_next_depth) {
     *(writer->deck) =
       _orc_sdk_deck_start_new_arr(*(writer->deck), writer->item_size, writer->next_depth);
     if (*(writer->deck) == NULL) {
-      status = ALLOC_FAILED;
+      status = ORC_ERROR_ALLOC_FAILED;
     }
     *writer = (OrcSdk_DeckWriter) {0};
   }
   return status;
 }
 
-OrcSdk_Status orc_sdk_dw_advance(OrcSdk_DeckWriter *writer)
+OrcError orc_sdk_dw_advance(OrcSdk_DeckWriter *writer)
 {
   if (writer == NULL)
-    return NULL_PTR;
+    return ORC_ERROR_NULL_PTR;
   if (writer->has_next_depth) {
     *(writer->deck) =
       _orc_sdk_deck_start_new_arr(*(writer->deck), writer->item_size, writer->next_depth);
     if (*(writer->deck) == NULL) {
-      return ALLOC_FAILED;
+      return ORC_ERROR_ALLOC_FAILED;
     }
   }
   writer->has_next_depth = true;
   writer->next_depth     = writer->depth;
   writer->start          = orc_sdk_deck_len(*(writer->deck));
-  return OK;
+  return ORC_ERROR_NONE;
 }
 
 void *orc_sdk_dw_push_empty(OrcSdk_DeckWriter *writer)
@@ -1232,6 +1219,8 @@ void orc_sdk_oh_update(OrcHandle *handle)
 
 void orc_sdk_oh_ensure_alloc(OrcTypeId const type_id, OrcHandle *handle)
 {
+  (void)type_id;
+  (void)handle;
   ORC_SDK_TODO("Not implemented");
 }
 
@@ -1327,8 +1316,8 @@ void *orc_sdk_comb_advance(void *ptr)
       for (size_t i = 0; i < n_outputs; ++i) {
         OrcSdk_DeckWriter *last_writer =
           comb->writer_matrix + (i + 1) * comb->stack_depth - 1;
-        OrcSdk_Status const status = orc_sdk_dw_advance(last_writer);
-        ORC_SDK_REQUIRE(status == OK);
+        OrcError const status = orc_sdk_dw_advance(last_writer);
+        ORC_SDK_REQUIRE(status == ORC_ERROR_NONE);
       }
       return comb;
     }
@@ -1353,8 +1342,8 @@ void *orc_sdk_comb_advance(void *ptr)
     for (size_t i = 0; i < n_outputs; ++i) {  // Pop all the outputs.
       OrcSdk_DeckWriter *last_writer =
         comb->writer_matrix + i * comb->stack_depth + stack_top;
-      OrcSdk_Status const status = orc_sdk_dw_close(last_writer);
-      ORC_SDK_REQUIRE(status == OK);
+      OrcError const status = orc_sdk_dw_close(last_writer);
+      ORC_SDK_REQUIRE(status == ORC_ERROR_NONE);
     }
     --stack_top;
     // Try to advance lower in the stack.
@@ -1368,8 +1357,8 @@ void *orc_sdk_comb_advance(void *ptr)
       for (size_t i = 0; i < n_outputs; ++i) {
         OrcSdk_DeckWriter *last_writer =
           comb->writer_matrix + i * comb->stack_depth + stack_top;
-        OrcSdk_Status const status = orc_sdk_dw_advance(last_writer);
-        ORC_SDK_REQUIRE(status == OK);
+        OrcError const status = orc_sdk_dw_advance(last_writer);
+        ORC_SDK_REQUIRE(status == ORC_ERROR_NONE);
       }
     }
   } while (state == CONTINUE);
