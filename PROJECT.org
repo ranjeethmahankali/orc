@@ -210,7 +210,7 @@
   properly. Fixed many small gaps in the C SDK along the way. All that is left to do is to write a
   simple block in C. And test running DLLs with a custom allocator.
 
-  - [ ] Test running plugins with a custom allocator.
+  - [X] Test running plugins with a custom allocator.
   - [ ] Write simple container operation block in C.
 
 * CLOSED More general use of handles for data that is not decks
