@@ -1153,11 +1153,11 @@ uint8_t _oh_max_depth(OrcHandle const *handle)
   return 0;
 }
 
-static OrcSdkTypeCallbacksGetterFn PLUGIN_TYPE_CALLBACKS_FN = NULL;
+static OrcSdkTypeCallbacksGetterFn PLUGIN_TYPE_FN = NULL;
 
 void orc_sdk_set_type_callbacks(OrcSdkTypeCallbacksGetterFn getter)
 {
-  PLUGIN_TYPE_CALLBACKS_FN = getter;
+  PLUGIN_TYPE_FN = getter;
 }
 
 bool _is_type_info_valid(OrcSdkTypeInfo const *info)
@@ -1165,7 +1165,7 @@ bool _is_type_info_valid(OrcSdkTypeInfo const *info)
   return info->copy_fn != NULL && info->item_size != 0;
 }
 
-OrcError _handle_free_fn(OrcHandle *const handle)
+OrcError _oh_free_fn(OrcHandle *const handle)
 {
   if (handle == NULL) {
     return ORC_ERROR_NONE;
@@ -1190,12 +1190,15 @@ OrcError _handle_free_fn(OrcHandle *const handle)
   case ORC_TYPE_PROXY:
     break;
   default:
-    if (PLUGIN_TYPE_CALLBACKS_FN) {
-      OrcSdkTypeInfo info = PLUGIN_TYPE_CALLBACKS_FN(handle->type_id);
+    if (PLUGIN_TYPE_FN) {
+      OrcSdkTypeInfo info = PLUGIN_TYPE_FN(handle->type_id);
       if (!_is_type_info_valid(&info)) {
         return ORC_ERROR_TYPE_MISMATCH;
       }
       free_fn = info.free_fn;
+    }
+    else {
+      return ORC_ERROR_TYPE_MISMATCH;
     }
     break;
   }
@@ -1224,7 +1227,7 @@ void orc_sdk_oh_update(OrcHandle *handle)
   handle->stride_offset = h->stride_offset;
   handle->n_marks       = orc_sdk_arr_len(h->marks);
   handle->strides       = h->strides;
-  handle->free_fn       = _handle_free_fn;
+  handle->free_fn       = _oh_free_fn;
 }
 
 void *orc_sdk_comb_init(OrcHandle const **inputs,
@@ -1459,8 +1462,8 @@ OrcError orc_sdk_handle_alloc(OrcTypeId const id, OrcHandle *const out)
     out->item_size = sizeof(int64_t);
     break;
   default: {
-    if (PLUGIN_TYPE_CALLBACKS_FN) {
-      OrcSdkTypeInfo info = PLUGIN_TYPE_CALLBACKS_FN(id);
+    if (PLUGIN_TYPE_FN) {
+      OrcSdkTypeInfo info = PLUGIN_TYPE_FN(id);
       if (!_is_type_info_valid(&info)) {
         return ORC_ERROR_TYPE_MISMATCH;
       }
@@ -1480,7 +1483,7 @@ OrcError orc_sdk_handle_alloc(OrcTypeId const id, OrcHandle *const out)
   // Assign to the output deck.
   out->handle  = (uint64_t)deck_ptr;
   out->items   = deck_ptr;
-  out->free_fn = _handle_free_fn;
+  out->free_fn = _oh_free_fn;
   ORC_SDK_REQUIRE_WITH_MSG(h->count == 0, "New deck must be empty");
   out->n_items         = h->count;
   out->marks           = h->marks;
@@ -1565,8 +1568,8 @@ OrcError _copy_items(OrcTypeId const type_id,
     copy_fn = _copy_items_proxy;
     break;
   default:
-    if (PLUGIN_TYPE_CALLBACKS_FN) {
-      OrcSdkTypeInfo info = PLUGIN_TYPE_CALLBACKS_FN(type_id);
+    if (PLUGIN_TYPE_FN) {
+      OrcSdkTypeInfo info = PLUGIN_TYPE_FN(type_id);
       if (!_is_type_info_valid(&info)) {
         return ORC_ERROR_TYPE_MISMATCH;
       }
