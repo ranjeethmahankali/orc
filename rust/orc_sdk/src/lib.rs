@@ -22,8 +22,5 @@ pub use util::{
     TypeInfo, handle_from_deck, ptr_from_slice, slice_from_ptr, slice_from_ptr_mut,
 };
 
-#[cfg(feature = "host")]
 mod host;
-
-#[cfg(feature = "host")]
 pub use host::{Plugin, load_plugins};

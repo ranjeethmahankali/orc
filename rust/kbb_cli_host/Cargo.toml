@@ -4,4 +4,4 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-orc_sdk = { path = "../orc_sdk" , features = ["host"] }
+orc_sdk = { path = "../orc_sdk" }
