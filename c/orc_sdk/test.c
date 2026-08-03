@@ -1,8 +1,6 @@
 #include "orc_sdk.h"
 #include "unity.h"
 
-#include <inttypes.h>
-
 #include <limits.h>
 #include <stddef.h>
 #include <stdio.h>
