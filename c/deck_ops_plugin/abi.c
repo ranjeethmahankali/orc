@@ -26,7 +26,6 @@ OrcError orc_plugin_init(OrcHost const *host, OrcPlugin *plugin_data_out)
   orc_sdk_arr_push(FUNCTIONS, FLATTEN_DECK_INFO);
   plugin_data_out->functions   = FUNCTIONS;
   plugin_data_out->n_functions = orc_sdk_arr_len(FUNCTIONS);
-  ORC_SDK_DEBUG("Registering %zu functions...\n", plugin_data_out->n_functions);
   return ORC_ERROR_NONE;
 }
 
