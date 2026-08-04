@@ -203,6 +203,227 @@ OrcError _orc_sdk_arr_remove_range_impl(void        *ptr,
  */
 bool orc_sdk_arr_is_empty(void *ptr);
 
+// ========== Hash map ==========
+
+#define ORC_SDK_HMAP_BUCKET_SIZE 8
+
+typedef struct
+{
+  size_t    hash[ORC_SDK_HMAP_BUCKET_SIZE];
+  ptrdiff_t index[ORC_SDK_HMAP_BUCKET_SIZE];
+} _OrcSdk_HashBucket;
+
+typedef struct
+{
+  size_t              n_total;
+  size_t              n_used;
+  size_t              n_removed;
+  size_t              kvsize;
+  _OrcSdk_HashBucket *buckets;
+  _OrcSdk_HashBucket *temp_buckets;
+  size_t             *slots;
+} _OrcSdk_HashTableHeader;
+
+static inline _OrcSdk_HashTableHeader *_orc_sdk_hmap_header(void *ptr)
+{
+  _OrcSdk_HashTableHeader *h = (_OrcSdk_HashTableHeader *)ptr;
+  if (h)
+    return --h;
+  return NULL;
+}
+
+void *_orc_sdk_hmap_grow_size(void *ptr, size_t const kvsize, size_t nelems);
+
+/**
+ * Reserve space to store `size` number of entries in the hash table.
+ */
+#define orc_sdk_hmap_reserve(ptr, size)                            \
+  (((ptr) = _orc_sdk_hmap_grow_size((ptr), sizeof *(ptr), (size))) \
+     ? ORC_ERROR_NONE                                              \
+     : ORC_ERROR_ALLOC_FAILED)
+
+size_t _orc_sdk_hmap_insert_bin_impl(void       **ptr,
+                                     size_t const kvsize,
+                                     void        *keyptr,
+                                     size_t const keysize);
+
+size_t _orc_sdk_hmap_insert_str_impl(void **ptr, size_t const kvsize, char const *key);
+
+/**
+ * Insert the given key value pair into the hash table. The key should be provided as an
+ * lvalue to allow for generic type safe functionality. Use this variant to insert keys
+ * that are binary value types.
+ */
+#define orc_sdk_hmap_put(ptr, k, v)                                                  \
+  do {                                                                               \
+    size_t const idx =                                                               \
+      _orc_sdk_hmap_insert_bin_impl((void **)&(ptr), sizeof *(ptr), &(k), sizeof k); \
+    (ptr)[idx].value = (v);                                                          \
+  } while (0)
+
+/**
+ * Same as `orc_sdk_hmap_put`, but works when the key is a string.
+ */
+#define orc_sdk_hmap_str_put(ptr, k, v)                                                  \
+  do {                                                                                   \
+    size_t const idx = _orc_sdk_hmap_insert_str_impl((void **)&(ptr), sizeof *(ptr), k); \
+    (ptr)[idx].value = (v);                                                              \
+  } while (0)
+
+/**
+ * @brief Get the length of the hash map. This is the number of entries in the hash map.
+ *
+ * @param ptr Pointer to the hash map.
+ * @return size_t
+ */
+size_t orc_sdk_hmap_len(void *ptr);
+
+void _orc_sdk_hmap_free_impl(void *ptr);
+
+/**
+ * Free the hash map, and set the pointer to NULL.
+ */
+#define orc_sdk_hmap_free(ptr) (_orc_sdk_hmap_free_impl((ptr)), (ptr) = NULL)
+
+void *_orc_sdk_hmap_get_bin_impl(void        *ptr,
+                                 size_t const kvsize,
+                                 void        *keyptr,
+                                 size_t const keysize);
+
+/**
+ * Get the pointer to the entry in the hashmap corresponding to the key. If the key
+ * doesn't exist in the hash map, NULL is returned. A boid ptr is returned, so it needs to
+ * be cast back to the pointer type of the key value pair struct. The key should be passed
+ * in as an lvalue. This is required for the API to be generic and typesafe. This only
+ * works for keys that are binary value types.
+ */
+#define orc_sdk_hmap_get(ptr, key) \
+  _orc_sdk_hmap_get_bin_impl((ptr), sizeof *(ptr), &(key), sizeof key)
+
+void *_orc_sdk_hmap_get_str_impl(void *ptr, size_t const kvsize, char const *key);
+
+/**
+ * Same as `orc_sdk_hmap_get`, except this works when the key is a string.
+ */
+#define orc_sdk_hmap_str_get(ptr, key) \
+  _orc_sdk_hmap_get_str_impl((ptr), sizeof *(ptr), key)
+
+/**
+ * Check if the hash map contains the given key.
+ */
+#define orc_sdk_hmap_contains(ptr, key) \
+  (_orc_sdk_hmap_get_bin_impl((ptr), sizeof *(ptr), &(key), sizeof key) != NULL)
+
+/**
+ * Same as `orc_sdk_hmap_contains`, except this variant works when the key is a string.
+ */
+#define orc_sdk_hmap_str_contains(ptr, key) \
+  (_orc_sdk_hmap_get_str_impl((ptr), sizeof *(ptr), key) != NULL)
+
+void _orc_sdk_hmap_remove_bin_impl(void        *ptr,
+                                   size_t const kvsize,
+                                   void        *keyptr,
+                                   size_t const keysize);
+
+void _orc_sdk_hmap_remove_str_impl(void *ptr, size_t const kvsize, char const *key);
+
+/**
+ * Remove the entry from the hashmap corresponding to the given key. If th ekey is not
+ * present, the hash map is unaffected.
+ */
+#define orc_sdk_hmap_remove(ptr, key) \
+  _orc_sdk_hmap_remove_bin_impl((ptr), sizeof *(ptr), &(key), sizeof key)
+
+/**
+ * Same as orc_sdk_hmap_remove, except this is meant to be used when the key is a string,
+ * and not a value type.
+ */
+#define orc_sdk_hmap_str_remove(ptr, key) \
+  _orc_sdk_hmap_remove_str_impl((ptr), sizeof *(ptr), key)
+
+/**
+ * @brief Check if the hash map is empty.
+ *
+ * @param ptr Pointer to the hashmap.
+ * @return bool True if the hash map is empty.
+ */
+static inline bool orc_sdk_hmap_is_empty(void *ptr)
+{
+  return orc_sdk_hmap_len(ptr) == 0;
+}
+
+// ========== Hash set - most functionality just reuses hashmaps. ==========
+
+/**
+ * Insert the value into the hash set. Must be a value type.
+ */
+#define orc_sdk_hset_put(ptr, val)                                                     \
+  do {                                                                                 \
+    _orc_sdk_hmap_insert_bin_impl((void **)&(ptr), sizeof *(ptr), &(val), sizeof val); \
+  } while (0)
+
+/**
+ * Insert a string into the hash map.
+ */
+#define orc_sdk_hset_str_put(ptr, val)                                  \
+  do {                                                                  \
+    _orc_sdk_hmap_insert_str_impl((void **)&(ptr), sizeof *(ptr), val); \
+  } while (0)
+
+/**
+ * @brief Get the length of the hash map. This is the number of entries.
+ *
+ * @param ptr
+ * @return size_t
+ */
+static inline size_t orc_sdk_hset_len(void *ptr)
+{
+  return orc_sdk_hmap_len(ptr);
+}
+
+/**
+ * Reserve space for the given number of elements in the hash set.
+ */
+#define orc_sdk_hset_reserve orc_sdk_hmap_reserve
+
+/**
+ * Check if the hash set contains the given value.
+ */
+#define orc_sdk_hset_contains orc_sdk_hmap_contains
+
+/**
+ * Check if the hash set contains the given string.
+ */
+#define orc_sdk_hset_str_contains orc_sdk_hmap_str_contains
+
+/**
+ * Remove the given value from the hash set. If the value is not present in the hash set,
+ * it will be unaffected.
+ */
+#define orc_sdk_hset_remove orc_sdk_hmap_remove
+
+/**
+ * Remove a string from the hash set. If the string is not present in the hash set, it
+ * will be unaffected.
+ */
+#define orc_sdk_hset_str_remove orc_sdk_hmap_str_remove
+
+/**
+ * Free hte hash set, and set the pointer to NULL.
+ */
+#define orc_sdk_hset_free orc_sdk_hmap_free
+
+/**
+ * @brief Check if the hash set is empty.
+ *
+ * @param ptr Pointer to the hash set.
+ * @return bool True if the hash set is empty.
+ */
+static inline bool orc_sdk_hset_is_empty(void *ptr)
+{
+  return orc_sdk_hset_len(ptr) == 0;
+}
+
 // ========== String ==========
 
 #define orc_str_free(ptr) orc_sdk_arr_free((ptr))

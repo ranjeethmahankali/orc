@@ -56,15 +56,6 @@ void orc_sdk_free(void *ptr, uint64_t const size, uint64_t const alignment)
   HOST.memory_api.dealloc(ptr, size, alignment);
 }
 
-void orc_sdk_report_message(uint64_t const        ctx,
-                            OrcMessageLevel const level,
-                            char const           *msg)
-{
-  if (HOST.callbacks.report_message != NULL) {
-    HOST.callbacks.report_message(ctx, level, msg);
-  }
-}
-
 void *orc_sdk_realloc(void          *ptr,
                       uint64_t const old_size,
                       uint64_t const new_size,
@@ -84,6 +75,15 @@ void *orc_sdk_realloc(void          *ptr,
     HOST.memory_api.dealloc(ptr, old_size, alignment);
   }
   return new_ptr;
+}
+
+void orc_sdk_report_message(uint64_t const        ctx,
+                            OrcMessageLevel const level,
+                            char const           *msg)
+{
+  if (HOST.callbacks.report_message != NULL) {
+    HOST.callbacks.report_message(ctx, level, msg);
+  }
 }
 
 void *_orc_sdk_arr_grow(void *ptr, size_t elemsize)
@@ -231,6 +231,514 @@ bool orc_sdk_arr_is_empty(void *ptr)
 {
   _OrcSdk_ArrHeader *h = _orc_sdk_arr_header(ptr);
   return h == NULL || h->count == 0;
+}
+
+// ========== Hashmap ==========
+
+typedef struct
+{
+  size_t bucket;
+  size_t slot;
+  enum
+  {
+    INVALID,
+    EMPTY,
+    OCCUPIED,
+  } type;
+} Slot;
+
+static Slot _orc_sdk_hmap_find_empty_slot(size_t const              hash,
+                                          _OrcSdk_HashBucket const *buckets,
+                                          size_t const              nb)
+{
+  size_t const ibucket = hash % nb;
+  for (size_t probe = 0; probe < nb; ++probe) {
+    size_t const itry = (ibucket + probe) % nb;
+    for (size_t slot = 0; slot < ORC_SDK_HMAP_BUCKET_SIZE; ++slot) {
+      if (buckets[itry].hash[slot] == 0) {
+        return (Slot) {.bucket = itry, .slot = slot, .type = EMPTY};
+      }
+    }
+  }
+  return (Slot) {.type = INVALID};
+}
+
+static Slot _orc_sdk_hmap_find_writable_slot_bin(size_t const              hash,
+                                                 _OrcSdk_HashBucket const *buckets,
+                                                 size_t const              nb,
+                                                 void                     *keyptr,
+                                                 size_t const              keysize,
+                                                 void                     *ptr,
+                                                 size_t const              kvsize)
+{
+  size_t const ibucket = hash % nb;
+  for (size_t probe = 0; probe < nb; ++probe) {
+    size_t const itry = (ibucket + probe) % nb;
+    for (size_t slot = 0; slot < ORC_SDK_HMAP_BUCKET_SIZE; ++slot) {
+      if (buckets[itry].hash[slot] == 0) {
+        return (Slot) {.bucket = itry, .slot = slot, .type = EMPTY};
+      }
+      else if (buckets[itry].hash[slot] == hash &&
+               0 == memcmp((char *)ptr + kvsize * (size_t)buckets[itry].index[slot],
+                           keyptr,
+                           keysize)) {
+        return (Slot) {.bucket = itry, .slot = slot, .type = OCCUPIED};
+      }
+    }
+  }
+  return (Slot) {.type = INVALID};
+}
+
+static Slot _orc_sdk_hmap_find_writable_slot_str(size_t const              hash,
+                                                 _OrcSdk_HashBucket const *buckets,
+                                                 size_t const              nb,
+                                                 char const               *key,
+                                                 void                     *pairs,
+                                                 size_t const              kvsize)
+{
+  size_t const ibucket = hash % nb;
+  for (size_t probe = 0; probe < nb; ++probe) {
+    size_t const itry = (ibucket + probe) % nb;
+    for (size_t slot = 0; slot < ORC_SDK_HMAP_BUCKET_SIZE; ++slot) {
+      ptrdiff_t const index = buckets[itry].index[slot];
+      char          **keyptr =
+        index >= 0 ? (char **)(void *)((char *)pairs + kvsize * (size_t)index) : NULL;
+      if (buckets[itry].hash[slot] == 0) {
+        return (Slot) {.bucket = itry, .slot = slot, .type = EMPTY};
+      }
+      else if (buckets[itry].hash[slot] == hash && 0 == strcmp(*keyptr, key)) {
+        return (Slot) {.bucket = itry, .slot = slot, .type = OCCUPIED};
+      }
+    }
+  }
+  return (Slot) {.type = INVALID};
+}
+
+static Slot _orc_sdk_hmap_find_readable_slot_bin(size_t const              hash,
+                                                 _OrcSdk_HashBucket *const buckets,
+                                                 size_t const              nb,
+                                                 void                     *keyptr,
+                                                 size_t const              keysize,
+                                                 void                     *pairs,
+                                                 size_t const              kvsize)
+{
+  size_t const ibucket = hash % nb;
+  for (size_t probe = 0; probe < nb; ++probe) {
+    size_t const itry = (ibucket + probe) % nb;
+    for (size_t slot = 0; slot < ORC_SDK_HMAP_BUCKET_SIZE; ++slot) {
+      if (buckets[itry].hash[slot] == 0) {
+        // No need to keep probing if we reach the end of this bucket.
+        return (Slot) {.type = INVALID};
+      }
+      else if (buckets[itry].hash[slot] == hash &&
+               0 == memcmp((char *)pairs + kvsize * (size_t)buckets[itry].index[slot],
+                           keyptr,
+                           keysize)) {
+        return (Slot) {.bucket = itry, .slot = slot, .type = OCCUPIED};
+      }
+    }
+  }
+  return (Slot) {.type = INVALID};
+}
+
+static Slot _orc_sdk_hmap_find_readable_slot_str(size_t const              hash,
+                                                 _OrcSdk_HashBucket *const buckets,
+                                                 size_t const              nb,
+                                                 char const               *key,
+                                                 void                     *pairs,
+                                                 size_t const              kvsize)
+{
+  size_t const ibucket = hash % nb;
+  for (size_t probe = 0; probe < nb; ++probe) {
+    size_t const itry = (ibucket + probe) % nb;
+    for (size_t slot = 0; slot < ORC_SDK_HMAP_BUCKET_SIZE; ++slot) {
+      ptrdiff_t const index = buckets[itry].index[slot];
+      char          **keyptr =
+        index >= 0 ? (char **)(void *)((char *)pairs + kvsize * (size_t)index) : NULL;
+      if (buckets[itry].hash[slot] == 0) {
+        // No need to keep probing if we reach the end of this bucket.
+        return (Slot) {.type = INVALID};
+      }
+      else if (buckets[itry].hash[slot] == hash && 0 == strcmp(*keyptr, key)) {
+        return (Slot) {.bucket = itry, .slot = slot, .type = OCCUPIED};
+      }
+    }
+  }
+  return (Slot) {.type = INVALID};
+}
+
+static void _orc_sdk_hmap_redist_buckets(_OrcSdk_HashBucket *src,
+                                         size_t const        nsrc,
+                                         _OrcSdk_HashBucket *dst,
+                                         size_t const        ndst,
+                                         size_t             *slots)
+{
+  memset(dst, 0, ndst * sizeof *dst);
+  if (nsrc == 0)
+    return;
+  _OrcSdk_HashBucket const *src_end = src + nsrc;
+  while (src != src_end) {
+    for (size_t i = 0; i < ORC_SDK_HMAP_BUCKET_SIZE; ++i) {
+      size_t const    hash  = src->hash[i];
+      ptrdiff_t const index = src->index[i];
+      if (hash == 0 || hash == 1)
+        continue;
+      Slot slot = _orc_sdk_hmap_find_empty_slot(hash, dst, ndst);
+      switch (slot.type) {
+      case EMPTY:
+        dst[slot.bucket].hash[slot.slot]  = hash;
+        dst[slot.bucket].index[slot.slot] = index;
+        slots[index] = slot.bucket * ORC_SDK_HMAP_BUCKET_SIZE + slot.slot;
+        break;
+      default:
+        ORC_SDK_REQUIRE_WITH_MSG(false, "Fatal error in hash map. Sorry!");
+      }
+    }
+    ++src;
+  }
+}
+
+void *_orc_sdk_hmap_grow_size(void *ptr, size_t const kvsize, size_t nelems)
+{
+  if (nelems %
+      ORC_SDK_HMAP_BUCKET_SIZE) {  // Make the element count a multiple of bucket size.
+    nelems += ORC_SDK_HMAP_BUCKET_SIZE - (nelems % ORC_SDK_HMAP_BUCKET_SIZE);
+  }
+  size_t const             nbuckets = nelems / ORC_SDK_HMAP_BUCKET_SIZE;
+  _OrcSdk_HashTableHeader *h        = _orc_sdk_hmap_header(ptr);
+  if (h == NULL) {
+    size_t const bufsize = sizeof *h + kvsize * nelems;
+    h                    = orc_sdk_alloc(bufsize, ORC_SDK_MALLOC_DEFAULT_ALIGN);
+    if (h == NULL)
+      return NULL;
+    memset(h, 0, bufsize);
+    h->n_total   = nelems;
+    h->n_removed = 0;
+    h->n_used    = 0;
+    h->kvsize    = kvsize;
+    h->buckets   = NULL;
+    orc_sdk_arr_resize(h->buckets, nbuckets);
+    size_t const INVALID_IDX = SIZE_MAX;
+    orc_sdk_arr_resize(h->slots, nelems);
+    orc_sdk_arr_fill(h->slots, INVALID_IDX);
+    ptr = h + 1;
+  }
+  else if (h->n_total < nelems) {
+    size_t const old_bufsize = sizeof *h + h->kvsize * h->n_total;
+    size_t const new_bufsize = sizeof *h + kvsize * nelems;
+    h = orc_sdk_realloc(h, old_bufsize, new_bufsize, ORC_SDK_MALLOC_DEFAULT_ALIGN);
+    if (h == NULL)
+      return NULL;
+    size_t const oldtotal = h->n_total;
+    ORC_SDK_REQUIRE_WITH_MSG((oldtotal % ORC_SDK_HMAP_BUCKET_SIZE) == 0,
+                             "Hash map is corrupt. Sorry!");
+    orc_sdk_arr_clear(h->temp_buckets);
+    orc_sdk_arr_resize(h->temp_buckets, nbuckets);  // Zeroes out.
+    orc_sdk_arr_resize(h->slots, nelems);
+    size_t const INVALID_IDX = SIZE_MAX;
+    orc_sdk_arr_fill(h->slots, INVALID_IDX);
+    ptr = h + 1;
+    _orc_sdk_hmap_redist_buckets(h->buckets,
+                                 oldtotal / ORC_SDK_HMAP_BUCKET_SIZE,
+                                 h->temp_buckets,
+                                 nbuckets,
+                                 h->slots);
+    h->n_total   = nelems;
+    h->n_removed = 0;  // We don't carry over tombstones during redistribution.
+    {                  // Swap the buckets.
+      _OrcSdk_HashBucket *temp = h->temp_buckets;
+      h->temp_buckets          = h->buckets;
+      h->buckets               = temp;
+    }
+  }
+  return ptr;
+}
+
+// Simple FNV-1a hash function for strings
+static inline size_t fnv_hash_str(const char *key)
+{
+  if (!key)
+    return 0;
+  const size_t FNV_OFFSET_BASIS = 14695981039346656037ULL;
+  const size_t FNV_PRIME        = 1099511628211ULL;
+  size_t       hash             = FNV_OFFSET_BASIS;
+  while (*key) {
+    hash ^= (size_t)*key++;
+    hash *= FNV_PRIME;
+  }
+  return hash;
+}
+
+// FNV-1a hash for arbitrary data
+static inline size_t fnv_hash_bytes(const void *data, size_t len)
+{
+  if (!data || len == 0)
+    return 0;
+  const size_t         FNV_OFFSET_BASIS = 14695981039346656037ULL;
+  const size_t         FNV_PRIME        = 1099511628211ULL;
+  size_t               hash             = FNV_OFFSET_BASIS;
+  const unsigned char *bytes            = (const unsigned char *)data;
+  for (size_t i = 0; i < len; i++) {
+    hash ^= bytes[i];
+    hash *= FNV_PRIME;
+  }
+  // Avoid sentinel values.
+  if (hash < 2)
+    hash += 2;
+  return hash;
+}
+
+static inline void *_orc_sdk_hmap_grow_if_needed(void *ptr, size_t const kvsize)
+{
+  _OrcSdk_HashTableHeader *h = _orc_sdk_hmap_header(ptr);
+  if (h == NULL) {
+    size_t const newtotal = ORC_SDK_HMAP_BUCKET_SIZE;
+    ptr                   = _orc_sdk_hmap_grow_size(ptr, kvsize, newtotal);
+    h                     = _orc_sdk_hmap_header(ptr);
+  }
+  else if ((h->n_used + h->n_removed) >= (3 * h->n_total / 4)) {
+    size_t newtotal = h->n_total * 2;
+    ptr             = _orc_sdk_hmap_grow_size(ptr, kvsize, newtotal);
+    h               = _orc_sdk_hmap_header(ptr);
+  }
+  ORC_SDK_REQUIRE_WITH_MSG(h->n_total % ORC_SDK_HMAP_BUCKET_SIZE == 0,
+                           "Corrupted hash map. Sorry.");
+  return ptr;
+}
+
+size_t _orc_sdk_hmap_insert_bin_impl(void       **ptr,
+                                     size_t const kvsize,
+                                     void        *keyptr,
+                                     size_t const keysize)
+{
+  *ptr                          = _orc_sdk_hmap_grow_if_needed(*ptr, kvsize);
+  _OrcSdk_HashTableHeader *h    = _orc_sdk_hmap_header(*ptr);
+  size_t const             hash = fnv_hash_bytes(keyptr, keysize);
+  Slot const               slot =
+    _orc_sdk_hmap_find_writable_slot_bin(hash,
+                                         h->buckets,
+                                         h->n_total / ORC_SDK_HMAP_BUCKET_SIZE,
+                                         keyptr,
+                                         keysize,
+                                         *ptr,
+                                         kvsize);
+  switch (slot.type) {
+  case INVALID:  // Should never happen.
+    ORC_SDK_REQUIRE_WITH_MSG(false, "[ERROR] Hash map slots are all full.");
+    return SIZE_MAX;
+  case EMPTY: {
+    size_t const index = h->n_used++;
+    ORC_SDK_REQUIRE_WITH_MSG(h->n_used < h->n_total, "Hashmap is not the correct size");
+    memcpy((char *)(*ptr) + index * kvsize, keyptr, keysize);
+    h->buckets[slot.bucket].hash[slot.slot]  = hash;
+    h->buckets[slot.bucket].index[slot.slot] = (ptrdiff_t)index;
+    h->slots[index] = slot.bucket * ORC_SDK_HMAP_BUCKET_SIZE + slot.slot;
+    return index;
+  }
+  case OCCUPIED:
+    return (size_t)h->buckets[slot.bucket].index[slot.slot];
+  };
+  return SIZE_MAX;  // This should never happen.
+}
+
+size_t _orc_sdk_hmap_insert_str_impl(void **ptr, size_t const kvsize, char const *key)
+{
+  *ptr                          = _orc_sdk_hmap_grow_if_needed(*ptr, kvsize);
+  _OrcSdk_HashTableHeader *h    = _orc_sdk_hmap_header(*ptr);
+  size_t const             hash = fnv_hash_str(key);
+  Slot const               slot = _orc_sdk_hmap_find_writable_slot_str(
+    hash, h->buckets, h->n_total / ORC_SDK_HMAP_BUCKET_SIZE, key, *ptr, kvsize);
+  switch (slot.type) {
+  case INVALID:  // Should never happen.
+    ORC_SDK_REQUIRE_WITH_MSG(false, "[ERROR] Hash map slots are all full.");
+    return SIZE_MAX;
+  case EMPTY: {
+    size_t const index = h->n_used++;
+    ORC_SDK_REQUIRE_WITH_MSG(h->n_used < h->n_total, "Hashmap is not the correct size");
+    *(char const **)(void *)((char *)(*ptr) + index * kvsize) = key;
+    h->buckets[slot.bucket].hash[slot.slot]                   = hash;
+    h->buckets[slot.bucket].index[slot.slot]                  = (ptrdiff_t)index;
+    h->slots[index] = slot.bucket * ORC_SDK_HMAP_BUCKET_SIZE + slot.slot;
+    return index;
+  }
+  case OCCUPIED:
+    return (size_t)h->buckets[slot.bucket].index[slot.slot];
+  };
+  ORC_SDK_REQUIRE_WITH_MSG(false, "Unreachable");
+  return SIZE_MAX;  // This should never happen.
+}
+
+size_t orc_sdk_hmap_len(void *ptr)
+{
+  _OrcSdk_HashTableHeader *h = _orc_sdk_hmap_header(ptr);
+  if (h)
+    return h->n_used;
+  return 0;
+}
+
+void _orc_sdk_hmap_free_impl(void *ptr)
+{
+  _OrcSdk_HashTableHeader *h = _orc_sdk_hmap_header(ptr);
+  if (h) {
+    orc_sdk_arr_free(h->buckets);
+    orc_sdk_arr_free(h->temp_buckets);
+    orc_sdk_arr_free(h->slots);
+    orc_sdk_free(h, sizeof *h + h->kvsize * h->n_total, ORC_SDK_MALLOC_DEFAULT_ALIGN);
+  }
+}
+
+void *_orc_sdk_hmap_get_bin_impl(void        *ptr,
+                                 size_t const kvsize,
+                                 void        *keyptr,
+                                 size_t const keysize)
+{
+  _OrcSdk_HashTableHeader *h = _orc_sdk_hmap_header(ptr);
+  if (h) {
+    size_t const hash = fnv_hash_bytes(keyptr, keysize);
+    Slot const   slot =
+      _orc_sdk_hmap_find_readable_slot_bin(hash,
+                                           h->buckets,
+                                           h->n_total / ORC_SDK_HMAP_BUCKET_SIZE,
+                                           keyptr,
+                                           keysize,
+                                           ptr,
+                                           kvsize);
+    switch (slot.type) {
+    case EMPTY:  // Should never happen.
+      ORC_SDK_REQUIRE_WITH_MSG(false, "[ERROR] Hash map slots are all full.");
+      return NULL;
+    case INVALID:
+      return NULL;
+    case OCCUPIED:
+      return (char *)ptr + kvsize * (size_t)h->buckets[slot.bucket].index[slot.slot];
+    };
+  }
+  return NULL;
+}
+
+void *_orc_sdk_hmap_get_str_impl(void *ptr, size_t const kvsize, char const *key)
+{
+  _OrcSdk_HashTableHeader *h = _orc_sdk_hmap_header(ptr);
+  if (h) {
+    size_t const hash = fnv_hash_str(key);
+    Slot const   slot = _orc_sdk_hmap_find_readable_slot_str(
+      hash, h->buckets, h->n_total / ORC_SDK_HMAP_BUCKET_SIZE, key, ptr, kvsize);
+    switch (slot.type) {
+    case EMPTY:  // Should never happen.
+      ORC_SDK_REQUIRE_WITH_MSG(false, "[ERROR] Hash map slots are all full.");
+      return NULL;
+    case INVALID:
+      return NULL;
+    case OCCUPIED:
+      return (char *)ptr + kvsize * (size_t)h->buckets[slot.bucket].index[slot.slot];
+    };
+  }
+  return NULL;
+}
+
+static void _orc_sdk_hmap_compact(void *ptr)
+{
+  _OrcSdk_HashTableHeader *h        = _orc_sdk_hmap_header(ptr);
+  size_t const             nbuckets = (h->n_total / ORC_SDK_HMAP_BUCKET_SIZE);
+  orc_sdk_arr_clear(h->temp_buckets);
+  orc_sdk_arr_resize(h->temp_buckets, nbuckets);
+  orc_sdk_arr_resize(h->slots, h->n_total);
+  size_t const INVALID_IDX = SIZE_MAX;
+  orc_sdk_arr_fill(h->slots, INVALID_IDX);
+  _orc_sdk_hmap_redist_buckets(h->buckets, nbuckets, h->temp_buckets, nbuckets, h->slots);
+  h->n_removed = 0;
+  {  // Swap the buckets.
+    _OrcSdk_HashBucket *temp = h->temp_buckets;
+    h->temp_buckets          = h->buckets;
+    h->buckets               = temp;
+  }
+}
+
+void _orc_sdk_hmap_remove_bin_impl(void        *ptr,
+                                   size_t const kvsize,
+                                   void        *keyptr,
+                                   size_t const keysize)
+{
+  _OrcSdk_HashTableHeader *h = _orc_sdk_hmap_header(ptr);
+  if (h) {
+    size_t const hash = fnv_hash_bytes(keyptr, keysize);
+    Slot const   slot =
+      _orc_sdk_hmap_find_readable_slot_bin(hash,
+                                           h->buckets,
+                                           h->n_total / ORC_SDK_HMAP_BUCKET_SIZE,
+                                           keyptr,
+                                           keysize,
+                                           ptr,
+                                           kvsize);
+    switch (slot.type) {
+    case EMPTY:  // Should never happen.
+      ORC_SDK_REQUIRE_WITH_MSG(false, "[ERROR] Hash map slots are all full.");
+    case INVALID:  // Doesn't contain the key. Do nothing.
+      break;
+    case OCCUPIED: {
+      _OrcSdk_HashBucket *bucket = h->buckets + slot.bucket;
+      bucket->hash[slot.slot]    = 1;
+      size_t const index         = (size_t)bucket->index[slot.slot];
+      bucket->index[slot.slot]   = -1;
+      ORC_SDK_REQUIRE_WITH_MSG(
+        slot.bucket * ORC_SDK_HMAP_BUCKET_SIZE + slot.slot == h->slots[index],
+        "The mapping between items and slots should be consistent.");
+      size_t const last = h->n_used - 1;
+      if (index != last) {
+        memcpy((char *)ptr + index * kvsize, (char *)ptr + last * kvsize, kvsize);
+        size_t const s = h->slots[last];
+        h->buckets[s / ORC_SDK_HMAP_BUCKET_SIZE].index[s % ORC_SDK_HMAP_BUCKET_SIZE] =
+          (ptrdiff_t)index;
+        h->slots[index] = s;
+      }
+      h->slots[last] = SIZE_MAX;
+      --h->n_used;
+      ++h->n_removed;
+      if (h->n_removed > h->n_total / 4) {
+        _orc_sdk_hmap_compact(ptr);
+      }
+    }
+    };
+  }
+}
+
+void _orc_sdk_hmap_remove_str_impl(void *ptr, size_t const kvsize, char const *key)
+{
+  _OrcSdk_HashTableHeader *h = _orc_sdk_hmap_header(ptr);
+  if (h) {
+    size_t const hash = fnv_hash_str(key);
+    Slot const   slot = _orc_sdk_hmap_find_readable_slot_str(
+      hash, h->buckets, h->n_total / ORC_SDK_HMAP_BUCKET_SIZE, key, ptr, kvsize);
+    switch (slot.type) {
+    case EMPTY:  // Should never happen.
+      ORC_SDK_REQUIRE_WITH_MSG(false, "[ERROR] Hash map slots are all full.");
+    case INVALID:  // Doesn't contain the key. Do nothing.
+      break;
+    case OCCUPIED: {
+      _OrcSdk_HashBucket *bucket = h->buckets + slot.bucket;
+      bucket->hash[slot.slot]    = 1;
+      size_t const index         = (size_t)bucket->index[slot.slot];
+      bucket->index[slot.slot]   = -1;
+      ORC_SDK_REQUIRE_WITH_MSG(
+        slot.bucket * ORC_SDK_HMAP_BUCKET_SIZE + slot.slot == h->slots[index],
+        "The mapping between items and slots should be consistent.");
+      size_t const last = h->n_used - 1;
+      if (index != last) {
+        memcpy((char *)ptr + index * kvsize, (char *)ptr + last * kvsize, kvsize);
+        size_t const s = h->slots[last];
+        h->buckets[s / ORC_SDK_HMAP_BUCKET_SIZE].index[s % ORC_SDK_HMAP_BUCKET_SIZE] =
+          (ptrdiff_t)index;
+        h->slots[index] = s;
+      }
+      h->slots[last] = SIZE_MAX;
+      --h->n_used;
+      ++h->n_removed;
+      if (h->n_removed > h->n_total / 4) {
+        _orc_sdk_hmap_compact(ptr);
+      }
+    }
+    };
+  }
 }
 
 // ========== String ==========

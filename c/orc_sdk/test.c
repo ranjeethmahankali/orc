@@ -1,6 +1,7 @@
 #include "orc_sdk.h"
 #include "unity.h"
 
+#include <inttypes.h>
 #include <limits.h>
 #include <stddef.h>
 #include <stdio.h>
@@ -80,7 +81,7 @@ void test_arr_index_boundary_conditions(void)
   orc_sdk_arr_free(arr);
 }
 
-void test_arr_capacity_management(void)
+void test_orc_sdk_arr_capacity_management(void)
 {
   double *arr = NULL;
   // Reserve initial capacity
@@ -735,6 +736,2553 @@ void test_arr_header_alignment(void)
     "Array header must align with the platform's maximum alignment to be compatible "
     "with arbitrary types inside the container. This doesn't guarantee alignment with "
     "SIMD types. The containers are not meant to be used with SIMD types.");
+}
+
+// Hashmap tests
+
+typedef struct
+{
+  size_t nslots;
+  size_t nbuckets;
+  size_t n_used;
+  size_t n_removed;
+} HMapStats;
+
+static HMapStats _hmap_stats(void *ptr)
+{
+  _OrcSdk_HashTableHeader *h = _orc_sdk_hmap_header(ptr);
+  if (h) {
+    size_t const nbuckets = h->n_total / ORC_SDK_HMAP_BUCKET_SIZE;
+    TEST_ASSERT_TRUE(nbuckets == _orc_sdk_arr_capacity(h->buckets));
+    TEST_ASSERT_TRUE(nbuckets == orc_sdk_arr_len(h->buckets));
+    return (HMapStats) {.nslots    = h->n_total,
+                        .nbuckets  = nbuckets,
+                        .n_used    = h->n_used,
+                        .n_removed = h->n_removed};
+  }
+  return (HMapStats) {0};
+}
+
+void test_hmap_basic(void)
+{
+  typedef struct
+  {
+    int key;
+    int value;
+  } Entry;
+  Entry *map = NULL;
+  // Test empty map
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_len(map) == 0, "Empty map should have length 0");
+  HMapStats stats = _hmap_stats(map);
+  TEST_ASSERT_TRUE_MESSAGE(stats.n_used == 0, "Empty map should have 0 used slots");
+  TEST_ASSERT_TRUE_MESSAGE(stats.nslots == 0, "Empty map should have 0 total slots");
+  TEST_ASSERT_TRUE_MESSAGE(stats.nbuckets == 0, "Empty map should have 0 buckets");
+  // Test single insertion
+  int key1 = 42, val1 = 100;
+  orc_sdk_hmap_put(map, key1, val1);
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_len(map) == 1,
+                           "Map should have 1 element after insert");
+  TEST_ASSERT_TRUE_MESSAGE(map[0].key == 42, "First entry key should be 42");
+  TEST_ASSERT_TRUE_MESSAGE(map[0].value == 100, "First entry value should be 100");
+  stats = _hmap_stats(map);
+  TEST_ASSERT_TRUE_MESSAGE(stats.n_used == 1, "Should have 1 used slot after insert");
+  TEST_ASSERT_TRUE_MESSAGE(stats.nslots == ORC_SDK_HMAP_BUCKET_SIZE,
+                           "Initial size should be ORC_SDK_HMAP_BUCKET_SIZE slots");
+  TEST_ASSERT_TRUE_MESSAGE(stats.nbuckets == 1, "Should have 1 bucket initially");
+  TEST_ASSERT_TRUE_MESSAGE(stats.n_removed == 0, "Should have no removed entries");
+  // Test update (same key)
+  int val2 = 200;
+  orc_sdk_hmap_put(map, key1, val2);
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_len(map) == 1,
+                           "Map should still have 1 element after update");
+  TEST_ASSERT_TRUE_MESSAGE(map[0].key == 42, "Key should remain 42");
+  TEST_ASSERT_TRUE_MESSAGE(map[0].value == 200, "Value should be updated to 200");
+  stats = _hmap_stats(map);
+  TEST_ASSERT_TRUE_MESSAGE(stats.n_used == 1,
+                           "Should still have 1 used slot after update");
+  TEST_ASSERT_TRUE_MESSAGE(stats.nslots == ORC_SDK_HMAP_BUCKET_SIZE,
+                           "Size should remain unchanged after update");
+  TEST_ASSERT_TRUE_MESSAGE(stats.n_removed == 0,
+                           "Update shouldn't create removed entries");
+  // Test second insertion (different key)
+  int key2 = 99, val3 = 300;
+  orc_sdk_hmap_put(map, key2, val3);
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_len(map) == 2, "Map should have 2 elements");
+  stats = _hmap_stats(map);
+  TEST_ASSERT_TRUE_MESSAGE(stats.n_used == 2,
+                           "Should have 2 used slots after second insert");
+  TEST_ASSERT_TRUE_MESSAGE(stats.nslots == ORC_SDK_HMAP_BUCKET_SIZE,
+                           "Size should still be initial size");
+  TEST_ASSERT_TRUE_MESSAGE(stats.n_removed == 0, "Should still have no removed entries");
+  // Verify both entries exist (order may vary due to hashing)
+  bool found_42 = false, found_99 = false;
+  for (size_t i = 0; i < orc_sdk_hmap_len(map); i++) {
+    if (map[i].key == 42) {
+      TEST_ASSERT_TRUE_MESSAGE(map[i].value == 200, "Key 42 should have value 200");
+      found_42 = true;
+    }
+    else if (map[i].key == 99) {
+      TEST_ASSERT_TRUE_MESSAGE(map[i].value == 300, "Key 99 should have value 300");
+      found_99 = true;
+    }
+  }
+  TEST_ASSERT_TRUE_MESSAGE(found_42, "Should find key 42 in map");
+  TEST_ASSERT_TRUE_MESSAGE(found_99, "Should find key 99 in map");
+  orc_sdk_hmap_free(map);
+}
+
+void test_hmap_growth(void)
+{
+  typedef struct
+  {
+    int key;
+    int value;
+  } Entry;
+  Entry *map = NULL;
+  // Insert enough elements to trigger growth (initial size is 8, growth at 75%)
+  // So we need more than 6 elements to trigger growth
+  for (int i = 0; i < 10; i++) {
+    int key = i, value = i * 10;
+    orc_sdk_hmap_put(map, key, value);
+  }
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_len(map) == 10,
+                           "All elements should be inserted");
+  // Verify all elements are present
+  bool found[10] = {false};
+  for (size_t i = 0; i < orc_sdk_hmap_len(map); i++) {
+    int key            = map[i].key;
+    int expected_value = key * 10;
+    TEST_ASSERT_TRUE_MESSAGE(key >= 0 && key < 10, "Key should be in valid range");
+    TEST_ASSERT_TRUE_MESSAGE(map[i].value == expected_value,
+                             "Value should match expected");
+    found[key] = true;
+  }
+  for (int i = 0; i < 10; i++) {
+    TEST_ASSERT_TRUE_MESSAGE(found[i], "All keys should be found after growth");
+  }
+  orc_sdk_hmap_free(map);
+}
+
+void test_hmap_edge_cases(void)
+{
+  typedef struct
+  {
+    int key;
+    int value;
+  } Entry;
+  Entry *map = NULL;
+  // Test with key 0 (potential edge case)
+  int key0 = 0, val0 = 999;
+  orc_sdk_hmap_put(map, key0, val0);
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_len(map) == 1, "Should handle key 0");
+  TEST_ASSERT_TRUE_MESSAGE(map[0].key == 0, "Key 0 should be stored correctly");
+  TEST_ASSERT_TRUE_MESSAGE(map[0].value == 999, "Value for key 0 should be correct");
+  // Test with negative keys
+  int key_neg = -1, val_neg = -999;
+  orc_sdk_hmap_put(map, key_neg, val_neg);
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_len(map) == 2, "Should handle negative keys");
+  // Test with large keys
+  int key_large = 1000000, val_large = 123;
+  orc_sdk_hmap_put(map, key_large, val_large);
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_len(map) == 3, "Should handle large keys");
+  // Test multiple updates to same key
+  int key_repeat = 42;
+  for (int i = 0; i < 5; i++) {
+    orc_sdk_hmap_put(map, key_repeat, i);
+    TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_len(map) == 4,
+                             "Multiple updates shouldn't increase size");
+  }
+  // Find key 42 and verify final value
+  bool found_42 = false;
+  for (size_t i = 0; i < orc_sdk_hmap_len(map); i++) {
+    if (map[i].key == 42) {
+      TEST_ASSERT_TRUE_MESSAGE(map[i].value == 4, "Final update value should be 4");
+      found_42 = true;
+      break;
+    }
+  }
+  TEST_ASSERT_TRUE_MESSAGE(found_42, "Should find key 42 after multiple updates");
+  orc_sdk_hmap_free(map);
+}
+
+void test_hmap_null_operations(void)
+{
+  typedef struct
+  {
+    int key;
+    int value;
+  } Entry;
+  Entry *null_map = NULL;
+  // Test length of NULL map
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_len(null_map) == 0,
+                           "NULL map should have length 0");
+  // Test that we can insert into NULL map (should initialize)
+  int key = 1, value = 100;
+  orc_sdk_hmap_put(null_map, key, value);
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_len(null_map) == 1,
+                           "Should initialize NULL map on first insert");
+  TEST_ASSERT_TRUE_MESSAGE(null_map[0].key == 1, "First key should be correct");
+  TEST_ASSERT_TRUE_MESSAGE(null_map[0].value == 100, "First value should be correct");
+  orc_sdk_hmap_free(null_map);
+}
+
+void test_hmap_stress_test(void)
+{
+  typedef struct
+  {
+    int key;
+    int value;
+  } Entry;
+  Entry *map = NULL;
+  // Test many insertions to stress growth/rehashing
+  // Insert many elements
+  for (int i = 0; i < 1000; i++) {
+    int key = i, value = i * 2;
+    orc_sdk_hmap_put(map, key, value);
+  }
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_len(map) == 1000,
+                           "Should handle many insertions");
+  HMapStats stats = _hmap_stats(map);
+  TEST_ASSERT_TRUE_MESSAGE(stats.n_used == 1000, "Stats should match actual count");
+  TEST_ASSERT_TRUE_MESSAGE(stats.n_removed == 0,
+                           "Should have no removed entries after insertions");
+  // Size should be at least large enough, and a multiple of ORC_SDK_HMAP_BUCKET_SIZE
+  TEST_ASSERT_TRUE_MESSAGE(stats.nslots >= 1000,
+                           "Should have grown to accommodate all elements");
+  TEST_ASSERT_TRUE_MESSAGE(stats.nslots % ORC_SDK_HMAP_BUCKET_SIZE == 0,
+                           "Slot count should be multiple of bucket size");
+  TEST_ASSERT_TRUE_MESSAGE(stats.nbuckets == stats.nslots / ORC_SDK_HMAP_BUCKET_SIZE,
+                           "Bucket count should be consistent");
+  // Verify all elements are still there after multiple growths
+  bool found[1000] = {false};
+  for (size_t i = 0; i < orc_sdk_hmap_len(map); i++) {
+    int key            = map[i].key;
+    int expected_value = key * 2;
+    TEST_ASSERT_TRUE_MESSAGE(key >= 0 && key < 1000, "Key should be in valid range");
+    TEST_ASSERT_TRUE_MESSAGE(map[i].value == expected_value,
+                             "Value should be correct after growth");
+    found[key] = true;
+  }
+  // Check that all keys were found
+  for (int i = 0; i < 1000; i++) {
+    TEST_ASSERT_TRUE_MESSAGE(found[i], "All keys should survive multiple growths");
+  }
+  // Test many updates
+  for (int i = 0; i < 1000; i++) {
+    int key = i, new_value = i * 3;
+    orc_sdk_hmap_put(map, key, new_value);
+  }
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_len(map) == 1000,
+                           "Length should remain same after updates");
+  stats = _hmap_stats(map);
+  TEST_ASSERT_TRUE_MESSAGE(stats.n_used == 1000,
+                           "Used count should remain same after updates");
+  TEST_ASSERT_TRUE_MESSAGE(stats.n_removed == 0,
+                           "Updates shouldn't create removed entries");
+  // Verify updates worked
+  for (size_t i = 0; i < orc_sdk_hmap_len(map); i++) {
+    int key            = map[i].key;
+    int expected_value = key * 3;
+    TEST_ASSERT_TRUE_MESSAGE(map[i].value == expected_value,
+                             "Updated values should be correct");
+  }
+  orc_sdk_hmap_free(map);
+}
+
+void test_hmap_hash_collision_simulation(void)
+{
+  typedef struct
+  {
+    int key;
+    int value;
+  } Entry;
+  Entry *map = NULL;
+  // Test keys that are likely to cause hash collisions
+  // Use multiples of large numbers to increase collision probability
+  int collision_keys[] = {
+    0,
+    8,
+    16,
+    24,
+    32,
+    40,
+    48,
+    56,
+    64,
+    72,  // Multiples of 8
+    1024,
+    2048,
+    4096,
+    8192,
+    16384,  // Powers of 2
+    -1,
+    -8,
+    -16,
+    -24  // Negative multiples
+  };
+  int num_keys = sizeof(collision_keys) / sizeof(collision_keys[0]);
+  // Insert all collision-prone keys
+  for (int i = 0; i < num_keys; i++) {
+    int key = collision_keys[i], value = i + 100;
+    orc_sdk_hmap_put(map, key, value);
+  }
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_len(map) == (size_t)num_keys,
+                           "Should handle potential hash collisions");
+  // Verify all keys are present and correct
+  for (int i = 0; i < num_keys; i++) {
+    int  target_key     = collision_keys[i];
+    int  expected_value = i + 100;
+    bool found          = false;
+    for (size_t j = 0; j < orc_sdk_hmap_len(map); j++) {
+      if (map[j].key == target_key) {
+        TEST_ASSERT_TRUE_MESSAGE(map[j].value == expected_value,
+                                 "Collision key should have correct value");
+        found = true;
+        break;
+      }
+    }
+    TEST_ASSERT_TRUE_MESSAGE(found, "All collision-prone keys should be found");
+  }
+  orc_sdk_hmap_free(map);
+}
+
+void test_hmap_boundary_conditions(void)
+{
+  typedef struct
+  {
+    int key;
+    int value;
+  } Entry;
+  Entry *map = NULL;
+  // Test exactly at growth boundaries
+  // Initial size is ORC_SDK_HMAP_BUCKET_SIZE, grows at 75% = 6 elements (assuming
+  // ORC_SDK_HMAP_BUCKET_SIZE=8)
+  // Insert exactly to growth threshold
+  for (int i = 0; i < 6; i++) {
+    int key = i, value = i;
+    orc_sdk_hmap_put(map, key, value);
+  }
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_len(map) == 6,
+                           "Should handle exactly 6 elements");
+  HMapStats stats = _hmap_stats(map);
+  TEST_ASSERT_TRUE_MESSAGE(stats.n_used == 6, "Should have 6 used slots at threshold");
+  TEST_ASSERT_TRUE_MESSAGE(stats.nslots == ORC_SDK_HMAP_BUCKET_SIZE,
+                           "Should still be initial size before growth");
+  TEST_ASSERT_TRUE_MESSAGE(stats.nbuckets == 1,
+                           "Should still have 1 bucket before growth");
+  TEST_ASSERT_TRUE_MESSAGE(stats.n_removed == 0, "Should have no removed entries");
+  // One more should trigger growth
+  int key7 = 100, val7 = 200;
+  orc_sdk_hmap_put(map, key7, val7);
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_len(map) == 7, "Should handle growth trigger");
+  stats = _hmap_stats(map);
+  TEST_ASSERT_TRUE_MESSAGE(stats.n_used == 7, "Should have 7 used slots after growth");
+  TEST_ASSERT_TRUE_MESSAGE(stats.nslots == ORC_SDK_HMAP_BUCKET_SIZE * 2,
+                           "Should double in size after growth");
+  TEST_ASSERT_TRUE_MESSAGE(stats.nbuckets == 2, "Should have 2 buckets after growth");
+  TEST_ASSERT_TRUE_MESSAGE(stats.n_removed == 0,
+                           "Growth should reset removed count to 0");
+  // Verify all elements survive growth
+  bool found[7]  = {false};
+  bool found_100 = false;
+  for (size_t i = 0; i < orc_sdk_hmap_len(map); i++) {
+    if (map[i].key == 100) {
+      TEST_ASSERT_TRUE_MESSAGE(map[i].value == 200,
+                               "Growth trigger element should be correct");
+      found_100 = true;
+    }
+    else if (map[i].key >= 0 && map[i].key < 6) {
+      found[map[i].key] = true;
+      TEST_ASSERT_TRUE_MESSAGE(map[i].value == map[i].key,
+                               "Original elements should survive growth");
+    }
+  }
+  TEST_ASSERT_TRUE_MESSAGE(found_100, "Growth trigger element should be found");
+  for (int i = 0; i < 6; i++) {
+    TEST_ASSERT_TRUE_MESSAGE(found[i], "All original elements should survive growth");
+  }
+  orc_sdk_hmap_free(map);
+}
+
+void test_hmap_extreme_values(void)
+{
+  typedef struct
+  {
+    int       key;
+    long long value;  // Use larger value type
+  } Entry;
+  Entry *map = NULL;
+  // Test extreme integer values
+  int extreme_keys[] = {
+    INT_MAX,
+    INT_MIN,
+    0,
+    -1,
+    1,
+    INT_MAX - 1,
+    INT_MIN + 1,
+    32767,
+    -32768,  // 16-bit boundaries
+    65535,
+    -65536  // Around 16-bit unsigned boundary
+  };
+  int num_keys = sizeof(extreme_keys) / sizeof(extreme_keys[0]);
+  for (int i = 0; i < num_keys; i++) {
+    int       key   = extreme_keys[i];
+    long long value = (long long)key * 1000000LL;  // Large values
+    orc_sdk_hmap_put(map, key, value);
+  }
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_len(map) == (size_t)num_keys,
+                           "Should handle extreme key values");
+  // Verify extreme values
+  for (int i = 0; i < num_keys; i++) {
+    int       target_key     = extreme_keys[i];
+    long long expected_value = (long long)target_key * 1000000LL;
+    bool      found          = false;
+    for (size_t j = 0; j < orc_sdk_hmap_len(map); j++) {
+      if (map[j].key == target_key) {
+        TEST_ASSERT_TRUE_MESSAGE(map[j].value == expected_value,
+                                 "Extreme value should be correct");
+        found = true;
+        break;
+      }
+    }
+    TEST_ASSERT_TRUE_MESSAGE(found, "Extreme key should be found");
+  }
+  orc_sdk_hmap_free(map);
+}
+
+void test_hmap_repeated_growth(void)
+{
+  typedef struct
+  {
+    int key;
+    int value;
+  } Entry;
+  Entry *map = NULL;
+  // Force multiple growth cycles by inserting in phases
+  int phase_sizes[]  = {5, 10, 20, 50, 100};
+  int num_phases     = sizeof(phase_sizes) / sizeof(phase_sizes[0]);
+  int total_inserted = 0;
+  for (int phase = 0; phase < num_phases; phase++) {
+    int phase_size = phase_sizes[phase];
+    // Insert elements for this phase
+    for (int i = 0; i < phase_size; i++) {
+      int key   = total_inserted + i;
+      int value = key * 10 + phase;  // Make value depend on both key and phase
+      orc_sdk_hmap_put(map, key, value);
+    }
+    total_inserted += phase_size;
+    TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_len(map) == (size_t)total_inserted,
+                             "Length should match total insertions");
+    // Verify all previous elements are still correct after each growth
+    for (int check_key = 0; check_key < total_inserted; check_key++) {
+      bool found = false;
+      for (size_t j = 0; j < orc_sdk_hmap_len(map); j++) {
+        if (map[j].key == check_key) {
+          // Calculate expected value based on which phase this key was from
+          int key_phase     = 0;
+          int running_total = 0;
+          for (int p = 0; p < num_phases; p++) {
+            if (check_key < running_total + phase_sizes[p]) {
+              key_phase = p;
+              break;
+            }
+            running_total += phase_sizes[p];
+          }
+          int expected_value = check_key * 10 + key_phase;
+          TEST_ASSERT_TRUE_MESSAGE(map[j].value == expected_value,
+                                   "Value should survive multiple growths");
+          found = true;
+          break;
+        }
+      }
+      TEST_ASSERT_TRUE_MESSAGE(found, "All keys should survive repeated growths");
+    }
+  }
+  orc_sdk_hmap_free(map);
+}
+
+void test_hmap_get_basic(void)
+{
+  typedef struct
+  {
+    int key;
+    int value;
+  } Entry;
+  Entry *map = NULL;
+  // Test get from empty map
+  int    key    = 42;
+  Entry *result = (Entry *)orc_sdk_hmap_get(map, key);
+  TEST_ASSERT_TRUE_MESSAGE(result == NULL, "Get from empty map should return NULL");
+  TEST_ASSERT_TRUE_MESSAGE(!orc_sdk_hmap_contains(map, key),
+                           "Empty map should not contain any key");
+  // Insert some entries
+  int key1 = 10, val1 = 100;
+  int key2 = 20, val2 = 200;
+  int key3 = 30, val3 = 300;
+  orc_sdk_hmap_put(map, key1, val1);
+  orc_sdk_hmap_put(map, key2, val2);
+  orc_sdk_hmap_put(map, key3, val3);
+  // Test orc_sdk_hmap_contains
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_contains(map, key1), "Should contain key1");
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_contains(map, key2), "Should contain key2");
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_contains(map, key3), "Should contain key3");
+  int missing_key1 = 999;
+  TEST_ASSERT_TRUE_MESSAGE(!orc_sdk_hmap_contains(map, missing_key1),
+                           "Should not contain missing key");
+  // Test successful gets
+  result = (Entry *)orc_sdk_hmap_get(map, key1);
+  TEST_ASSERT_TRUE_MESSAGE(result != NULL, "Should find existing key 10");
+  TEST_ASSERT_TRUE_MESSAGE(result->key == 10, "Retrieved entry should have correct key");
+  TEST_ASSERT_TRUE_MESSAGE(result->value == 100,
+                           "Retrieved entry should have correct value");
+  result = (Entry *)orc_sdk_hmap_get(map, key2);
+  TEST_ASSERT_TRUE_MESSAGE(result != NULL, "Should find existing key 20");
+  TEST_ASSERT_TRUE_MESSAGE(result->key == 20, "Retrieved entry should have correct key");
+  TEST_ASSERT_TRUE_MESSAGE(result->value == 200,
+                           "Retrieved entry should have correct value");
+  result = (Entry *)orc_sdk_hmap_get(map, key3);
+  TEST_ASSERT_TRUE_MESSAGE(result != NULL, "Should find existing key 30");
+  TEST_ASSERT_TRUE_MESSAGE(result->key == 30, "Retrieved entry should have correct key");
+  TEST_ASSERT_TRUE_MESSAGE(result->value == 300,
+                           "Retrieved entry should have correct value");
+  // Test missing key
+  int missing_key = 999;
+  result          = (Entry *)orc_sdk_hmap_get(map, missing_key);
+  TEST_ASSERT_TRUE_MESSAGE(result == NULL, "Should return NULL for missing key");
+  TEST_ASSERT_TRUE_MESSAGE(!orc_sdk_hmap_contains(map, missing_key),
+                           "Should not contain missing key");
+  orc_sdk_hmap_free(map);
+}
+
+void test_hmap_get_after_updates(void)
+{
+  typedef struct
+  {
+    int key;
+    int value;
+  } Entry;
+  Entry *map = NULL;
+  // Insert initial value
+  int key = 42, initial_val = 100;
+  orc_sdk_hmap_put(map, key, initial_val);
+  // Verify initial state
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_contains(map, key),
+                           "Should contain key after insert");
+  Entry *result = (Entry *)orc_sdk_hmap_get(map, key);
+  TEST_ASSERT_TRUE_MESSAGE(result != NULL, "Should find key after initial insert");
+  TEST_ASSERT_TRUE_MESSAGE(result->value == 100, "Should have initial value");
+  // Update the value
+  int updated_val = 999;
+  orc_sdk_hmap_put(map, key, updated_val);
+  // Verify state after update
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_contains(map, key),
+                           "Should still contain key after update");
+  result = (Entry *)orc_sdk_hmap_get(map, key);
+  TEST_ASSERT_TRUE_MESSAGE(result != NULL, "Should still find key after update");
+  TEST_ASSERT_TRUE_MESSAGE(result->value == 999, "Should have updated value");
+  TEST_ASSERT_TRUE_MESSAGE(result->key == 42, "Key should remain unchanged");
+  // Verify map still has only one entry
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_len(map) == 1,
+                           "Map should still have only one entry after update");
+  orc_sdk_hmap_free(map);
+}
+
+void test_hmap_get_with_collisions(void)
+{
+  typedef struct
+  {
+    int key;
+    int value;
+  } Entry;
+  Entry *map = NULL;
+  // Use keys that are likely to cause collisions
+  int collision_keys[] = {0, 8, 16, 24, 32};  // Multiples of 8
+  int values[]         = {100, 200, 300, 400, 500};
+  int num_keys         = sizeof(collision_keys) / sizeof(collision_keys[0]);
+  // Insert collision-prone keys
+  for (int i = 0; i < num_keys; i++) {
+    orc_sdk_hmap_put(map, collision_keys[i], values[i]);
+  }
+  // Verify all keys are contained
+  for (int i = 0; i < num_keys; i++) {
+    TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_contains(map, collision_keys[i]),
+                             "Should contain collision-prone key");
+  }
+  // Verify all keys can be retrieved correctly
+  for (int i = 0; i < num_keys; i++) {
+    Entry *result = (Entry *)orc_sdk_hmap_get(map, collision_keys[i]);
+    TEST_ASSERT_TRUE_MESSAGE(result != NULL, "Should find collision-prone key");
+    TEST_ASSERT_TRUE_MESSAGE(result->key == collision_keys[i],
+                             "Retrieved key should match");
+    TEST_ASSERT_TRUE_MESSAGE(result->value == values[i], "Retrieved value should match");
+  }
+  // Test missing keys that might hash to same buckets
+  int missing_keys[] = {40, 48, 56};
+  for (int i = 0; i < 3; i++) {
+    TEST_ASSERT_TRUE_MESSAGE(!orc_sdk_hmap_contains(map, missing_keys[i]),
+                             "Should not contain missing collision-candidate key");
+    Entry *result = (Entry *)orc_sdk_hmap_get(map, missing_keys[i]);
+    TEST_ASSERT_TRUE_MESSAGE(result == NULL,
+                             "Should not find missing collision-candidate key");
+  }
+  orc_sdk_hmap_free(map);
+}
+
+void test_hmap_get_after_growth(void)
+{
+  typedef struct
+  {
+    int key;
+    int value;
+  } Entry;
+  Entry *map = NULL;
+  // Insert elements before growth
+  int pre_growth_keys[]   = {1, 2, 3, 4, 5};
+  int pre_growth_values[] = {10, 20, 30, 40, 50};
+  for (int i = 0; i < 5; i++) {
+    orc_sdk_hmap_put(map, pre_growth_keys[i], pre_growth_values[i]);
+  }
+  // Verify pre-growth containment and retrieval
+  for (int i = 0; i < 5; i++) {
+    TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_contains(map, pre_growth_keys[i]),
+                             "Should contain pre-growth key");
+    Entry *result = (Entry *)orc_sdk_hmap_get(map, pre_growth_keys[i]);
+    TEST_ASSERT_TRUE_MESSAGE(result != NULL, "Should find pre-growth key");
+    TEST_ASSERT_TRUE_MESSAGE(result->value == pre_growth_values[i],
+                             "Pre-growth value should be correct");
+  }
+  // Trigger growth by adding more elements (assuming 8 initial size, 75% threshold)
+  int post_growth_keys[]   = {6, 7, 8, 9, 10};
+  int post_growth_values[] = {60, 70, 80, 90, 100};
+  for (int i = 0; i < 5; i++) {
+    orc_sdk_hmap_put(map, post_growth_keys[i], post_growth_values[i]);
+  }
+  // Verify all pre-growth entries still accessible after growth
+  for (int i = 0; i < 5; i++) {
+    TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_contains(map, pre_growth_keys[i]),
+                             "Should contain pre-growth key after growth");
+    Entry *result = (Entry *)orc_sdk_hmap_get(map, pre_growth_keys[i]);
+    TEST_ASSERT_TRUE_MESSAGE(result != NULL, "Should find pre-growth key after growth");
+    TEST_ASSERT_TRUE_MESSAGE(result->value == pre_growth_values[i],
+                             "Pre-growth value should survive growth");
+  }
+  // Verify post-growth entries
+  for (int i = 0; i < 5; i++) {
+    TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_contains(map, post_growth_keys[i]),
+                             "Should contain post-growth key");
+    Entry *result = (Entry *)orc_sdk_hmap_get(map, post_growth_keys[i]);
+    TEST_ASSERT_TRUE_MESSAGE(result != NULL, "Should find post-growth key");
+    TEST_ASSERT_TRUE_MESSAGE(result->value == post_growth_values[i],
+                             "Post-growth value should be correct");
+  }
+  orc_sdk_hmap_free(map);
+}
+
+void test_hmap_get_edge_cases(void)
+{
+  typedef struct
+  {
+    int       key;
+    long long value;  // Different value type
+  } Entry;
+  Entry *map = NULL;
+  // Test with extreme key values
+  int       extreme_keys[]   = {INT_MAX, INT_MIN, 0, -1, 1};
+  long long extreme_values[] = {1000000LL, -1000000LL, 0LL, -1LL, 1LL};
+  for (int i = 0; i < 5; i++) {
+    orc_sdk_hmap_put(map, extreme_keys[i], extreme_values[i]);
+  }
+  // Verify extreme values with both contains and get
+  for (int i = 0; i < 5; i++) {
+    TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_contains(map, extreme_keys[i]),
+                             "Should contain extreme key");
+    Entry *result = (Entry *)orc_sdk_hmap_get(map, extreme_keys[i]);
+    TEST_ASSERT_TRUE_MESSAGE(result != NULL, "Should find extreme key");
+    TEST_ASSERT_TRUE_MESSAGE(result->key == extreme_keys[i], "Extreme key should match");
+    TEST_ASSERT_TRUE_MESSAGE(result->value == extreme_values[i],
+                             "Extreme value should match");
+  }
+  // Test key 0 specifically (potential edge case)
+  int zero_key = 0;
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_contains(map, zero_key), "Should contain key 0");
+  Entry *result = (Entry *)orc_sdk_hmap_get(map, zero_key);
+  TEST_ASSERT_TRUE_MESSAGE(result != NULL, "Should find key 0");
+  TEST_ASSERT_TRUE_MESSAGE(result->key == 0, "Key 0 should be retrievable");
+  TEST_ASSERT_TRUE_MESSAGE(result->value == 0LL, "Value for key 0 should be correct");
+  orc_sdk_hmap_free(map);
+}
+
+void test_hmap_get_null_safety(void)
+{
+  typedef struct
+  {
+    int key;
+    int value;
+  } Entry;
+  // Test operations on NULL map
+  Entry *null_map      = NULL;
+  int    test_key_null = 42;
+  TEST_ASSERT_TRUE_MESSAGE(!orc_sdk_hmap_contains(null_map, test_key_null),
+                           "NULL map should not contain any key");
+  Entry *result = (Entry *)orc_sdk_hmap_get(null_map, test_key_null);
+  TEST_ASSERT_TRUE_MESSAGE(result == NULL, "Get from NULL map should return NULL");
+  // Test get from map that works normally
+  Entry *map = NULL;
+  int    key = 123, value = 456;
+  orc_sdk_hmap_put(map, key, value);
+  // Verify it works before free
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_contains(map, key),
+                           "Should contain key before free");
+  result = (Entry *)orc_sdk_hmap_get(map, key);
+  TEST_ASSERT_TRUE_MESSAGE(result != NULL, "Should find key before free");
+  orc_sdk_hmap_free(map);
+  // Note: Don't test after free as that would be undefined behavior
+}
+
+void print_hmap(void *ptr)  // DEBUG.
+{
+  typedef struct
+  {
+    uint64_t key;
+    uint64_t value;
+  } Entry;
+  Entry *map = (Entry *)ptr;
+  if (map == NULL) {
+    printf("\nMap is NULL\n");
+    return;
+  }
+  _OrcSdk_HashTableHeader *h = _orc_sdk_hmap_header(map);
+  printf("\nPairs (%zu):\n", h->n_total);
+  size_t const npairs = h->n_total;
+  for (size_t i = 0; i < npairs; ++i, ++map) {
+    printf("\t[%zu]: (k: %" PRIu64 "; v: %" PRIu64 ")\n", i, map->key, map->value);
+  }
+  printf("Buckets:\n");
+  _OrcSdk_HashBucket *bk  = h->buckets;
+  size_t const        nbs = h->n_total / ORC_SDK_HMAP_BUCKET_SIZE;
+  for (size_t i = 0; i < nbs; ++i, ++bk) {
+    printf("\t-----------------------\n");
+    for (size_t s = 0; s < ORC_SDK_HMAP_BUCKET_SIZE; ++s) {
+      printf("\t\t(h: %zu; i: %zi)\n", bk->hash[s], bk->index[s]);
+    }
+  }
+}
+
+void test_hmap_fibo_indices(void)
+{
+  typedef struct
+  {
+    uint64_t key;
+    uint64_t value;
+  } Entry;
+  uint64_t *fibo = NULL;
+  {  // Populate array.
+    TEST_ASSERT_TRUE_MESSAGE(orc_sdk_arr_push(fibo, 1) == ORC_ERROR_NONE,
+                             "Failed to push to array");
+    TEST_ASSERT_TRUE_MESSAGE(orc_sdk_arr_push(fibo, 1) == ORC_ERROR_NONE,
+                             "Failed to push to array");
+    for (size_t i = 0; i < 50; ++i) {
+      size_t const len = orc_sdk_arr_len(fibo);
+      TEST_ASSERT_TRUE_MESSAGE(
+        orc_sdk_arr_push(fibo, fibo[len - 2] + fibo[len - 1]) == ORC_ERROR_NONE,
+        "Array length is not correct.");
+    }
+    TEST_ASSERT_TRUE_MESSAGE(orc_sdk_arr_len(fibo) == 52,
+                             "Not enough fibonacci numbers.");
+    orc_sdk_arr_remove(fibo, 0);  // Remove the duplicated 1.
+    TEST_ASSERT_TRUE_MESSAGE(orc_sdk_arr_len(fibo) == 51,
+                             "One less after removing the duplicate");
+  }
+  Entry *idxmap = NULL;
+  {  // Populate the map.
+    size_t const len = orc_sdk_arr_len(fibo);
+    uint64_t    *fn  = fibo;
+    for (size_t i = 0; i < len; ++i, ++fn) {
+      orc_sdk_hmap_put(idxmap, *fn, i);
+      TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_len(idxmap) == (i + 1),
+                               "Hasmap size is not growing.");
+    }
+  }
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_len(idxmap) == orc_sdk_arr_len(fibo),
+                           "Hashmap o fibonacci numbers is not the right size.");
+  {  // Check the mapping.
+    size_t const len = orc_sdk_arr_len(fibo);
+    uint64_t    *fn  = fibo;
+    for (size_t i = 0; i < len; ++i, ++fn) {
+      Entry *match = (Entry *)orc_sdk_hmap_get(idxmap, *fn);
+      TEST_ASSERT_TRUE_MESSAGE(match != NULL, "Match must be found.");
+      TEST_ASSERT_TRUE_MESSAGE(match->key == *fn && match->value == i,
+                               "Match doesn't actually match");
+    }
+  }
+  orc_sdk_hmap_free(idxmap);
+  orc_sdk_arr_free(fibo);
+}
+
+void test_hmap_remove_basic(void)
+{
+  typedef struct
+  {
+    int key;
+    int value;
+  } Entry;
+  Entry *map = NULL;
+  // Insert some elements
+  int key1 = 10, val1 = 100;
+  int key2 = 20, val2 = 200;
+  int key3 = 30, val3 = 300;
+  orc_sdk_hmap_put(map, key1, val1);
+  orc_sdk_hmap_put(map, key2, val2);
+  orc_sdk_hmap_put(map, key3, val3);
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_len(map) == 3,
+                           "Should have 3 elements before removal");
+  HMapStats stats = _hmap_stats(map);
+  TEST_ASSERT_TRUE_MESSAGE(stats.n_used == 3, "Should have 3 used slots");
+  TEST_ASSERT_TRUE_MESSAGE(stats.n_removed == 0, "Should have 0 removed slots initially");
+  // Test successful removal
+  orc_sdk_hmap_remove(map, key2);
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_len(map) == 2,
+                           "Should have 2 elements after removal");
+  TEST_ASSERT_TRUE_MESSAGE(!orc_sdk_hmap_contains(map, key2),
+                           "Should not contain removed key");
+  Entry *result = (Entry *)orc_sdk_hmap_get(map, key2);
+  TEST_ASSERT_TRUE_MESSAGE(result == NULL, "Get should return NULL for removed key");
+  stats = _hmap_stats(map);
+  TEST_ASSERT_TRUE_MESSAGE(stats.n_used == 2, "Should have 2 used slots after removal");
+  TEST_ASSERT_TRUE_MESSAGE(stats.n_removed <= 1,
+                           "Should have at most 1 removed slot after removal");
+  // Verify other elements still exist
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_contains(map, key1), "Should still contain key1");
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_contains(map, key3), "Should still contain key3");
+  result = (Entry *)orc_sdk_hmap_get(map, key1);
+  TEST_ASSERT_TRUE_MESSAGE(result != NULL, "Should find key1");
+  TEST_ASSERT_TRUE_MESSAGE(result->value == val1, "Key1 should have correct value");
+  result = (Entry *)orc_sdk_hmap_get(map, key3);
+  TEST_ASSERT_TRUE_MESSAGE(result != NULL, "Should find key3");
+  TEST_ASSERT_TRUE_MESSAGE(result->value == val3, "Key3 should have correct value");
+  // Remove remaining elements
+  orc_sdk_hmap_remove(map, key1);
+  orc_sdk_hmap_remove(map, key3);
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_len(map) == 0,
+                           "Should be empty after removing all");
+  stats = _hmap_stats(map);
+  TEST_ASSERT_TRUE_MESSAGE(stats.n_used == 0, "Should have 0 used slots when empty");
+  TEST_ASSERT_TRUE_MESSAGE(stats.n_removed <= 3,
+                           "Should have at most 3 removed slots (may compact)");
+  orc_sdk_hmap_free(map);
+}
+
+void test_hmap_remove_nonexistent(void)
+{
+  typedef struct
+  {
+    int key;
+    int value;
+  } Entry;
+  Entry *map = NULL;
+  // Test removing from empty map
+  int missing_key = 999;
+  orc_sdk_hmap_remove(map, missing_key);  // Should do nothing
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_len(map) == 0, "Empty map should remain empty");
+  // Insert some elements
+  int key1 = 10, val1 = 100;
+  int key2 = 20, val2 = 200;
+  orc_sdk_hmap_put(map, key1, val1);
+  orc_sdk_hmap_put(map, key2, val2);
+  HMapStats stats           = _hmap_stats(map);
+  size_t    initial_used    = stats.n_used;
+  size_t    initial_removed = stats.n_removed;
+  size_t    initial_len     = orc_sdk_hmap_len(map);
+  // Try to remove non-existent keys
+  int nonexistent_keys[] = {5, 15, 25, 999, -1, 0};
+  for (int i = 0; i < 6; i++) {
+    orc_sdk_hmap_remove(map, nonexistent_keys[i]);
+    // Verify map state unchanged
+    TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_len(map) == initial_len,
+                             "Length should not change");
+    stats = _hmap_stats(map);
+    TEST_ASSERT_TRUE_MESSAGE(stats.n_used == initial_used,
+                             "Used count should not change");
+    TEST_ASSERT_TRUE_MESSAGE(stats.n_removed == initial_removed,
+                             "Removed count should not change");
+    // Verify existing keys still present
+    TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_contains(map, key1),
+                             "Existing key1 should still be present");
+    TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_contains(map, key2),
+                             "Existing key2 should still be present");
+  }
+  // Remove an existing key, then try to remove it again
+  orc_sdk_hmap_remove(map, key1);
+  TEST_ASSERT_TRUE_MESSAGE(!orc_sdk_hmap_contains(map, key1), "Key1 should be removed");
+  stats                        = _hmap_stats(map);
+  size_t used_after_removal    = stats.n_used;
+  size_t removed_after_removal = stats.n_removed;
+  // Try to remove the already removed key
+  orc_sdk_hmap_remove(map, key1);
+  stats = _hmap_stats(map);
+  TEST_ASSERT_TRUE_MESSAGE(
+    stats.n_used == used_after_removal,
+    "Used count should not change when removing already removed key");
+  TEST_ASSERT_TRUE_MESSAGE(
+    stats.n_removed == removed_after_removal,
+    "Removed count should not change when removing already removed key");
+  TEST_ASSERT_TRUE_MESSAGE(!orc_sdk_hmap_contains(map, key1),
+                           "Key1 should still not be present");
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_contains(map, key2),
+                           "Key2 should still be present");
+  orc_sdk_hmap_free(map);
+}
+
+void test_hmap_remove_with_collisions(void)
+{
+  typedef struct
+  {
+    int key;
+    int value;
+  } Entry;
+  Entry *map = NULL;
+  // Use keys that are likely to cause collisions
+  int collision_keys[] = {0, 8, 16, 24, 32, 40};  // Multiples of 8
+  int values[]         = {100, 200, 300, 400, 500, 600};
+  int num_keys         = sizeof(collision_keys) / sizeof(collision_keys[0]);
+  // Insert collision-prone keys
+  for (int i = 0; i < num_keys; i++) {
+    orc_sdk_hmap_put(map, collision_keys[i], values[i]);
+  }
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_len(map) == (size_t)num_keys,
+                           "Should have all keys initially");
+  // Remove middle element (should be in a collision chain)
+  int removed_key   = collision_keys[2];  // key = 16
+  int removed_value = values[2];          // value = 300
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_contains(map, removed_key),
+                           "Key should exist before removal");
+  Entry *result = (Entry *)orc_sdk_hmap_get(map, removed_key);
+  TEST_ASSERT_TRUE_MESSAGE(result != NULL && result->value == removed_value,
+                           "Should find correct value before removal");
+  orc_sdk_hmap_remove(map, removed_key);
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_len(map) == (size_t)num_keys - 1,
+                           "Length should decrease by 1");
+  TEST_ASSERT_TRUE_MESSAGE(!orc_sdk_hmap_contains(map, removed_key),
+                           "Removed key should not be found");
+  result = (Entry *)orc_sdk_hmap_get(map, removed_key);
+  TEST_ASSERT_TRUE_MESSAGE(result == NULL, "Get should return NULL for removed key");
+  // Verify all other collision-prone keys are still accessible
+  for (int i = 0; i < num_keys; i++) {
+    if (collision_keys[i] == removed_key)
+      continue;
+    TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_contains(map, collision_keys[i]),
+                             "Other collision keys should still be present");
+    result = (Entry *)orc_sdk_hmap_get(map, collision_keys[i]);
+    TEST_ASSERT_TRUE_MESSAGE(result != NULL, "Should find other collision keys");
+    TEST_ASSERT_TRUE_MESSAGE(result->key == collision_keys[i], "Key should match");
+    TEST_ASSERT_TRUE_MESSAGE(result->value == values[i], "Value should match");
+  }
+  // Remove first element in potential chain
+  orc_sdk_hmap_remove(map, collision_keys[0]);
+  TEST_ASSERT_TRUE_MESSAGE(!orc_sdk_hmap_contains(map, collision_keys[0]),
+                           "First key should be removed");
+  // Remove last element in potential chain
+  orc_sdk_hmap_remove(map, collision_keys[num_keys - 1]);
+  TEST_ASSERT_TRUE_MESSAGE(!orc_sdk_hmap_contains(map, collision_keys[num_keys - 1]),
+                           "Last key should be removed");
+  // Verify remaining elements are still accessible
+  for (int i = 1; i < num_keys - 1; i++) {
+    if (collision_keys[i] == removed_key)
+      continue;
+    TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_contains(map, collision_keys[i]),
+                             "Remaining collision keys should still be accessible");
+  }
+  orc_sdk_hmap_free(map);
+}
+
+void test_hmap_remove_after_growth(void)
+{
+  typedef struct
+  {
+    int key;
+    int value;
+  } Entry;
+  Entry *map = NULL;
+  // Insert elements before growth (assuming ORC_SDK_HMAP_BUCKET_SIZE=8, threshold=75%)
+  int pre_growth_keys[]   = {1, 2, 3, 4, 5, 6};
+  int pre_growth_values[] = {10, 20, 30, 40, 50, 60};
+  for (int i = 0; i < 6; i++) {
+    orc_sdk_hmap_put(map, pre_growth_keys[i], pre_growth_values[i]);
+  }
+  HMapStats stats         = _hmap_stats(map);
+  size_t    initial_slots = stats.nslots;
+  // Trigger growth
+  int growth_keys[]   = {7, 8, 9, 10};
+  int growth_values[] = {70, 80, 90, 100};
+  for (int i = 0; i < 4; i++) {
+    orc_sdk_hmap_put(map, growth_keys[i], growth_values[i]);
+  }
+  stats = _hmap_stats(map);
+  TEST_ASSERT_TRUE_MESSAGE(stats.nslots > initial_slots, "Map should have grown");
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_len(map) == 10,
+                           "Should have 10 elements after growth");
+  // Remove elements that were inserted before growth
+  orc_sdk_hmap_remove(map, pre_growth_keys[1]);  // Remove key 2
+  orc_sdk_hmap_remove(map, pre_growth_keys[4]);  // Remove key 5
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_len(map) == 8,
+                           "Should have 8 elements after removals");
+  TEST_ASSERT_TRUE_MESSAGE(!orc_sdk_hmap_contains(map, pre_growth_keys[1]),
+                           "Pre-growth key 2 should be removed");
+  TEST_ASSERT_TRUE_MESSAGE(!orc_sdk_hmap_contains(map, pre_growth_keys[4]),
+                           "Pre-growth key 5 should be removed");
+  // Remove elements that were inserted after growth
+  orc_sdk_hmap_remove(map, growth_keys[0]);  // Remove key 7
+  orc_sdk_hmap_remove(map, growth_keys[2]);  // Remove key 9
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_len(map) == 6,
+                           "Should have 6 elements after more removals");
+  TEST_ASSERT_TRUE_MESSAGE(!orc_sdk_hmap_contains(map, growth_keys[0]),
+                           "Post-growth key 7 should be removed");
+  TEST_ASSERT_TRUE_MESSAGE(!orc_sdk_hmap_contains(map, growth_keys[2]),
+                           "Post-growth key 9 should be removed");
+  // Verify remaining elements are still accessible
+  int remaining_keys[]   = {1, 3, 4, 6, 8, 10};
+  int remaining_values[] = {10, 30, 40, 60, 80, 100};
+  for (int i = 0; i < 6; i++) {
+    TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_contains(map, remaining_keys[i]),
+                             "Remaining key should be present");
+    Entry *result = (Entry *)orc_sdk_hmap_get(map, remaining_keys[i]);
+    TEST_ASSERT_TRUE_MESSAGE(result != NULL, "Should find remaining key");
+    TEST_ASSERT_TRUE_MESSAGE(result->value == remaining_values[i],
+                             "Remaining key should have correct value");
+  }
+  orc_sdk_hmap_free(map);
+}
+
+void test_hmap_remove_and_reinsert(void)
+{
+  typedef struct
+  {
+    int key;
+    int value;
+  } Entry;
+  Entry *map = NULL;
+  // Insert initial elements
+  int key1 = 10, val1 = 100;
+  int key2 = 20, val2 = 200;
+  int key3 = 30, val3 = 300;
+  orc_sdk_hmap_put(map, key1, val1);
+  orc_sdk_hmap_put(map, key2, val2);
+  orc_sdk_hmap_put(map, key3, val3);
+  HMapStats stats = _hmap_stats(map);
+  TEST_ASSERT_TRUE_MESSAGE(stats.n_used == 3, "Should have 3 used slots");
+  TEST_ASSERT_TRUE_MESSAGE(stats.n_removed == 0, "Should have 0 removed slots");
+  // Remove middle element
+  orc_sdk_hmap_remove(map, key2);
+  stats = _hmap_stats(map);
+  TEST_ASSERT_TRUE_MESSAGE(stats.n_used == 2, "Should have 2 used slots after removal");
+  TEST_ASSERT_TRUE_MESSAGE(stats.n_removed <= 1, "Should have at most 1 removed slot");
+  TEST_ASSERT_TRUE_MESSAGE(!orc_sdk_hmap_contains(map, key2),
+                           "Key2 should not be present");
+  // Reinsert the same key with different value
+  int new_val2 = 999;
+  orc_sdk_hmap_put(map, key2, new_val2);
+  stats = _hmap_stats(map);
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_len(map) == 3,
+                           "Should have 3 elements after reinsertion");
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_contains(map, key2),
+                           "Key2 should be present again");
+  Entry *result = (Entry *)orc_sdk_hmap_get(map, key2);
+  TEST_ASSERT_TRUE_MESSAGE(result != NULL, "Should find reinserted key");
+  TEST_ASSERT_TRUE_MESSAGE(result->value == new_val2,
+                           "Reinserted key should have new value");
+  // Test multiple remove/reinsert cycles
+  for (int cycle = 0; cycle < 3; cycle++) {
+    orc_sdk_hmap_remove(map, key1);
+    TEST_ASSERT_TRUE_MESSAGE(!orc_sdk_hmap_contains(map, key1),
+                             "Key1 should be removed in cycle");
+    int cycle_value = 1000 + cycle;
+    orc_sdk_hmap_put(map, key1, cycle_value);
+    TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_contains(map, key1),
+                             "Key1 should be reinserted in cycle");
+    result = (Entry *)orc_sdk_hmap_get(map, key1);
+    TEST_ASSERT_TRUE_MESSAGE(result != NULL && result->value == cycle_value,
+                             "Key1 should have cycle value");
+  }
+  // Verify other keys remain unaffected
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_contains(map, key3),
+                           "Key3 should still be present");
+  result = (Entry *)orc_sdk_hmap_get(map, key3);
+  TEST_ASSERT_TRUE_MESSAGE(result != NULL && result->value == val3,
+                           "Key3 should have original value");
+  orc_sdk_hmap_free(map);
+}
+
+void test_hmap_remove_null_safety(void)
+{
+  typedef struct
+  {
+    int key;
+    int value;
+  } Entry;
+  // Test remove on NULL map
+  Entry *null_map = NULL;
+  int    test_key = 42;
+  orc_sdk_hmap_remove(null_map, test_key);  // Should not crash
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_len(null_map) == 0,
+                           "NULL map should remain NULL/empty");
+  // Test remove with extreme key values
+  Entry *map              = NULL;
+  int    extreme_keys[]   = {INT_MAX, INT_MIN, 0, -1};
+  int    extreme_values[] = {1000, 2000, 3000, 4000};
+  // Insert extreme values
+  for (int i = 0; i < 4; i++) {
+    orc_sdk_hmap_put(map, extreme_keys[i], extreme_values[i]);
+  }
+  // Remove extreme values
+  for (int i = 0; i < 4; i++) {
+    TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_contains(map, extreme_keys[i]),
+                             "Extreme key should be present before removal");
+    orc_sdk_hmap_remove(map, extreme_keys[i]);
+    TEST_ASSERT_TRUE_MESSAGE(!orc_sdk_hmap_contains(map, extreme_keys[i]),
+                             "Extreme key should be removed");
+  }
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_len(map) == 0,
+                           "Map should be empty after removing all extreme values");
+  orc_sdk_hmap_free(map);
+}
+
+// =============================================================================
+// COMPREHENSIVE STRESS TESTS
+// =============================================================================
+
+// Test different primitive data types
+void test_hmap_data_types_int8(void)
+{
+  typedef struct
+  {
+    int8_t key;
+    int8_t value;
+  } Entry8;
+  Entry8 *map = NULL;
+  // Test with int8_t range
+  for (int8_t i = -50; i < 50; i++) {
+    orc_sdk_hmap_put(map, i, (int8_t)(i * 2));
+  }
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_len(map) == 100,
+                           "Should contain 100 int8 entries");
+  // Verify all entries
+  for (int8_t i = -50; i < 50; i++) {
+    TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_contains(map, i), "Should contain int8 key");
+    Entry8 *entry = (Entry8 *)orc_sdk_hmap_get(map, i);
+    TEST_ASSERT_TRUE_MESSAGE(entry != NULL && entry->value == i * 2,
+                             "Should have correct int8 value");
+  }
+  orc_sdk_hmap_free(map);
+}
+
+void test_hmap_data_types_int64(void)
+{
+  typedef struct
+  {
+    int64_t key;
+    int64_t value;
+  } Entry64;
+  Entry64 *map = NULL;
+  // Test with large int64_t values
+  int64_t test_keys[]   = {INT64_MIN,
+                           INT64_MIN + 1,
+                           -1000000000000LL,
+                           -1,
+                           0,
+                           1,
+                           1000000000000LL,
+                           INT64_MAX - 1,
+                           INT64_MAX};
+  int64_t test_values[] = {1, 2, 3, 4, 5, 6, 7, 8, 9};
+  size_t  num_tests     = sizeof(test_keys) / sizeof(test_keys[0]);
+  for (size_t i = 0; i < num_tests; i++) {
+    orc_sdk_hmap_put(map, test_keys[i], test_values[i]);
+  }
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_len(map) == num_tests,
+                           "Should contain all int64 entries");
+  for (size_t i = 0; i < num_tests; i++) {
+    TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_contains(map, test_keys[i]),
+                             "Should contain int64 key");
+    Entry64 *entry = (Entry64 *)orc_sdk_hmap_get(map, test_keys[i]);
+    TEST_ASSERT_TRUE_MESSAGE(entry != NULL && entry->value == test_values[i],
+                             "Should have correct int64 value");
+  }
+  orc_sdk_hmap_free(map);
+}
+
+void test_hmap_data_types_float(void)
+{
+  typedef struct
+  {
+    float key;
+    float value;
+  } FloatEntry;
+  FloatEntry *map         = NULL;
+  float       test_keys[] = {-3.14159f, -1.0f, -0.5f, 0.0f, 0.5f, 1.0f, 2.71828f, 100.5f};
+  float       test_values[] = {1.1f, 2.2f, 3.3f, 4.4f, 5.5f, 6.6f, 7.7f, 8.8f};
+  size_t      num_tests     = sizeof(test_keys) / sizeof(test_keys[0]);
+  for (size_t i = 0; i < num_tests; i++) {
+    orc_sdk_hmap_put(map, test_keys[i], test_values[i]);
+  }
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_len(map) == num_tests,
+                           "Should contain all float entries");
+  for (size_t i = 0; i < num_tests; i++) {
+    TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_contains(map, test_keys[i]),
+                             "Should contain float key");
+    FloatEntry *entry = (FloatEntry *)orc_sdk_hmap_get(map, test_keys[i]);
+    TEST_ASSERT_TRUE_MESSAGE(entry != NULL && entry->value == test_values[i],
+                             "Should have correct float value");
+  }
+  orc_sdk_hmap_free(map);
+}
+
+void test_hmap_data_types_double(void)
+{
+  typedef struct
+  {
+    double key;
+    double value;
+  } DoubleEntry;
+  DoubleEntry *map   = NULL;
+  double test_keys[] = {-3.141592653589793, -1e-10, 0.0, 1e-10, 2.718281828459045, 1e10};
+  double test_values[] = {
+    1.123456789, 2.987654321, 3.456789012, 4.321098765, 5.678901234, 6.543210987};
+  size_t num_tests = sizeof(test_keys) / sizeof(test_keys[0]);
+  for (size_t i = 0; i < num_tests; i++) {
+    orc_sdk_hmap_put(map, test_keys[i], test_values[i]);
+  }
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_len(map) == num_tests,
+                           "Should contain all double entries");
+  for (size_t i = 0; i < num_tests; i++) {
+    TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_contains(map, test_keys[i]),
+                             "Should contain double key");
+    DoubleEntry *entry = (DoubleEntry *)orc_sdk_hmap_get(map, test_keys[i]);
+    TEST_ASSERT_TRUE_MESSAGE(entry != NULL && entry->value == test_values[i],
+                             "Should have correct double value");
+  }
+  orc_sdk_hmap_free(map);
+}
+
+// Compaction stress test - force multiple compactions
+void test_hmap_compaction_stress(void)
+{
+  typedef struct
+  {
+    int key;
+    int value;
+  } Entry;
+  Entry    *map            = NULL;
+  const int NUM_CYCLES     = 5;
+  const int KEYS_PER_CYCLE = 100;
+  for (int cycle = 0; cycle < NUM_CYCLES; cycle++) {
+    // Insert many keys
+    for (int i = 0; i < KEYS_PER_CYCLE; i++) {
+      int key = cycle * KEYS_PER_CYCLE + i;
+      orc_sdk_hmap_put(map, key, key * 10);
+    }
+    HMapStats stats               = _hmap_stats(map);
+    size_t    used_before_removal = stats.n_used;
+    // Remove every 3rd key to create tombstones
+    for (int i = 0; i < KEYS_PER_CYCLE; i += 3) {
+      int key = cycle * KEYS_PER_CYCLE + i;
+      orc_sdk_hmap_remove(map, key);
+    }
+    stats = _hmap_stats(map);
+    // Verify correct number of elements remain
+    size_t expected_remaining =
+      used_before_removal -
+      (size_t)(KEYS_PER_CYCLE / 3 + (KEYS_PER_CYCLE % 3 > 0 ? 1 : 0));
+    TEST_ASSERT_TRUE_MESSAGE(stats.n_used == expected_remaining,
+                             "Should have correct number of used slots after removal");
+    // Verify all non-removed keys still exist
+    for (int i = 0; i < KEYS_PER_CYCLE; i++) {
+      int  key          = cycle * KEYS_PER_CYCLE + i;
+      bool should_exist = (i % 3) != 0;
+      if (should_exist) {
+        TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_contains(map, key),
+                                 "Non-removed key should still exist");
+        Entry *entry = (Entry *)orc_sdk_hmap_get(map, key);
+        TEST_ASSERT_TRUE_MESSAGE(entry != NULL && entry->value == key * 10,
+                                 "Should have correct value");
+      }
+      else {
+        TEST_ASSERT_TRUE_MESSAGE(!orc_sdk_hmap_contains(map, key),
+                                 "Removed key should not exist");
+      }
+    }
+  }
+  orc_sdk_hmap_free(map);
+}
+
+// Hash collision stress test - keys designed to have similar hash values
+void test_hmap_hash_collision_stress(void)
+{
+  typedef struct
+  {
+    int key;
+    int value;
+  } Entry;
+  Entry    *map            = NULL;
+  const int NUM_GROUPS     = 20;
+  const int KEYS_PER_GROUP = 50;
+  // Create keys that are likely to collide by using similar bit patterns
+  for (int group = 0; group < NUM_GROUPS; group++) {
+    int base_key = group * 1000000;  // Large spacing to create different hash groups
+    for (int i = 0; i < KEYS_PER_GROUP; i++) {
+      // Create keys with small variations that might hash to same bucket
+      int key = base_key + (i * 7) + (i * i);  // Non-linear progression
+      orc_sdk_hmap_put(map, key, key + group);
+    }
+  }
+  size_t total_keys = NUM_GROUPS * KEYS_PER_GROUP;
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_len(map) == total_keys,
+                           "Should contain all collision test keys");
+  // Verify all keys and values
+  for (int group = 0; group < NUM_GROUPS; group++) {
+    int base_key = group * 1000000;
+    for (int i = 0; i < KEYS_PER_GROUP; i++) {
+      int key = base_key + (i * 7) + (i * i);
+      TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_contains(map, key),
+                               "Should contain collision test key");
+      Entry *entry = (Entry *)orc_sdk_hmap_get(map, key);
+      TEST_ASSERT_TRUE_MESSAGE(entry != NULL && entry->value == key + group,
+                               "Should have correct collision test value");
+    }
+  }
+  // Remove half the keys to test collision handling with tombstones
+  for (int group = 0; group < NUM_GROUPS; group += 2) {
+    int base_key = group * 1000000;
+    for (int i = 0; i < KEYS_PER_GROUP; i += 2) {
+      int key = base_key + (i * 7) + (i * i);
+      orc_sdk_hmap_remove(map, key);
+    }
+  }
+  // Verify remaining keys still work correctly
+  for (int group = 0; group < NUM_GROUPS; group++) {
+    int  base_key      = group * 1000000;
+    bool group_removed = (group % 2 == 0);
+    for (int i = 0; i < KEYS_PER_GROUP; i++) {
+      int  key              = base_key + (i * 7) + (i * i);
+      bool key_should_exist = !group_removed || (i % 2 != 0);
+      if (key_should_exist) {
+        TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_contains(map, key),
+                                 "Remaining collision key should exist");
+        Entry *entry = (Entry *)orc_sdk_hmap_get(map, key);
+        TEST_ASSERT_TRUE_MESSAGE(entry != NULL && entry->value == key + group,
+                                 "Should have correct remaining value");
+      }
+      else {
+        TEST_ASSERT_TRUE_MESSAGE(!orc_sdk_hmap_contains(map, key),
+                                 "Removed collision key should not exist");
+      }
+    }
+  }
+  orc_sdk_hmap_free(map);
+}
+
+// Large-scale performance and correctness test
+void test_hmap_large_scale_operations(void)
+{
+  typedef struct
+  {
+    int key;
+    int value;
+  } Entry;
+  Entry    *map        = NULL;
+  const int LARGE_SIZE = 10000;
+  // Phase 1: Insert large number of sequential keys
+  for (int i = 0; i < LARGE_SIZE; i++) {
+    orc_sdk_hmap_put(map, i, i * 3 + 7);
+  }
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_len(map) == LARGE_SIZE,
+                           "Should contain all large-scale entries");
+  HMapStats stats = _hmap_stats(map);
+  TEST_ASSERT_TRUE_MESSAGE(stats.n_used == LARGE_SIZE,
+                           "Should have correct number of used slots");
+  TEST_ASSERT_TRUE_MESSAGE(stats.n_removed == 0,
+                           "Should have no removed slots after insertion");
+  // Phase 2: Verify all entries
+  for (int i = 0; i < LARGE_SIZE; i++) {
+    TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_contains(map, i),
+                             "Should contain large-scale key");
+    Entry *entry = (Entry *)orc_sdk_hmap_get(map, i);
+    TEST_ASSERT_TRUE_MESSAGE(entry != NULL && entry->value == i * 3 + 7,
+                             "Should have correct large-scale value");
+  }
+  // Phase 3: Remove every 5th element
+  int removed_count = 0;
+  for (int i = 0; i < LARGE_SIZE; i += 5) {
+    orc_sdk_hmap_remove(map, i);
+    removed_count++;
+  }
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_len(map) == (size_t)(LARGE_SIZE - removed_count),
+                           "Should have correct count after large removals");
+  // Phase 4: Verify state after removals
+  for (int i = 0; i < LARGE_SIZE; i++) {
+    bool should_exist = (i % 5) != 0;
+    if (should_exist) {
+      TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_contains(map, i),
+                               "Non-removed large-scale key should exist");
+      Entry *entry = (Entry *)orc_sdk_hmap_get(map, i);
+      TEST_ASSERT_TRUE_MESSAGE(entry != NULL && entry->value == i * 3 + 7,
+                               "Should have correct remaining large-scale value");
+    }
+    else {
+      TEST_ASSERT_TRUE_MESSAGE(!orc_sdk_hmap_contains(map, i),
+                               "Removed large-scale key should not exist");
+    }
+  }
+  // Phase 5: Re-insert removed keys with different values
+  for (int i = 0; i < LARGE_SIZE; i += 5) {
+    orc_sdk_hmap_put(map, i, i * 5 + 11);  // Different value calculation
+  }
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_len(map) == LARGE_SIZE,
+                           "Should be back to full size after re-insertion");
+  // Phase 6: Final verification with mixed values
+  for (int i = 0; i < LARGE_SIZE; i++) {
+    TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_contains(map, i),
+                             "Should contain all keys after re-insertion");
+    Entry *entry = (Entry *)orc_sdk_hmap_get(map, i);
+    TEST_ASSERT_TRUE_MESSAGE(entry != NULL, "Should find all keys after re-insertion");
+    int expected_value = (i % 5 == 0) ? (i * 5 + 11) : (i * 3 + 7);
+    TEST_ASSERT_TRUE_MESSAGE(entry->value == expected_value,
+                             "Should have correct value after mixed operations");
+  }
+  orc_sdk_hmap_free(map);
+}
+
+// Mixed operation patterns test
+void test_hmap_mixed_operation_patterns(void)
+{
+  typedef struct
+  {
+    int key;
+    int value;
+  } Entry;
+  Entry    *map          = NULL;
+  const int PATTERN_SIZE = 1000;
+  // Pattern 1: Alternating insert/remove
+  for (int i = 0; i < PATTERN_SIZE; i++) {
+    orc_sdk_hmap_put(map, i, i * 2);
+    if (i > 0 && (i % 3) == 0) {
+      int prev_key = i - 2;
+      orc_sdk_hmap_remove(map, prev_key);  // Remove an earlier key
+    }
+  }
+  // Pattern 2: Batch operations
+  for (int batch = 0; batch < 5; batch++) {
+    int batch_start = PATTERN_SIZE + batch * 100;
+    // Insert batch
+    for (int i = 0; i < 100; i++) {
+      int key   = batch_start + i;
+      int value = key * 3;
+      orc_sdk_hmap_put(map, key, value);
+    }
+    // Update some values in batch
+    for (int i = 0; i < 100; i += 4) {
+      int key   = batch_start + i;
+      int value = key * 4;  // Different multiplier
+      orc_sdk_hmap_put(map, key, value);
+    }
+    // Remove some from batch
+    for (int i = 1; i < 100; i += 4) {
+      int key = batch_start + i;
+      orc_sdk_hmap_remove(map, key);
+    }
+  }
+  // Pattern 3: Verify the complex state
+  size_t final_len = orc_sdk_hmap_len(map);
+  TEST_ASSERT_TRUE_MESSAGE(final_len > 0, "Should have elements after mixed operations");
+  HMapStats final_stats = _hmap_stats(map);
+  TEST_ASSERT_TRUE_MESSAGE(final_stats.n_used == final_len,
+                           "Used count should match length");
+  // Ensure all contained keys are retrievable and have correct values
+  for (int i = 0; i < PATTERN_SIZE + 500; i++) {
+    if (orc_sdk_hmap_contains(map, i)) {
+      Entry *entry = (Entry *)orc_sdk_hmap_get(map, i);
+      TEST_ASSERT_TRUE_MESSAGE(entry != NULL, "Contained key should be retrievable");
+      TEST_ASSERT_TRUE_MESSAGE(entry->key == i, "Key should match");
+      // Value correctness depends on the complex pattern, just ensure it's not garbage
+      TEST_ASSERT_TRUE_MESSAGE(entry->value != 0 || i == 0, "Value should be meaningful");
+    }
+  }
+  orc_sdk_hmap_free(map);
+}
+
+void test_hmap_header_alignment(void)
+{
+  TEST_ASSERT_TRUE_MESSAGE(
+    sizeof(_OrcSdk_HashTableHeader) % sizeof(_MaxAlignCompat) == 0,
+    "Hashmap header must align with the platform's maximum alignment to be compatible "
+    "with arbitrary types inside the container. This doesn't guarantee alignment with "
+    "SIMD types. The containers are not meant to be used with SIMD types.");
+}
+
+void test_hmap_is_empty(void)
+{
+  typedef struct
+  {
+    int key;
+    int value;
+  } Entry;
+  Entry *map = NULL;
+  // Test empty map
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_is_empty(map), "NULL map should be empty");
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_len(map) == 0, "NULL map should have length 0");
+  // Test after adding element
+  int key1 = 42, val1 = 100;
+  orc_sdk_hmap_put(map, key1, val1);
+  TEST_ASSERT_TRUE_MESSAGE(!orc_sdk_hmap_is_empty(map),
+                           "Map with element should not be empty");
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_len(map) == 1, "Map should have length 1");
+  // Test after removing element
+  orc_sdk_hmap_remove(map, key1);
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_is_empty(map),
+                           "Map should be empty after removing only element");
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_len(map) == 0,
+                           "Map should have length 0 after removal");
+  // Test with multiple elements
+  for (int i = 0; i < 10; i++) {
+    int key = i, val = i * 2;
+    orc_sdk_hmap_put(map, key, val);
+    TEST_ASSERT_TRUE_MESSAGE(!orc_sdk_hmap_is_empty(map),
+                             "Map should not be empty during population");
+  }
+  // Remove all elements
+  for (int i = 0; i < 10; i++) {
+    int key = i;
+    orc_sdk_hmap_remove(map, key);
+  }
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_is_empty(map),
+                           "Map should be empty after removing all elements");
+  orc_sdk_hmap_free(map);
+}
+
+void test_hmap_iterate_after_remove(void)
+{
+  typedef struct
+  {
+    int    key;
+    double value;
+  } Entry;
+  Entry *map = NULL;
+  // Test 1: Empty map.
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_is_empty(map), "NULL map should be empty");
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_len(map) == 0, "NULL map should have length 0");
+  // Test 2: Insert 10 entries, remove from the middle, check compactness.
+  for (int key = 0; key < 10; ++key) {
+    orc_sdk_hmap_put(map, key, sin(0.2 * (double)key));
+  }
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_len(map) == 10, "Map should have 10 entries");
+  {
+    HMapStats stats = _hmap_stats(map);
+    TEST_ASSERT_TRUE_MESSAGE(stats.n_used == 10,
+                             "Should have 10 used slots after insert");
+    TEST_ASSERT_TRUE_MESSAGE(stats.n_removed == 0,
+                             "No removed slots after fresh inserts");
+    TEST_ASSERT_TRUE_MESSAGE(stats.nslots >= 10, "Must have enough slots for 10 entries");
+    TEST_ASSERT_TRUE_MESSAGE(stats.nbuckets == stats.nslots / ORC_SDK_HMAP_BUCKET_SIZE,
+                             "Bucket count must match slot count");
+  }
+  for (size_t i = 0; i < orc_sdk_hmap_len(map); ++i) {
+    Entry *e = orc_sdk_hmap_get(map, map[i].key);
+    TEST_ASSERT_TRUE_MESSAGE(e != NULL && e >= map && e < map + orc_sdk_hmap_len(map),
+                             "Every entry must be findable within [0..len)");
+  }
+  // Test 3: Remove from the middle.
+  int remove_key = 3;
+  orc_sdk_hmap_remove(map, remove_key);
+  TEST_ASSERT_TRUE_MESSAGE(!orc_sdk_hmap_contains(map, remove_key),
+                           "Removed key must not be found");
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_len(map) == 9, "Length must decrease");
+  {
+    HMapStats stats = _hmap_stats(map);
+    TEST_ASSERT_TRUE_MESSAGE(stats.n_used == 9,
+                             "Should have 9 used slots after removing key 3");
+    TEST_ASSERT_TRUE_MESSAGE(stats.n_removed <= 1,
+                             "At most 1 tombstone after single remove");
+  }
+  for (size_t i = 0; i < orc_sdk_hmap_len(map); ++i) {
+    Entry *e = orc_sdk_hmap_get(map, map[i].key);
+    TEST_ASSERT_TRUE_MESSAGE(e != NULL && e >= map && e < map + orc_sdk_hmap_len(map),
+                             "Compact invariant after removing key 3");
+  }
+  // Test 4: Remove another.
+  remove_key = 5;
+  orc_sdk_hmap_remove(map, remove_key);
+  TEST_ASSERT_TRUE_MESSAGE(!orc_sdk_hmap_contains(map, remove_key),
+                           "Removed key must not be found");
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_len(map) == 8, "Length must decrease");
+  {
+    HMapStats stats = _hmap_stats(map);
+    TEST_ASSERT_TRUE_MESSAGE(stats.n_used == 8,
+                             "Should have 8 used slots after removing key 5");
+    TEST_ASSERT_TRUE_MESSAGE(stats.n_removed <= 2,
+                             "At most 2 tombstones after two removes");
+  }
+  for (size_t i = 0; i < orc_sdk_hmap_len(map); ++i) {
+    Entry *e = orc_sdk_hmap_get(map, map[i].key);
+    TEST_ASSERT_TRUE_MESSAGE(e != NULL && e >= map && e < map + orc_sdk_hmap_len(map),
+                             "Compact invariant after removing key 5");
+  }
+  // Test 5: Remove the first key (swap with last).
+  remove_key = 0;
+  orc_sdk_hmap_remove(map, remove_key);
+  TEST_ASSERT_TRUE_MESSAGE(!orc_sdk_hmap_contains(map, remove_key),
+                           "Removed key 0 must not be found");
+  for (size_t i = 0; i < orc_sdk_hmap_len(map); ++i) {
+    Entry *e = orc_sdk_hmap_get(map, map[i].key);
+    TEST_ASSERT_TRUE_MESSAGE(e != NULL && e >= map && e < map + orc_sdk_hmap_len(map),
+                             "Compact invariant after removing key 0");
+  }
+  // Test 6: Remove the last key (no swap needed).
+  remove_key = 9;
+  orc_sdk_hmap_remove(map, remove_key);
+  TEST_ASSERT_TRUE_MESSAGE(!orc_sdk_hmap_contains(map, remove_key),
+                           "Removed key 9 must not be found");
+  for (size_t i = 0; i < orc_sdk_hmap_len(map); ++i) {
+    Entry *e = orc_sdk_hmap_get(map, map[i].key);
+    TEST_ASSERT_TRUE_MESSAGE(e != NULL && e >= map && e < map + orc_sdk_hmap_len(map),
+                             "Compact invariant after removing key 9");
+  }
+  // Test 7: Remove nonexistent key is a no-op.
+  {
+    size_t const before = orc_sdk_hmap_len(map);
+    remove_key          = 999;
+    orc_sdk_hmap_remove(map, remove_key);
+    TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_len(map) == before,
+                             "Removing nonexistent key is a no-op");
+  }
+  // Test 8: Remove all remaining one by one.
+  while (!orc_sdk_hmap_is_empty(map)) {
+    int key_to_remove = map[0].key;
+    orc_sdk_hmap_remove(map, key_to_remove);
+    TEST_ASSERT_TRUE_MESSAGE(!orc_sdk_hmap_contains(map, key_to_remove),
+                             "Just-removed key must not exist");
+    for (size_t i = 0; i < orc_sdk_hmap_len(map); ++i) {
+      Entry *e = orc_sdk_hmap_get(map, map[i].key);
+      TEST_ASSERT_TRUE_MESSAGE(e != NULL && e >= map && e < map + orc_sdk_hmap_len(map),
+                               "Compact invariant while draining map");
+    }
+  }
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_len(map) == 0,
+                           "Map should be empty after removing all");
+  {
+    HMapStats stats = _hmap_stats(map);
+    TEST_ASSERT_TRUE_MESSAGE(stats.n_used == 0,
+                             "Should have 0 used slots when fully drained");
+    TEST_ASSERT_TRUE_MESSAGE(stats.n_removed <= 10,
+                             "Tombstones bounded by original size (may compact)");
+  }
+  orc_sdk_hmap_free(map);
+  // Test 9: Insert, remove evens, re-insert (exercises swap-remove + growth).
+  map = NULL;
+  for (int key = 0; key < 50; ++key) {
+    orc_sdk_hmap_put(map, key, (double)key);
+  }
+  for (int key = 0; key < 50; key += 2) {
+    orc_sdk_hmap_remove(map, key);
+  }
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_len(map) == 25,
+                           "25 entries after removing evens");
+  {
+    HMapStats stats = _hmap_stats(map);
+    TEST_ASSERT_TRUE_MESSAGE(stats.n_used == 25,
+                             "Should have 25 used slots after removing evens");
+    TEST_ASSERT_TRUE_MESSAGE(stats.nslots >= 25, "Must have enough slots for 25 entries");
+  }
+  for (size_t i = 0; i < orc_sdk_hmap_len(map); ++i) {
+    Entry *e = orc_sdk_hmap_get(map, map[i].key);
+    TEST_ASSERT_TRUE_MESSAGE(e != NULL && e >= map && e < map + orc_sdk_hmap_len(map),
+                             "Compact invariant after removing evens");
+  }
+  for (int key = 0; key < 50; key += 2) {
+    orc_sdk_hmap_put(map, key, (double)(key * 10));
+  }
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_len(map) == 50, "50 entries after re-insert");
+  {
+    HMapStats stats = _hmap_stats(map);
+    TEST_ASSERT_TRUE_MESSAGE(stats.n_used == 50,
+                             "Should have 50 used slots after re-insert");
+    TEST_ASSERT_TRUE_MESSAGE(stats.nslots >= 50, "Must have enough slots for 50 entries");
+    TEST_ASSERT_TRUE_MESSAGE(stats.nbuckets == stats.nslots / ORC_SDK_HMAP_BUCKET_SIZE,
+                             "Bucket count must match after re-insert");
+  }
+  for (int key = 0; key < 50; ++key) {
+    Entry *e = orc_sdk_hmap_get(map, key);
+    TEST_ASSERT_TRUE_MESSAGE(e != NULL, "All 50 keys must exist");
+    double expected = (key % 2 == 0) ? (double)(key * 10) : (double)key;
+    TEST_ASSERT_TRUE_MESSAGE(e->value == expected, "Value must match after re-insert");
+    TEST_ASSERT_TRUE_MESSAGE(e >= map && e < map + orc_sdk_hmap_len(map),
+                             "Compact invariant after re-insert");
+  }
+  orc_sdk_hmap_free(map);
+  // Test 10: Many removes triggering compaction (n_removed > n_total/4).
+  map = NULL;
+  for (int key = 0; key < 100; ++key) {
+    orc_sdk_hmap_put(map, key, (double)key);
+  }
+  for (int key = 0; key < 80; ++key) {
+    orc_sdk_hmap_remove(map, key);
+    for (size_t i = 0; i < orc_sdk_hmap_len(map); ++i) {
+      Entry *e = orc_sdk_hmap_get(map, map[i].key);
+      TEST_ASSERT_TRUE_MESSAGE(e != NULL && e >= map && e < map + orc_sdk_hmap_len(map),
+                               "Compact invariant during bulk remove");
+    }
+  }
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_len(map) == 20, "20 entries left");
+  {
+    HMapStats stats = _hmap_stats(map);
+    TEST_ASSERT_TRUE_MESSAGE(stats.n_used == 20,
+                             "Should have 20 used slots after bulk remove");
+    TEST_ASSERT_TRUE_MESSAGE(stats.nslots >= 20,
+                             "Must have enough slots for remaining entries");
+  }
+  for (size_t i = 0; i < orc_sdk_hmap_len(map); ++i) {
+    TEST_ASSERT_TRUE_MESSAGE(map[i].key >= 80 && map[i].key < 100,
+                             "Remaining keys must be in [80, 100)");
+  }
+  orc_sdk_hmap_free(map);
+  // Test 11: Single element insert and remove.
+  map = NULL;
+  {
+    int k = 42;
+    orc_sdk_hmap_put(map, k, 3.14);
+    TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_len(map) == 1, "Single element map");
+    Entry *e = orc_sdk_hmap_get(map, k);
+    TEST_ASSERT_TRUE_MESSAGE(e != NULL && e >= map && e < map + orc_sdk_hmap_len(map),
+                             "Single element compact invariant");
+    orc_sdk_hmap_remove(map, k);
+    TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_len(map) == 0, "Empty after single remove");
+    {
+      HMapStats stats = _hmap_stats(map);
+      TEST_ASSERT_TRUE_MESSAGE(stats.n_used == 0,
+                               "Should have 0 used slots after single remove");
+      TEST_ASSERT_TRUE_MESSAGE(stats.n_removed <= 1,
+                               "At most 1 tombstone after single remove");
+    }
+  }
+  orc_sdk_hmap_free(map);
+}
+
+// Hash Set Tests
+
+void test_hset_basic_operations(void)
+{
+  int *set = NULL;
+  // Test empty set
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hset_len(set) == 0, "New set should be empty");
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hset_is_empty(set), "New set should report as empty");
+  // Test adding elements
+  int val1 = 42;
+  orc_sdk_hset_put(set, val1);
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hset_len(set) == 1, "Set should have 1 element");
+  TEST_ASSERT_TRUE_MESSAGE(!orc_sdk_hset_is_empty(set), "Set should not be empty");
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hset_contains(set, val1),
+                           "Set should contain added element");
+  // Test adding duplicate (should not increase size)
+  orc_sdk_hset_put(set, val1);
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hset_len(set) == 1,
+                           "Set should still have 1 element after duplicate");
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hset_contains(set, val1),
+                           "Set should still contain element");
+  // Test adding different elements
+  int val2 = 10, val3 = 20, val4 = 30;
+  orc_sdk_hset_put(set, val2);
+  orc_sdk_hset_put(set, val3);
+  orc_sdk_hset_put(set, val4);
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hset_len(set) == 4,
+                           "Set should have 4 unique elements");
+  // Verify all elements are present
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hset_contains(set, val1), "Set should contain 42");
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hset_contains(set, val2), "Set should contain 10");
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hset_contains(set, val3), "Set should contain 20");
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hset_contains(set, val4), "Set should contain 30");
+  // Test non-existent elements
+  int missing1 = 99, missing2 = -1;
+  TEST_ASSERT_TRUE_MESSAGE(!orc_sdk_hset_contains(set, missing1),
+                           "Set should not contain 99");
+  TEST_ASSERT_TRUE_MESSAGE(!orc_sdk_hset_contains(set, missing2),
+                           "Set should not contain -1");
+  orc_sdk_hset_free(set);
+}
+
+void test_hset_remove_operations(void)
+{
+  int *set = NULL;
+  // Add some elements
+  for (int i = 0; i < 10; i++) {
+    orc_sdk_hset_put(set, i);
+  }
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hset_len(set) == 10, "Set should have 10 elements");
+  // Remove elements
+  int remove_val = 5;
+  orc_sdk_hset_remove(set, remove_val);
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hset_len(set) == 9,
+                           "Set should have 9 elements after removal");
+  TEST_ASSERT_TRUE_MESSAGE(!orc_sdk_hset_contains(set, remove_val),
+                           "Set should not contain removed element");
+  // Remove non-existent element (should not crash or change size)
+  int missing_val = 99;
+  orc_sdk_hset_remove(set, missing_val);
+  TEST_ASSERT_TRUE_MESSAGE(
+    orc_sdk_hset_len(set) == 9,
+    "Set size should not change when removing non-existent element");
+  // Remove all elements
+  for (int i = 0; i < 10; i++) {
+    if (i != 5) {  // Skip already removed element
+      orc_sdk_hset_remove(set, i);
+    }
+  }
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hset_is_empty(set),
+                           "Set should be empty after removing all elements");
+  orc_sdk_hset_free(set);
+}
+
+void test_hset_different_types(void)
+{
+  // Test with doubles
+  double *dset = NULL;
+  double  d1 = 3.14, d2 = 2.71;
+  orc_sdk_hset_put(dset, d1);
+  orc_sdk_hset_put(dset, d2);
+  orc_sdk_hset_put(dset, d1);  // Duplicate
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hset_len(dset) == 2,
+                           "Double set should have 2 unique elements");
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hset_contains(dset, d1), "Set should contain 3.14");
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hset_contains(dset, d2), "Set should contain 2.71");
+  orc_sdk_hset_free(dset);
+  // Test with character values (not strings)
+  char *cset = NULL;
+  char  c1 = 'a', c2 = 'b', c3 = 'a';  // Duplicate character
+  orc_sdk_hset_put(cset, c1);
+  orc_sdk_hset_put(cset, c2);
+  orc_sdk_hset_put(cset, c3);  // Should not increase size
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hset_len(cset) == 2,
+                           "Character set should have 2 unique elements");
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hset_contains(cset, c1), "Set should contain 'a'");
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hset_contains(cset, c2), "Set should contain 'b'");
+  orc_sdk_hset_free(cset);
+}
+
+void test_hset_large_scale(void)
+{
+  int      *set  = NULL;
+  const int SIZE = 1000;
+  // Add many elements
+  for (int i = 0; i < SIZE; i++) {
+    orc_sdk_hset_put(set, i);
+  }
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hset_len(set) == SIZE,
+                           "Set should contain all added elements");
+  // Verify all elements are present
+  for (int i = 0; i < SIZE; i++) {
+    TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hset_contains(set, i),
+                             "Set should contain all added elements");
+  }
+  // Add duplicates (should not change size)
+  for (int i = 0; i < SIZE; i += 2) {
+    orc_sdk_hset_put(set, i);
+  }
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hset_len(set) == SIZE,
+                           "Set size should not change after adding duplicates");
+  // Remove half the elements
+  for (int i = 0; i < SIZE; i += 2) {
+    orc_sdk_hset_remove(set, i);
+  }
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hset_len(set) == SIZE / 2,
+                           "Set should have half the elements after removal");
+  // Verify correct elements remain
+  for (int i = 0; i < SIZE; i++) {
+    if (i % 2 == 0) {
+      TEST_ASSERT_TRUE_MESSAGE(!orc_sdk_hset_contains(set, i),
+                               "Even elements should be removed");
+    }
+    else {
+      TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hset_contains(set, i),
+                               "Odd elements should remain");
+    }
+  }
+  orc_sdk_hset_free(set);
+}
+
+void test_hset_edge_cases(void)
+{
+  int *set = NULL;
+  // Test operations on NULL set
+  int test_val = 42;
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hset_is_empty(set), "NULL set should be empty");
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hset_len(set) == 0, "NULL set should have length 0");
+  TEST_ASSERT_TRUE_MESSAGE(!orc_sdk_hset_contains(set, test_val),
+                           "NULL set should not contain any elements");
+  // Test single element operations
+  int single_val = 1;
+  orc_sdk_hset_put(set, single_val);
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hset_len(set) == 1, "Set should have 1 element");
+  TEST_ASSERT_TRUE_MESSAGE(!orc_sdk_hset_is_empty(set),
+                           "Set with element should not be empty");
+  orc_sdk_hset_remove(set, single_val);
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hset_is_empty(set),
+                           "Set should be empty after removing only element");
+  // Test zero value
+  int zero_val = 0;
+  orc_sdk_hset_put(set, zero_val);
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hset_contains(set, zero_val),
+                           "Set should be able to store zero");
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hset_len(set) == 1,
+                           "Set with zero should have length 1");
+  // Test negative values
+  int neg1 = -42, neg2 = -1;
+  orc_sdk_hset_put(set, neg1);
+  orc_sdk_hset_put(set, neg2);
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hset_contains(set, neg1),
+                           "Set should handle negative values");
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hset_contains(set, neg2),
+                           "Set should handle negative values");
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hset_len(set) == 3,
+                           "Set should have 3 elements (0, -42, -1)");
+  orc_sdk_hset_free(set);
+}
+
+void test_hset_memory_operations(void)
+{
+  int *set = NULL;
+  // Test reserve functionality
+  OrcError result = orc_sdk_hset_reserve(set, 100);
+  TEST_ASSERT_TRUE_MESSAGE(result == ORC_ERROR_NONE, "Reserve should succeed");
+  // Add elements after reserve
+  for (int i = 0; i < 50; i++) {
+    orc_sdk_hset_put(set, i);
+  }
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hset_len(set) == 50,
+                           "Set should have 50 elements after population");
+  // Test multiple free calls (should be safe)
+  orc_sdk_hset_free(set);
+  set = NULL;
+  orc_sdk_hset_free(set);  // Should not crash
+}
+
+void test_hset_is_empty_comprehensive(void)
+{
+  int *set = NULL;
+  // Test empty states
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hset_is_empty(set), "NULL set should be empty");
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hset_is_empty(NULL), "Explicit NULL should be empty");
+  // Test after adding and removing
+  int test_elem = 42;
+  orc_sdk_hset_put(set, test_elem);
+  TEST_ASSERT_TRUE_MESSAGE(!orc_sdk_hset_is_empty(set),
+                           "Set with element should not be empty");
+  orc_sdk_hset_remove(set, test_elem);
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hset_is_empty(set),
+                           "Set should be empty after removing only element");
+  // Test with multiple add/remove cycles
+  for (int cycle = 0; cycle < 5; cycle++) {
+    for (int i = 0; i < 10; i++) {
+      orc_sdk_hset_put(set, i);
+    }
+    TEST_ASSERT_TRUE_MESSAGE(!orc_sdk_hset_is_empty(set),
+                             "Set should not be empty during population");
+    for (int i = 0; i < 10; i++) {
+      orc_sdk_hset_remove(set, i);
+    }
+    TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hset_is_empty(set),
+                             "Set should be empty after clearing");
+  }
+  orc_sdk_hset_free(set);
+}
+
+// String Hashmap Tests
+
+void test_hmap_str_basic(void)
+{
+  typedef struct
+  {
+    char const *key;
+    int         value;
+  } StrEntry;
+  StrEntry *map = NULL;
+  // Test empty map
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_len(map) == 0,
+                           "Empty string map should have length 0");
+  HMapStats stats = _hmap_stats(map);
+  TEST_ASSERT_TRUE_MESSAGE(stats.n_used == 0,
+                           "Empty string map should have 0 used slots");
+  TEST_ASSERT_TRUE_MESSAGE(stats.nslots == 0,
+                           "Empty string map should have 0 total slots");
+  TEST_ASSERT_TRUE_MESSAGE(stats.nbuckets == 0, "Empty string map should have 0 buckets");
+  // Test single insertion
+  char const *key1 = "hello";
+  int         val1 = 100;
+  orc_sdk_hmap_str_put(map, key1, val1);
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_len(map) == 1,
+                           "String map should have 1 element after insert");
+  TEST_ASSERT_TRUE_MESSAGE(map[0].key == key1, "First entry key should be 'hello'");
+  TEST_ASSERT_TRUE_MESSAGE(map[0].value == 100, "First entry value should be 100");
+  stats = _hmap_stats(map);
+  TEST_ASSERT_TRUE_MESSAGE(stats.n_used == 1, "Should have 1 used slot after insert");
+  TEST_ASSERT_TRUE_MESSAGE(stats.nslots == ORC_SDK_HMAP_BUCKET_SIZE,
+                           "Initial size should be ORC_SDK_HMAP_BUCKET_SIZE slots");
+  TEST_ASSERT_TRUE_MESSAGE(stats.nbuckets == 1, "Should have 1 bucket initially");
+  TEST_ASSERT_TRUE_MESSAGE(stats.n_removed == 0, "Should have no removed entries");
+  // Test multiple insertions
+  char const *key2 = "world";
+  char const *key3 = "test";
+  int         val2 = 200;
+  int         val3 = 300;
+  orc_sdk_hmap_str_put(map, key2, val2);
+  orc_sdk_hmap_str_put(map, key3, val3);
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_len(map) == 3,
+                           "String map should have 3 elements");
+  // Test duplicate key (should update value only)
+  int val1_updated = 999;
+  orc_sdk_hmap_str_put(map, key1, val1_updated);
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_len(map) == 3,
+                           "Length should stay 3 after duplicate insert");
+  // Find the updated entry
+  bool found = false;
+  for (size_t i = 0; i < orc_sdk_hmap_len(map); i++) {
+    if (map[i].key == key1) {
+      TEST_ASSERT_TRUE_MESSAGE(map[i].value == val1_updated,
+                               "Duplicate key should update value");
+      found = true;
+      break;
+    }
+  }
+  TEST_ASSERT_TRUE_MESSAGE(found, "Should find the updated entry");
+  orc_sdk_hmap_free(map);
+}
+
+void test_hmap_str_get_basic(void)
+{
+  typedef struct
+  {
+    char const *key;
+    int         value;
+  } StrEntry;
+  StrEntry *map = NULL;
+  // Test get from empty map
+  char const *key    = "missing";
+  StrEntry   *result = (StrEntry *)orc_sdk_hmap_str_get(map, key);
+  TEST_ASSERT_TRUE_MESSAGE(result == NULL,
+                           "Get from empty string map should return NULL");
+  TEST_ASSERT_TRUE_MESSAGE(!orc_sdk_hmap_str_contains(map, key),
+                           "Empty string map should not contain any key");
+  // Insert some entries
+  char const *key1 = "apple";
+  char const *key2 = "banana";
+  char const *key3 = "cherry";
+  int         val1 = 100;
+  int         val2 = 200;
+  int         val3 = 300;
+  orc_sdk_hmap_str_put(map, key1, val1);
+  orc_sdk_hmap_str_put(map, key2, val2);
+  orc_sdk_hmap_str_put(map, key3, val3);
+  // Test orc_sdk_hmap_str_contains
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_str_contains(map, key1),
+                           "Should contain 'apple'");
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_str_contains(map, key2),
+                           "Should contain 'banana'");
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_str_contains(map, key3),
+                           "Should contain 'cherry'");
+  char const *missing_key1 = "orange";
+  char const *missing_key2 = "grape";
+  TEST_ASSERT_TRUE_MESSAGE(!orc_sdk_hmap_str_contains(map, missing_key1),
+                           "Should not contain 'orange'");
+  TEST_ASSERT_TRUE_MESSAGE(!orc_sdk_hmap_str_contains(map, missing_key2),
+                           "Should not contain 'grape'");
+  // Test orc_sdk_hmap_str_get for existing keys
+  result = (StrEntry *)orc_sdk_hmap_str_get(map, key1);
+  TEST_ASSERT_TRUE_MESSAGE(result != NULL, "Should find 'apple'");
+  TEST_ASSERT_TRUE_MESSAGE(result->key == key1, "Retrieved key should match");
+  TEST_ASSERT_TRUE_MESSAGE(result->value == val1, "Retrieved value should match");
+  result = (StrEntry *)orc_sdk_hmap_str_get(map, key2);
+  TEST_ASSERT_TRUE_MESSAGE(result != NULL, "Should find 'banana'");
+  TEST_ASSERT_TRUE_MESSAGE(result->value == val2, "Retrieved value should match");
+  result = (StrEntry *)orc_sdk_hmap_str_get(map, key3);
+  TEST_ASSERT_TRUE_MESSAGE(result != NULL, "Should find 'cherry'");
+  TEST_ASSERT_TRUE_MESSAGE(result->value == val3, "Retrieved value should match");
+  // Test orc_sdk_hmap_str_get for missing keys
+  result = (StrEntry *)orc_sdk_hmap_str_get(map, missing_key1);
+  TEST_ASSERT_TRUE_MESSAGE(result == NULL, "Should not find 'orange'");
+  result = (StrEntry *)orc_sdk_hmap_str_get(map, missing_key2);
+  TEST_ASSERT_TRUE_MESSAGE(result == NULL, "Should not find 'grape'");
+  orc_sdk_hmap_free(map);
+}
+
+void test_hmap_str_remove_basic(void)
+{
+  typedef struct
+  {
+    char const *key;
+    int         value;
+  } StrEntry;
+  StrEntry *map = NULL;
+  // Remove from empty map (should be safe)
+  char const *key = "missing";
+  orc_sdk_hmap_str_remove(map, key);
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_len(map) == 0,
+                           "Remove from empty map should be safe");
+  // Insert some entries
+  char const *key1 = "dog";
+  char const *key2 = "cat";
+  char const *key3 = "bird";
+  int         val1 = 1;
+  int         val2 = 2;
+  int         val3 = 3;
+  orc_sdk_hmap_str_put(map, key1, val1);
+  orc_sdk_hmap_str_put(map, key2, val2);
+  orc_sdk_hmap_str_put(map, key3, val3);
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_len(map) == 3,
+                           "Should have 3 entries before removal");
+  // Remove middle entry
+  orc_sdk_hmap_str_remove(map, key2);
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_len(map) == 2,
+                           "Should have 2 entries after removal");
+  TEST_ASSERT_TRUE_MESSAGE(!orc_sdk_hmap_str_contains(map, key2),
+                           "Should not contain removed key");
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_str_contains(map, key1),
+                           "Should still contain key1");
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_str_contains(map, key3),
+                           "Should still contain key3");
+  // Remove non-existent key (should be safe)
+  char const *missing_key = "fish";
+  orc_sdk_hmap_str_remove(map, missing_key);
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_len(map) == 2,
+                           "Length should stay 2 after removing missing key");
+  // Remove remaining entries
+  orc_sdk_hmap_str_remove(map, key1);
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_len(map) == 1,
+                           "Should have 1 entry after second removal");
+  TEST_ASSERT_TRUE_MESSAGE(!orc_sdk_hmap_str_contains(map, key1),
+                           "Should not contain removed key1");
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_str_contains(map, key3),
+                           "Should still contain key3");
+  orc_sdk_hmap_str_remove(map, key3);
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_len(map) == 0,
+                           "Should have 0 entries after final removal");
+  TEST_ASSERT_TRUE_MESSAGE(!orc_sdk_hmap_str_contains(map, key3),
+                           "Should not contain removed key3");
+  orc_sdk_hmap_free(map);
+}
+
+void test_hmap_str_edge_cases(void)
+{
+  typedef struct
+  {
+    char const *key;
+    int         value;
+  } StrEntry;
+  StrEntry *map = NULL;
+  // Test empty string key
+  char const *empty_key = "";
+  int         val       = 42;
+  orc_sdk_hmap_str_put(map, empty_key, val);
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_len(map) == 1, "Should handle empty string key");
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_str_contains(map, empty_key),
+                           "Should contain empty string key");
+  StrEntry *result = (StrEntry *)orc_sdk_hmap_str_get(map, empty_key);
+  TEST_ASSERT_TRUE_MESSAGE(result != NULL, "Should find empty string key");
+  TEST_ASSERT_TRUE_MESSAGE(result->value == val,
+                           "Should retrieve correct value for empty key");
+  // Test very long string key
+  char const *long_key =
+    "this_is_a_very_long_string_key_that_should_test_hash_function_behavior_with_long_"
+    "inputs_and_make_sure_everything_works_correctly_even_with_extended_key_lengths";
+  int long_val = 999;
+  orc_sdk_hmap_str_put(map, long_key, long_val);
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_len(map) == 2,
+                           "Should handle very long string key");
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_str_contains(map, long_key),
+                           "Should contain long string key");
+  result = (StrEntry *)orc_sdk_hmap_str_get(map, long_key);
+  TEST_ASSERT_TRUE_MESSAGE(result != NULL, "Should find long string key");
+  TEST_ASSERT_TRUE_MESSAGE(result->value == long_val,
+                           "Should retrieve correct value for long key");
+  // Test similar keys (potential hash collisions)
+  char const *key1 = "test123";
+  char const *key2 = "test124";
+  char const *key3 = "test125";
+  orc_sdk_hmap_str_put(map, key1, 1);
+  orc_sdk_hmap_str_put(map, key2, 2);
+  orc_sdk_hmap_str_put(map, key3, 3);
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_len(map) == 5, "Should handle similar keys");
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_str_contains(map, key1), "Should contain key1");
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_str_contains(map, key2), "Should contain key2");
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_str_contains(map, key3), "Should contain key3");
+  // Verify values are distinct
+  result = (StrEntry *)orc_sdk_hmap_str_get(map, key1);
+  TEST_ASSERT_TRUE_MESSAGE(result->value == 1, "key1 should have value 1");
+  result = (StrEntry *)orc_sdk_hmap_str_get(map, key2);
+  TEST_ASSERT_TRUE_MESSAGE(result->value == 2, "key2 should have value 2");
+  result = (StrEntry *)orc_sdk_hmap_str_get(map, key3);
+  TEST_ASSERT_TRUE_MESSAGE(result->value == 3, "key3 should have value 3");
+  orc_sdk_hmap_free(map);
+}
+
+void test_hmap_str_stress_test(void)
+{
+  typedef struct
+  {
+    char const *key;
+    int         value;
+  } StrEntry;
+  StrEntry *map = NULL;
+  // Create test keys
+  char const *keys[] = {
+    "alpha",    "beta",     "gamma",    "delta",    "epsilon",  "zeta",    "eta",
+    "theta",    "iota",     "kappa",    "lambda",   "mu",       "nu",      "xi",
+    "omicron",  "pi",       "rho",      "sigma",    "tau",      "upsilon", "phi",
+    "chi",      "psi",      "omega",    "zero",     "one",      "two",     "three",
+    "four",     "five",     "six",      "seven",    "eight",    "nine",    "ten",
+    "eleven",   "twelve",   "thirteen", "fourteen", "fifteen",  "sixteen", "seventeen",
+    "eighteen", "nineteen", "twenty",   "hundred",  "thousand", "million", "billion"};
+  size_t num_keys = sizeof(keys) / sizeof(keys[0]);
+  // Insert all keys
+  for (size_t i = 0; i < num_keys; i++) {
+    orc_sdk_hmap_str_put(map, keys[i], (int)i);
+  }
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_len(map) == num_keys,
+                           "Should contain all inserted keys");
+  // Verify all keys can be found
+  for (size_t i = 0; i < num_keys; i++) {
+    TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_str_contains(map, keys[i]),
+                             "Should contain each key");
+    StrEntry *result = (StrEntry *)orc_sdk_hmap_str_get(map, keys[i]);
+    TEST_ASSERT_TRUE_MESSAGE(result != NULL, "Should find each key");
+    TEST_ASSERT_TRUE_MESSAGE(result->value == (int)i, "Should have correct value");
+  }
+  // Remove every other key
+  for (size_t i = 0; i < num_keys; i += 2) {
+    orc_sdk_hmap_str_remove(map, keys[i]);
+  }
+  size_t expected_remaining = num_keys - (num_keys + 1) / 2;
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_len(map) == expected_remaining,
+                           "Should have correct count after removals");
+  // Verify remaining keys
+  for (size_t i = 1; i < num_keys; i += 2) {
+    TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_str_contains(map, keys[i]),
+                             "Odd keys should remain");
+  }
+  // Verify removed keys
+  for (size_t i = 0; i < num_keys; i += 2) {
+    TEST_ASSERT_TRUE_MESSAGE(!orc_sdk_hmap_str_contains(map, keys[i]),
+                             "Even keys should be removed");
+  }
+  orc_sdk_hmap_free(map);
+}
+
+void test_hmap_str_growth_and_compaction(void)
+{
+  typedef struct
+  {
+    char const *key;
+    int         value;
+  } StrEntry;
+  StrEntry *map = NULL;
+  // Force multiple growth cycles
+  char keys[100][20];
+  for (int i = 0; i < 100; i++) {
+    snprintf(keys[i], sizeof(keys[i]), "key_%d", i);
+    orc_sdk_hmap_str_put(map, keys[i], i);
+  }
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_len(map) == 100,
+                           "Should handle growth to 100 elements");
+  // Verify all keys
+  for (int i = 0; i < 100; i++) {
+    TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_str_contains(map, keys[i]),
+                             "Should contain all keys after growth");
+  }
+  // Remove many keys to trigger compaction
+  for (int i = 0; i < 80; i++) {
+    orc_sdk_hmap_str_remove(map, keys[i]);
+  }
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_len(map) == 20,
+                           "Should have 20 keys after removal");
+  // Verify remaining keys still work
+  for (int i = 80; i < 100; i++) {
+    TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_str_contains(map, keys[i]),
+                             "Remaining keys should be accessible");
+    StrEntry *result = (StrEntry *)orc_sdk_hmap_str_get(map, keys[i]);
+    TEST_ASSERT_TRUE_MESSAGE(result != NULL, "Should find remaining keys");
+    TEST_ASSERT_TRUE_MESSAGE(result->value == i, "Should have correct values");
+  }
+  orc_sdk_hmap_free(map);
+}
+
+// String Hashset Tests
+
+void test_hset_str_basic_operations(void)
+{
+  char const **set = NULL;
+  // Test empty set
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hset_len(set) == 0, "New string set should be empty");
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hset_is_empty(set),
+                           "New string set should report as empty");
+  // Test adding elements
+  char const *val1 = "hello";
+  orc_sdk_hset_str_put(set, val1);
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hset_len(set) == 1,
+                           "String set should have 1 element");
+  TEST_ASSERT_TRUE_MESSAGE(!orc_sdk_hset_is_empty(set), "String set should not be empty");
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hset_str_contains(set, val1),
+                           "String set should contain added element");
+  // Test adding duplicate (should not increase size)
+  orc_sdk_hset_str_put(set, val1);
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hset_len(set) == 1,
+                           "String set should still have 1 element after duplicate");
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hset_str_contains(set, val1),
+                           "String set should still contain element");
+  // Test adding different elements
+  char const *val2 = "world";
+  char const *val3 = "test";
+  char const *val4 = "example";
+  orc_sdk_hset_str_put(set, val2);
+  orc_sdk_hset_str_put(set, val3);
+  orc_sdk_hset_str_put(set, val4);
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hset_len(set) == 4,
+                           "String set should have 4 unique elements");
+  // Verify all elements are present
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hset_str_contains(set, val1),
+                           "String set should contain 'hello'");
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hset_str_contains(set, val2),
+                           "String set should contain 'world'");
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hset_str_contains(set, val3),
+                           "String set should contain 'test'");
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hset_str_contains(set, val4),
+                           "String set should contain 'example'");
+  // Test non-existent elements
+  char const *missing1 = "missing";
+  char const *missing2 = "absent";
+  TEST_ASSERT_TRUE_MESSAGE(!orc_sdk_hset_str_contains(set, missing1),
+                           "String set should not contain 'missing'");
+  TEST_ASSERT_TRUE_MESSAGE(!orc_sdk_hset_str_contains(set, missing2),
+                           "String set should not contain 'absent'");
+  orc_sdk_hset_free(set);
+}
+
+void test_hset_str_remove_operations(void)
+{
+  char const **set = NULL;
+  // Add some elements
+  char const *words[]   = {"apple",
+                           "banana",
+                           "cherry",
+                           "date",
+                           "elderberry",
+                           "fig",
+                           "grape",
+                           "honeydew",
+                           "kiwi",
+                           "lemon"};
+  size_t      num_words = sizeof(words) / sizeof(words[0]);
+  for (size_t i = 0; i < num_words; i++) {
+    orc_sdk_hset_str_put(set, words[i]);
+  }
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hset_len(set) == num_words,
+                           "String set should have all elements");
+  // Remove some elements
+  orc_sdk_hset_str_remove(set, words[0]);  // "apple"
+  orc_sdk_hset_str_remove(set, words[4]);  // "elderberry"
+  orc_sdk_hset_str_remove(set, words[7]);  // "honeydew"
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hset_len(set) == num_words - 3,
+                           "String set should have 3 fewer elements");
+  TEST_ASSERT_TRUE_MESSAGE(!orc_sdk_hset_str_contains(set, words[0]),
+                           "Should not contain removed 'apple'");
+  TEST_ASSERT_TRUE_MESSAGE(!orc_sdk_hset_str_contains(set, words[4]),
+                           "Should not contain removed 'elderberry'");
+  TEST_ASSERT_TRUE_MESSAGE(!orc_sdk_hset_str_contains(set, words[7]),
+                           "Should not contain removed 'honeydew'");
+  // Verify remaining elements are still there
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hset_str_contains(set, words[1]),
+                           "Should still contain 'banana'");
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hset_str_contains(set, words[9]),
+                           "Should still contain 'lemon'");
+  // Remove non-existent element (should be safe)
+  char const *missing = "nonexistent";
+  orc_sdk_hset_str_remove(set, missing);
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hset_len(set) == num_words - 3,
+                           "Length should not change after removing missing element");
+  // Remove remaining elements
+  for (size_t i = 1; i < num_words; i++) {
+    if (i != 4 && i != 7) {  // Skip already removed elements
+      orc_sdk_hset_str_remove(set, words[i]);
+    }
+  }
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hset_len(set) == 0,
+                           "String set should be empty after removing all");
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hset_is_empty(set),
+                           "String set should report as empty");
+  orc_sdk_hset_free(set);
+}
+
+void test_hset_str_edge_cases(void)
+{
+  char const **set = NULL;
+  // Test empty string
+  char const *empty_str = "";
+  orc_sdk_hset_str_put(set, empty_str);
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hset_len(set) == 1, "Should handle empty string");
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hset_str_contains(set, empty_str),
+                           "Should contain empty string");
+  // Test very long string
+  char const *long_str =
+    "this_is_a_very_long_string_that_tests_the_hash_function_behavior_with_"
+    "extended_input_lengths_and_ensures_proper_collision_handling_mechanisms";
+  orc_sdk_hset_str_put(set, long_str);
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hset_len(set) == 2, "Should handle very long string");
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hset_str_contains(set, long_str),
+                           "Should contain long string");
+  // Test strings with special characters
+  char const *special1 = "hello\nworld";
+  char const *special2 = "tab\tseparated";
+  char const *special3 = "quote\"test";
+  char const *special4 = "backslash\\test";
+  orc_sdk_hset_str_put(set, special1);
+  orc_sdk_hset_str_put(set, special2);
+  orc_sdk_hset_str_put(set, special3);
+  orc_sdk_hset_str_put(set, special4);
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hset_len(set) == 6,
+                           "Should handle special characters");
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hset_str_contains(set, special1),
+                           "Should contain newline string");
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hset_str_contains(set, special2),
+                           "Should contain tab string");
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hset_str_contains(set, special3),
+                           "Should contain quote string");
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hset_str_contains(set, special4),
+                           "Should contain backslash string");
+  // Test similar strings (potential hash collisions)
+  char const *similar1 = "test001";
+  char const *similar2 = "test002";
+  char const *similar3 = "test003";
+  char const *similar4 = "test004";
+  orc_sdk_hset_str_put(set, similar1);
+  orc_sdk_hset_str_put(set, similar2);
+  orc_sdk_hset_str_put(set, similar3);
+  orc_sdk_hset_str_put(set, similar4);
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hset_len(set) == 10, "Should handle similar strings");
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hset_str_contains(set, similar1),
+                           "Should contain 'test001'");
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hset_str_contains(set, similar2),
+                           "Should contain 'test002'");
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hset_str_contains(set, similar3),
+                           "Should contain 'test003'");
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hset_str_contains(set, similar4),
+                           "Should contain 'test004'");
+  orc_sdk_hset_free(set);
+}
+
+void test_hset_str_large_scale(void)
+{
+  char const **set = NULL;
+  // Test with many string elements
+  char const *programming_languages[] = {
+    "C",       "C++",    "Java",    "Python", "JavaScript",  "TypeScript", "Rust",
+    "Go",      "Swift",  "Kotlin",  "Scala",  "Haskell",     "OCaml",      "F#",
+    "Clojure", "Erlang", "Elixir",  "Ruby",   "PHP",         "Perl",       "Lua",
+    "R",       "MATLAB", "Julia",   "Dart",   "Objective-C", "Assembly",   "COBOL",
+    "Fortran", "Pascal", "Ada",     "Prolog", "Lisp",        "Scheme",     "Racket",
+    "ML",      "Nim",    "Crystal", "Zig",    "D",           "V",          "Odin",
+    "Carbon",  "Mojo",   "Gleam",   "Roc",    "Pony",        "Chapel",     "Fortress"};
+  size_t num_languages = sizeof(programming_languages) / sizeof(programming_languages[0]);
+  // Add all languages
+  for (size_t i = 0; i < num_languages; i++) {
+    orc_sdk_hset_str_put(set, programming_languages[i]);
+  }
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hset_len(set) == num_languages,
+                           "Should contain all programming languages");
+  // Verify all languages are present
+  for (size_t i = 0; i < num_languages; i++) {
+    TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hset_str_contains(set, programming_languages[i]),
+                             "Should contain each programming language");
+  }
+  // Test some non-existent languages
+  char const *fake_languages[] = {"C---", "Python++", "JavaRust", "GoScript"};
+  for (size_t i = 0; i < 4; i++) {
+    TEST_ASSERT_TRUE_MESSAGE(!orc_sdk_hset_str_contains(set, fake_languages[i]),
+                             "Should not contain fake language");
+  }
+  // Remove every other language
+  for (size_t i = 0; i < num_languages; i += 2) {
+    orc_sdk_hset_str_remove(set, programming_languages[i]);
+  }
+  size_t expected_remaining = num_languages - (num_languages + 1) / 2;
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hset_len(set) == expected_remaining,
+                           "Should have correct count after removals");
+  // Verify odd-indexed languages remain
+  for (size_t i = 1; i < num_languages; i += 2) {
+    TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hset_str_contains(set, programming_languages[i]),
+                             "Odd-indexed languages should remain");
+  }
+  // Verify even-indexed languages are removed
+  for (size_t i = 0; i < num_languages; i += 2) {
+    TEST_ASSERT_TRUE_MESSAGE(!orc_sdk_hset_str_contains(set, programming_languages[i]),
+                             "Even-indexed languages should be removed");
+  }
+  orc_sdk_hset_free(set);
+}
+
+void test_hset_str_memory_operations(void)
+{
+  char const **set = NULL;
+  // Test operations on NULL set
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hset_len(set) == 0, "NULL set should have length 0");
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hset_is_empty(set), "NULL set should be empty");
+  TEST_ASSERT_TRUE_MESSAGE(!orc_sdk_hset_str_contains(set, "test"),
+                           "NULL set should not contain anything");
+  // Test reserve
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hset_reserve(set, 20) == ORC_ERROR_NONE,
+                           "Reserve should succeed");
+  TEST_ASSERT_TRUE_MESSAGE(set != NULL, "Set should be allocated after reserve");
+  // Fill with some elements
+  char keys[15][10];
+  for (int i = 0; i < 15; i++) {
+    snprintf(keys[i], sizeof(keys[i]), "key_%d", i);
+    orc_sdk_hset_str_put(set, keys[i]);
+  }
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hset_len(set) == 15, "Should have 15 elements");
+  // Remove all elements
+  for (int i = 0; i < 15; i++) {
+    orc_sdk_hset_str_remove(set, keys[i]);
+  }
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hset_len(set) == 0,
+                           "Should be empty after removing all elements");
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hset_is_empty(set), "Should report as empty");
+  orc_sdk_hset_free(set);
+}
+
+void test_hset_str_is_empty_comprehensive(void)
+{
+  char const **set = NULL;
+  // Test empty states
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hset_is_empty(set), "NULL set should be empty");
+  // Test after reserve
+  TEST_ASSERT_TRUE(ORC_ERROR_NONE == orc_sdk_hset_reserve(set, 5));
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hset_is_empty(set),
+                           "Reserved but unused set should be empty");
+  // Test during population and clearing cycles
+  for (int cycle = 0; cycle < 3; cycle++) {
+    // Add elements
+    for (int i = 0; i < 8; i++) {
+      char key[20];
+      snprintf(key, sizeof(key), "cycle_%d_item_%d", cycle, i);
+      orc_sdk_hset_str_put(set, key);
+    }
+    TEST_ASSERT_TRUE_MESSAGE(!orc_sdk_hset_is_empty(set),
+                             "Set should not be empty during population");
+    // Remove elements
+    for (int i = 0; i < 8; i++) {
+      char key[20];
+      snprintf(key, sizeof(key), "cycle_%d_item_%d", cycle, i);
+      orc_sdk_hset_str_remove(set, key);
+    }
+    TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hset_is_empty(set),
+                             "Set should be empty after clearing");
+  }
+  orc_sdk_hset_free(set);
 }
 
 // ============================================================================
@@ -4041,7 +6589,7 @@ int main(void)
   RUN_TEST(test_arr_null_pointer_operations);
   RUN_TEST(test_arr_empty_array_operations);
   RUN_TEST(test_arr_index_boundary_conditions);
-  RUN_TEST(test_arr_capacity_management);
+  RUN_TEST(test_orc_sdk_arr_capacity_management);
   RUN_TEST(test_arr_double_free_safety);
   RUN_TEST(test_arr_swap_remove_correctness);
   RUN_TEST(test_arr_memory_stress);
@@ -4138,5 +6686,57 @@ int main(void)
   RUN_TEST(test_deck_from_proxy_copy_items);
   RUN_TEST(test_deck_from_proxy_shuffle);
   RUN_TEST(test_deck_from_proxy_type_agnostic);
+  RUN_TEST(test_hmap_basic);
+  RUN_TEST(test_hmap_growth);
+  RUN_TEST(test_hmap_edge_cases);
+  RUN_TEST(test_hmap_null_operations);
+  RUN_TEST(test_hmap_stress_test);
+  RUN_TEST(test_hmap_hash_collision_simulation);
+  RUN_TEST(test_hmap_boundary_conditions);
+  RUN_TEST(test_hmap_extreme_values);
+  RUN_TEST(test_hmap_repeated_growth);
+  RUN_TEST(test_hmap_get_basic);
+  RUN_TEST(test_hmap_get_after_updates);
+  RUN_TEST(test_hmap_get_with_collisions);
+  RUN_TEST(test_hmap_get_after_growth);
+  RUN_TEST(test_hmap_get_edge_cases);
+  RUN_TEST(test_hmap_get_null_safety);
+  RUN_TEST(test_hmap_fibo_indices);
+  RUN_TEST(test_hmap_remove_basic);
+  RUN_TEST(test_hmap_remove_nonexistent);
+  RUN_TEST(test_hmap_remove_with_collisions);
+  RUN_TEST(test_hmap_remove_after_growth);
+  RUN_TEST(test_hmap_remove_and_reinsert);
+  RUN_TEST(test_hmap_remove_null_safety);
+  RUN_TEST(test_hmap_data_types_int8);
+  RUN_TEST(test_hmap_data_types_int64);
+  RUN_TEST(test_hmap_data_types_float);
+  RUN_TEST(test_hmap_data_types_double);
+  RUN_TEST(test_hmap_compaction_stress);
+  RUN_TEST(test_hmap_hash_collision_stress);
+  RUN_TEST(test_hmap_large_scale_operations);
+  RUN_TEST(test_hmap_mixed_operation_patterns);
+  RUN_TEST(test_hmap_header_alignment);
+  RUN_TEST(test_hmap_is_empty);
+  RUN_TEST(test_hmap_iterate_after_remove);
+  RUN_TEST(test_hset_basic_operations);
+  RUN_TEST(test_hset_remove_operations);
+  RUN_TEST(test_hset_different_types);
+  RUN_TEST(test_hset_large_scale);
+  RUN_TEST(test_hset_edge_cases);
+  RUN_TEST(test_hset_memory_operations);
+  RUN_TEST(test_hset_is_empty_comprehensive);
+  RUN_TEST(test_hmap_str_basic);
+  RUN_TEST(test_hmap_str_get_basic);
+  RUN_TEST(test_hmap_str_remove_basic);
+  RUN_TEST(test_hmap_str_edge_cases);
+  RUN_TEST(test_hmap_str_stress_test);
+  RUN_TEST(test_hmap_str_growth_and_compaction);
+  RUN_TEST(test_hset_str_basic_operations);
+  RUN_TEST(test_hset_str_remove_operations);
+  RUN_TEST(test_hset_str_edge_cases);
+  RUN_TEST(test_hset_str_large_scale);
+  RUN_TEST(test_hset_str_memory_operations);
+  RUN_TEST(test_hset_str_is_empty_comprehensive);
   return UNITY_END();
 }
