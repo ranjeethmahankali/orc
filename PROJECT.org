@@ -202,6 +202,110 @@
   Should the host take ownership of the ~handle~ property and assign it, and make sure it is
   globally unique? And the plugins just use the host assigned ~handle~ as a unique identifier?
 
+** Design
+
+   - ~OrcHandle~ owns its backing data via ~free_fn~. ~OrcHandle const*~ is a read borrow.
+     ~OrcHandle*~ is a write borrow. The host owns the handle slots and lends access to plugins.
+   - The host assigns ~handle.handle~ (a ~uint64_t~ ID) to every slot before lending it to any
+     plugin. No one ever modifies ~handle.handle~ again, even when the backing data is freed.
+   - Each plugin maintains a global registry (~uint64_t → deck_ptr~) for the handles it owns.
+     Ownership check: look up the ID in the registry. If found → this plugin owns it. If not →
+     someone else does (or the slot is empty, indicated by ~free_fn == NULL~).
+   - When a plugin receives write access (~OrcHandle*~) to a handle it does not own, it calls
+     ~handle->free_fn~ to evict the current owner, then allocates new backing data for that ID.  The
+     host guarantees no concurrent read access exists when write access is lent out.
+   - ~handle.handle~ survives ~free_fn~. All other fields are zeroed on free.
+
+** TODO Phase 0a: Copy hashmap into ~c/third_party/~
+
+   Copy the hashmap implementation files into ~c/third_party/~. Add to the C SDK's
+   ~CMakeLists.txt~.
+
+** TODO Phase 0b: Copy ~tinycthread~ into ~c/orc_sdk/~
+
+   Copy ~tinycthread.h~ and ~tinycthread.c~ into ~c/orc_sdk/~ so that consumers of the SDK get it
+   automatically. Add to the C SDK's ~CMakeLists.txt~.
+
+** TODO Phase 1: Document the ABI invariant (~c/orc_abi.h~)
+
+   Add a comment to ~OrcHandle.handle~: set by the host, immutable for the handle's lifetime, used
+   by plugins as their registry key. No code changes.
+
+** TODO Phase 2: C SDK — Global registry (~orc_sdk.c~ / ~orc_sdk.h~)
+
+   Add a static registry (hashmap + ~mtx_t~) to ~orc_sdk.c~. Expose four internal helpers:
+   ~_registry_insert(id, ptr)~, ~_registry_get(id)~, ~_registry_contains(id)~,
+   ~_registry_remove(id)~. Each acquires the mutex, operates on the hashmap, releases. Initialize
+   both in ~orc_sdk_init~.
+
+** TODO Phase 3: C SDK — Fix ~orc_sdk_handle_alloc~ (~orc_sdk.c:1539~)
+
+   Read ~out->handle~ as the registry key instead of writing it. After allocating the deck call
+   ~_registry_insert(out->handle, deck_ptr)~. Do not assign ~out->handle~.
+
+** TODO Phase 4: C SDK — Fix ~_oh_free_fn~ (~orc_sdk.c:1263~)
+
+   Remove the assertion ~handle->handle == (uint64_t)handle->items~. After freeing the deck call
+   ~_registry_remove(handle->handle)~. Zero all fields except ~handle->handle~.
+
+** TODO Phase 5: C SDK — Fix ~orc_sdk_oh_update~ (~orc_sdk.c:1313~)
+
+   Remove the line ~handle->handle = (uint64_t)handle->items~. Only update the pointer/count
+   fields that reflect the deck's current state.
+
+** TODO Phase 6: C SDK — Fix ~orc_sdk_oh_ensure_alloc~ (~orc_sdk.c:1328~)
+
+   Replace the ~handle->handle == 0~ sentinel check with a registry lookup.
+   - ID in registry, same type → return ~ORC_ERROR_NONE~.
+   - ID in registry, wrong type → call ~_oh_free_fn~, then ~orc_sdk_handle_alloc~.
+   - ID not in registry, ~free_fn != NULL~ → call ~free_fn~ to evict, then ~orc_sdk_handle_alloc~.
+   - ID not in registry, ~free_fn == NULL~ → call ~orc_sdk_handle_alloc~ directly.
+
+** TODO Phase 7: Rust SDK — Rework ~ObjectRegistry~ (~rust/orc_sdk/src/util.rs~)
+
+   - Remove ~counter: AtomicU64~ and the ~alloc~ method that auto-generates IDs.
+   - Add ~insert(id, obj)~: inserts with a host-provided ID.
+   - Add ~owns<T>(id)~: returns true if the registry contains ~id~ with type ~T~.
+   - Add ~with_ref<T, R, F>(id, f)~: read-only access to an entry.
+   - Change ~ensure_alloc_default~ signature to accept ~handle: &mut OrcHandle~ and
+     ~my_free_fn: OrcDeckFreeFn~ instead of ~id: &mut u64~. Remove the ~*id == 0~ sentinel.
+     New logic mirrors Phase 6: registry lookup → reuse, replace, evict+alloc, or plain alloc.
+
+** TODO Phase 8: Rust SDK — Change ~TOrcPluginAdaptor::deck_alloc~ (~rust/orc_sdk/src/ffi.rs~)
+
+   Change signature from ~fn deck_alloc(id: OrcTypeId) -> Result<OrcHandle, Error>~ to
+   ~fn deck_alloc(id: OrcTypeId, handle: &mut OrcHandle) -> Result<(), Error>~. The plugin reads
+   ~handle.handle~ for the host-assigned ID, evicts if needed, allocates, updates all handle
+   fields except ~handle.handle~. Update the ~orc_plugin!~ macro's generated body to match.
+
+** TODO Phase 9: Rust math_plugin — Update ABI functions (~rust/math_plugin/src/lib.rs~)
+
+   - Rewrite ~alloc_deck<T>~ to accept ~out: &mut OrcHandle~, read ~out.handle~ as the key, check
+     ~REGISTRY.owns::<Deck<T>>(id)~, evict via ~free_fn~ if needed, insert into registry, then
+     populate handle fields via ~REGISTRY.with_ref~.
+   - Update ~Adaptor::deck_alloc~ signature to match Phase 8.
+   - Update ~Adaptor::deck_from_proxy~ and ~deck_from_proxy_impl~ to pass the full ~OrcHandle~ to
+     the new ~ensure_alloc_default~.
+
+** TODO Phase 10: Rust host — ~Plugin~ struct (~rust/orc_sdk/src/host.rs~)
+
+   Change ~Plugin::alloc_deck~ from returning a new ~OrcHandle~ to accepting ~slot: &mut OrcHandle~
+   (host pre-sets ~slot.handle~). Same change for ~Plugin::create_proxy_deck~.
+
+** TODO Phase 11: Host demo (~rust/kbb_cli_host/src/main.rs~)
+
+   Allocate a slot array with host-assigned IDs before calling any plugin function. Pass slot
+   references as outputs. Input handles for host-local ~Deck<T>~ remain view handles
+   (~free_fn = None~); their IDs do not enter any plugin registry.
+
+** TODO Phase 12: Tests
+
+   - C tests (~c/orc_sdk/test.c~): pre-set ~handle.handle~ before calling ~orc_sdk_handle_alloc~
+     or ~orc_sdk_oh_ensure_alloc~. Remove assertions that compare ~handle.handle~ to
+     ~(uint64_t)handle->items~. Update validity checks from ~handle.handle != 0~ to
+     ~handle.free_fn != NULL~.
+   - Rust demo (~kbb_cli_host/src/main.rs~): update per Phase 11.
+
 * DONE tj5fbs - Figure out C SDK and write a simple plugin
   CLOSED: [2026-08-04 Tue 10:55]
   :PROPERTIES:
