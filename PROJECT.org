@@ -211,7 +211,11 @@
   simple block in C. And test running DLLs with a custom allocator.
 
   - [X] Test running plugins with a custom allocator.
-  - [ ] Write simple container operation block in C.
+  - [X] Write simple container operation block in C.
+
+  <2026-08-03 Mon 21:54> Made a lot of prgress. Rust OrcHandles now have RAII. Successfully tested
+  a C plugin function for the first time. Also tested the ability to share data across the FFI
+  boundary between C and Rust.
 
 * CLOSED More general use of handles for data that is not decks
   CLOSED: [2026-08-03 Mon 17:46]
