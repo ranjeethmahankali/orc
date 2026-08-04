@@ -199,11 +199,13 @@
   Should the host take ownership of the ~handle~ property and assign it, and make sure it is
   globally unique? And the plugins just use the host assigned ~handle~ as a unique identifier?
 
-* NEXT tj5fbs - Figure out C SDK and write a simple plugin
+* DONE tj5fbs - Figure out C SDK and write a simple plugin
+  CLOSED: [2026-08-04 Tue 10:55]
   :PROPERTIES:
   :CREATED:  2026-08-02 Sun 11:09
   :END:
   :LOGBOOK:
+  - State "DONE"       from "NEXT"       [2026-08-04 Tue 10:55]
   - State "NEXT"       from "TODO"       [2026-08-02 Sun 11:44]
   :END:
 
