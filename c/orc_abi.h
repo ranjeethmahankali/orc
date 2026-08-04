@@ -109,7 +109,7 @@ typedef struct OrcHost
 #define ORC_DIM_LENGTH 0u
 #define ORC_DIM_MASS 1u
 #define ORC_DIM_TIME 2u
-#define ORC_DIM_CURRENT 3u
+#define ORC_DIM_ELECTRIC_CURRENT 3u
 #define ORC_DIM_TEMPERATURE 4u
 #define ORC_DIM_SUBSTANCE 5u
 #define ORC_DIM_LUMINOSITY 6u
