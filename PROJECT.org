@@ -170,9 +170,12 @@
   wildly variadic and type agnostic. The metatdata should allow the functions to express that
   somehow.
 
-* TODO OrcHandle Lifetimes and Identity
+* NEXT tj92sq - OrcHandle Lifetimes and Identity
   :PROPERTIES:
   :CREATED:  2026-08-04 Tue 09:32
+  :END:
+  :LOGBOOK:
+  - State "NEXT"       from "TODO"       [2026-08-04 Tue 10:56]
   :END:
 
   Handles pointing to data from one plugin can be passed in as inputs to any other plugin. This
