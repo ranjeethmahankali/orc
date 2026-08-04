@@ -144,15 +144,13 @@
   <2026-07-31 Fri 20:45> Trying to temporarily stop on this task, and finish a few other smaller
   tasks before continuing.
 
-* TODO Improve Function Metadata
+* TODO A LISP like syntax with multiple outputs?
   :PROPERTIES:
-  :CREATED:  2026-08-02 Sun 19:14
+  :CREATED:  2026-08-04 Tue 08:37
   :END:
 
-  We want the function metadata to also contain information about how many inputs and outputs the
-  function has, and what types. All of this has to be optional, and functions may choose to be
-  wildly variadic and type agnostic. The metatdata should allow the functions to express that
-  somehow.
+  Something that allows for multiple named inputs and outputs. When a block has just one output,
+  they can be nested as you normally do in LISP.
 
 * TODO Testing and CI
   :PROPERTIES:
@@ -167,6 +165,16 @@
   :PROPERTIES:
   :CREATED:  2026-08-03 Mon 18:22
   :END:
+
+* TODO Improve Function Metadata
+  :PROPERTIES:
+  :CREATED:  2026-08-02 Sun 19:14
+  :END:
+
+  We want the function metadata to also contain information about how many inputs and outputs the
+  function has, and what types. All of this has to be optional, and functions may choose to be
+  wildly variadic and type agnostic. The metatdata should allow the functions to express that
+  somehow.
 
 * NEXT tj5fbs - Figure out C SDK and write a simple plugin
   :PROPERTIES:
