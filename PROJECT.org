@@ -17,11 +17,6 @@
 
   Figuring this out requires a lot of work.
 
-** TODO Get Clarity from nTop Product Team
-   :PROPERTIES:
-   :CREATED:  2026-06-06 Sat 19:28
-   :END:
-
 ** TODO Figure out how to version types
    :PROPERTIES:
    :CREATED:  2026-06-06 Sat 19:28
@@ -111,10 +106,9 @@
   :CREATED:  2026-08-01 Sat 18:58
   :END:
 
-  Given nTop's code is all in C++, this is pretty important. LLMs can easily port the Deck
-  implementation etc. But the abstractions to remove friction in implementing blocks will require
-  some thought. I went with macros as the first pass in Rust. It is not clear to me what I should go
-  with in C++.
+  LLMs can easily port the Deck implementation etc. But the abstractions to remove friction in
+  implementing blocks will require some thought. I went with macros as the first pass in Rust. It is
+  not clear to me what I should go with in C++.
 
 * TODO tiwkbm - Create Toy Demo Apps
   :PROPERTIES:
