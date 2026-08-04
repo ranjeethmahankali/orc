@@ -176,6 +176,35 @@
   wildly variadic and type agnostic. The metatdata should allow the functions to express that
   somehow.
 
+* TODO OrcHandle Lifetimes and Identity
+  :PROPERTIES:
+  :CREATED:  2026-08-04 Tue 09:32
+  :END:
+
+  Handles pointing to data from one plugin can be passed in as inputs to any other plugin. This
+  works fine, because input handles are immutable. It is unclear what should happen when the host
+  passes in one of those handles as an output handle. In the current state, we will get some type of
+  UB / crash. This is a serious liability for the design and needs to be fixed ASAP.
+
+  Whatever solution I come up with, must make it hard to do the wrong thing, without creating too
+  much friction. Ideally the host keeps the output handles of each block separate and doesn't mix
+  and match them, but that becomes less clear when dealing with container operation blocks, that
+  request the host to allocate decks in other plugins, of types that it doesn't recognize.
+
+  - Should the host think of the resulting deck as belonging to the plugin that implemented the
+    container op, or the plugin that created the deck from a proxy deck?
+  - What happens when the output datatype of a container operation is a primitive type that is
+    recognized by all plugins and the host? Who is responsible for the output then?
+  - The meaning of the ~handle~ property of ~OrcHandle~ can be different in each plugin. What if I
+    take an OrcHandle from plugin A, and pass it to plugin B, which also just happens to contain
+    something in it's registry with the same ~handle~?
+
+  This all feels like a mess, and needs to be solved immediately, otherwise the whole C API effort
+  can fall apart.
+
+  Should the host take ownership of the ~handle~ property and assign it, and make sure it is
+  globally unique? And the plugins just use the host assigned ~handle~ as a unique identifier?
+
 * NEXT tj5fbs - Figure out C SDK and write a simple plugin
   :PROPERTIES:
   :CREATED:  2026-08-02 Sun 11:09
