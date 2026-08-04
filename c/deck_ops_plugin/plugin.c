@@ -1,7 +1,12 @@
 #include <orc_sdk/orc_sdk.h>
 #include <stdlib.h>
 
-#include "functions.h"
+// ==============================
+// Functions
+// ==============================
+
+extern OrcFuncInfo const FLATTEN_DECK_INFO;
+extern OrcFuncInfo const LIST_LENGTH_INFO;
 
 // ==============================
 // Required ABI exports
@@ -23,6 +28,7 @@ OrcError orc_plugin_init(OrcHost const *host, OrcPlugin *plugin_data_out)
   // Register functions.
   static OrcFuncInfo *FUNCTIONS = NULL;
   orc_sdk_arr_push(FUNCTIONS, FLATTEN_DECK_INFO);
+  orc_sdk_arr_push(FUNCTIONS, LIST_LENGTH_INFO);
   plugin_data_out->functions   = FUNCTIONS;
   plugin_data_out->n_functions = orc_sdk_arr_len(FUNCTIONS);
   return ORC_ERROR_NONE;

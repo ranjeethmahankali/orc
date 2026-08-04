@@ -65,22 +65,24 @@ fn main() -> Result<(), Error> {
     println!("Loaded {} plugin(s)\n", plugins.len());
     // Print the loaded plugins and functions.
     for plugin in &plugins {
-        println!("{} function(s):", plugin.functions().len());
+        println!(
+            "{} plugin has {} function(s):",
+            plugin.name(),
+            plugin.functions().len()
+        );
         for func in plugin.functions().iter() {
             println!("  - {}\n    {}", func.name, func.desc);
         }
+        println!("");
     }
-    // --- Test math_plugin (Rust) ---
-    let math_plugin = plugins
+    // --- Test some plugin functions ---
+
+    let add_fn = plugins
         .iter()
-        .find(|p| p.name() == "math_plugin")
-        .expect("math_plugin not found");
-    let add_fn = math_plugin
-        .functions()
-        .iter()
+        .flat_map(|p| p.functions().iter())
         .find(|f| f.name == "add")
         .expect("add function not found in math_plugin");
-    let a: Deck<f64> = deck![[1.0, 2.0, 3.0], [2.0, 4.0, 6.0]];
+    let a: Deck<f64> = deck![[1.0, 2.0, 3.0], [2.0, 4.0, 6.0, 8.0]];
     let b: Deck<f64> = deck![10.0, 20.0, 30.0];
     let mut out_handle = OrcHandle::default();
     let inputs: &[OrcHandle] = &[handle_from_deck(&a, 0, None), handle_from_deck(&b, 1, None)];
@@ -91,20 +93,17 @@ fn main() -> Result<(), Error> {
         "math_plugin add([1,2,3], [10,20,30]):\n{}",
         out_handle.display::<f64>()
     );
-    math_plugin.free_deck(&mut out_handle)?;
 
-    // --- Test deck_ops_plugin (C) ---
-    let deck_ops = plugins
+    let list_length_fn = plugins
         .iter()
-        .find(|p| p.name() == "deck_ops")
-        .expect("deck_ops plugin not found");
-    println!(
-        "\ndeck_ops plugin loaded OK ({} function(s))",
-        deck_ops.functions().len()
-    );
-    for f in deck_ops.functions().iter() {
-        println!("  - {}: {}", f.name, f.desc);
+        .flat_map(|p| p.functions().iter())
+        .find(|f| f.name == "list_length")
+        .expect("list_length function not found in math_plugin");
+    let mut out_handle = OrcHandle::default();
+    let inputs: &[OrcHandle] = &[handle_from_deck(&a, 0, None)];
+    unsafe {
+        (list_length_fn.func)(0, inputs.as_ptr(), inputs.len() as u64, &mut out_handle, 1);
     }
-
+    println!("List length output:\n{}", out_handle.display::<u64>());
     Ok(())
 }

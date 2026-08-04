@@ -37,7 +37,7 @@ set_target_properties(orc_sdk_obj PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 # deck_ops_plugin — shared library
 add_library(deck_ops_plugin SHARED
-    deck_ops_plugin/abi.c
+    deck_ops_plugin/plugin.c
     deck_ops_plugin/functions.c
     $<TARGET_OBJECTS:orc_sdk_obj>
 )
