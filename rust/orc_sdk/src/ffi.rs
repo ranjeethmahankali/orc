@@ -94,7 +94,11 @@ macro_rules! orc_plugin {
 impl Drop for OrcHandle {
     fn drop(&mut self) {
         if let Some(free_fn) = self.free_fn {
-            unsafe { free_fn(self as *mut OrcHandle) };
+            let err = unsafe { free_fn(self as *mut OrcHandle) };
+            if err != ORC_ERROR_NONE {
+                eprintln!("Unable to free OrcHandle: error {:#x}", err);
+                std::process::abort();
+            }
         }
     }
 }
