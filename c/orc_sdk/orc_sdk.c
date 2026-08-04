@@ -56,6 +56,15 @@ void orc_sdk_free(void *ptr, uint64_t const size, uint64_t const alignment)
   HOST.memory_api.dealloc(ptr, size, alignment);
 }
 
+void orc_sdk_report_message(uint64_t const        ctx,
+                            OrcMessageLevel const level,
+                            char const           *msg)
+{
+  if (HOST.callbacks.report_message != NULL) {
+    HOST.callbacks.report_message(ctx, level, msg);
+  }
+}
+
 void *orc_sdk_realloc(void          *ptr,
                       uint64_t const old_size,
                       uint64_t const new_size,
@@ -819,7 +828,7 @@ void orc_sdk_deck_simplify(void *ptr)
   _deck_calc_strides(h);
 }
 
-char *_orc_sdk_deck_to_str(void        *ptr,
+char *_orc_sdk_deck_to_str(void const  *ptr,
                            size_t const item_size,
                            void (*snprint_item)(void *item, char *dst, size_t len))
 {

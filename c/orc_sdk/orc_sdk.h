@@ -405,7 +405,7 @@ void orc_sdk_deck_graft(void *ptr);
 
 void orc_sdk_deck_simplify(void *ptr);
 
-char *_orc_sdk_deck_to_str(void        *ptr,
+char *_orc_sdk_deck_to_str(void const  *ptr,
                            size_t const item_size,
                            void (*snprint_item)(void *item, char *dst, size_t len));
 
@@ -645,6 +645,10 @@ OrcSdk_DeckWriter *orc_sdk_comb_get_output(void *comb, size_t const index);
 void orc_sdk_oh_update(OrcHandle *handle);
 
 OrcError orc_sdk_oh_ensure_alloc(OrcTypeId const type_id, OrcHandle *handle);
+
+void orc_sdk_report_message(uint64_t const        ctx,
+                            OrcMessageLevel const level,
+                            char const           *msg);
 
 // ========== ABI helpers ==========
 

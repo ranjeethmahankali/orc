@@ -82,10 +82,6 @@ pub fn handle_from_deck<T: TOrcData>(deck: &Deck<T>, id: u64, free_fn: OrcDeckFr
     }
 }
 
-pub fn reset_handle(handle: &mut OrcHandle) {
-    *handle = OrcHandle::default();
-}
-
 type ObjEntry = Arc<RwLock<Box<dyn Any + Send + Sync>>>;
 
 pub struct ObjectRegistry {

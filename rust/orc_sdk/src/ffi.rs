@@ -91,6 +91,18 @@ macro_rules! orc_plugin {
     };
 }
 
+impl Drop for OrcHandle {
+    fn drop(&mut self) {
+        if let Some(free_fn) = self.free_fn {
+            let err = unsafe { free_fn(self as *mut OrcHandle) };
+            if err != ORC_ERROR_NONE {
+                eprintln!("Unable to free OrcHandle: error {:#x}", err);
+                std::process::abort();
+            }
+        }
+    }
+}
+
 pub type PluginInitFn = unsafe extern "C" fn(*const OrcHost, *mut OrcPlugin) -> OrcError;
 pub type DeckAllocFn = unsafe extern "C" fn(OrcTypeId, *mut OrcHandle) -> OrcError;
 pub type DeckFreeFn = unsafe extern "C" fn(*mut OrcHandle) -> OrcError;

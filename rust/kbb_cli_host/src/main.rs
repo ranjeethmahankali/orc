@@ -2,13 +2,24 @@ use orc_sdk::{
     Deck, Error, ORC_ABI_VERSION, OrcHandle, OrcHost, OrcHostCallbackAPI, OrcHostMemoryAPI, deck,
     handle_from_deck,
 };
-use std::ffi::CStr;
+use std::alloc::{Layout, alloc, dealloc};
+use std::ffi::{CStr, c_void};
+
+unsafe extern "C" fn host_alloc(size: u64, alignment: u64) -> *mut c_void {
+    let layout = Layout::from_size_align(size as usize, alignment as usize).unwrap();
+    unsafe { alloc(layout) as *mut c_void }
+}
+
+unsafe extern "C" fn host_dealloc(ptr: *mut c_void, size: u64, alignment: u64) {
+    let layout = Layout::from_size_align(size as usize, alignment as usize).unwrap();
+    unsafe { dealloc(ptr as *mut u8, layout) }
+}
 
 const HOST: OrcHost = OrcHost {
     abi_version: ORC_ABI_VERSION,
     memory_api: OrcHostMemoryAPI {
-        alloc: None,
-        dealloc: None,
+        alloc: Some(host_alloc),
+        dealloc: Some(host_dealloc),
     },
     callbacks: OrcHostCallbackAPI {
         report_progress: None,
@@ -54,30 +65,45 @@ fn main() -> Result<(), Error> {
     println!("Loaded {} plugin(s)\n", plugins.len());
     // Print the loaded plugins and functions.
     for plugin in &plugins {
-        println!("{} function(s):", plugin.functions().len());
+        println!(
+            "{} plugin has {} function(s):",
+            plugin.name(),
+            plugin.functions().len()
+        );
         for func in plugin.functions().iter() {
             println!("  - {}\n    {}", func.name, func.desc);
         }
+        println!("");
     }
-    // Test the add function.
-    let math_plugin = plugins
+    // --- Test some plugin functions ---
+
+    let add_fn = plugins
         .iter()
-        .find(|p| p.name() == "math_plugin")
-        .expect("Cannot find math_plugin. It might not have loaded correctly.");
-    let add_fn = math_plugin
-        .functions()
-        .iter()
+        .flat_map(|p| p.functions().iter())
         .find(|f| f.name == "add")
-        .expect("Cannot find the add function in the math plugin.");
-    let a: Deck<f64> = deck![1.0, 2.0, 3.0];
+        .expect("add function not found in math_plugin");
+    let a: Deck<f64> = deck![[1.0, 2.0, 3.0], [2.0, 4.0, 6.0, 8.0]];
     let b: Deck<f64> = deck![10.0, 20.0, 30.0];
-    let mut out_handle = math_plugin.alloc_deck(orc_sdk::ORC_TYPE_F64)?;
+    let mut out_handle = OrcHandle::default();
     let inputs: &[OrcHandle] = &[handle_from_deck(&a, 0, None), handle_from_deck(&b, 1, None)];
     unsafe {
         (add_fn.func)(0, inputs.as_ptr(), inputs.len() as u64, &mut out_handle, 1);
     }
-    // Print the output data.
-    println!("Output deck: \n{}", out_handle.display::<f64>());
-    math_plugin.free_deck(&mut out_handle)?;
+    println!(
+        "math_plugin add([1,2,3], [10,20,30]):\n{}",
+        out_handle.display::<f64>()
+    );
+
+    let list_length_fn = plugins
+        .iter()
+        .flat_map(|p| p.functions().iter())
+        .find(|f| f.name == "list_length")
+        .expect("list_length function not found in math_plugin");
+    let mut out_handle = OrcHandle::default();
+    let inputs: &[OrcHandle] = &[handle_from_deck(&a, 0, None)];
+    unsafe {
+        (list_length_fn.func)(0, inputs.as_ptr(), inputs.len() as u64, &mut out_handle, 1);
+    }
+    println!("List length output:\n{}", out_handle.display::<u64>());
     Ok(())
 }

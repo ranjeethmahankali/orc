@@ -17,11 +17,6 @@
 
   Figuring this out requires a lot of work.
 
-** TODO Get Clarity from nTop Product Team
-   :PROPERTIES:
-   :CREATED:  2026-06-06 Sat 19:28
-   :END:
-
 ** TODO Figure out how to version types
    :PROPERTIES:
    :CREATED:  2026-06-06 Sat 19:28
@@ -111,10 +106,59 @@
   :CREATED:  2026-08-01 Sat 18:58
   :END:
 
-  Given nTop's code is all in C++, this is pretty important. LLMs can easily port the Deck
-  implementation etc. But the abstractions to remove friction in implementing blocks will require
-  some thought. I went with macros as the first pass in Rust. It is not clear to me what I should go
-  with in C++.
+  LLMs can easily port the Deck implementation etc. But the abstractions to remove friction in
+  implementing blocks will require some thought. I went with macros as the first pass in Rust. It is
+  not clear to me what I should go with in C++.
+
+* TODO tiwkbm - Create Toy Demo Apps
+  :PROPERTIES:
+  :CREATED:  2026-07-28 Tue 16:45
+  :END:
+  :LOGBOOK:
+  - State "TODO"       from "NEXT"       [2026-07-31 Fri 20:46]
+  - State "NEXT"       from "TODO"       [2026-07-30 Thu 18:36]
+  :END:
+
+  Not that the plugin architecture is fleshed out, I can build a few toy host applications, and toy
+  plugins, and demonstrate the flexibility and power of this design to both Product / Customer
+  facing side as well as the engineering side.
+
+  <2026-07-30 Thu 18:35> Made quite some progress with the orc_fn macro to make it easier to
+  implement simple blocks. The macro is now able to handle templated Rust functions too, but still
+  requires some more testing before I feel confident about it.
+
+  <2026-07-31 Fri 18:22> The orc_fn proc macro mostly took shape. Trying to simplify the code a bit,
+  and maybe add some tests. The proxy deck functions need more thought, and need to be fleshed
+  out. Also the type ids require more thought. Plugins will need the ability to work with arbitrary
+  types defined in other plugins. Which means plugins cannot rely on their own type ids. The handle
+  cannot just communicate OrcTypeId. It needs to have a unique integer id that the host assigns to
+  that type, after loading all the plugins, and the plugins need to know that mapped id for their
+  own types after plugin_init.... It will get a bit more complicated than it currently is.
+
+  <2026-07-31 Fri 20:45> Trying to temporarily stop on this task, and finish a few other smaller
+  tasks before continuing.
+
+* TODO A LISP like syntax with multiple outputs?
+  :PROPERTIES:
+  :CREATED:  2026-08-04 Tue 08:37
+  :END:
+
+  Something that allows for multiple named inputs and outputs. When a block has just one output,
+  they can be nested as you normally do in LISP.
+
+* TODO Testing and CI
+  :PROPERTIES:
+  :CREATED:  2026-08-03 Mon 17:47
+  :END:
+
+  I am making fast progress, adding lots of code. I have some tests, but I need to test a lot
+  more. All the plugin code should be thoroughly tested. All the new SDK code should be tested. I
+  should look through the ABI carefully, and make sure each feature is tested.
+
+* TODO Implement Container Op Blocks in C
+  :PROPERTIES:
+  :CREATED:  2026-08-03 Mon 18:22
+  :END:
 
 * TODO Improve Function Metadata
   :PROPERTIES:
@@ -126,14 +170,34 @@
   wildly variadic and type agnostic. The metatdata should allow the functions to express that
   somehow.
 
-* TODO More general use of handles for data that is not decks
+* TODO OrcHandle Lifetimes and Identity
   :PROPERTIES:
-  :CREATED:  2026-08-02 Sun 20:05
+  :CREATED:  2026-08-04 Tue 09:32
   :END:
 
-  Plugins should be allowed to use the handles to point to data that is not a deck. All the deck
-  specific pointers and parameters should not be read by the host or any other plugin when this is
-  the case. I am thinking this can be achieved with either a boolean flag.
+  Handles pointing to data from one plugin can be passed in as inputs to any other plugin. This
+  works fine, because input handles are immutable. It is unclear what should happen when the host
+  passes in one of those handles as an output handle. In the current state, we will get some type of
+  UB / crash. This is a serious liability for the design and needs to be fixed ASAP.
+
+  Whatever solution I come up with, must make it hard to do the wrong thing, without creating too
+  much friction. Ideally the host keeps the output handles of each block separate and doesn't mix
+  and match them, but that becomes less clear when dealing with container operation blocks, that
+  request the host to allocate decks in other plugins, of types that it doesn't recognize.
+
+  - Should the host think of the resulting deck as belonging to the plugin that implemented the
+    container op, or the plugin that created the deck from a proxy deck?
+  - What happens when the output datatype of a container operation is a primitive type that is
+    recognized by all plugins and the host? Who is responsible for the output then?
+  - The meaning of the ~handle~ property of ~OrcHandle~ can be different in each plugin. What if I
+    take an OrcHandle from plugin A, and pass it to plugin B, which also just happens to contain
+    something in it's registry with the same ~handle~?
+
+  This all feels like a mess, and needs to be solved immediately, otherwise the whole C API effort
+  can fall apart.
+
+  Should the host take ownership of the ~handle~ property and assign it, and make sure it is
+  globally unique? And the plugins just use the host assigned ~handle~ as a unique identifier?
 
 * NEXT tj5fbs - Figure out C SDK and write a simple plugin
   :PROPERTIES:
@@ -177,36 +241,30 @@
   properly. Fixed many small gaps in the C SDK along the way. All that is left to do is to write a
   simple block in C. And test running DLLs with a custom allocator.
 
-  - [ ] Write simple container operation block in C.
-  - [ ] Test running plugins with a custom allocator.
+  - [X] Test running plugins with a custom allocator.
+  - [X] Write simple container operation block in C.
 
-* TODO tiwkbm - Create Toy Demo Apps
+  <2026-08-03 Mon 21:54> Made a lot of prgress. Rust OrcHandles now have RAII. Successfully tested
+  a C plugin function for the first time. Also tested the ability to share data across the FFI
+  boundary between C and Rust.
+
+* CLOSED More general use of handles for data that is not decks
+  CLOSED: [2026-08-03 Mon 17:46]
   :PROPERTIES:
-  :CREATED:  2026-07-28 Tue 16:45
+  :CREATED:  2026-08-02 Sun 20:05
   :END:
   :LOGBOOK:
-  - State "TODO"       from "NEXT"       [2026-07-31 Fri 20:46]
-  - State "NEXT"       from "TODO"       [2026-07-30 Thu 18:36]
+  - State "CLOSED"     from "TODO"       [2026-08-03 Mon 17:46]
   :END:
 
-  Not that the plugin architecture is fleshed out, I can build a few toy host applications, and toy
-  plugins, and demonstrate the flexibility and power of this design to both Product / Customer
-  facing side as well as the engineering side.
+  Plugins should be allowed to use the handles to point to data that is not a deck. All the deck
+  specific pointers and parameters should not be read by the host or any other plugin when this is
+  the case. I am thinking this can be achieved with either a boolean flag.
 
-  <2026-07-30 Thu 18:35> Made quite some progress with the orc_fn macro to make it easier to
-  implement simple blocks. The macro is now able to handle templated Rust functions too, but still
-  requires some more testing before I feel confident about it.
-
-  <2026-07-31 Fri 18:22> The orc_fn proc macro mostly took shape. Trying to simplify the code a bit,
-  and maybe add some tests. The proxy deck functions need more thought, and need to be fleshed
-  out. Also the type ids require more thought. Plugins will need the ability to work with arbitrary
-  types defined in other plugins. Which means plugins cannot rely on their own type ids. The handle
-  cannot just communicate OrcTypeId. It needs to have a unique integer id that the host assigns to
-  that type, after loading all the plugins, and the plugins need to know that mapped id for their
-  own types after plugin_init.... It will get a bit more complicated than it currently is.
-
-  <2026-07-31 Fri 20:45> Trying to temporarily stop on this task, and finish a few other smaller
-  tasks before continuing.
+  This is making things more complicated than it is worth. I am going to put this off for now. I
+  think the plugins that want to do this can still do it. They just need to populate the handle data
+  to imply the deck has just 1 item. That is very easy to do. So adding a whole other property for
+  that, and all the branching that comes with it, is not worth it.
 
 * DONE tj2fe7 - Proxy decks through the ABI
   CLOSED: [2026-08-02 Sun 11:23]
@@ -235,61 +293,3 @@
   free functions. Finished implementing the proxy stuff in the Rust plugin. Not tested it yet. I am
   considering merging this in, and testing it later as I write more plugins.
 
-* DONE tj2fch - OrcHandle type_id rework
-  CLOSED: [2026-08-01 Sat 18:36]
-  :PROPERTIES:
-  :CREATED:  2026-07-31 Fri 20:43
-  :END:
-  :LOGBOOK:
-  - State "DONE"       from "NEXT"       [2026-08-01 Sat 18:36]
-  - State "NEXT"       from "TODO"       [2026-08-01 Sat 17:39]
-  :END:
-
-  Need something that allows plugins to receive the host side type id, and allows plugins to receive
-  handles containing data from other plugins.
-
-  <2026-08-01 Sat 18:35> Needs more testing as I build more plugins. In as good of a shape as it can
-  be at this early stage. Preparing to merge.
-
-** DONE ABI / DLL Versioning
-   CLOSED: [2026-08-01 Sat 17:40]
-   :PROPERTIES:
-   :CREATED:  2026-07-31 Fri 18:58
-   :END:
-   :LOGBOOK:
-   - State "DONE"       from "NEXT"       [2026-08-01 Sat 17:40]
-   - State "NEXT"       from "TODO"       [2026-07-31 Fri 19:29]
-   :END:
-
-   ABI itself should be protected from changes as much as possible. When it changes, all binaries,
-   plugins, and DLLs must be recompiled. Some minor changes like adding a new function might not
-   require this, but we need a water tight strategy to avoid loading running binaries that target a
-   different ABI than the host. That can cause crashes.
-
-   My first idea is to include a version integer in the header. That integer can pack all three
-   values of a semantic version number in the bits of a 64 bit integer.
-
-   <2026-07-31 Fri 19:29> Trying to take a crack at this whole prototyping demo apps.
-
-   <2026-08-01 Sat 17:39> Turning this into a subtask, because it will get merged as part of another
-   task. Marking it done. The design I have on this branch seems good enough for now.
-
-* CLOSED Rendering Geometry
-  CLOSED: [2026-07-28 Tue 09:16]
-  :PROPERTIES:
-  :CREATED:  2026-06-06 Sat 19:21
-  :END:
-  :LOGBOOK:
-  - State "CLOSED"     from "TODO"       [2026-07-28 Tue 09:16]
-  :END:
-
-  The current rendering API in [[file:c/src/orc_abi.h::rendering_api][the current ffi]] is just a stub. While supporting
-  static rendering primitives is simple, supporting implicit rendering requires
-  a lot more thought.
-
-  <2026-07-28 Tue 09:14> I changed my mind about this. I realized each host application will have
-  very specialized rendering needs, and those needs cannot be met by a single API. So we're better
-  off going the Parasolid route. Just expose functions that return data in a form that the host can
-  render. E.g. meshes should return triangles, and implicit bodies should return a handle to some
-  type of evaluator that can be used fill up voxel grids. In theory, should plug in to a system like
-  Aether just fine. I will close this for now.

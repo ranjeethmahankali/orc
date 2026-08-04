@@ -3,7 +3,7 @@ use orc_sdk::{
     ORC_TYPE_I16, ORC_TYPE_I32, ORC_TYPE_I64, ORC_TYPE_U8, ORC_TYPE_U16, ORC_TYPE_U32,
     ORC_TYPE_U64, ObjectRegistry, OrcFuncInfo, OrcHandle, OrcHost, OrcHostCallbackAPI,
     OrcItemProxy, OrcPlugin, OrcTypeId, ProxyType, TOrcData, TOrcPluginAdaptor, handle_from_deck,
-    orc_fn_info, orc_plugin, reset_handle,
+    orc_fn_info, orc_plugin,
 };
 use std::sync::{LazyLock, OnceLock};
 
@@ -25,15 +25,7 @@ pub(crate) fn registry() -> &'static ObjectRegistry {
 fn alloc_deck<T: TOrcData>() -> Result<OrcHandle, Error> {
     let deck = Deck::<T>::default();
     let mut handle = handle_from_deck(&deck, 0, Some(crate::orc_deck_free));
-    match REGISTRY.alloc(deck) {
-        Ok(h) => handle.handle = h,
-        Err(e) => {
-            // We're not reporting anything to the host, other than zeroing out this handle. For now
-            // that is enough to communicate to the caller that the allocation didn't happen.
-            reset_handle(&mut handle);
-            return Err(e);
-        }
-    };
+    handle.handle = REGISTRY.alloc(deck)?;
     Ok(handle)
 }
 
@@ -79,7 +71,7 @@ impl TOrcPluginAdaptor for Adaptor {
 
     fn deck_free(handle: &mut OrcHandle) -> Result<(), Error> {
         let id = handle.handle;
-        reset_handle(handle);
+        unsafe { std::ptr::write(handle, OrcHandle::default()) }
         REGISTRY.free(id)
     }
 

@@ -2237,33 +2237,6 @@ void test_deck_init(void)
 
 // ========== OrcSdk_DeckView ==========
 
-void _print_deck_view(OrcSdk_DeckView const *v)  // DEBUG
-{
-  fprintf(stderr,
-          "\nOrcSdk_DeckView {\n"
-          "  items:         %p;\n"
-          "  n_items:       %zu;\n"
-          "  item_size:     %zu;\n"
-          "  marks:         %p;\n"
-          "  stride_offset: %p;\n"
-          "  n_marks:       %zu;\n"
-          "  strides:       %p;\n"
-          "  depth:         %d;\n"
-          "  start:         %zu;\n"
-          "  end:           %zu;\n"
-          "}\n",
-          (void *)v->items,
-          v->n_items,
-          v->item_size,
-          (void *)v->marks,
-          (void *)v->stride_offset,
-          v->n_marks,
-          (void *)v->strides,
-          v->depth,
-          v->start,
-          v->end);
-}
-
 void test_dv_binary_deck(void)
 {
   const uint8_t DEPTH = 5;
