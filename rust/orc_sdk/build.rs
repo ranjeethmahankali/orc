@@ -9,6 +9,7 @@ fn main() {
         .derive_partialeq(true)
         .derive_eq(true)
         .derive_default(true)
+        .no_default("OrcHost")
         .no_partialeq("OrcFuncInfo") // This contains a function pointer and doesn't require comparison.
         .no_partialeq("OrcHost.*") // This contains function pointers, and doesn't require comparison.
         .no_partialeq("OrcHandle") // This contains function pointers, and doesn't require comparison.

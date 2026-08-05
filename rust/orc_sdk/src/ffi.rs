@@ -109,6 +109,16 @@ impl Drop for OrcHandle {
     }
 }
 
+impl Default for OrcHost {
+    fn default() -> Self {
+        Self {
+            abi_version: ORC_ABI_VERSION,
+            memory_api: Default::default(),
+            callbacks: Default::default(),
+        }
+    }
+}
+
 pub type PluginInitFn = unsafe extern "C" fn(*const OrcHost, *mut OrcPlugin) -> OrcError;
 pub type DeckAllocFn = unsafe extern "C" fn(OrcTypeId, *mut OrcHandle) -> OrcError;
 pub type DeckFreeFn = unsafe extern "C" fn(*mut OrcHandle) -> OrcError;
