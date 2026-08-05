@@ -45,9 +45,9 @@ jobs:
       - name: Update Rust
         run: rustup update stable
       - name: Build C (Debug)
-        run: cmake -S c/ -B build/debug -DCMAKE_BUILD_TYPE=Debug && cmake --build build/debug
+        run: cmake -S c/ -B build/debug -DCMAKE_BUILD_TYPE=Debug && cmake --build build/debug --config Debug
       - name: Run C tests
-        run: ctest --test-dir build/debug --output-on-failure
+        run: ctest --test-dir build/debug -C Debug --output-on-failure
       - name: Build Rust
         working-directory: rust
         run: cargo build --verbose --all-targets --all-features
