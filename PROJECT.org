@@ -240,6 +240,9 @@
    by plugins as their registry key. No code changes.
 
 ** TODO Phase 2: C SDK — Global registry (~orc_sdk.c~ / ~orc_sdk.h~)
+   :PROPERTIES:
+   :CREATED:  2026-08-04 Tue 21:21
+   :END:
 
    Add a static registry (hashmap + ~mtx_t~) to ~orc_sdk.c~. Expose four internal helpers:
    ~_registry_insert(id, ptr)~, ~_registry_get(id)~, ~_registry_contains(id)~,
@@ -248,6 +251,10 @@
 
    Write a unit test. That unit test should create multiple threads that try to read from and write
    to this registry.
+
+   <2026-08-04 Tue 21:20> Sketching out a global thread safe registry after upgrading to C11. Needs
+   some more thought about where to keep the type_id of the entries of this registry. Maybe I can
+   just replicate what I have in Rust without worrying too much?
 
 ** TODO Phase 3: C SDK — Fix ~orc_sdk_handle_alloc~ (~orc_sdk.c:1539~)
 
