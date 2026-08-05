@@ -1735,6 +1735,12 @@ OrcError _oh_free_fn(OrcHandle *const handle)
     }
     break;
   }
+  // Check registry ownership before touching anything.
+  // If this handle ID is not in our registry, this plugin doesn't own it — don't free.
+  OrcError const err = orc_sdk_registry_remove(handle->handle);
+  if (err != ORC_ERROR_NONE) {
+    return err;
+  }
   if (item_free_fn) {
     // Free the individual items from the deck before freeing the Deck container itself.
     size_t const count = orc_sdk_deck_len(handle->items);
@@ -1744,17 +1750,15 @@ OrcError _oh_free_fn(OrcHandle *const handle)
     }
   }
   _orc_sdk_deck_free_impl((void *)handle->items);  // Now we can free the deck container.
-  OrcError const err = orc_sdk_registry_remove(handle->handle);
-  if (ORC_ERROR_NONE == err) {
-    reset_handle(handle);
-  }
-  return err;
+  reset_handle(handle);
+  return ORC_ERROR_NONE;
 }
 
 void orc_sdk_oh_update(OrcHandle *handle)
 {
   ORC_SDK_REQUIRE_WITH_MSG(handle != NULL, "Invalid handle");
   ORC_SDK_REQUIRE_WITH_MSG(handle->type_id != 0, "Invalid type id");
+  ORC_SDK_REQUIRE_WITH_MSG(handle->items != NULL, "Cannot update a handle with no backing data");
   _OrcSdk_DeckHeader *h = _orc_sdk_deck_header(handle->items);
   handle->n_items       = h->count;
   handle->item_size     = h->item_size;
@@ -1978,8 +1982,6 @@ OrcSdk_DeckWriter *orc_sdk_comb_get_output(void *ptr, size_t const index)
   return comb->writer_matrix + (index + 1) * comb->stack_depth - 1;
 }
 
-// ========== FFI helper functions ==========
-
 OrcError orc_sdk_handle_alloc(OrcTypeId const id, OrcHandle *const out)
 {
   if (out == NULL) {
@@ -2038,11 +2040,19 @@ OrcError orc_sdk_handle_alloc(OrcTypeId const id, OrcHandle *const out)
   out->type_id           = id;
   size_t const INIT_SIZE = 1;
   void        *deck_ptr  = _orc_sdk_deck_grow_capacity(NULL, out->item_size, INIT_SIZE);
-  _OrcSdk_DeckHeader *h  = _orc_sdk_deck_header(deck_ptr);
+  if (deck_ptr == NULL) {
+    return ORC_ERROR_ALLOC_FAILED;
+  }
+  OrcError const reg_err = orc_sdk_registry_insert(out->handle, deck_ptr);
+  if (reg_err != ORC_ERROR_NONE) {
+    _orc_sdk_deck_free_impl(deck_ptr);
+    return reg_err;
+  }
+  _OrcSdk_DeckHeader *h = _orc_sdk_deck_header(deck_ptr);
   // Assign to the output deck. out->handle is the host-assigned ID — do not touch it.
+  memset(out->dims, 0, sizeof(OrcDims));
   out->items   = deck_ptr;
   out->free_fn = _oh_free_fn;
-  orc_sdk_registry_insert(out->handle, deck_ptr);
   ORC_SDK_REQUIRE_WITH_MSG(h->count == 0, "New deck must be empty");
   out->n_items         = h->count;
   out->marks           = h->marks;
@@ -2177,6 +2187,10 @@ OrcError orc_sdk_deck_from_proxy(OrcHandle const   *inputs,
     }
     size_t const n_items = inputs[0].n_items;
     void *deck = _orc_sdk_deck_grow_capacity((void *)out->items, item_size, n_items);
+    if (deck == NULL) {
+      orc_sdk_handle_free(out);
+      return ORC_ERROR_ALLOC_FAILED;
+    }
     _OrcSdk_DeckHeader *h = _orc_sdk_deck_header(deck);
     h->item_size          = item_size;
     memcpy(out->dims, inputs[0].dims, sizeof(OrcDims));
@@ -2185,6 +2199,7 @@ OrcError orc_sdk_deck_from_proxy(OrcHandle const   *inputs,
       memset(deck, 0, item_size * n_items);
       OrcError const e = _copy_items(id, inputs[0].items, deck, n_items);
       if (e) {
+        orc_sdk_handle_free(out);
         return e;
       }
     }
@@ -2206,6 +2221,10 @@ OrcError orc_sdk_deck_from_proxy(OrcHandle const   *inputs,
     }
     size_t const n_items = inputs[0].n_items;
     void *deck = _orc_sdk_deck_grow_capacity((void *)out->items, item_size, n_items);
+    if (deck == NULL) {
+      orc_sdk_handle_free(out);
+      return ORC_ERROR_ALLOC_FAILED;
+    }
     _OrcSdk_DeckHeader *h = _orc_sdk_deck_header(deck);
     h->item_size          = item_size;
     memcpy(out->dims, inputs[0].dims, sizeof(OrcDims));
@@ -2214,6 +2233,7 @@ OrcError orc_sdk_deck_from_proxy(OrcHandle const   *inputs,
       memset(deck, 0, item_size * n_items);
       OrcError const e = _copy_items(id, inputs[0].items, deck, n_items);
       if (e) {
+        orc_sdk_handle_free(out);
         return e;
       }
     }
@@ -2230,6 +2250,10 @@ OrcError orc_sdk_deck_from_proxy(OrcHandle const   *inputs,
   case ORC_DECK_PROXY_SHUFFLE: {
     size_t const n_items = proxy->n_items;
     void *deck = _orc_sdk_deck_grow_capacity((void *)out->items, item_size, n_items);
+    if (deck == NULL) {
+      orc_sdk_handle_free(out);
+      return ORC_ERROR_ALLOC_FAILED;
+    }
     _OrcSdk_DeckHeader *h = _orc_sdk_deck_header(deck);
     h->item_size          = item_size;
     memcpy(out->dims, proxy->dims, sizeof(OrcDims));
@@ -2245,6 +2269,7 @@ OrcError orc_sdk_deck_from_proxy(OrcHandle const   *inputs,
       void          *dst = (char *)deck + item_size * h->count;
       OrcError const e   = _copy_items(id, src, dst, 1);
       if (e) {
+        orc_sdk_handle_free(out);
         return e;
       }
       ++h->count;
