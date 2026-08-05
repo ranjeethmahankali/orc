@@ -83,14 +83,6 @@ void *orc_sdk_registry_get(uint64_t id)
   return result;
 }
 
-bool orc_sdk_registry_contains(uint64_t id)
-{
-  mtx_lock(&REGISTRY_LOCK);
-  bool result = orc_sdk_hmap_contains(REGISTRY, id);
-  mtx_unlock(&REGISTRY_LOCK);
-  return result;
-}
-
 OrcError orc_sdk_registry_remove(uint64_t id)
 {
   mtx_lock(&REGISTRY_LOCK);
@@ -1758,7 +1750,8 @@ void orc_sdk_oh_update(OrcHandle *handle)
 {
   ORC_SDK_REQUIRE_WITH_MSG(handle != NULL, "Invalid handle");
   ORC_SDK_REQUIRE_WITH_MSG(handle->type_id != 0, "Invalid type id");
-  ORC_SDK_REQUIRE_WITH_MSG(handle->items != NULL, "Cannot update a handle with no backing data");
+  ORC_SDK_REQUIRE_WITH_MSG(handle->items != NULL,
+                           "Cannot update a handle with no backing data");
   _OrcSdk_DeckHeader *h = _orc_sdk_deck_header(handle->items);
   handle->n_items       = h->count;
   handle->item_size     = h->item_size;
@@ -1767,30 +1760,6 @@ void orc_sdk_oh_update(OrcHandle *handle)
   handle->n_marks       = orc_sdk_arr_len(h->marks);
   handle->strides       = h->strides;
   handle->free_fn       = _oh_free_fn;
-}
-
-OrcError orc_sdk_oh_ensure_alloc(OrcTypeId const type_id, OrcHandle *handle)
-{
-  if (orc_sdk_registry_contains(handle->handle)) {
-    // This plugin owns the handle. Reuse if type matches, free+reallocate if not.
-    if (handle->type_id == type_id) {
-      return ORC_ERROR_NONE;
-    }
-    OrcError const err = orc_sdk_handle_free(handle);
-    if (err) {
-      return err;
-    }
-    return orc_sdk_handle_alloc(type_id, handle);
-  }
-  // This plugin does not own the handle.
-  if (handle->free_fn != NULL) {
-    // Someone else owns it — evict them.
-    OrcError const err = handle->free_fn(handle);
-    if (err) {
-      return err;
-    }
-  }
-  return orc_sdk_handle_alloc(type_id, handle);
 }
 
 void *orc_sdk_comb_init(OrcHandle const **inputs,
@@ -1986,6 +1955,30 @@ OrcError orc_sdk_handle_alloc(OrcTypeId const id, OrcHandle *const out)
 {
   if (out == NULL) {
     return ORC_ERROR_INVALID_HANDLE;
+  }
+  {
+    void *found = orc_sdk_registry_get(out->handle);
+    if (found != NULL) {
+      // This plugin owns this slot.
+      ORC_SDK_REQUIRE_WITH_MSG(
+        found == out->items,
+        "The owned deck pointer doesn't match the one store in the handle.");
+      if (out->type_id == id) {
+        return ORC_ERROR_NONE;  // Correct type — reuse as-is.
+      }
+      // Wrong type — free existing data and fall through to reallocate.
+      OrcError const err = orc_sdk_handle_free(out);
+      if (err != ORC_ERROR_NONE) {
+        return err;
+      }
+    }
+    else if (out->free_fn != NULL) {
+      // A different plugin owns this slot — evict it.
+      OrcError const err = out->free_fn(out);
+      if (err != ORC_ERROR_NONE) {
+        return err;
+      }
+    }
   }
   out->item_size = 0;
   switch (id) {

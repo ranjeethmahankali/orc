@@ -807,19 +807,16 @@ OrcSdk_DeckWriter *orc_sdk_comb_get_output(void *comb, size_t const index);
 
 void orc_sdk_oh_update(OrcHandle *handle);
 
-OrcError orc_sdk_oh_ensure_alloc(OrcTypeId const type_id, OrcHandle *handle);
-
 void orc_sdk_report_message(uint64_t const        ctx,
                             OrcMessageLevel const level,
                             char const           *msg);
 
 // ========== Registry ==========
 
-OrcError  orc_sdk_registry_insert(uint64_t id, void *deck_ptr);
-void     *orc_sdk_registry_get(uint64_t id);
-bool      orc_sdk_registry_contains(uint64_t id);
-OrcError  orc_sdk_registry_remove(uint64_t id);
-void      orc_sdk_registry_clear(void);
+OrcError orc_sdk_registry_insert(uint64_t id, void *deck_ptr);
+void    *orc_sdk_registry_get(uint64_t id);
+OrcError orc_sdk_registry_remove(uint64_t id);
+void     orc_sdk_registry_clear(void);
 
 // ========== ABI helpers ==========
 

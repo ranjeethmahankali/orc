@@ -41,9 +41,18 @@ static void list_length(uint64_t         ctx,
     orc_sdk_report_message(ctx, ORC_MSG_LEVEL_ERROR, "Output handle is a null pointer.");
     return;
   }
-  // Allocate outputs.
-  orc_sdk_oh_ensure_alloc(ORC_TYPE_U64, output);
-  // Initialize list processing.
+  {  // Allocate outputs.
+    OrcError const err = orc_sdk_handle_alloc(ORC_TYPE_U64, output);
+    if (err != ORC_ERROR_NONE) {
+      // TODO: Currently we're not telling the host what exactly went wrong. This is not
+      // ideal. We should check against, known, expected error values and report that
+      // error to the host. SDK should have a helper function that matches against all
+      // possible errors and reports an error.
+      orc_sdk_report_message(
+        ctx, ORC_MSG_LEVEL_ERROR, "Unable to allocate the output deck.");
+      return;
+    }
+  }  // Initialize list processing.
   void *combinations = orc_sdk_comb_init(
     &input, (uint8_t const[]) {1}, 1, &output, (uint8_t const[]) {0}, 1);
   if (combinations == NULL) {

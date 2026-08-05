@@ -763,7 +763,7 @@ static int _registry_thread_fn(void *arg)
     orc_sdk_registry_insert((uint64_t)i, ptr);
   }
   for (size_t i = start; i < end; ++i) {
-    if (!orc_sdk_registry_contains((uint64_t)i))
+    if (orc_sdk_registry_get((uint64_t)i) == NULL)
       return 1;
     void *got = orc_sdk_registry_get((uint64_t)i);
     if (got != (void *)(uintptr_t)(i + 1))
@@ -793,7 +793,7 @@ void test_registry_multithreaded(void)
   }
   TEST_ASSERT_TRUE_MESSAGE(all_ok, "All registry threads should succeed");
   TEST_ASSERT_TRUE_MESSAGE(
-    !orc_sdk_registry_contains(0),
+    orc_sdk_registry_get(0) == NULL,
     "Registry should be empty after all threads remove their entries");
 }
 
@@ -808,13 +808,14 @@ void test_handle_alloc_uses_host_id(void)
   OrcError err = orc_sdk_handle_alloc(ORC_TYPE_F64, &out);
   TEST_ASSERT_TRUE_MESSAGE(err == ORC_ERROR_NONE, "Alloc should succeed");
   TEST_ASSERT_TRUE_MESSAGE(out.handle == 42, "handle field must remain 42");
-  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_registry_contains(42), "Registry must contain ID 42");
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_registry_get(42) != NULL,
+                           "Registry must contain ID 42");
   TEST_ASSERT_TRUE_MESSAGE(out.items != NULL, "items pointer must be set");
 
   orc_sdk_handle_free(&out);
   TEST_ASSERT_TRUE_MESSAGE(out.handle == 42,
                            "Even after freeing, the handle should be the same.");
-  TEST_ASSERT_TRUE_MESSAGE(!orc_sdk_registry_contains(42),
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_registry_get(42) == NULL,
                            "Registry must not contain ID 42 after free");
 }
 
@@ -828,10 +829,10 @@ void test_ensure_alloc_reuse(void)
   orc_sdk_handle_alloc(ORC_TYPE_F64, &h);
   void const *const original_items = h.items;
 
-  OrcError err = orc_sdk_oh_ensure_alloc(ORC_TYPE_F64, &h);
+  OrcError err = orc_sdk_handle_alloc(ORC_TYPE_F64, &h);
   TEST_ASSERT_TRUE_MESSAGE(err == ORC_ERROR_NONE, "Same type: should succeed");
   TEST_ASSERT_TRUE_MESSAGE(h.items == original_items, "Same type: items must not change");
-  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_registry_contains(50),
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_registry_get(50) != NULL,
                            "Same type: ID must still be in registry");
 
   orc_sdk_handle_free(&h);
@@ -845,13 +846,13 @@ void test_ensure_alloc_type_mismatch(void)
   OrcHandle h = {0};
   h.handle    = 51;
   orc_sdk_handle_alloc(ORC_TYPE_F64, &h);
-  OrcError err = orc_sdk_oh_ensure_alloc(ORC_TYPE_U32, &h);
+  OrcError err = orc_sdk_handle_alloc(ORC_TYPE_U32, &h);
   TEST_ASSERT_TRUE_MESSAGE(err == ORC_ERROR_NONE, "Type mismatch: should succeed");
   TEST_ASSERT_TRUE_MESSAGE(h.type_id == ORC_TYPE_U32,
                            "Type mismatch: type_id must be updated");
   TEST_ASSERT_TRUE_MESSAGE(h.item_size == sizeof(uint32_t),
                            "Type mismatch: item_size must reflect new type");
-  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_registry_contains(51),
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_registry_get(51) != NULL,
                            "Type mismatch: ID must still be in registry");
   orc_sdk_handle_free(&h);
 }
@@ -863,11 +864,11 @@ void test_ensure_alloc_fresh(void)
   orc_sdk_registry_clear();
   OrcHandle h  = {0};
   h.handle     = 52;
-  OrcError err = orc_sdk_oh_ensure_alloc(ORC_TYPE_F64, &h);
+  OrcError err = orc_sdk_handle_alloc(ORC_TYPE_F64, &h);
   TEST_ASSERT_TRUE_MESSAGE(err == ORC_ERROR_NONE, "Fresh alloc: should succeed");
   TEST_ASSERT_TRUE_MESSAGE(h.type_id == ORC_TYPE_F64, "Fresh alloc: type_id must be set");
   TEST_ASSERT_TRUE_MESSAGE(h.items != NULL, "Fresh alloc: items must be set");
-  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_registry_contains(52),
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_registry_get(52) != NULL,
                            "Fresh alloc: ID must be in registry");
   orc_sdk_handle_free(&h);
 }
@@ -891,11 +892,11 @@ void test_ensure_alloc_eviction(void)
   h.handle          = 53;
   h.free_fn         = _mock_free_fn;
   h.items           = (void *)1;  // non-null: simulates foreign plugin data
-  OrcError err      = orc_sdk_oh_ensure_alloc(ORC_TYPE_F64, &h);
+  OrcError err      = orc_sdk_handle_alloc(ORC_TYPE_F64, &h);
   TEST_ASSERT_TRUE_MESSAGE(err == ORC_ERROR_NONE, "Eviction: should succeed");
   TEST_ASSERT_TRUE_MESSAGE(_mock_free_called, "Eviction: foreign free_fn must be called");
   TEST_ASSERT_TRUE_MESSAGE(h.type_id == ORC_TYPE_F64, "Eviction: type_id must be set");
-  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_registry_contains(53),
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_registry_get(53) != NULL,
                            "Eviction: ID must be in registry");
 
   orc_sdk_handle_free(&h);
