@@ -2066,7 +2066,7 @@ void test_hmap_hash_collision_stress(void)
       orc_sdk_hmap_put(map, key, key + group);
     }
   }
-  size_t total_keys = NUM_GROUPS * KEYS_PER_GROUP;
+  size_t total_keys = (size_t)(NUM_GROUPS * KEYS_PER_GROUP);
   TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_len(map) == total_keys,
                            "Should contain all collision test keys");
   // Verify all keys and values
@@ -2126,10 +2126,10 @@ void test_hmap_large_scale_operations(void)
   for (int i = 0; i < LARGE_SIZE; i++) {
     orc_sdk_hmap_put(map, i, i * 3 + 7);
   }
-  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_len(map) == LARGE_SIZE,
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_len(map) == (size_t)LARGE_SIZE,
                            "Should contain all large-scale entries");
   HMapStats stats = _hmap_stats(map);
-  TEST_ASSERT_TRUE_MESSAGE(stats.n_used == LARGE_SIZE,
+  TEST_ASSERT_TRUE_MESSAGE(stats.n_used == (size_t)LARGE_SIZE,
                            "Should have correct number of used slots");
   TEST_ASSERT_TRUE_MESSAGE(stats.n_removed == 0,
                            "Should have no removed slots after insertion");
@@ -2168,7 +2168,7 @@ void test_hmap_large_scale_operations(void)
   for (int i = 0; i < LARGE_SIZE; i += 5) {
     orc_sdk_hmap_put(map, i, i * 5 + 11);  // Different value calculation
   }
-  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_len(map) == LARGE_SIZE,
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_len(map) == (size_t)LARGE_SIZE,
                            "Should be back to full size after re-insertion");
   // Phase 6: Final verification with mixed values
   for (int i = 0; i < LARGE_SIZE; i++) {
@@ -2605,7 +2605,7 @@ void test_hset_large_scale(void)
   for (int i = 0; i < SIZE; i++) {
     orc_sdk_hset_put(set, i);
   }
-  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hset_len(set) == SIZE,
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hset_len(set) == (size_t)SIZE,
                            "Set should contain all added elements");
   // Verify all elements are present
   for (int i = 0; i < SIZE; i++) {
@@ -2616,13 +2616,13 @@ void test_hset_large_scale(void)
   for (int i = 0; i < SIZE; i += 2) {
     orc_sdk_hset_put(set, i);
   }
-  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hset_len(set) == SIZE,
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hset_len(set) == (size_t)SIZE,
                            "Set size should not change after adding duplicates");
   // Remove half the elements
   for (int i = 0; i < SIZE; i += 2) {
     orc_sdk_hset_remove(set, i);
   }
-  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hset_len(set) == SIZE / 2,
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hset_len(set) == (size_t)SIZE / 2,
                            "Set should have half the elements after removal");
   // Verify correct elements remain
   for (int i = 0; i < SIZE; i++) {
