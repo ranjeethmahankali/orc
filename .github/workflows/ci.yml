@@ -1,0 +1,91 @@
+name: CI
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: sudo apt-get install -y cmake
+      - name: Update Rust
+        run: rustup update stable
+      - name: Build C (Debug)
+        run: cmake -S c/ -B build/debug -DCMAKE_BUILD_TYPE=Debug && cmake --build build/debug
+      - name: Run C tests
+        run: ctest --test-dir build/debug --output-on-failure
+      - name: Build Rust
+        working-directory: rust
+        run: cargo build --verbose --all-targets --all-features
+      - name: Check Rust formatting
+        working-directory: rust
+        run: cargo fmt -- --check
+      - name: Run Rust Clippy
+        working-directory: rust
+        run: cargo clippy --all-targets --all-features -- -D warnings
+      - name: Run Rust tests
+        working-directory: rust
+        run: cargo test --all-features --verbose
+      - name: Generate Rust docs
+        working-directory: rust
+        run: cargo doc --all-features --no-deps
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Update Rust
+        run: rustup update stable
+      - name: Build C (Debug)
+        run: cmake -S c/ -B build/debug -DCMAKE_BUILD_TYPE=Debug && cmake --build build/debug
+      - name: Run C tests
+        run: ctest --test-dir build/debug --output-on-failure
+      - name: Build Rust
+        working-directory: rust
+        run: cargo build --verbose --all-targets --all-features
+      - name: Check Rust formatting
+        working-directory: rust
+        run: cargo fmt -- --check
+      - name: Run Rust Clippy
+        working-directory: rust
+        run: cargo clippy --all-targets --all-features -- -D warnings
+      - name: Run Rust tests
+        working-directory: rust
+        run: cargo test --all-features --verbose
+      - name: Generate Rust docs
+        working-directory: rust
+        run: cargo doc --all-features --no-deps
+
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Update Rust
+        run: rustup update stable
+      - name: Build C (Debug)
+        run: cmake -B build/debug -S c -DCMAKE_BUILD_TYPE=Debug && cmake --build build/debug
+      - name: Run C tests
+        run: ctest --test-dir build/debug --output-on-failure
+      - name: Build Rust
+        working-directory: rust
+        run: cargo build --verbose --all-targets --all-features
+      - name: Check Rust formatting
+        working-directory: rust
+        run: cargo fmt -- --check
+      - name: Run Rust Clippy
+        working-directory: rust
+        run: cargo clippy --all-targets --all-features -- -D warnings
+      - name: Run Rust tests
+        working-directory: rust
+        run: cargo test --all-features --verbose
+      - name: Generate Rust docs
+        working-directory: rust
+        run: cargo doc --all-features --no-deps
