@@ -239,9 +239,13 @@
    Add a comment to ~OrcHandle.handle~: set by the host, immutable for the handle's lifetime, used
    by plugins as their registry key. No code changes.
 
-** TODO Phase 2: C SDK — Global registry (~orc_sdk.c~ / ~orc_sdk.h~)
+** DONE Phase 2: C SDK — Global registry (~orc_sdk.c~ / ~orc_sdk.h~)
+   CLOSED: [2026-08-05 Wed 12:43]
    :PROPERTIES:
    :CREATED:  2026-08-04 Tue 21:21
+   :END:
+   :LOGBOOK:
+   - State "DONE"       from "TODO"       [2026-08-05 Wed 12:43]
    :END:
 
    Add a static registry (hashmap + ~mtx_t~) to ~orc_sdk.c~. Expose four internal helpers:
@@ -256,10 +260,27 @@
    some more thought about where to keep the type_id of the entries of this registry. Maybe I can
    just replicate what I have in Rust without worrying too much?
 
-** TODO Phase 3: C SDK — Fix ~orc_sdk_handle_alloc~ (~orc_sdk.c:1539~)
+   <2026-08-05 Wed 12:43> Going forward with this design for now. Will revisit some details as more
+   things take shape.
 
-   Read ~out->handle~ as the registry key instead of writing it. After allocating the deck call
-   ~_registry_insert(out->handle, deck_ptr)~. Do not assign ~out->handle~.
+** TODO Phase 3: C SDK — Fix ~orc_sdk_handle_alloc~ (~orc_sdk.c:1958~)
+
+   The function currently sets ~out->handle = (uint64_t)deck_ptr~ (line 2018). That is the
+   thing to remove. ~out->handle~ already contains the host-assigned ID — read it as the
+   registry key and leave it alone.
+
+   Concrete changes:
+
+   - Remove line 2018: ~out->handle = (uint64_t)deck_ptr;~
+   - After ~deck_ptr~ is allocated and ~out->items = deck_ptr~ is set, call
+     ~orc_sdk_registry_insert(out->handle, deck_ptr)~.
+
+   No signature change. No other callers need updating — they all pass in an ~OrcHandle*~
+   whose ~.handle~ field is already set by the host before the call reaches here.
+
+   Add a unit test: set ~out.handle = 42~, call ~orc_sdk_handle_alloc(ORC_TYPE_F64, &out)~,
+   assert ~orc_sdk_registry_contains(42)~, assert ~out.handle == 42~ (unchanged), then
+   free and assert ~!orc_sdk_registry_contains(42)~.
 
 ** TODO Phase 4: C SDK — Fix ~_oh_free_fn~ (~orc_sdk.c:1263~)
 
