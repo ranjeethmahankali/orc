@@ -818,6 +818,14 @@ void orc_sdk_report_message(uint64_t const        ctx,
                             OrcMessageLevel const level,
                             char const           *msg);
 
+// ========== Registry ==========
+
+void  orc_sdk_registry_insert(uint64_t id, void *deck_ptr);
+void *orc_sdk_registry_get(uint64_t id);
+bool  orc_sdk_registry_contains(uint64_t id);
+void  orc_sdk_registry_remove(uint64_t id);
+void  orc_sdk_registry_clear(void);
+
 // ========== ABI helpers ==========
 
 typedef void (*ItemFreeFn)(void *);

@@ -1,11 +1,12 @@
 #include "orc_sdk.h"
 #include "unity.h"
 
-#include <inttypes.h>
 #include <limits.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <string.h>
+
+#include <threads.h>  // C11 standard threads (same API as tinycthread)
 
 #ifdef _MSC_VER
 #include <intrin.h>
@@ -736,6 +737,64 @@ void test_arr_header_alignment(void)
     "Array header must align with the platform's maximum alignment to be compatible "
     "with arbitrary types inside the container. This doesn't guarantee alignment with "
     "SIMD types. The containers are not meant to be used with SIMD types.");
+}
+
+// ========== Registry tests ==========
+
+#define REGISTRY_TEST_N_THREADS 8
+#define REGISTRY_TEST_N_IDS 64
+
+// Stress-tests the mutex protecting the global registry. 8 threads run concurrently, each
+// owning a disjoint slice of 64 IDs (thread N owns IDs [N*8, N*8+7]). Within its slice
+// each thread inserts, verifies, then removes — so there are no conflicting writes
+// between threads. The test catches deadlocks and data corruption caused by concurrent
+// access to the shared hashmap, but does not test key-conflict resolution (which is
+// correct-by-construction for a mutex-protected map).
+
+static int _registry_thread_fn(void *arg)
+{
+  size_t const thread_idx = (size_t)(uintptr_t)arg;
+  size_t const per_thread = REGISTRY_TEST_N_IDS / REGISTRY_TEST_N_THREADS;
+  size_t const start      = thread_idx * per_thread;
+  size_t const end        = start + per_thread;
+
+  for (size_t i = start; i < end; ++i) {
+    void *ptr = (void *)(uintptr_t)(i + 1);  // non-NULL sentinel
+    orc_sdk_registry_insert((uint64_t)i, ptr);
+  }
+  for (size_t i = start; i < end; ++i) {
+    if (!orc_sdk_registry_contains((uint64_t)i))
+      return 1;
+    void *got = orc_sdk_registry_get((uint64_t)i);
+    if (got != (void *)(uintptr_t)(i + 1))
+      return 2;
+  }
+  for (size_t i = start; i < end; ++i) {
+    orc_sdk_registry_remove((uint64_t)i);
+  }
+  return 0;
+}
+
+void test_registry_multithreaded(void)
+{
+  orc_sdk_init(NULL, NULL);  // ensures mutex is initialized
+  orc_sdk_registry_clear();  // start with a clean registry
+
+  thrd_t threads[REGISTRY_TEST_N_THREADS];
+  for (size_t i = 0; i < REGISTRY_TEST_N_THREADS; ++i) {
+    thrd_create(&threads[i], _registry_thread_fn, (void *)(uintptr_t)i);
+  }
+  int all_ok = 1;
+  for (size_t i = 0; i < REGISTRY_TEST_N_THREADS; ++i) {
+    int result = 0;
+    thrd_join(threads[i], &result);
+    if (result != 0)
+      all_ok = 0;
+  }
+  TEST_ASSERT_TRUE_MESSAGE(all_ok, "All registry threads should succeed");
+  TEST_ASSERT_TRUE_MESSAGE(
+    !orc_sdk_registry_contains(0),
+    "Registry should be empty after all threads remove their entries");
 }
 
 // Hashmap tests
@@ -6066,6 +6125,7 @@ int main(void)
   RUN_TEST(test_deck_from_proxy_copy_items);
   RUN_TEST(test_deck_from_proxy_shuffle);
   RUN_TEST(test_deck_from_proxy_type_agnostic);
+  RUN_TEST(test_registry_multithreaded);
   RUN_TEST(test_hmap_basic);
   RUN_TEST(test_hmap_growth);
   RUN_TEST(test_hmap_edge_cases);

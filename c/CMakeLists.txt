@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.15)
 project(orc C)
 
-set(CMAKE_C_STANDARD 99)
+set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 # Route binaries to build/debug or build/release.
 # Multi-config generators (VS): per-config subdirs under the single build dir.
@@ -31,7 +31,7 @@ add_library(unity STATIC third_party/unity.c)
 target_include_directories(unity PUBLIC third_party)
 
 # orc_sdk_obj — object library
-add_library(orc_sdk_obj OBJECT orc_sdk/orc_sdk.c orc_sdk/tinycthread.c)
+add_library(orc_sdk_obj OBJECT orc_sdk/orc_sdk.c)
 target_include_directories(orc_sdk_obj PUBLIC .)
 set_target_properties(orc_sdk_obj PROPERTIES POSITION_INDEPENDENT_CODE ON)
 

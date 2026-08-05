@@ -1,4 +1,5 @@
 #include "orc_sdk.h"
+#include <threads.h>
 
 #include <assert.h>
 #include <ctype.h>
@@ -45,6 +46,58 @@ static OrcHost HOST = {
   .memory_api  = {.alloc = _default_alloc, .dealloc = _default_dealloc},
   .callbacks   = {0}};
 static bool HOST_INIT = false;
+
+// ========== Registry ==========
+
+typedef struct
+{
+  uint64_t key;
+  void    *value;
+} _OrcSdk_RegistryEntry;
+
+static _OrcSdk_RegistryEntry *REGISTRY       = NULL;
+static mtx_t                  REGISTRY_LOCK;
+static once_flag              REGISTRY_ONCE  = ONCE_FLAG_INIT;
+
+static void _registry_init(void) { mtx_init(&REGISTRY_LOCK, mtx_plain); }
+
+void orc_sdk_registry_insert(uint64_t id, void *deck_ptr)
+{
+  mtx_lock(&REGISTRY_LOCK);
+  orc_sdk_hmap_put(REGISTRY, id, deck_ptr);
+  mtx_unlock(&REGISTRY_LOCK);
+}
+
+void *orc_sdk_registry_get(uint64_t id)
+{
+  mtx_lock(&REGISTRY_LOCK);
+  _OrcSdk_RegistryEntry *entry  = (_OrcSdk_RegistryEntry *)orc_sdk_hmap_get(REGISTRY, id);
+  void                  *result = entry ? entry->value : NULL;
+  mtx_unlock(&REGISTRY_LOCK);
+  return result;
+}
+
+bool orc_sdk_registry_contains(uint64_t id)
+{
+  mtx_lock(&REGISTRY_LOCK);
+  bool result = orc_sdk_hmap_contains(REGISTRY, id);
+  mtx_unlock(&REGISTRY_LOCK);
+  return result;
+}
+
+void orc_sdk_registry_remove(uint64_t id)
+{
+  mtx_lock(&REGISTRY_LOCK);
+  orc_sdk_hmap_remove(REGISTRY, id);
+  mtx_unlock(&REGISTRY_LOCK);
+}
+
+void orc_sdk_registry_clear(void)
+{
+  mtx_lock(&REGISTRY_LOCK);
+  orc_sdk_hmap_free(REGISTRY);
+  mtx_unlock(&REGISTRY_LOCK);
+}
 
 void *orc_sdk_alloc(uint64_t const size, uint64_t const alignment)
 {
@@ -289,7 +342,6 @@ static Slot _orc_sdk_hmap_find_writable_slot_bin(size_t const              hash,
   return (Slot) {.type = INVALID};
 }
 
-
 static Slot _orc_sdk_hmap_find_readable_slot_bin(size_t const              hash,
                                                  _OrcSdk_HashBucket *const buckets,
                                                  size_t const              nb,
@@ -316,7 +368,6 @@ static Slot _orc_sdk_hmap_find_readable_slot_bin(size_t const              hash,
   }
   return (Slot) {.type = INVALID};
 }
-
 
 static void _orc_sdk_hmap_redist_buckets(_OrcSdk_HashBucket *src,
                                          size_t const        nsrc,
@@ -405,7 +456,6 @@ void *_orc_sdk_hmap_grow_size(void *ptr, size_t const kvsize, size_t nelems)
   return ptr;
 }
 
-
 // FNV-1a hash for arbitrary data
 static inline size_t fnv_hash_bytes(const void *data, size_t len)
 {
@@ -478,7 +528,6 @@ size_t _orc_sdk_hmap_insert_bin_impl(void       **ptr,
   return SIZE_MAX;  // This should never happen.
 }
 
-
 size_t orc_sdk_hmap_len(void *ptr)
 {
   _OrcSdk_HashTableHeader *h = _orc_sdk_hmap_header(ptr);
@@ -526,7 +575,6 @@ void *_orc_sdk_hmap_get_bin_impl(void        *ptr,
   }
   return NULL;
 }
-
 
 static void _orc_sdk_hmap_compact(void *ptr)
 {
@@ -593,7 +641,6 @@ void _orc_sdk_hmap_remove_bin_impl(void        *ptr,
     };
   }
 }
-
 
 // ========== String ==========
 
@@ -1615,6 +1662,7 @@ void orc_sdk_init(OrcHost const *host, OrcSdkTypeCallbacksGetterFn type_fn)
     HOST_INIT = true;
   }
   PLUGIN_TYPE_FN = type_fn;
+  call_once(&REGISTRY_ONCE, _registry_init);
 }
 
 bool _is_type_info_valid(OrcSdkTypeInfo const *info)
