@@ -1,5 +1,4 @@
 #include "orc_sdk.h"
-#include <threads.h>
 
 #include <assert.h>
 #include <ctype.h>
@@ -10,8 +9,8 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-
 #include <string.h>
+#include <threads.h>
 
 static void *_default_alloc(uint64_t const size, uint64_t const alignment)
 {
