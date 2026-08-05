@@ -126,14 +126,20 @@ mod tests {
 
     /// Build a view handle for an input deck (free_fn = None).
     fn view<T: TOrcData>(deck: &Deck<T>) -> OrcHandle {
-        let mut h = OrcHandle { handle: next_id(), ..Default::default() };
+        let mut h = OrcHandle {
+            handle: next_id(),
+            ..Default::default()
+        };
         unsafe { update_handle_from_deck(deck, &mut h) };
         h
     }
 
     /// Build an owned output handle (host-assigned id, no data yet).
     fn out_handle() -> OrcHandle {
-        OrcHandle { handle: next_id(), ..Default::default() }
+        OrcHandle {
+            handle: next_id(),
+            ..Default::default()
+        }
     }
 
     // ==================== add ====================
@@ -145,7 +151,10 @@ mod tests {
         let mut out = out_handle();
         let inputs = [view(&lhs), view(&rhs)];
         unsafe { add(0, inputs.as_ptr(), 2, &mut out, 1) };
-        assert_eq!(DeckView::<f64>::from_handle(&out).unwrap().items(), &[11.0, 22.0, 33.0]);
+        assert_eq!(
+            DeckView::<f64>::from_handle(&out).unwrap().items(),
+            &[11.0, 22.0, 33.0]
+        );
     }
 
     #[test]
@@ -155,7 +164,10 @@ mod tests {
         let mut out = out_handle();
         let inputs = [view(&lhs), view(&rhs)];
         unsafe { add(0, inputs.as_ptr(), 2, &mut out, 1) };
-        assert_eq!(DeckView::<f32>::from_handle(&out).unwrap().items(), &[11.0f32, 22.0, 33.0]);
+        assert_eq!(
+            DeckView::<f32>::from_handle(&out).unwrap().items(),
+            &[11.0f32, 22.0, 33.0]
+        );
     }
 
     #[test]
@@ -174,7 +186,10 @@ mod tests {
         let mut out2 = out_handle();
         let inputs2 = [view(&lhs2), view(&rhs2)];
         unsafe { add(0, inputs2.as_ptr(), 2, &mut out2, 1) };
-        assert_eq!(DeckView::<i64>::from_handle(&out2).unwrap().items(), &[93i64]);
+        assert_eq!(
+            DeckView::<i64>::from_handle(&out2).unwrap().items(),
+            &[93i64]
+        );
     }
 
     #[test]
@@ -185,7 +200,10 @@ mod tests {
         let mut out = out_handle();
         let inputs = [view(&lhs), view(&rhs)];
         unsafe { add(0, inputs.as_ptr(), 2, &mut out, 1) };
-        assert_eq!(DeckView::<f64>::from_handle(&out).unwrap().items(), &[11.0, 12.0, 13.0]);
+        assert_eq!(
+            DeckView::<f64>::from_handle(&out).unwrap().items(),
+            &[11.0, 12.0, 13.0]
+        );
     }
 
     #[test]
@@ -264,7 +282,10 @@ mod tests {
         unsafe { mul(0, inputs2.as_ptr(), 2, &mut out, 1) };
         assert_eq!(out.type_id, f32::TYPE_INFO.type_id);
         assert_eq!(out.handle, out_id);
-        assert_eq!(DeckView::<f32>::from_handle(&out).unwrap().items(), &[12.0f32]);
+        assert_eq!(
+            DeckView::<f32>::from_handle(&out).unwrap().items(),
+            &[12.0f32]
+        );
     }
 
     // ==================== mul ====================
@@ -276,7 +297,10 @@ mod tests {
         let mut out = out_handle();
         let inputs = [view(&lhs), view(&rhs)];
         unsafe { mul(0, inputs.as_ptr(), 2, &mut out, 1) };
-        assert_eq!(DeckView::<f64>::from_handle(&out).unwrap().items(), &[10.0, 18.0, 28.0]);
+        assert_eq!(
+            DeckView::<f64>::from_handle(&out).unwrap().items(),
+            &[10.0, 18.0, 28.0]
+        );
     }
 
     #[test]
@@ -286,7 +310,10 @@ mod tests {
         let mut out = out_handle();
         let inputs = [view(&lhs), view(&rhs)];
         unsafe { mul(0, inputs.as_ptr(), 2, &mut out, 1) };
-        assert_eq!(DeckView::<i32>::from_handle(&out).unwrap().items(), &[21i32, 32]);
+        assert_eq!(
+            DeckView::<i32>::from_handle(&out).unwrap().items(),
+            &[21i32, 32]
+        );
     }
 
     #[test]
@@ -309,7 +336,10 @@ mod tests {
         let mut out = out_handle();
         let inputs = [view(&lhs), view(&rhs)];
         unsafe { sub(0, inputs.as_ptr(), 2, &mut out, 1) };
-        assert_eq!(DeckView::<f64>::from_handle(&out).unwrap().items(), &[7.0, 13.0]);
+        assert_eq!(
+            DeckView::<f64>::from_handle(&out).unwrap().items(),
+            &[7.0, 13.0]
+        );
     }
 
     #[test]
@@ -333,7 +363,10 @@ mod tests {
         let mut out = out_handle();
         let inputs = [view(&lhs), view(&rhs)];
         unsafe { div(0, inputs.as_ptr(), 2, &mut out, 1) };
-        assert_eq!(DeckView::<f64>::from_handle(&out).unwrap().items(), &[5.0, 3.0]);
+        assert_eq!(
+            DeckView::<f64>::from_handle(&out).unwrap().items(),
+            &[5.0, 3.0]
+        );
     }
 
     #[test]
@@ -357,6 +390,85 @@ mod tests {
         unsafe { div(0, inputs.as_ptr(), 2, &mut out, 1) };
         assert!(out.free_fn.is_none());
         assert!(out.items.is_null());
+    }
+
+    // ==================== output reuse / reallocation / update ====================
+
+    #[test]
+    fn add_reuse_same_type_handle_updated() {
+        // First call: 1-item output.
+        let lhs1: Deck<f64> = orc_sdk::deck![1.0];
+        let rhs1: Deck<f64> = orc_sdk::deck![2.0];
+        let mut out = out_handle();
+        let inputs1 = [view(&lhs1), view(&rhs1)];
+        unsafe { add(0, inputs1.as_ptr(), 2, &mut out, 1) };
+        assert_eq!(out.n_items, 1);
+        assert_eq!(out.type_id, f64::TYPE_INFO.type_id);
+        let items_ptr_after_first = out.items;
+        assert!(!items_ptr_after_first.is_null());
+
+        // Second call: 2-item output, same type — registry slot is reused.
+        let lhs2: Deck<f64> = orc_sdk::deck![10.0, 20.0];
+        let rhs2: Deck<f64> = orc_sdk::deck![1.0, 2.0];
+        let inputs2 = [view(&lhs2), view(&rhs2)];
+        unsafe { add(0, inputs2.as_ptr(), 2, &mut out, 1) };
+        // Handle must reflect the new output, not the old one.
+        assert_eq!(out.n_items, 2);
+        assert_eq!(out.type_id, f64::TYPE_INFO.type_id);
+        assert!(!out.items.is_null());
+        assert_eq!(
+            DeckView::<f64>::from_handle(&out).unwrap().items(),
+            &[11.0, 22.0]
+        );
+    }
+
+    #[test]
+    fn add_type_change_handle_updated() {
+        // First call: f64.
+        let lhs1: Deck<f64> = orc_sdk::deck![5.0];
+        let rhs1: Deck<f64> = orc_sdk::deck![3.0];
+        let mut out = out_handle();
+        let out_id = out.handle;
+        let inputs1 = [view(&lhs1), view(&rhs1)];
+        unsafe { add(0, inputs1.as_ptr(), 2, &mut out, 1) };
+        assert_eq!(out.type_id, f64::TYPE_INFO.type_id);
+
+        // Second call: i32 — old deck freed, new deck allocated.
+        let lhs2: Deck<i32> = orc_sdk::deck![100i32];
+        let rhs2: Deck<i32> = orc_sdk::deck![200i32];
+        let inputs2 = [view(&lhs2), view(&rhs2)];
+        unsafe { add(0, inputs2.as_ptr(), 2, &mut out, 1) };
+        // Handle must reflect the new type and data.
+        assert_eq!(out.type_id, i32::TYPE_INFO.type_id);
+        assert_eq!(out.handle, out_id);
+        assert_eq!(out.n_items, 1);
+        assert_eq!(
+            DeckView::<i32>::from_handle(&out).unwrap().items(),
+            &[300i32]
+        );
+    }
+
+    #[test]
+    fn add_clears_previous_data() {
+        // First call: 2-item output.
+        let lhs1: Deck<f64> = orc_sdk::deck![3.0, 4.0];
+        let rhs1: Deck<f64> = orc_sdk::deck![10.0, 20.0];
+        let mut out = out_handle();
+        let inputs1 = [view(&lhs1), view(&rhs1)];
+        unsafe { add(0, inputs1.as_ptr(), 2, &mut out, 1) };
+        assert_eq!(
+            DeckView::<f64>::from_handle(&out).unwrap().items(),
+            &[13.0, 24.0]
+        );
+
+        // Second call: 1-item output — previous data must not bleed through.
+        let lhs2: Deck<f64> = orc_sdk::deck![1.0];
+        let rhs2: Deck<f64> = orc_sdk::deck![2.0];
+        let inputs2 = [view(&lhs2), view(&rhs2)];
+        unsafe { add(0, inputs2.as_ptr(), 2, &mut out, 1) };
+        let result = DeckView::<f64>::from_handle(&out).unwrap();
+        assert_eq!(result.items().len(), 1);
+        assert_eq!(result.items(), &[3.0]);
     }
 
     // ==================== handle lifetime invariants ====================
@@ -391,7 +503,9 @@ mod tests {
         let inputs = [view(&lhs), view(&rhs)];
         unsafe { add(0, inputs.as_ptr(), 2, &mut out, 1) };
         // The registry must hold an entry for this handle.
-        crate::registry().with_mut::<(), _>(&[out_id], |_| ()).unwrap();
+        crate::registry()
+            .with_mut::<(), _>(&[out_id], |_| ())
+            .unwrap();
     }
 
     #[test]

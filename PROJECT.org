@@ -164,11 +164,13 @@
   To test all the variations of this across plugin boundaries, I might need to add some custom
   datatypes in a Rust plugin.
 
-* NEXT tjbhvp - Testing and CI
+* DONE tjbhvp - Testing and CI
+  CLOSED: [2026-08-05 Wed 19:44]
   :PROPERTIES:
   :CREATED:  2026-08-03 Mon 17:47
   :END:
   :LOGBOOK:
+  - State "DONE"       from "NEXT"       [2026-08-05 Wed 19:44]
   - State "NEXT"       from "TODO"       [2026-08-05 Wed 18:17]
   :END:
 
@@ -179,10 +181,16 @@
   <2026-08-05 Wed 18:28> Adding CI automation for the tests I have so far. The last merge broke all
   the Rust tests, but I didn't run them before merging.
 
-** Test plan
+** DONE Test plan
+   CLOSED: [2026-08-05 Wed 19:44]
+   :LOGBOOK:
+   - State "DONE"       from              [2026-08-05 Wed 19:44]
+   :END:
 
-*** NEXT ~rust/orc_sdk/src/util.rs~ — ~mod test~
+*** DONE ~rust/orc_sdk/src/util.rs~ — ~mod test~
+    CLOSED: [2026-08-05 Wed 19:44]
     :LOGBOOK:
+    - State "DONE"       from "NEXT"       [2026-08-05 Wed 19:44]
     - State "NEXT"       from "TODO"       [2026-08-05 Wed 19:11]
     :END:
 
@@ -250,7 +258,12 @@
       items non-null, ~handle.handle~ unchanged
     - ~free_deck_resets_handle~ — alloc followed by free: ~free_fn = None~, items null, ID unchanged
 
-*** TODO ~rust/math_plugin/src/basic.rs~ — ~mod test~
+*** DONE ~rust/math_plugin/src/basic.rs~ — ~mod test~
+    CLOSED: [2026-08-05 Wed 19:44]
+    :LOGBOOK:
+    - State "DONE"       from "NEXT"       [2026-08-05 Wed 19:44]
+    - State "NEXT"       from "TODO"       [2026-08-05 Wed 19:41]
+    :END:
 
     Tests call the plugin functions directly through the generated FFI entry points.  Input handles
     are view handles (~free_fn = None~); output handles are owned by the plugin.
