@@ -151,6 +151,9 @@ typedef OrcError (*OrcDeckFreeFn)(OrcHandle *const handle);
 
 struct OrcHandle
 {
+  // Assigned by the host before lending this handle to any plugin.  Never modified after
+  // assignment, even when the backing data is freed.  Plugins use this as the key into
+  // their internal registry.
   uint64_t        handle;
   void const     *items;
   uint64_t        n_items;

@@ -234,7 +234,7 @@
    Copy ~tinycthread.h~ and ~tinycthread.c~ into ~c/orc_sdk/~ so that consumers of the SDK get it
    automatically. Add to the C SDK's ~CMakeLists.txt~.
 
-** TODO Phase 1: Document the ABI invariant (~c/orc_abi.h~)
+** DONE Phase 1: Document the ABI invariant (~c/orc_abi.h~)
 
    Add a comment to ~OrcHandle.handle~: set by the host, immutable for the handle's lifetime, used
    by plugins as their registry key. No code changes.
