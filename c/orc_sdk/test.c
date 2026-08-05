@@ -739,137 +739,128 @@ void test_arr_header_alignment(void)
     "SIMD types. The containers are not meant to be used with SIMD types.");
 }
 
-// ========== Registry tests ==========
+// ========== Handle alloc/free tests ==========
 
-#define REGISTRY_TEST_N_THREADS 8
-#define REGISTRY_TEST_N_IDS 64
+#define HANDLE_TEST_N_THREADS 8
+#define HANDLE_TEST_N_IDS     64
 
 // Stress-tests the mutex protecting the global registry. 8 threads run concurrently, each
-// owning a disjoint slice of 64 IDs (thread N owns IDs [N*8, N*8+7]). Within its slice
-// each thread inserts, verifies, then removes — so there are no conflicting writes
-// between threads. The test catches deadlocks and data corruption caused by concurrent
-// access to the shared hashmap, but does not test key-conflict resolution (which is
-// correct-by-construction for a mutex-protected map).
-
-static int _registry_thread_fn(void *arg)
+// owning a disjoint slice of 64 IDs (thread N owns IDs [N*8+1, N*8+8], 1-indexed to avoid
+// ID 0). Each thread allocates, verifies handle fields, then frees — catching deadlocks and
+// data corruption from concurrent access to the shared registry.
+static int _handle_thread_fn(void *arg)
 {
   size_t const thread_idx = (size_t)(uintptr_t)arg;
-  size_t const per_thread = REGISTRY_TEST_N_IDS / REGISTRY_TEST_N_THREADS;
-  size_t const start      = thread_idx * per_thread;
-  size_t const end        = start + per_thread;
+  size_t const per_thread = HANDLE_TEST_N_IDS / HANDLE_TEST_N_THREADS;
+  size_t const base       = thread_idx * per_thread + 1;  // 1-indexed
 
-  for (size_t i = start; i < end; ++i) {
-    void *ptr = (void *)(uintptr_t)(i + 1);  // non-NULL sentinel
-    orc_sdk_registry_insert((uint64_t)i, ptr);
-  }
-  for (size_t i = start; i < end; ++i) {
-    if (orc_sdk_registry_get((uint64_t)i) == NULL)
+  OrcHandle handles[HANDLE_TEST_N_IDS / HANDLE_TEST_N_THREADS];
+  memset(handles, 0, sizeof(handles));
+
+  for (size_t i = 0; i < per_thread; ++i) {
+    handles[i].handle = (uint64_t)(base + i);
+    if (orc_sdk_handle_alloc(ORC_TYPE_F64, &handles[i]) != ORC_ERROR_NONE)
       return 1;
-    void *got = orc_sdk_registry_get((uint64_t)i);
-    if (got != (void *)(uintptr_t)(i + 1))
+    if (handles[i].items == NULL || handles[i].free_fn == NULL)
       return 2;
+    if (handles[i].type_id != ORC_TYPE_F64)
+      return 3;
   }
-  for (size_t i = start; i < end; ++i) {
-    orc_sdk_registry_remove((uint64_t)i);
+  for (size_t i = 0; i < per_thread; ++i) {
+    if (orc_sdk_handle_free(&handles[i]) != ORC_ERROR_NONE)
+      return 4;
+    if (handles[i].items != NULL || handles[i].free_fn != NULL)
+      return 5;
+    if (handles[i].handle != (uint64_t)(base + i))
+      return 6;  // ID must survive free
   }
   return 0;
 }
 
-void test_registry_multithreaded(void)
+void test_handle_alloc_concurrent(void)
 {
-  orc_sdk_init(NULL, NULL);  // ensures mutex is initialized
-  orc_sdk_registry_clear();  // start with a clean registry
+  orc_sdk_init(NULL, NULL);
 
-  thrd_t threads[REGISTRY_TEST_N_THREADS];
-  for (size_t i = 0; i < REGISTRY_TEST_N_THREADS; ++i) {
-    thrd_create(&threads[i], _registry_thread_fn, (void *)(uintptr_t)i);
+  thrd_t threads[HANDLE_TEST_N_THREADS];
+  for (size_t i = 0; i < HANDLE_TEST_N_THREADS; ++i) {
+    thrd_create(&threads[i], _handle_thread_fn, (void *)(uintptr_t)i);
   }
   int all_ok = 1;
-  for (size_t i = 0; i < REGISTRY_TEST_N_THREADS; ++i) {
+  for (size_t i = 0; i < HANDLE_TEST_N_THREADS; ++i) {
     int result = 0;
     thrd_join(threads[i], &result);
     if (result != 0)
       all_ok = 0;
   }
-  TEST_ASSERT_TRUE_MESSAGE(all_ok, "All registry threads should succeed");
-  TEST_ASSERT_TRUE_MESSAGE(
-    orc_sdk_registry_get(0) == NULL,
-    "Registry should be empty after all threads remove their entries");
+  TEST_ASSERT_TRUE_MESSAGE(all_ok, "All threads should succeed");
 }
 
-void test_handle_alloc_uses_host_id(void)
+void test_handle_alloc_id_survives(void)
 {
+  // host-assigned ID must survive alloc and free unchanged.
   orc_sdk_init(NULL, NULL);
-  orc_sdk_registry_clear();
-
   OrcHandle out = {0};
   out.handle    = 42;
 
   OrcError err = orc_sdk_handle_alloc(ORC_TYPE_F64, &out);
   TEST_ASSERT_TRUE_MESSAGE(err == ORC_ERROR_NONE, "Alloc should succeed");
-  TEST_ASSERT_TRUE_MESSAGE(out.handle == 42, "handle field must remain 42");
-  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_registry_get(42) != NULL,
-                           "Registry must contain ID 42");
-  TEST_ASSERT_TRUE_MESSAGE(out.items != NULL, "items pointer must be set");
+  TEST_ASSERT_TRUE_MESSAGE(out.handle == 42, "handle must remain 42 after alloc");
+  TEST_ASSERT_TRUE_MESSAGE(out.items != NULL, "items must be set after alloc");
+  TEST_ASSERT_TRUE_MESSAGE(out.free_fn != NULL, "free_fn must be set after alloc");
 
   orc_sdk_handle_free(&out);
-  TEST_ASSERT_TRUE_MESSAGE(out.handle == 42,
-                           "Even after freeing, the handle should be the same.");
-  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_registry_get(42) == NULL,
-                           "Registry must not contain ID 42 after free");
+  TEST_ASSERT_TRUE_MESSAGE(out.handle == 42, "handle must remain 42 after free");
+  TEST_ASSERT_TRUE_MESSAGE(out.items == NULL, "items must be cleared after free");
+  TEST_ASSERT_TRUE_MESSAGE(out.free_fn == NULL, "free_fn must be cleared after free");
 }
 
-void test_ensure_alloc_reuse(void)
+void test_handle_alloc_reuse(void)
 {
-  // ID in registry, same type → reuse: items pointer must not change.
+  // Allocating same type on an already-owned slot reuses without reallocating.
   orc_sdk_init(NULL, NULL);
-  orc_sdk_registry_clear();
   OrcHandle h = {0};
   h.handle    = 50;
   orc_sdk_handle_alloc(ORC_TYPE_F64, &h);
   void const *const original_items = h.items;
 
   OrcError err = orc_sdk_handle_alloc(ORC_TYPE_F64, &h);
-  TEST_ASSERT_TRUE_MESSAGE(err == ORC_ERROR_NONE, "Same type: should succeed");
-  TEST_ASSERT_TRUE_MESSAGE(h.items == original_items, "Same type: items must not change");
-  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_registry_get(50) != NULL,
-                           "Same type: ID must still be in registry");
+  TEST_ASSERT_TRUE_MESSAGE(err == ORC_ERROR_NONE, "Reuse: should succeed");
+  TEST_ASSERT_TRUE_MESSAGE(h.items == original_items, "Reuse: items must not change");
+  TEST_ASSERT_TRUE_MESSAGE(h.type_id == ORC_TYPE_F64, "Reuse: type must be unchanged");
 
   orc_sdk_handle_free(&h);
 }
 
-void test_ensure_alloc_type_mismatch(void)
+void test_handle_alloc_type_change(void)
 {
-  // ID in registry, wrong type → free old, allocate new.
+  // Allocating a different type on an already-owned slot frees and reallocates.
   orc_sdk_init(NULL, NULL);
-  orc_sdk_registry_clear();
   OrcHandle h = {0};
   h.handle    = 51;
   orc_sdk_handle_alloc(ORC_TYPE_F64, &h);
+
   OrcError err = orc_sdk_handle_alloc(ORC_TYPE_U32, &h);
-  TEST_ASSERT_TRUE_MESSAGE(err == ORC_ERROR_NONE, "Type mismatch: should succeed");
-  TEST_ASSERT_TRUE_MESSAGE(h.type_id == ORC_TYPE_U32,
-                           "Type mismatch: type_id must be updated");
+  TEST_ASSERT_TRUE_MESSAGE(err == ORC_ERROR_NONE, "Type change: should succeed");
+  TEST_ASSERT_TRUE_MESSAGE(h.type_id == ORC_TYPE_U32, "Type change: type_id must update");
   TEST_ASSERT_TRUE_MESSAGE(h.item_size == sizeof(uint32_t),
-                           "Type mismatch: item_size must reflect new type");
-  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_registry_get(51) != NULL,
-                           "Type mismatch: ID must still be in registry");
+                           "Type change: item_size must reflect new type");
+  TEST_ASSERT_TRUE_MESSAGE(h.items != NULL, "Type change: items must be set");
+
   orc_sdk_handle_free(&h);
 }
 
-void test_ensure_alloc_fresh(void)
+void test_handle_alloc_fresh(void)
 {
-  // ID not in registry, free_fn == NULL → plain allocate.
+  // Allocating on an empty slot (no free_fn) just allocates.
   orc_sdk_init(NULL, NULL);
-  orc_sdk_registry_clear();
   OrcHandle h  = {0};
   h.handle     = 52;
   OrcError err = orc_sdk_handle_alloc(ORC_TYPE_F64, &h);
-  TEST_ASSERT_TRUE_MESSAGE(err == ORC_ERROR_NONE, "Fresh alloc: should succeed");
-  TEST_ASSERT_TRUE_MESSAGE(h.type_id == ORC_TYPE_F64, "Fresh alloc: type_id must be set");
-  TEST_ASSERT_TRUE_MESSAGE(h.items != NULL, "Fresh alloc: items must be set");
-  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_registry_get(52) != NULL,
-                           "Fresh alloc: ID must be in registry");
+  TEST_ASSERT_TRUE_MESSAGE(err == ORC_ERROR_NONE, "Fresh: should succeed");
+  TEST_ASSERT_TRUE_MESSAGE(h.type_id == ORC_TYPE_F64, "Fresh: type_id must be set");
+  TEST_ASSERT_TRUE_MESSAGE(h.items != NULL, "Fresh: items must be set");
+  TEST_ASSERT_TRUE_MESSAGE(h.free_fn != NULL, "Fresh: free_fn must be set");
+
   orc_sdk_handle_free(&h);
 }
 
@@ -882,22 +873,21 @@ static OrcError _mock_free_fn(OrcHandle *const handle)
   return ORC_ERROR_NONE;
 }
 
-void test_ensure_alloc_eviction(void)
+void test_handle_alloc_eviction(void)
 {
-  // ID not in registry, free_fn != NULL → evict foreign owner, then allocate.
+  // Allocating on a slot owned by another plugin evicts it first.
   orc_sdk_init(NULL, NULL);
-  orc_sdk_registry_clear();
   _mock_free_called = false;
   OrcHandle h       = {0};
   h.handle          = 53;
   h.free_fn         = _mock_free_fn;
   h.items           = (void *)1;  // non-null: simulates foreign plugin data
-  OrcError err      = orc_sdk_handle_alloc(ORC_TYPE_F64, &h);
+
+  OrcError err = orc_sdk_handle_alloc(ORC_TYPE_F64, &h);
   TEST_ASSERT_TRUE_MESSAGE(err == ORC_ERROR_NONE, "Eviction: should succeed");
   TEST_ASSERT_TRUE_MESSAGE(_mock_free_called, "Eviction: foreign free_fn must be called");
   TEST_ASSERT_TRUE_MESSAGE(h.type_id == ORC_TYPE_F64, "Eviction: type_id must be set");
-  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_registry_get(53) != NULL,
-                           "Eviction: ID must be in registry");
+  TEST_ASSERT_TRUE_MESSAGE(h.items != NULL, "Eviction: items must be set");
 
   orc_sdk_handle_free(&h);
 }
@@ -6245,12 +6235,12 @@ int main(void)
   RUN_TEST(test_deck_from_proxy_copy_items);
   RUN_TEST(test_deck_from_proxy_shuffle);
   RUN_TEST(test_deck_from_proxy_type_agnostic);
-  RUN_TEST(test_registry_multithreaded);
-  RUN_TEST(test_handle_alloc_uses_host_id);
-  RUN_TEST(test_ensure_alloc_reuse);
-  RUN_TEST(test_ensure_alloc_type_mismatch);
-  RUN_TEST(test_ensure_alloc_fresh);
-  RUN_TEST(test_ensure_alloc_eviction);
+  RUN_TEST(test_handle_alloc_concurrent);
+  RUN_TEST(test_handle_alloc_id_survives);
+  RUN_TEST(test_handle_alloc_reuse);
+  RUN_TEST(test_handle_alloc_type_change);
+  RUN_TEST(test_handle_alloc_fresh);
+  RUN_TEST(test_handle_alloc_eviction);
   RUN_TEST(test_hmap_basic);
   RUN_TEST(test_hmap_growth);
   RUN_TEST(test_hmap_edge_cases);

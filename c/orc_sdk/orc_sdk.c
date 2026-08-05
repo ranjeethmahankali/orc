@@ -63,7 +63,7 @@ static void _registry_init(void)
   mtx_init(&REGISTRY_LOCK, mtx_plain);
 }
 
-OrcError orc_sdk_registry_insert(uint64_t id, void *deck_ptr)
+OrcError _orc_sdk_registry_insert(uint64_t id, void *deck_ptr)
 {
   if (deck_ptr == NULL) {
     return ORC_ERROR_NULL_PTR;
@@ -74,7 +74,7 @@ OrcError orc_sdk_registry_insert(uint64_t id, void *deck_ptr)
   return ORC_ERROR_NONE;
 }
 
-void *orc_sdk_registry_get(uint64_t id)
+void *_orc_sdk_registry_get(uint64_t id)
 {
   mtx_lock(&REGISTRY_LOCK);
   _OrcSdk_RegistryEntry *entry  = (_OrcSdk_RegistryEntry *)orc_sdk_hmap_get(REGISTRY, id);
@@ -83,7 +83,7 @@ void *orc_sdk_registry_get(uint64_t id)
   return result;
 }
 
-OrcError orc_sdk_registry_remove(uint64_t id)
+OrcError _orc_sdk_registry_remove(uint64_t id)
 {
   mtx_lock(&REGISTRY_LOCK);
   bool const removed = orc_sdk_hmap_remove(REGISTRY, id);
@@ -91,7 +91,7 @@ OrcError orc_sdk_registry_remove(uint64_t id)
   return removed ? ORC_ERROR_NONE : ORC_ERROR_INVALID_HANDLE;
 }
 
-void orc_sdk_registry_clear(void)
+void _orc_sdk_registry_clear(void)
 {
   mtx_lock(&REGISTRY_LOCK);
   orc_sdk_hmap_free(REGISTRY);
@@ -1729,7 +1729,7 @@ OrcError _oh_free_fn(OrcHandle *const handle)
   }
   // Check registry ownership before touching anything.
   // If this handle ID is not in our registry, this plugin doesn't own it — don't free.
-  OrcError const err = orc_sdk_registry_remove(handle->handle);
+  OrcError const err = _orc_sdk_registry_remove(handle->handle);
   if (err != ORC_ERROR_NONE) {
     return err;
   }
@@ -1957,7 +1957,7 @@ OrcError orc_sdk_handle_alloc(OrcTypeId const id, OrcHandle *const out)
     return ORC_ERROR_INVALID_HANDLE;
   }
   {
-    void *found = orc_sdk_registry_get(out->handle);
+    void *found = _orc_sdk_registry_get(out->handle);
     if (found != NULL) {
       // This plugin owns this slot.
       ORC_SDK_REQUIRE_WITH_MSG(
@@ -2036,7 +2036,7 @@ OrcError orc_sdk_handle_alloc(OrcTypeId const id, OrcHandle *const out)
   if (deck_ptr == NULL) {
     return ORC_ERROR_ALLOC_FAILED;
   }
-  OrcError const reg_err = orc_sdk_registry_insert(out->handle, deck_ptr);
+  OrcError const reg_err = _orc_sdk_registry_insert(out->handle, deck_ptr);
   if (reg_err != ORC_ERROR_NONE) {
     _orc_sdk_deck_free_impl(deck_ptr);
     return reg_err;
