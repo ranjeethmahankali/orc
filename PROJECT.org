@@ -263,7 +263,11 @@
    <2026-08-05 Wed 12:43> Going forward with this design for now. Will revisit some details as more
    things take shape.
 
-** TODO Phase 3: C SDK — Fix ~orc_sdk_handle_alloc~ (~orc_sdk.c:1958~)
+** DONE Phase 3: C SDK — Fix ~orc_sdk_handle_alloc~ (~orc_sdk.c:1958~)
+   CLOSED: [2026-08-05 Wed 14:37]
+   :LOGBOOK:
+   - State "DONE"       from "TODO"       [2026-08-05 Wed 14:37]
+   :END:
 
    The function currently sets ~out->handle = (uint64_t)deck_ptr~ (line 2018). That is the
    thing to remove. ~out->handle~ already contains the host-assigned ID — read it as the
@@ -282,12 +286,20 @@
    assert ~orc_sdk_registry_contains(42)~, assert ~out.handle == 42~ (unchanged), then
    free and assert ~!orc_sdk_registry_contains(42)~.
 
-** TODO Phase 4: C SDK — Fix ~_oh_free_fn~ (~orc_sdk.c:1263~)
+** DONE Phase 4: C SDK — Fix ~_oh_free_fn~ (~orc_sdk.c:1263~)
+   CLOSED: [2026-08-05 Wed 14:37]
+   :LOGBOOK:
+   - State "DONE"       from "TODO"       [2026-08-05 Wed 14:37]
+   :END:
 
    Remove the assertion ~handle->handle == (uint64_t)handle->items~. After freeing the deck call
    ~_registry_remove(handle->handle)~. Zero all fields except ~handle->handle~.
 
-** TODO Phase 5: C SDK — Fix ~orc_sdk_oh_update~ (~orc_sdk.c:1313~)
+** DONE Phase 5: C SDK — Fix ~orc_sdk_oh_update~ (~orc_sdk.c:1313~)
+   CLOSED: [2026-08-05 Wed 14:37]
+   :LOGBOOK:
+   - State "DONE"       from "TODO"       [2026-08-05 Wed 14:37]
+   :END:
 
    Remove the line ~handle->handle = (uint64_t)handle->items~. Only update the pointer/count
    fields that reflect the deck's current state.
