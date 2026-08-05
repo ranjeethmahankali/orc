@@ -15,7 +15,7 @@
 #  include <pthread.h>
 typedef pthread_mutex_t mtx_t;
 typedef pthread_once_t  once_flag;
-#  define MTX_PLAIN        0
+#  define mtx_plain        0
 #  define ONCE_FLAG_INIT   PTHREAD_ONCE_INIT
 static inline int  mtx_init(mtx_t *m, int t) { (void)t; return pthread_mutex_init(m, NULL); }
 static inline int  mtx_lock(mtx_t *m)        { return pthread_mutex_lock(m); }
