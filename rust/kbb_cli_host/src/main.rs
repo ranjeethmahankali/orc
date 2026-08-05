@@ -85,13 +85,16 @@ fn main() -> Result<(), Error> {
     let a: Deck<f64> = deck![[1.0, 2.0, 3.0], [2.0, 4.0, 6.0, 8.0]];
     let b: Deck<f64> = deck![10.0, 20.0, 30.0];
     {
-        let mut out_handle = OrcHandle::default();
         let mut a_handle = OrcHandle {
             handle: 0,
             ..Default::default()
         };
         let mut b_handle = OrcHandle {
-            handle: 0,
+            handle: 1,
+            ..Default::default()
+        };
+        let mut out_handle = OrcHandle {
+            handle: 2,
             ..Default::default()
         };
         unsafe {
@@ -113,9 +116,12 @@ fn main() -> Result<(), Error> {
         .find(|f| f.name == "list_length")
         .expect("list_length function not found in math_plugin");
     {
-        let mut out_handle = OrcHandle::default();
         let mut a_handle = OrcHandle {
             handle: 0,
+            ..Default::default()
+        };
+        let mut out_handle = OrcHandle {
+            handle: 2,
             ..Default::default()
         };
         unsafe {
