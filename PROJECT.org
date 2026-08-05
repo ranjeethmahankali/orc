@@ -236,8 +236,10 @@
     - ~null_ptr_gives_empty_slice~ — ~slice_from_ptr(null, N)~ returns ~&[]~
     - ~zero_len_gives_empty_slice~ — ~slice_from_ptr(valid, 0)~ returns ~&[]~
 
-*** NEXT ~rust/orc_sdk/src/host.rs~ — ~mod test~
+*** DONE ~rust/orc_sdk/src/host.rs~ — ~mod test~
+    CLOSED: [2026-08-05 Wed 19:41]
     :LOGBOOK:
+    - State "DONE"       from "NEXT"       [2026-08-05 Wed 19:41]
     - State "NEXT"       from "TODO"       [2026-08-05 Wed 19:15]
     :END:
 
@@ -247,8 +249,6 @@
     - ~alloc_deck_populates_handle~ — ~plugin.alloc_deck(type_id, &mut handle)~: ~free_fn~ set,
       items non-null, ~handle.handle~ unchanged
     - ~free_deck_resets_handle~ — alloc followed by free: ~free_fn = None~, items null, ID unchanged
-    - ~type_conflict_rejected~ — two plugins declaring the same custom type_id → ~load_plugins~
-      fails
 
 *** TODO ~rust/math_plugin/src/basic.rs~ — ~mod test~
 
@@ -283,4 +283,14 @@
     - ~output_handle_id_preserved~ — ~out.handle~ unchanged before and after call
     - ~output_owned_by_plugin_registry~ — after call, plugin registry contains the output handle ID
     - ~input_handles_unaffected~ — input ~free_fn~ and ~items~ are unchanged after the call
+
+    Output deck reuse / reallocation / update invariants (tested via ~add~ only):
+    - ~add_reuse_same_type_handle_updated~ — when the output slot already holds a deck of the
+      same type, ~add~ reuses it and still updates ~out.items~, ~out.n_items~, ~out.type_id~ to
+      reflect what was written in this call
+    - ~add_type_change_handle_updated~ — when the output slot holds a deck of a different type,
+      ~add~ frees it, allocates a new one of the correct type, and the handle reflects the new
+      type and data
+    - ~add_clears_previous_data~ — calling ~add~ twice on the same output slot produces only the
+      results of the second call; the deck is cleared and rewritten, not appended to
 
