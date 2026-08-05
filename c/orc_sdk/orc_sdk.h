@@ -247,8 +247,6 @@ size_t _orc_sdk_hmap_insert_bin_impl(void       **ptr,
                                      void        *keyptr,
                                      size_t const keysize);
 
-size_t _orc_sdk_hmap_insert_str_impl(void **ptr, size_t const kvsize, char const *key);
-
 /**
  * Insert the given key value pair into the hash table. The key should be provided as an
  * lvalue to allow for generic type safe functionality. Use this variant to insert keys
@@ -259,15 +257,6 @@ size_t _orc_sdk_hmap_insert_str_impl(void **ptr, size_t const kvsize, char const
     size_t const idx =                                                               \
       _orc_sdk_hmap_insert_bin_impl((void **)&(ptr), sizeof *(ptr), &(k), sizeof k); \
     (ptr)[idx].value = (v);                                                          \
-  } while (0)
-
-/**
- * Same as `orc_sdk_hmap_put`, but works when the key is a string.
- */
-#define orc_sdk_hmap_str_put(ptr, k, v)                                                  \
-  do {                                                                                   \
-    size_t const idx = _orc_sdk_hmap_insert_str_impl((void **)&(ptr), sizeof *(ptr), k); \
-    (ptr)[idx].value = (v);                                                              \
   } while (0)
 
 /**
@@ -300,32 +289,16 @@ void *_orc_sdk_hmap_get_bin_impl(void        *ptr,
 #define orc_sdk_hmap_get(ptr, key) \
   _orc_sdk_hmap_get_bin_impl((ptr), sizeof *(ptr), &(key), sizeof key)
 
-void *_orc_sdk_hmap_get_str_impl(void *ptr, size_t const kvsize, char const *key);
-
-/**
- * Same as `orc_sdk_hmap_get`, except this works when the key is a string.
- */
-#define orc_sdk_hmap_str_get(ptr, key) \
-  _orc_sdk_hmap_get_str_impl((ptr), sizeof *(ptr), key)
-
 /**
  * Check if the hash map contains the given key.
  */
 #define orc_sdk_hmap_contains(ptr, key) \
   (_orc_sdk_hmap_get_bin_impl((ptr), sizeof *(ptr), &(key), sizeof key) != NULL)
 
-/**
- * Same as `orc_sdk_hmap_contains`, except this variant works when the key is a string.
- */
-#define orc_sdk_hmap_str_contains(ptr, key) \
-  (_orc_sdk_hmap_get_str_impl((ptr), sizeof *(ptr), key) != NULL)
-
 void _orc_sdk_hmap_remove_bin_impl(void        *ptr,
                                    size_t const kvsize,
                                    void        *keyptr,
                                    size_t const keysize);
-
-void _orc_sdk_hmap_remove_str_impl(void *ptr, size_t const kvsize, char const *key);
 
 /**
  * Remove the entry from the hashmap corresponding to the given key. If th ekey is not
@@ -333,13 +306,6 @@ void _orc_sdk_hmap_remove_str_impl(void *ptr, size_t const kvsize, char const *k
  */
 #define orc_sdk_hmap_remove(ptr, key) \
   _orc_sdk_hmap_remove_bin_impl((ptr), sizeof *(ptr), &(key), sizeof key)
-
-/**
- * Same as orc_sdk_hmap_remove, except this is meant to be used when the key is a string,
- * and not a value type.
- */
-#define orc_sdk_hmap_str_remove(ptr, key) \
-  _orc_sdk_hmap_remove_str_impl((ptr), sizeof *(ptr), key)
 
 /**
  * @brief Check if the hash map is empty.
@@ -360,14 +326,6 @@ static inline bool orc_sdk_hmap_is_empty(void *ptr)
 #define orc_sdk_hset_put(ptr, val)                                                     \
   do {                                                                                 \
     _orc_sdk_hmap_insert_bin_impl((void **)&(ptr), sizeof *(ptr), &(val), sizeof val); \
-  } while (0)
-
-/**
- * Insert a string into the hash map.
- */
-#define orc_sdk_hset_str_put(ptr, val)                                  \
-  do {                                                                  \
-    _orc_sdk_hmap_insert_str_impl((void **)&(ptr), sizeof *(ptr), val); \
   } while (0)
 
 /**
@@ -392,21 +350,10 @@ static inline size_t orc_sdk_hset_len(void *ptr)
 #define orc_sdk_hset_contains orc_sdk_hmap_contains
 
 /**
- * Check if the hash set contains the given string.
- */
-#define orc_sdk_hset_str_contains orc_sdk_hmap_str_contains
-
-/**
  * Remove the given value from the hash set. If the value is not present in the hash set,
  * it will be unaffected.
  */
 #define orc_sdk_hset_remove orc_sdk_hmap_remove
-
-/**
- * Remove a string from the hash set. If the string is not present in the hash set, it
- * will be unaffected.
- */
-#define orc_sdk_hset_str_remove orc_sdk_hmap_str_remove
 
 /**
  * Free hte hash set, and set the pointer to NULL.
