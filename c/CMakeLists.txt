@@ -31,7 +31,7 @@ add_library(unity STATIC third_party/unity.c)
 target_include_directories(unity PUBLIC third_party)
 
 # orc_sdk_obj — object library
-add_library(orc_sdk_obj OBJECT orc_sdk/orc_sdk.c)
+add_library(orc_sdk_obj OBJECT orc_sdk/orc_sdk.c orc_sdk/tinycthread.c)
 target_include_directories(orc_sdk_obj PUBLIC .)
 set_target_properties(orc_sdk_obj PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
@@ -52,6 +52,10 @@ target_include_directories(orc_sdk_tests PRIVATE .)
 target_link_libraries(orc_sdk_tests PRIVATE unity)
 if(NOT MSVC)
     target_link_libraries(orc_sdk_tests PRIVATE m)
+endif()
+if(NOT WIN32)
+    target_link_libraries(orc_sdk_tests PRIVATE pthread)
+    target_link_libraries(deck_ops_plugin PRIVATE pthread)
 endif()
 
 # Tests

@@ -216,12 +216,20 @@
      host guarantees no concurrent read access exists when write access is lent out.
    - ~handle.handle~ survives ~free_fn~. All other fields are zeroed on free.
 
-** TODO Phase 0a: Copy hashmap into ~c/third_party/~
+** DONE Phase 0a: Copy hashmap into ~c/third_party/~
+   CLOSED: [2026-08-04 Tue 20:42]
+   :LOGBOOK:
+   - State "DONE"       from "TODO"       [2026-08-04 Tue 20:42]
+   :END:
 
    Copy the hashmap implementation files into ~c/third_party/~. Add to the C SDK's
    ~CMakeLists.txt~.
 
-** TODO Phase 0b: Copy ~tinycthread~ into ~c/orc_sdk/~
+** DONE Phase 0b: Copy ~tinycthread~ into ~c/orc_sdk/~
+   CLOSED: [2026-08-04 Tue 20:45]
+   :LOGBOOK:
+   - State "DONE"       from "TODO"       [2026-08-04 Tue 20:45]
+   :END:
 
    Copy ~tinycthread.h~ and ~tinycthread.c~ into ~c/orc_sdk/~ so that consumers of the SDK get it
    automatically. Add to the C SDK's ~CMakeLists.txt~.
