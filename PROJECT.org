@@ -246,6 +246,9 @@
    ~_registry_remove(id)~. Each acquires the mutex, operates on the hashmap, releases. Initialize
    both in ~orc_sdk_init~.
 
+   Write a unit test. That unit test should create multiple threads that try to read from and write
+   to this registry.
+
 ** TODO Phase 3: C SDK — Fix ~orc_sdk_handle_alloc~ (~orc_sdk.c:1539~)
 
    Read ~out->handle~ as the registry key instead of writing it. After allocating the deck call
