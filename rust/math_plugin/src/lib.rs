@@ -23,9 +23,7 @@ pub(crate) fn registry() -> &'static DeckRegistry {
 }
 
 fn alloc_deck<T: TOrcData>(handle: &mut OrcHandle) -> Result<(), Error> {
-    REGISTRY.alloc::<T>(handle).map(|()| {
-        handle.free_fn = Some(crate::orc_deck_free);
-    })
+    REGISTRY.alloc::<T>(handle)
 }
 
 struct Adaptor;

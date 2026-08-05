@@ -131,6 +131,7 @@ impl DeckRegistry {
                     unsafe { update_handle_from_deck(&deck, handle) };
                     occupied.insert(Arc::new(RwLock::new(Box::new(deck))));
                 }
+                handle.free_fn = Some(crate::orc_deck_free);
             }
             Entry::Vacant(vacant) => {
                 // This handle could be pointing to data inside another plugin. So we have to free that data first, before reassigning.
@@ -138,6 +139,7 @@ impl DeckRegistry {
                 let deck = Deck::<T>::default();
                 unsafe { update_handle_from_deck(&deck, handle) };
                 vacant.insert(Arc::new(RwLock::new(Box::new(deck))));
+                handle.free_fn = Some(crate::orc_deck_free);
             }
         };
         Ok(())
