@@ -5,24 +5,20 @@
 
   Run these commands from the project root. To configure once:
 
-  #+begin_src sh :results raw
-    cmake -S c/ -B build/
+  #+begin_src sh
+    # For a debug build - configure then build.
+    cmake -S c/ -B build/debug -DCMAKE_BUILD_TYPE=Debug
+    cmake --build build/debug
   #+end_src
 
-  For a debug build after configuring:
-
-  #+begin_src sh :results raw
-    cmake --build build/ --config Debug
-  #+end_src
-
-  For a release build after configuring:
-
-  #+begin_src sh :results raw
-    cmake --build build/ --config Release
+  #+begin_src sh
+    # For a release build - configure then build.
+    cmake -S c/ -B build/release -DCMAKE_BUILD_TYPE=Release
+    cmake --build build/release
   #+end_src
 
   To generate compile_commands.json (useful for Clangd LSP):
 
   #+begin_src sh :results raw
-    cmake -S c/ -B build/compdb -G Ninja -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DCMAKE_BUILD_TYPE=Debug
+    cmake -S c/ -B build/debug -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DCMAKE_BUILD_TYPE=Debug
   #+end_src

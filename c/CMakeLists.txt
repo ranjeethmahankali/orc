@@ -4,17 +4,18 @@ project(orc C)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 # Route binaries to build/debug or build/release.
-# Multi-config generators (VS): per-config subdirs under the single build dir.
-# Single-config generators (Ninja): CMAKE_BINARY_DIR is already build/debug or build/release.
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY          ${CMAKE_BINARY_DIR})
-set(CMAKE_LIBRARY_OUTPUT_DIRECTORY          ${CMAKE_BINARY_DIR})
-set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY          ${CMAKE_BINARY_DIR})
+# Multi-config generators (VS, Ninja Multi-Config): per-config subdirs.
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_DEBUG    ${CMAKE_BINARY_DIR}/debug)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE  ${CMAKE_BINARY_DIR}/release)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY_DEBUG    ${CMAKE_BINARY_DIR}/debug)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY_RELEASE  ${CMAKE_BINARY_DIR}/release)
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY_DEBUG    ${CMAKE_BINARY_DIR}/debug)
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY_RELEASE  ${CMAKE_BINARY_DIR}/release)
+# Single-config generators (Make, Ninja): use CMAKE_BUILD_TYPE.
+string(TOLOWER "${CMAKE_BUILD_TYPE}" _build_type_lower)
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY          ${CMAKE_BINARY_DIR}/${_build_type_lower})
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY          ${CMAKE_BINARY_DIR}/${_build_type_lower})
+set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY          ${CMAKE_BINARY_DIR}/${_build_type_lower})
 
 # Compiler warnings
 if(MSVC)
