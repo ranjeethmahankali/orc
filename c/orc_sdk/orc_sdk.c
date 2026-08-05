@@ -1767,22 +1767,26 @@ void orc_sdk_oh_update(OrcHandle *handle)
 
 OrcError orc_sdk_oh_ensure_alloc(OrcTypeId const type_id, OrcHandle *handle)
 {
-  if ((handle->handle == 0) != (handle->items == NULL)) {
-    return ORC_ERROR_INVALID_HANDLE;
-  }
-  if (handle->items == NULL) {
-    return orc_sdk_handle_alloc(type_id, handle);
-  }
-  // The deck is already allocated. If the type doesn't match, we free it and reallocate.
-  if (handle->type_id != type_id) {
+  if (orc_sdk_registry_contains(handle->handle)) {
+    // This plugin owns the handle. Reuse if type matches, free+reallocate if not.
+    if (handle->type_id == type_id) {
+      return ORC_ERROR_NONE;
+    }
     OrcError const err = orc_sdk_handle_free(handle);
     if (err) {
       return err;
     }
     return orc_sdk_handle_alloc(type_id, handle);
   }
-  // No need to allocate. Handle already points to an allocated deck, of the correct type.
-  return ORC_ERROR_NONE;
+  // This plugin does not own the handle.
+  if (handle->free_fn != NULL) {
+    // Someone else owns it — evict them.
+    OrcError const err = handle->free_fn(handle);
+    if (err) {
+      return err;
+    }
+  }
+  return orc_sdk_handle_alloc(type_id, handle);
 }
 
 void *orc_sdk_comb_init(OrcHandle const **inputs,
