@@ -304,7 +304,11 @@
    Remove the line ~handle->handle = (uint64_t)handle->items~. Only update the pointer/count
    fields that reflect the deck's current state.
 
-** TODO Phase 6: C SDK — Fix ~orc_sdk_oh_ensure_alloc~ (~orc_sdk.c:1328~)
+** DONE Phase 6: C SDK — Fix ~orc_sdk_oh_ensure_alloc~ (~orc_sdk.c:1328~)
+   CLOSED: [2026-08-05 Wed 14:47]
+   :LOGBOOK:
+   - State "DONE"       from "TODO"       [2026-08-05 Wed 14:47]
+   :END:
 
    Replace the ~handle->handle == 0~ sentinel check with a registry lookup.
    - ID in registry, same type → return ~ORC_ERROR_NONE~.
