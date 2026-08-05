@@ -5,7 +5,7 @@
 
   Run these commands from the project root. To configure once:
 
-  #+begin_src sh
+  #+begin_src sh :results none
     # For a debug build - configure then build.
     cmake -S c/ -B build/debug -DCMAKE_BUILD_TYPE=Debug
     cmake --build build/debug
