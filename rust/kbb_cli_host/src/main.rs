@@ -1,6 +1,6 @@
 use orc_sdk::{
     Deck, Error, ORC_ABI_VERSION, OrcHandle, OrcHost, OrcHostCallbackAPI, OrcHostMemoryAPI, deck,
-    handle_from_deck,
+    update_handle_from_deck,
 };
 use std::alloc::{Layout, alloc, dealloc};
 use std::ffi::{CStr, c_void};
@@ -84,26 +84,48 @@ fn main() -> Result<(), Error> {
         .expect("add function not found in math_plugin");
     let a: Deck<f64> = deck![[1.0, 2.0, 3.0], [2.0, 4.0, 6.0, 8.0]];
     let b: Deck<f64> = deck![10.0, 20.0, 30.0];
-    let mut out_handle = OrcHandle::default();
-    let inputs: &[OrcHandle] = &[handle_from_deck(&a, 0, None), handle_from_deck(&b, 1, None)];
-    unsafe {
-        (add_fn.func)(0, inputs.as_ptr(), inputs.len() as u64, &mut out_handle, 1);
+    {
+        let mut out_handle = OrcHandle::default();
+        let mut a_handle = OrcHandle {
+            handle: 0,
+            ..Default::default()
+        };
+        let mut b_handle = OrcHandle {
+            handle: 0,
+            ..Default::default()
+        };
+        unsafe {
+            update_handle_from_deck(&a, &mut a_handle);
+            update_handle_from_deck(&b, &mut b_handle);
+        }
+        let inputs: &[OrcHandle] = &[a_handle, b_handle];
+        unsafe {
+            (add_fn.func)(0, inputs.as_ptr(), inputs.len() as u64, &mut out_handle, 1);
+        }
+        println!(
+            "math_plugin add([1,2,3], [10,20,30]):\n{}",
+            out_handle.display::<f64>()
+        );
     }
-    println!(
-        "math_plugin add([1,2,3], [10,20,30]):\n{}",
-        out_handle.display::<f64>()
-    );
-
     let list_length_fn = plugins
         .iter()
         .flat_map(|p| p.functions().iter())
         .find(|f| f.name == "list_length")
         .expect("list_length function not found in math_plugin");
-    let mut out_handle = OrcHandle::default();
-    let inputs: &[OrcHandle] = &[handle_from_deck(&a, 0, None)];
-    unsafe {
-        (list_length_fn.func)(0, inputs.as_ptr(), inputs.len() as u64, &mut out_handle, 1);
+    {
+        let mut out_handle = OrcHandle::default();
+        let mut a_handle = OrcHandle {
+            handle: 0,
+            ..Default::default()
+        };
+        unsafe {
+            update_handle_from_deck(&a, &mut a_handle);
+        }
+        let inputs: &[OrcHandle] = &[a_handle];
+        unsafe {
+            (list_length_fn.func)(0, inputs.as_ptr(), inputs.len() as u64, &mut out_handle, 1);
+        }
+        println!("List length output:\n{}", out_handle.display::<u64>());
     }
-    println!("List length output:\n{}", out_handle.display::<u64>());
     Ok(())
 }

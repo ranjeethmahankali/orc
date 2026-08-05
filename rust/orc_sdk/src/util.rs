@@ -1,7 +1,7 @@
 use crate::{
     Deck, Error, ORC_MSG_LEVEL_DEBUG, ORC_MSG_LEVEL_ERROR, ORC_MSG_LEVEL_FATAL, ORC_MSG_LEVEL_INFO,
-    ORC_MSG_LEVEL_WARN, ORC_NUM_DIMS, OrcDeckFreeFn, OrcFuncInfo, OrcHandle, OrcHost,
-    OrcHostCallbackAPI, OrcTypeId, OrcTypeInfo, deck::fmt_raw_deck, ffi::TOrcData,
+    ORC_MSG_LEVEL_WARN, ORC_NUM_DIMS, OrcFuncInfo, OrcHandle, OrcHost, OrcHostCallbackAPI,
+    OrcTypeId, OrcTypeInfo, deck::fmt_raw_deck, ffi::TOrcData,
 };
 use std::{
     alloc::{GlobalAlloc, Layout, System},
@@ -12,7 +12,7 @@ use std::{
     marker::PhantomData,
     sync::{
         Arc, RwLock,
-        atomic::{AtomicPtr, AtomicU64, Ordering},
+        atomic::{AtomicPtr, Ordering},
     },
 };
 
@@ -60,26 +60,17 @@ pub fn string_from_ffi(ptr: *const std::ffi::c_char) -> String {
     }
 }
 
-pub fn handle_from_deck<T: TOrcData>(deck: &Deck<T>, id: u64, free_fn: OrcDeckFreeFn) -> OrcHandle {
+pub unsafe fn update_handle_from_deck<T: TOrcData>(deck: &Deck<T>, handle: &mut OrcHandle) {
+    // We should not touch the handle.handle. We only reassign things that we can infer from the Deck<T>.
     let (items, marks, (stride_offset, strides)) = (deck.items(), deck.marks(), deck.stride_info());
-    debug_assert_eq!(
-        marks.len(),
-        stride_offset.len(),
-        "Malformed deck data structure"
-    );
-    OrcHandle {
-        handle: id,
-        items: ptr_from_slice(items).cast(),
-        n_items: items.len() as u64,
-        item_size: size_of::<T>() as u64,
-        marks: ptr_from_slice(marks),
-        stride_offset: ptr_from_slice(stride_offset),
-        n_marks: marks.len() as u64,
-        strides: ptr_from_slice(strides),
-        type_id: T::TYPE_INFO.type_id,
-        dims: [0; ORC_NUM_DIMS as usize],
-        free_fn,
-    }
+    handle.items = ptr_from_slice(items).cast();
+    handle.n_items = items.len() as u64;
+    handle.item_size = size_of::<T>() as u64;
+    handle.marks = ptr_from_slice(marks);
+    handle.stride_offset = ptr_from_slice(stride_offset);
+    handle.n_marks = marks.len() as u64;
+    handle.strides = ptr_from_slice(strides);
+    handle.type_id = T::TYPE_INFO.type_id;
 }
 
 pub fn reset_handle(handle: &mut OrcHandle) {
@@ -97,35 +88,59 @@ pub fn reset_handle(handle: &mut OrcHandle) {
 
 type ObjEntry = Arc<RwLock<Box<dyn Any + Send + Sync>>>;
 
-pub struct ObjectRegistry {
+pub struct DeckRegistry {
     handles: RwLock<HashMap<u64, ObjEntry>>,
-    counter: AtomicU64,
 }
 
-impl Default for ObjectRegistry {
+impl Default for DeckRegistry {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl ObjectRegistry {
+impl DeckRegistry {
     pub fn new() -> Self {
-        ObjectRegistry {
+        DeckRegistry {
             handles: RwLock::new(HashMap::new()),
-            // Ids start at 1. 0 represents an empty / uninitialized id.
-            counter: AtomicU64::new(1),
         }
     }
 
-    pub fn alloc<T: Any + Send + Sync>(&self, obj: T) -> Result<u64, Error> {
-        // This can block this thread until write access is available.
+    pub fn alloc<T: TOrcData + Any + Send + Sync>(
+        &self,
+        handle: &mut OrcHandle,
+    ) -> Result<(), Error> {
+        // Here, the id is valid, so we try to find the previous allocation and reuse it. If it
+        // doesn't match the type, or doesn't exist, we just reallocate. The line below can block
+        // this thread until write access is available.
         let mut handles = self
             .handles
             .write()
             .map_err(|_e| Error::ConcurrencyProblem)?;
-        let id = self.counter.fetch_add(1, Ordering::Relaxed);
-        handles.insert(id, Arc::new(RwLock::new(Box::new(obj))));
-        Ok(id)
+        match handles.entry(handle.handle) {
+            Entry::Occupied(mut occupied) => {
+                let realloc_needed = {
+                    let read_lock = occupied
+                        .get()
+                        .try_read()
+                        .map_err(|_e| Error::ConcurrencyProblem)?;
+                    read_lock.downcast_ref::<T>().is_none()
+                };
+                if realloc_needed {
+                    // Drop the old object and overwrite it with a new one.
+                    let deck = Deck::<T>::default();
+                    unsafe { update_handle_from_deck(&deck, handle) };
+                    occupied.insert(Arc::new(RwLock::new(Box::new(deck))));
+                }
+            }
+            Entry::Vacant(vacant) => {
+                // This handle could be pointing to data inside another plugin. So we have to free that data first, before reassigning.
+                handle.free();
+                let deck = Deck::<T>::default();
+                unsafe { update_handle_from_deck(&deck, handle) };
+                vacant.insert(Arc::new(RwLock::new(Box::new(deck))));
+            }
+        };
+        Ok(())
     }
 
     pub fn free(&self, id: u64) -> Result<(), Error> {
@@ -160,43 +175,6 @@ impl ObjectRegistry {
             .map(|guard| guard.as_mut() as &mut (dyn Any + Send + Sync))
             .collect();
         Ok(callback(&mut references))
-    }
-
-    pub fn ensure_alloc_default<T: Default + Any + Send + Sync>(
-        &self,
-        id: &mut u64,
-    ) -> Result<(), Error> {
-        if *id == 0 {
-            // Valid ids start at 1. This is an empty / invalid id. We need to allocate a new deck and overwrite the id.
-            *id = self.alloc(T::default())?;
-            return Ok(());
-        }
-        // Here, the id is valid, so we try to find the previous allocation and reuse it. If it
-        // doesn't match the type, or doesn't exist, we just reallocate. The line below can block
-        // this thread until write access is available.
-        let mut handles = self
-            .handles
-            .write()
-            .map_err(|_e| Error::ConcurrencyProblem)?;
-        match handles.entry(*id) {
-            Entry::Occupied(mut occupied) => {
-                let realloc_needed = {
-                    let read_lock = occupied
-                        .get()
-                        .try_read()
-                        .map_err(|_e| Error::ConcurrencyProblem)?;
-                    read_lock.downcast_ref::<T>().is_none()
-                };
-                if realloc_needed {
-                    // Drop the old object and overwrite it with a new one.
-                    occupied.insert(Arc::new(RwLock::new(Box::new(T::default()))));
-                }
-            }
-            Entry::Vacant(vacant) => {
-                vacant.insert(Arc::new(RwLock::new(Box::new(T::default()))));
-            }
-        };
-        Ok(())
     }
 }
 
