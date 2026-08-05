@@ -457,7 +457,10 @@ pub const BUILTIN_TYPES: &[OrcTypeInfo] = &[
 mod tests {
     use super::*;
     use crate::{Deck, ORC_ERROR_NONE, ORC_NUM_DIMS, OrcError, OrcHandle, ffi::TOrcData};
-    use std::sync::{Arc, atomic::{AtomicUsize, Ordering}};
+    use std::sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    };
 
     // Provide orc_deck_free for the test binary. Each plugin normally defines this via
     // orc_plugin!. In tests we manage the registry directly, so this is a no-op.
@@ -467,7 +470,10 @@ mod tests {
     }
 
     fn fresh_handle(id: u64) -> OrcHandle {
-        OrcHandle { handle: id, ..Default::default() }
+        OrcHandle {
+            handle: id,
+            ..Default::default()
+        }
     }
 
     // Helper: suppress the no-op Drop call on a handle we already cleaned up.
@@ -532,7 +538,11 @@ mod tests {
             ORC_ERROR_NONE
         }
         let reg = DeckRegistry::new();
-        let mut h = OrcHandle { handle: 4, free_fn: Some(mock_foreign), ..Default::default() };
+        let mut h = OrcHandle {
+            handle: 4,
+            free_fn: Some(mock_foreign),
+            ..Default::default()
+        };
         let before = FOREIGN_CALLED.load(Ordering::Relaxed);
         reg.alloc::<u32>(&mut h).unwrap();
         assert_eq!(FOREIGN_CALLED.load(Ordering::Relaxed), before + 1);
@@ -577,12 +587,12 @@ mod tests {
         reg.alloc::<f64>(&mut h).unwrap();
         reg.with_mut(&[10], |decks| {
             let deck = decks[0].downcast_mut::<Deck<f64>>().expect("wrong type");
-            deck.push(3.14, 1);
+            deck.push(3.1234, 1);
         })
         .unwrap();
         reg.with_mut(&[10], |decks| {
             let deck = decks[0].downcast_mut::<Deck<f64>>().expect("wrong type");
-            assert_eq!(deck.items(), &[3.14]);
+            assert_eq!(deck.items(), &[3.1234]);
         })
         .unwrap();
         disarm(&mut h);
@@ -605,7 +615,10 @@ mod tests {
             .map(|id| {
                 let reg = Arc::clone(&reg);
                 thread::spawn(move || {
-                    let mut h = OrcHandle { handle: id, ..Default::default() };
+                    let mut h = OrcHandle {
+                        handle: id,
+                        ..Default::default()
+                    };
                     reg.alloc::<f32>(&mut h).unwrap();
                     // Write a value that encodes this thread's id.
                     reg.with_mut(&[id], |decks| {
@@ -642,7 +655,11 @@ mod tests {
         deck.push(1.0, 1);
         deck.push(2.0, 0);
         deck.push(3.0, 0);
-        let mut h = OrcHandle { handle: 99, free_fn: None, ..Default::default() };
+        let mut h = OrcHandle {
+            handle: 99,
+            free_fn: None,
+            ..Default::default()
+        };
         unsafe { update_handle_from_deck(&deck, &mut h) };
         assert_eq!(h.type_id, f32::TYPE_INFO.type_id);
         assert_eq!(h.n_items, 3);
@@ -654,7 +671,10 @@ mod tests {
     #[test]
     fn empty_deck_gives_null_items() {
         let deck: Deck<u64> = Deck::default();
-        let mut h = OrcHandle { handle: 55, ..Default::default() };
+        let mut h = OrcHandle {
+            handle: 55,
+            ..Default::default()
+        };
         unsafe { update_handle_from_deck(&deck, &mut h) };
         assert!(h.items.is_null());
         assert_eq!(h.n_items, 0);
@@ -665,7 +685,10 @@ mod tests {
     fn preserves_handle_id() {
         let mut deck: Deck<i32> = Deck::default();
         deck.push(42, 1);
-        let mut h = OrcHandle { handle: 77, ..Default::default() };
+        let mut h = OrcHandle {
+            handle: 77,
+            ..Default::default()
+        };
         unsafe { update_handle_from_deck(&deck, &mut h) };
         assert_eq!(h.handle, 77);
     }
@@ -673,7 +696,11 @@ mod tests {
     #[test]
     fn preserves_free_fn() {
         let deck: Deck<i32> = Deck::default();
-        let mut h = OrcHandle { handle: 88, free_fn: None, ..Default::default() };
+        let mut h = OrcHandle {
+            handle: 88,
+            free_fn: None,
+            ..Default::default()
+        };
         unsafe { update_handle_from_deck(&deck, &mut h) };
         assert!(h.free_fn.is_none());
     }
@@ -703,7 +730,11 @@ mod tests {
 
     #[test]
     fn reset_idempotent() {
-        let mut h = OrcHandle { handle: 11, n_items: 3, ..Default::default() };
+        let mut h = OrcHandle {
+            handle: 11,
+            n_items: 3,
+            ..Default::default()
+        };
         reset_handle(&mut h);
         reset_handle(&mut h);
         assert_eq!(h.handle, 11);
