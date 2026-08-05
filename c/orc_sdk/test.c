@@ -1441,35 +1441,6 @@ void test_hmap_get_null_safety(void)
   // Note: Don't test after free as that would be undefined behavior
 }
 
-void print_hmap(void *ptr)  // DEBUG.
-{
-  typedef struct
-  {
-    uint64_t key;
-    uint64_t value;
-  } Entry;
-  Entry *map = (Entry *)ptr;
-  if (map == NULL) {
-    printf("\nMap is NULL\n");
-    return;
-  }
-  _OrcSdk_HashTableHeader *h = _orc_sdk_hmap_header(map);
-  printf("\nPairs (%zu):\n", h->n_total);
-  size_t const npairs = h->n_total;
-  for (size_t i = 0; i < npairs; ++i, ++map) {
-    printf("\t[%zu]: (k: %" PRIu64 "; v: %" PRIu64 ")\n", i, map->key, map->value);
-  }
-  printf("Buckets:\n");
-  _OrcSdk_HashBucket *bk  = h->buckets;
-  size_t const        nbs = h->n_total / ORC_SDK_HMAP_BUCKET_SIZE;
-  for (size_t i = 0; i < nbs; ++i, ++bk) {
-    printf("\t-----------------------\n");
-    for (size_t s = 0; s < ORC_SDK_HMAP_BUCKET_SIZE; ++s) {
-      printf("\t\t(h: %zu; i: %zi)\n", bk->hash[s], bk->index[s]);
-    }
-  }
-}
-
 void test_hmap_fibo_indices(void)
 {
   typedef struct
