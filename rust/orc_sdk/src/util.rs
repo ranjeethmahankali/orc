@@ -60,6 +60,10 @@ pub fn string_from_ffi(ptr: *const std::ffi::c_char) -> String {
     }
 }
 
+/// # SAFETY
+///
+/// The caller must ensure the handle they're passing in, uniquely owns the deck they're passing. If
+/// this invariant is not met, this could lead to use after free and other sorts of bugs.
 pub unsafe fn update_handle_from_deck<T: TOrcData>(deck: &Deck<T>, handle: &mut OrcHandle) {
     // We should not touch the handle.handle. We only reassign things that we can infer from the Deck<T>.
     let (items, marks, (stride_offset, strides)) = (deck.items(), deck.marks(), deck.stride_info());
