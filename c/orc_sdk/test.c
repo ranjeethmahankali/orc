@@ -872,12 +872,12 @@ void test_ensure_alloc_fresh(void)
   orc_sdk_handle_free(&h);
 }
 
-static bool     _mock_evict_called = false;
-static OrcError _mock_evict_fn(OrcHandle *const handle)
+static bool     _mock_free_called = false;
+static OrcError _mock_free_fn(OrcHandle *const handle)
 {
-  _mock_evict_called = true;
-  handle->free_fn    = NULL;
-  handle->items      = NULL;
+  _mock_free_called = true;
+  handle->free_fn   = NULL;
+  handle->items     = NULL;
   return ORC_ERROR_NONE;
 }
 
@@ -886,15 +886,14 @@ void test_ensure_alloc_eviction(void)
   // ID not in registry, free_fn != NULL → evict foreign owner, then allocate.
   orc_sdk_init(NULL, NULL);
   orc_sdk_registry_clear();
-  _mock_evict_called = false;
-  OrcHandle h        = {0};
-  h.handle           = 53;
-  h.free_fn          = _mock_evict_fn;
-  h.items            = (void *)1;  // non-null: simulates foreign plugin data
-  OrcError err       = orc_sdk_oh_ensure_alloc(ORC_TYPE_F64, &h);
+  _mock_free_called = false;
+  OrcHandle h       = {0};
+  h.handle          = 53;
+  h.free_fn         = _mock_free_fn;
+  h.items           = (void *)1;  // non-null: simulates foreign plugin data
+  OrcError err      = orc_sdk_oh_ensure_alloc(ORC_TYPE_F64, &h);
   TEST_ASSERT_TRUE_MESSAGE(err == ORC_ERROR_NONE, "Eviction: should succeed");
-  TEST_ASSERT_TRUE_MESSAGE(_mock_evict_called,
-                           "Eviction: foreign free_fn must be called");
+  TEST_ASSERT_TRUE_MESSAGE(_mock_free_called, "Eviction: foreign free_fn must be called");
   TEST_ASSERT_TRUE_MESSAGE(h.type_id == ORC_TYPE_F64, "Eviction: type_id must be set");
   TEST_ASSERT_TRUE_MESSAGE(orc_sdk_registry_contains(53),
                            "Eviction: ID must be in registry");
