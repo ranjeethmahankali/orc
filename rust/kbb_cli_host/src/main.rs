@@ -73,7 +73,7 @@ fn main() -> Result<(), Error> {
         for func in plugin.functions().iter() {
             println!("  - {}\n    {}", func.name, func.desc);
         }
-        println!("");
+        println!();
     }
     // --- Test some plugin functions ---
 

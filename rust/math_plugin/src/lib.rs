@@ -160,7 +160,7 @@ fn deck_from_proxy_impl<T: TOrcData>(
             };
             out_deck.assign_from_raw_data(items, marks);
             unsafe {
-                update_handle_from_deck(&out_deck, out);
+                update_handle_from_deck(out_deck, out);
             }
             Ok(())
         })
