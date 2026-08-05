@@ -10,20 +10,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-// C11 <threads.h> is not available on Apple platforms. Fall back to pthreads.
-#if defined(__APPLE__)
-#  include <pthread.h>
-typedef pthread_mutex_t mtx_t;
-typedef pthread_once_t  once_flag;
-#  define mtx_plain        0
-#  define ONCE_FLAG_INIT   PTHREAD_ONCE_INIT
-static inline int  mtx_init(mtx_t *m, int t) { (void)t; return pthread_mutex_init(m, NULL); }
-static inline int  mtx_lock(mtx_t *m)        { return pthread_mutex_lock(m); }
-static inline int  mtx_unlock(mtx_t *m)      { return pthread_mutex_unlock(m); }
-static inline void call_once(once_flag *f, void (*fn)(void)) { pthread_once(f, fn); }
-#else
-#  include <threads.h>
-#endif
+#include "threads_compat.h"
 
 static void *_default_alloc(uint64_t const size, uint64_t const alignment)
 {

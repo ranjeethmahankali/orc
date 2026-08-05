@@ -6,7 +6,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#include <threads.h>  // C11 standard threads (same API as tinycthread)
+#include "threads_compat.h"  // C11 threads or pthreads shim on Apple
 
 #ifdef _MSC_VER
 #include <intrin.h>
@@ -742,12 +742,12 @@ void test_arr_header_alignment(void)
 // ========== Handle alloc/free tests ==========
 
 #define HANDLE_TEST_N_THREADS 8
-#define HANDLE_TEST_N_IDS     64
+#define HANDLE_TEST_N_IDS 64
 
 // Stress-tests the mutex protecting the global registry. 8 threads run concurrently, each
 // owning a disjoint slice of 64 IDs (thread N owns IDs [N*8+1, N*8+8], 1-indexed to avoid
-// ID 0). Each thread allocates, verifies handle fields, then frees — catching deadlocks and
-// data corruption from concurrent access to the shared registry.
+// ID 0). Each thread allocates, verifies handle fields, then frees — catching deadlocks
+// and data corruption from concurrent access to the shared registry.
 static int _handle_thread_fn(void *arg)
 {
   size_t const thread_idx = (size_t)(uintptr_t)arg;
