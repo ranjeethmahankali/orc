@@ -1756,7 +1756,6 @@ void orc_sdk_oh_update(OrcHandle *handle)
   ORC_SDK_REQUIRE_WITH_MSG(handle != NULL, "Invalid handle");
   ORC_SDK_REQUIRE_WITH_MSG(handle->type_id != 0, "Invalid type id");
   _OrcSdk_DeckHeader *h = _orc_sdk_deck_header(handle->items);
-  handle->handle        = (uint64_t)handle->items;
   handle->n_items       = h->count;
   handle->item_size     = h->item_size;
   handle->marks         = h->marks;

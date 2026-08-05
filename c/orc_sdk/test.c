@@ -5195,6 +5195,9 @@ void test_list_item_combinations(void)
   // Allocate decks - In a real scenario, the host program is allocating these,
   // by calling below functions, defined inside a plugin.
   OrcHandle lists = {0}, indices = {0}, out_items = {0};
+  lists.handle     = 0;
+  indices.handle   = 1;
+  out_items.handle = 2;
   orc_sdk_handle_alloc(ORC_TYPE_F64, &lists);
   orc_sdk_handle_alloc(ORC_TYPE_U32, &indices);
   orc_sdk_handle_alloc(ORC_TYPE_F64, &out_items);
