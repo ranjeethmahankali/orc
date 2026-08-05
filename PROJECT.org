@@ -161,6 +161,9 @@
   :CREATED:  2026-08-03 Mon 18:22
   :END:
 
+  To test all the variations of this across plugin boundaries, I might need to add some custom
+  datatypes in a Rust plugin.
+
 * TODO Testing and CI
   :PROPERTIES:
   :CREATED:  2026-08-03 Mon 17:47
@@ -170,11 +173,13 @@
   more. All the plugin code should be thoroughly tested. All the new SDK code should be tested. I
   should look through the ABI carefully, and make sure each feature is tested.
 
-* NEXT tj92sq - OrcHandle Lifetimes and Identity
+* DONE tj92sq - OrcHandle Lifetimes and Identity
+  CLOSED: [2026-08-05 Wed 18:12]
   :PROPERTIES:
   :CREATED:  2026-08-04 Tue 09:32
   :END:
   :LOGBOOK:
+  - State "DONE"       from "NEXT"       [2026-08-05 Wed 18:12]
   - State "NEXT"       from "TODO"       [2026-08-04 Tue 10:56]
   :END:
 
