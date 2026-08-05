@@ -2,8 +2,8 @@ use orc_sdk::{
     Deck, DeckRegistry, DeckView, Error, HostCallbacks, ORC_ABI_VERSION, ORC_TYPE_F32,
     ORC_TYPE_F64, ORC_TYPE_I8, ORC_TYPE_I16, ORC_TYPE_I32, ORC_TYPE_I64, ORC_TYPE_U8, ORC_TYPE_U16,
     ORC_TYPE_U32, ORC_TYPE_U64, OrcFuncInfo, OrcHandle, OrcHost, OrcHostCallbackAPI, OrcItemProxy,
-    OrcPlugin, OrcTypeId, ProxyType, TOrcData, TOrcPluginAdaptor, handle_from_deck, orc_fn_info,
-    orc_plugin, reset_handle,
+    OrcPlugin, OrcTypeId, ProxyType, TOrcData, TOrcPluginAdaptor, orc_fn_info, orc_plugin,
+    reset_handle, update_handle_from_deck,
 };
 use std::sync::{LazyLock, OnceLock};
 
@@ -116,7 +116,7 @@ fn deck_from_proxy_impl<T: TOrcData>(
         // All inputs must be of the same type. This is a problem.
         return Err(Error::InvalidProxy);
     }
-    REGISTRY.alloc::<T>(&mut out)?;
+    REGISTRY.alloc::<T>(out)?;
     REGISTRY
         .with_mut(&[out.handle], |out_decks| -> Result<(), Error> {
             let out_deck = out_decks[0]
@@ -159,8 +159,9 @@ fn deck_from_proxy_impl<T: TOrcData>(
                 }
             };
             out_deck.assign_from_raw_data(items, marks);
-            let id = out.handle;
-            *out = handle_from_deck(out_deck, id, Some(orc_deck_free));
+            unsafe {
+                update_handle_from_deck(&out_deck, out);
+            }
             Ok(())
         })
         .flatten()

@@ -342,7 +342,7 @@ fn validate_orc_fn(
     if !output_params.is_empty() && registry.is_none() {
         return Err(syn::Error::new_spanned(
             &run_fn.sig,
-            "fn run has output parameters; `let registry: &ObjectRegistry = ...` must be defined",
+            "fn run has output parameters; `let registry: &DeckRegistry = ...` must be defined",
         ));
     }
     // Resolve depth arrays. First infer depths from parameter types (None = cannot infer).
@@ -662,7 +662,7 @@ fn generate_dispatch_fn(
         .map(|(j, p)| {
             let inner_ty = &p.inner_type;
             quote! {
-                __registry.ensure_alloc_default::<orc_sdk::Deck<#inner_ty>>(&mut __outputs[#j].handle)?;
+                __registry.alloc::<#inner_ty>(&mut __outputs[#j])?;
             }
         })
         .collect();
@@ -697,17 +697,11 @@ fn generate_dispatch_fn(
     let out_handle_updates: Vec<proc_macro2::TokenStream> = (0..n_outputs)
         .map(|j| {
             let deck_ident = &out_deck_idents[j];
-            let id_ident = format_ident!("__out_id_{j}");
             quote! {
-                let #id_ident = __outputs[#j].handle;
-                // Pass orc_deck_free explicitly so the host can free this handle without
-                // knowing which plugin owns it. orc_deck_free is emitted by orc_plugin!
-                // in the same plugin binary.
-                __outputs[#j] = orc_sdk::handle_from_deck(
-                    #deck_ident,
-                    #id_ident,
-                    Some(crate::orc_deck_free),
-                );
+                // update_handle_from_deck preserves handle.handle; set free_fn so the host
+                // can call back into this plugin to free the data.
+                unsafe { orc_sdk::update_handle_from_deck(#deck_ident, &mut __outputs[#j]) };
+                __outputs[#j].free_fn = Some(crate::orc_deck_free);
             }
         })
         .collect();
@@ -716,7 +710,7 @@ fn generate_dispatch_fn(
     quote! {
         fn __dispatch #run_generics (
             __host: &orc_sdk::HostCallbacks,
-            __registry: &orc_sdk::ObjectRegistry,
+            __registry: &orc_sdk::DeckRegistry,
             __inputs: &[orc_sdk::OrcHandle],
             __outputs: &mut [orc_sdk::OrcHandle],
         ) -> Result<(), orc_sdk::Error> #where_clause {
