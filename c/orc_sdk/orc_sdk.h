@@ -203,6 +203,169 @@ OrcError _orc_sdk_arr_remove_range_impl(void        *ptr,
  */
 bool orc_sdk_arr_is_empty(void *ptr);
 
+// ========== Hash map ==========
+
+#define ORC_SDK_HMAP_BUCKET_SIZE 8
+
+typedef struct
+{
+  size_t    hash[ORC_SDK_HMAP_BUCKET_SIZE];
+  ptrdiff_t index[ORC_SDK_HMAP_BUCKET_SIZE];
+} _OrcSdk_HashBucket;
+
+typedef struct
+{
+  size_t              n_total;
+  size_t              n_used;
+  size_t              n_removed;
+  size_t              kvsize;
+  _OrcSdk_HashBucket *buckets;
+  _OrcSdk_HashBucket *temp_buckets;
+  size_t             *slots;
+  size_t              _padding;  // For aligning the struct to 16 bytes.
+} _OrcSdk_HashTableHeader;
+
+_OrcSdk_HashTableHeader *_orc_sdk_hmap_header(void *ptr);
+
+void *_orc_sdk_hmap_grow_size(void *ptr, size_t const kvsize, size_t nelems);
+
+/**
+ * Reserve space to store `size` number of entries in the hash table.
+ */
+#define orc_sdk_hmap_reserve(ptr, size)                            \
+  (((ptr) = _orc_sdk_hmap_grow_size((ptr), sizeof *(ptr), (size))) \
+     ? ORC_ERROR_NONE                                              \
+     : ORC_ERROR_ALLOC_FAILED)
+
+size_t _orc_sdk_hmap_insert_bin_impl(void       **ptr,
+                                     size_t const kvsize,
+                                     void        *keyptr,
+                                     size_t const keysize);
+
+/**
+ * Insert the given key value pair into the hash table. The key should be provided as an
+ * lvalue to allow for generic type safe functionality. Use this variant to insert keys
+ * that are binary value types.
+ */
+#define orc_sdk_hmap_put(ptr, k, v)                                                  \
+  do {                                                                               \
+    size_t const idx =                                                               \
+      _orc_sdk_hmap_insert_bin_impl((void **)&(ptr), sizeof *(ptr), &(k), sizeof k); \
+    (ptr)[idx].value = (v);                                                          \
+  } while (0)
+
+/**
+ * @brief Get the length of the hash map. This is the number of entries in the hash map.
+ *
+ * @param ptr Pointer to the hash map.
+ * @return size_t
+ */
+size_t orc_sdk_hmap_len(void *ptr);
+
+void _orc_sdk_hmap_free_impl(void *ptr);
+
+/**
+ * Free the hash map, and set the pointer to NULL.
+ */
+#define orc_sdk_hmap_free(ptr) (_orc_sdk_hmap_free_impl((ptr)), (ptr) = NULL)
+
+void *_orc_sdk_hmap_get_bin_impl(void        *ptr,
+                                 size_t const kvsize,
+                                 void        *keyptr,
+                                 size_t const keysize);
+
+/**
+ * Get the pointer to the entry in the hashmap corresponding to the key. If the key
+ * doesn't exist in the hash map, NULL is returned. A boid ptr is returned, so it needs to
+ * be cast back to the pointer type of the key value pair struct. The key should be passed
+ * in as an lvalue. This is required for the API to be generic and typesafe. This only
+ * works for keys that are binary value types.
+ */
+#define orc_sdk_hmap_get(ptr, key) \
+  _orc_sdk_hmap_get_bin_impl((ptr), sizeof *(ptr), &(key), sizeof key)
+
+/**
+ * Check if the hash map contains the given key.
+ */
+#define orc_sdk_hmap_contains(ptr, key) \
+  (_orc_sdk_hmap_get_bin_impl((ptr), sizeof *(ptr), &(key), sizeof key) != NULL)
+
+bool _orc_sdk_hmap_remove_bin_impl(void        *ptr,
+                                   size_t const kvsize,
+                                   void        *keyptr,
+                                   size_t const keysize);
+
+/**
+ * Remove the entry from the hashmap corresponding to the given key. Returns true if the
+ * key was present and removed, false if the key was not found.
+ */
+#define orc_sdk_hmap_remove(ptr, key) \
+  _orc_sdk_hmap_remove_bin_impl((ptr), sizeof *(ptr), &(key), sizeof key)
+
+/**
+ * @brief Check if the hash map is empty.
+ *
+ * @param ptr Pointer to the hashmap.
+ * @return bool True if the hash map is empty.
+ */
+static inline bool orc_sdk_hmap_is_empty(void *ptr)
+{
+  return orc_sdk_hmap_len(ptr) == 0;
+}
+
+// ========== Hash set - most functionality just reuses hashmaps. ==========
+
+/**
+ * Insert the value into the hash set. Must be a value type.
+ */
+#define orc_sdk_hset_put(ptr, val)                                                     \
+  do {                                                                                 \
+    _orc_sdk_hmap_insert_bin_impl((void **)&(ptr), sizeof *(ptr), &(val), sizeof val); \
+  } while (0)
+
+/**
+ * @brief Get the length of the hash map. This is the number of entries.
+ *
+ * @param ptr
+ * @return size_t
+ */
+static inline size_t orc_sdk_hset_len(void *ptr)
+{
+  return orc_sdk_hmap_len(ptr);
+}
+
+/**
+ * Reserve space for the given number of elements in the hash set.
+ */
+#define orc_sdk_hset_reserve orc_sdk_hmap_reserve
+
+/**
+ * Check if the hash set contains the given value.
+ */
+#define orc_sdk_hset_contains orc_sdk_hmap_contains
+
+/**
+ * Remove the given value from the hash set. If the value is not present in the hash set,
+ * it will be unaffected.
+ */
+#define orc_sdk_hset_remove orc_sdk_hmap_remove
+
+/**
+ * Free hte hash set, and set the pointer to NULL.
+ */
+#define orc_sdk_hset_free orc_sdk_hmap_free
+
+/**
+ * @brief Check if the hash set is empty.
+ *
+ * @param ptr Pointer to the hash set.
+ * @return bool True if the hash set is empty.
+ */
+static inline bool orc_sdk_hset_is_empty(void *ptr)
+{
+  return orc_sdk_hset_len(ptr) == 0;
+}
+
 // ========== String ==========
 
 #define orc_str_free(ptr) orc_sdk_arr_free((ptr))
@@ -642,9 +805,9 @@ OrcSdk_DeckView orc_sdk_comb_get_input(void *comb, size_t const index);
 
 OrcSdk_DeckWriter *orc_sdk_comb_get_output(void *comb, size_t const index);
 
-void orc_sdk_oh_update(OrcHandle *handle);
+// ========== Other helpers ==========
 
-OrcError orc_sdk_oh_ensure_alloc(OrcTypeId const type_id, OrcHandle *handle);
+void orc_sdk_oh_update(OrcHandle *handle);
 
 void orc_sdk_report_message(uint64_t const        ctx,
                             OrcMessageLevel const level,

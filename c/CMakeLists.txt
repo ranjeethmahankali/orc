@@ -1,20 +1,13 @@
 cmake_minimum_required(VERSION 3.15)
 project(orc C)
 
-set(CMAKE_C_STANDARD 99)
+set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
-# Route binaries to build/debug or build/release.
-# Multi-config generators (VS): per-config subdirs under the single build dir.
-# Single-config generators (Ninja): CMAKE_BINARY_DIR is already build/debug or build/release.
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY          ${CMAKE_BINARY_DIR})
-set(CMAKE_LIBRARY_OUTPUT_DIRECTORY          ${CMAKE_BINARY_DIR})
-set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY          ${CMAKE_BINARY_DIR})
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_DEBUG    ${CMAKE_BINARY_DIR}/debug)
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE  ${CMAKE_BINARY_DIR}/release)
-set(CMAKE_LIBRARY_OUTPUT_DIRECTORY_DEBUG    ${CMAKE_BINARY_DIR}/debug)
-set(CMAKE_LIBRARY_OUTPUT_DIRECTORY_RELEASE  ${CMAKE_BINARY_DIR}/release)
-set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY_DEBUG    ${CMAKE_BINARY_DIR}/debug)
-set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY_RELEASE  ${CMAKE_BINARY_DIR}/release)
+# Output binaries directly into CMAKE_BINARY_DIR.
+# Use -B build/debug or -B build/release to control the output location.
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
+set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 
 # Compiler warnings
 if(MSVC)
@@ -52,6 +45,10 @@ target_include_directories(orc_sdk_tests PRIVATE .)
 target_link_libraries(orc_sdk_tests PRIVATE unity)
 if(NOT MSVC)
     target_link_libraries(orc_sdk_tests PRIVATE m)
+endif()
+if(NOT WIN32)
+    target_link_libraries(orc_sdk_tests PRIVATE pthread)
+    target_link_libraries(deck_ops_plugin PRIVATE pthread)
 endif()
 
 # Tests

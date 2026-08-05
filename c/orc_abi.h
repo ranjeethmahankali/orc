@@ -109,7 +109,7 @@ typedef struct OrcHost
 #define ORC_DIM_LENGTH 0u
 #define ORC_DIM_MASS 1u
 #define ORC_DIM_TIME 2u
-#define ORC_DIM_CURRENT 3u
+#define ORC_DIM_ELECTRIC_CURRENT 3u
 #define ORC_DIM_TEMPERATURE 4u
 #define ORC_DIM_SUBSTANCE 5u
 #define ORC_DIM_LUMINOSITY 6u
@@ -151,6 +151,9 @@ typedef OrcError (*OrcDeckFreeFn)(OrcHandle *const handle);
 
 struct OrcHandle
 {
+  // Assigned by the host before lending this handle to any plugin.  Never modified after
+  // assignment, even when the backing data is freed.  Plugins use this as the key into
+  // their internal registry.
   uint64_t        handle;
   void const     *items;
   uint64_t        n_items;

@@ -146,20 +146,6 @@
   Something that allows for multiple named inputs and outputs. When a block has just one output,
   they can be nested as you normally do in LISP.
 
-* TODO Testing and CI
-  :PROPERTIES:
-  :CREATED:  2026-08-03 Mon 17:47
-  :END:
-
-  I am making fast progress, adding lots of code. I have some tests, but I need to test a lot
-  more. All the plugin code should be thoroughly tested. All the new SDK code should be tested. I
-  should look through the ABI carefully, and make sure each feature is tested.
-
-* TODO Implement Container Op Blocks in C
-  :PROPERTIES:
-  :CREATED:  2026-08-03 Mon 18:22
-  :END:
-
 * TODO Improve Function Metadata
   :PROPERTIES:
   :CREATED:  2026-08-02 Sun 19:14
@@ -170,9 +156,31 @@
   wildly variadic and type agnostic. The metatdata should allow the functions to express that
   somehow.
 
-* TODO OrcHandle Lifetimes and Identity
+* TODO Implement Container Op Blocks in C
+  :PROPERTIES:
+  :CREATED:  2026-08-03 Mon 18:22
+  :END:
+
+  To test all the variations of this across plugin boundaries, I might need to add some custom
+  datatypes in a Rust plugin.
+
+* TODO Testing and CI
+  :PROPERTIES:
+  :CREATED:  2026-08-03 Mon 17:47
+  :END:
+
+  I am making fast progress, adding lots of code. I have some tests, but I need to test a lot
+  more. All the plugin code should be thoroughly tested. All the new SDK code should be tested. I
+  should look through the ABI carefully, and make sure each feature is tested.
+
+* DONE tj92sq - OrcHandle Lifetimes and Identity
+  CLOSED: [2026-08-05 Wed 18:12]
   :PROPERTIES:
   :CREATED:  2026-08-04 Tue 09:32
+  :END:
+  :LOGBOOK:
+  - State "DONE"       from "NEXT"       [2026-08-05 Wed 18:12]
+  - State "NEXT"       from "TODO"       [2026-08-04 Tue 10:56]
   :END:
 
   Handles pointing to data from one plugin can be passed in as inputs to any other plugin. This
@@ -198,6 +206,14 @@
 
   Should the host take ownership of the ~handle~ property and assign it, and make sure it is
   globally unique? And the plugins just use the host assigned ~handle~ as a unique identifier?
+
+  <2026-08-05 Wed 17:25> Did the refactor. At least I think I got everything. The LLM generated plan
+  below was 20% useful. Did most of it by hand, because the LLM plan was riddled with bad
+  choices. Now it is time to test the shit out of this new design, guarantee all the invariants, and
+  move on.
+
+  <2026-08-05 Wed 17:46> Will do some reviewing and thinking, but any bugs and issues in the current
+  design will surface once I start testing.
 
 * DONE tj5fbs - Figure out C SDK and write a simple plugin
   CLOSED: [2026-08-04 Tue 10:55]

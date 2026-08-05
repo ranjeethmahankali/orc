@@ -9,8 +9,8 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-
 #include <string.h>
+#include <threads.h>
 
 static void *_default_alloc(uint64_t const size, uint64_t const alignment)
 {
@@ -46,6 +46,58 @@ static OrcHost HOST = {
   .callbacks   = {0}};
 static bool HOST_INIT = false;
 
+// ========== Registry ==========
+
+typedef struct
+{
+  uint64_t key;
+  void    *value;
+} _OrcSdk_RegistryEntry;
+
+static _OrcSdk_RegistryEntry *REGISTRY = NULL;
+static mtx_t                  REGISTRY_LOCK;
+static once_flag              REGISTRY_ONCE = ONCE_FLAG_INIT;
+
+static void _registry_init(void)
+{
+  mtx_init(&REGISTRY_LOCK, mtx_plain);
+}
+
+OrcError _orc_sdk_registry_insert(uint64_t id, void *deck_ptr)
+{
+  if (deck_ptr == NULL) {
+    return ORC_ERROR_NULL_PTR;
+  }
+  mtx_lock(&REGISTRY_LOCK);
+  orc_sdk_hmap_put(REGISTRY, id, deck_ptr);
+  mtx_unlock(&REGISTRY_LOCK);
+  return ORC_ERROR_NONE;
+}
+
+void *_orc_sdk_registry_get(uint64_t id)
+{
+  mtx_lock(&REGISTRY_LOCK);
+  _OrcSdk_RegistryEntry *entry  = (_OrcSdk_RegistryEntry *)orc_sdk_hmap_get(REGISTRY, id);
+  void                  *result = entry ? entry->value : NULL;
+  mtx_unlock(&REGISTRY_LOCK);
+  return result;
+}
+
+OrcError _orc_sdk_registry_remove(uint64_t id)
+{
+  mtx_lock(&REGISTRY_LOCK);
+  bool const removed = orc_sdk_hmap_remove(REGISTRY, id);
+  mtx_unlock(&REGISTRY_LOCK);
+  return removed ? ORC_ERROR_NONE : ORC_ERROR_INVALID_HANDLE;
+}
+
+void _orc_sdk_registry_clear(void)
+{
+  mtx_lock(&REGISTRY_LOCK);
+  orc_sdk_hmap_free(REGISTRY);
+  mtx_unlock(&REGISTRY_LOCK);
+}
+
 void *orc_sdk_alloc(uint64_t const size, uint64_t const alignment)
 {
   return HOST.memory_api.alloc(size, alignment);
@@ -54,15 +106,6 @@ void *orc_sdk_alloc(uint64_t const size, uint64_t const alignment)
 void orc_sdk_free(void *ptr, uint64_t const size, uint64_t const alignment)
 {
   HOST.memory_api.dealloc(ptr, size, alignment);
-}
-
-void orc_sdk_report_message(uint64_t const        ctx,
-                            OrcMessageLevel const level,
-                            char const           *msg)
-{
-  if (HOST.callbacks.report_message != NULL) {
-    HOST.callbacks.report_message(ctx, level, msg);
-  }
 }
 
 void *orc_sdk_realloc(void          *ptr,
@@ -84,6 +127,15 @@ void *orc_sdk_realloc(void          *ptr,
     HOST.memory_api.dealloc(ptr, old_size, alignment);
   }
   return new_ptr;
+}
+
+void orc_sdk_report_message(uint64_t const        ctx,
+                            OrcMessageLevel const level,
+                            char const           *msg)
+{
+  if (HOST.callbacks.report_message != NULL) {
+    HOST.callbacks.report_message(ctx, level, msg);
+  }
 }
 
 void *_orc_sdk_arr_grow(void *ptr, size_t elemsize)
@@ -231,6 +283,371 @@ bool orc_sdk_arr_is_empty(void *ptr)
 {
   _OrcSdk_ArrHeader *h = _orc_sdk_arr_header(ptr);
   return h == NULL || h->count == 0;
+}
+
+// ========== Hashmap ==========
+
+typedef struct
+{
+  size_t bucket;
+  size_t slot;
+  enum
+  {
+    INVALID,
+    EMPTY,
+    OCCUPIED,
+  } type;
+} Slot;
+
+_OrcSdk_HashTableHeader *_orc_sdk_hmap_header(void *ptr)
+{
+  _OrcSdk_HashTableHeader *h = (_OrcSdk_HashTableHeader *)ptr;
+  if (h)
+    return --h;
+  return NULL;
+}
+static Slot _orc_sdk_hmap_find_empty_slot(size_t const              hash,
+                                          _OrcSdk_HashBucket const *buckets,
+                                          size_t const              nb)
+{
+  size_t const ibucket = hash % nb;
+  for (size_t probe = 0; probe < nb; ++probe) {
+    size_t const itry = (ibucket + probe) % nb;
+    for (size_t slot = 0; slot < ORC_SDK_HMAP_BUCKET_SIZE; ++slot) {
+      if (buckets[itry].hash[slot] == 0) {
+        return (Slot) {.bucket = itry, .slot = slot, .type = EMPTY};
+      }
+    }
+  }
+  return (Slot) {.type = INVALID};
+}
+
+static Slot _orc_sdk_hmap_find_writable_slot_bin(size_t const              hash,
+                                                 _OrcSdk_HashBucket const *buckets,
+                                                 size_t const              nb,
+                                                 void                     *keyptr,
+                                                 size_t const              keysize,
+                                                 void                     *ptr,
+                                                 size_t const              kvsize)
+{
+  size_t const ibucket = hash % nb;
+  for (size_t probe = 0; probe < nb; ++probe) {
+    size_t const itry = (ibucket + probe) % nb;
+    for (size_t slot = 0; slot < ORC_SDK_HMAP_BUCKET_SIZE; ++slot) {
+      if (buckets[itry].hash[slot] == 0) {
+        return (Slot) {.bucket = itry, .slot = slot, .type = EMPTY};
+      }
+      else if (buckets[itry].hash[slot] == hash &&
+               0 == memcmp((char *)ptr + kvsize * (size_t)buckets[itry].index[slot],
+                           keyptr,
+                           keysize)) {
+        return (Slot) {.bucket = itry, .slot = slot, .type = OCCUPIED};
+      }
+    }
+  }
+  return (Slot) {.type = INVALID};
+}
+
+static Slot _orc_sdk_hmap_find_readable_slot_bin(size_t const              hash,
+                                                 _OrcSdk_HashBucket *const buckets,
+                                                 size_t const              nb,
+                                                 void                     *keyptr,
+                                                 size_t const              keysize,
+                                                 void                     *pairs,
+                                                 size_t const              kvsize)
+{
+  size_t const ibucket = hash % nb;
+  for (size_t probe = 0; probe < nb; ++probe) {
+    size_t const itry = (ibucket + probe) % nb;
+    for (size_t slot = 0; slot < ORC_SDK_HMAP_BUCKET_SIZE; ++slot) {
+      if (buckets[itry].hash[slot] == 0) {
+        // No need to keep probing if we reach the end of this bucket.
+        return (Slot) {.type = INVALID};
+      }
+      else if (buckets[itry].hash[slot] == hash &&
+               0 == memcmp((char *)pairs + kvsize * (size_t)buckets[itry].index[slot],
+                           keyptr,
+                           keysize)) {
+        return (Slot) {.bucket = itry, .slot = slot, .type = OCCUPIED};
+      }
+    }
+  }
+  return (Slot) {.type = INVALID};
+}
+
+static void _orc_sdk_hmap_redist_buckets(_OrcSdk_HashBucket *src,
+                                         size_t const        nsrc,
+                                         _OrcSdk_HashBucket *dst,
+                                         size_t const        ndst,
+                                         size_t             *slots)
+{
+  memset(dst, 0, ndst * sizeof *dst);
+  if (nsrc == 0)
+    return;
+  _OrcSdk_HashBucket const *src_end = src + nsrc;
+  while (src != src_end) {
+    for (size_t i = 0; i < ORC_SDK_HMAP_BUCKET_SIZE; ++i) {
+      size_t const    hash  = src->hash[i];
+      ptrdiff_t const index = src->index[i];
+      if (hash == 0 || hash == 1)
+        continue;
+      Slot slot = _orc_sdk_hmap_find_empty_slot(hash, dst, ndst);
+      switch (slot.type) {
+      case EMPTY:
+        dst[slot.bucket].hash[slot.slot]  = hash;
+        dst[slot.bucket].index[slot.slot] = index;
+        slots[index] = slot.bucket * ORC_SDK_HMAP_BUCKET_SIZE + slot.slot;
+        break;
+      default:
+        ORC_SDK_REQUIRE_WITH_MSG(false, "Fatal error in hash map. Sorry!");
+      }
+    }
+    ++src;
+  }
+}
+
+void *_orc_sdk_hmap_grow_size(void *ptr, size_t const kvsize, size_t nelems)
+{
+  if (nelems %
+      ORC_SDK_HMAP_BUCKET_SIZE) {  // Make the element count a multiple of bucket size.
+    nelems += ORC_SDK_HMAP_BUCKET_SIZE - (nelems % ORC_SDK_HMAP_BUCKET_SIZE);
+  }
+  size_t const             nbuckets = nelems / ORC_SDK_HMAP_BUCKET_SIZE;
+  _OrcSdk_HashTableHeader *h        = _orc_sdk_hmap_header(ptr);
+  if (h == NULL) {
+    size_t const bufsize = sizeof *h + kvsize * nelems;
+    h                    = orc_sdk_alloc(bufsize, ORC_SDK_MALLOC_DEFAULT_ALIGN);
+    if (h == NULL)
+      return NULL;
+    memset(h, 0, bufsize);
+    h->n_total   = nelems;
+    h->n_removed = 0;
+    h->n_used    = 0;
+    h->kvsize    = kvsize;
+    h->buckets   = NULL;
+    orc_sdk_arr_resize(h->buckets, nbuckets);
+    size_t const INVALID_IDX = SIZE_MAX;
+    orc_sdk_arr_resize(h->slots, nelems);
+    orc_sdk_arr_fill(h->slots, INVALID_IDX);
+    ptr = h + 1;
+  }
+  else if (h->n_total < nelems) {
+    size_t const old_bufsize = sizeof *h + h->kvsize * h->n_total;
+    size_t const new_bufsize = sizeof *h + kvsize * nelems;
+    h = orc_sdk_realloc(h, old_bufsize, new_bufsize, ORC_SDK_MALLOC_DEFAULT_ALIGN);
+    if (h == NULL)
+      return NULL;
+    size_t const oldtotal = h->n_total;
+    ORC_SDK_REQUIRE_WITH_MSG((oldtotal % ORC_SDK_HMAP_BUCKET_SIZE) == 0,
+                             "Hash map is corrupt. Sorry!");
+    orc_sdk_arr_clear(h->temp_buckets);
+    orc_sdk_arr_resize(h->temp_buckets, nbuckets);  // Zeroes out.
+    orc_sdk_arr_resize(h->slots, nelems);
+    size_t const INVALID_IDX = SIZE_MAX;
+    orc_sdk_arr_fill(h->slots, INVALID_IDX);
+    ptr = h + 1;
+    _orc_sdk_hmap_redist_buckets(h->buckets,
+                                 oldtotal / ORC_SDK_HMAP_BUCKET_SIZE,
+                                 h->temp_buckets,
+                                 nbuckets,
+                                 h->slots);
+    h->n_total   = nelems;
+    h->n_removed = 0;  // We don't carry over tombstones during redistribution.
+    {                  // Swap the buckets.
+      _OrcSdk_HashBucket *temp = h->temp_buckets;
+      h->temp_buckets          = h->buckets;
+      h->buckets               = temp;
+    }
+  }
+  return ptr;
+}
+
+// FNV-1a hash for arbitrary data
+static inline size_t fnv_hash_bytes(const void *data, size_t len)
+{
+  if (!data || len == 0)
+    return 0;
+  const size_t         FNV_OFFSET_BASIS = 14695981039346656037ULL;
+  const size_t         FNV_PRIME        = 1099511628211ULL;
+  size_t               hash             = FNV_OFFSET_BASIS;
+  const unsigned char *bytes            = (const unsigned char *)data;
+  for (size_t i = 0; i < len; i++) {
+    hash ^= bytes[i];
+    hash *= FNV_PRIME;
+  }
+  // Avoid sentinel values.
+  if (hash < 2)
+    hash += 2;
+  return hash;
+}
+
+static inline void *_orc_sdk_hmap_grow_if_needed(void *ptr, size_t const kvsize)
+{
+  _OrcSdk_HashTableHeader *h = _orc_sdk_hmap_header(ptr);
+  if (h == NULL) {
+    size_t const newtotal = ORC_SDK_HMAP_BUCKET_SIZE;
+    ptr                   = _orc_sdk_hmap_grow_size(ptr, kvsize, newtotal);
+    h                     = _orc_sdk_hmap_header(ptr);
+  }
+  else if ((h->n_used + h->n_removed) >= (3 * h->n_total / 4)) {
+    size_t newtotal = h->n_total * 2;
+    ptr             = _orc_sdk_hmap_grow_size(ptr, kvsize, newtotal);
+    h               = _orc_sdk_hmap_header(ptr);
+  }
+  ORC_SDK_REQUIRE_WITH_MSG(h->n_total % ORC_SDK_HMAP_BUCKET_SIZE == 0,
+                           "Corrupted hash map. Sorry.");
+  return ptr;
+}
+
+size_t _orc_sdk_hmap_insert_bin_impl(void       **ptr,
+                                     size_t const kvsize,
+                                     void        *keyptr,
+                                     size_t const keysize)
+{
+  *ptr                          = _orc_sdk_hmap_grow_if_needed(*ptr, kvsize);
+  _OrcSdk_HashTableHeader *h    = _orc_sdk_hmap_header(*ptr);
+  size_t const             hash = fnv_hash_bytes(keyptr, keysize);
+  Slot const               slot =
+    _orc_sdk_hmap_find_writable_slot_bin(hash,
+                                         h->buckets,
+                                         h->n_total / ORC_SDK_HMAP_BUCKET_SIZE,
+                                         keyptr,
+                                         keysize,
+                                         *ptr,
+                                         kvsize);
+  switch (slot.type) {
+  case INVALID:  // Should never happen.
+    ORC_SDK_REQUIRE_WITH_MSG(false, "[ERROR] Hash map slots are all full.");
+    return SIZE_MAX;
+  case EMPTY: {
+    size_t const index = h->n_used++;
+    ORC_SDK_REQUIRE_WITH_MSG(h->n_used < h->n_total, "Hashmap is not the correct size");
+    memcpy((char *)(*ptr) + index * kvsize, keyptr, keysize);
+    h->buckets[slot.bucket].hash[slot.slot]  = hash;
+    h->buckets[slot.bucket].index[slot.slot] = (ptrdiff_t)index;
+    h->slots[index] = slot.bucket * ORC_SDK_HMAP_BUCKET_SIZE + slot.slot;
+    return index;
+  }
+  case OCCUPIED:
+    return (size_t)h->buckets[slot.bucket].index[slot.slot];
+  };
+  return SIZE_MAX;  // This should never happen.
+}
+
+size_t orc_sdk_hmap_len(void *ptr)
+{
+  _OrcSdk_HashTableHeader *h = _orc_sdk_hmap_header(ptr);
+  if (h)
+    return h->n_used;
+  return 0;
+}
+
+void _orc_sdk_hmap_free_impl(void *ptr)
+{
+  _OrcSdk_HashTableHeader *h = _orc_sdk_hmap_header(ptr);
+  if (h) {
+    orc_sdk_arr_free(h->buckets);
+    orc_sdk_arr_free(h->temp_buckets);
+    orc_sdk_arr_free(h->slots);
+    orc_sdk_free(h, sizeof *h + h->kvsize * h->n_total, ORC_SDK_MALLOC_DEFAULT_ALIGN);
+  }
+}
+
+void *_orc_sdk_hmap_get_bin_impl(void        *ptr,
+                                 size_t const kvsize,
+                                 void        *keyptr,
+                                 size_t const keysize)
+{
+  _OrcSdk_HashTableHeader *h = _orc_sdk_hmap_header(ptr);
+  if (h) {
+    size_t const hash = fnv_hash_bytes(keyptr, keysize);
+    Slot const   slot =
+      _orc_sdk_hmap_find_readable_slot_bin(hash,
+                                           h->buckets,
+                                           h->n_total / ORC_SDK_HMAP_BUCKET_SIZE,
+                                           keyptr,
+                                           keysize,
+                                           ptr,
+                                           kvsize);
+    switch (slot.type) {
+    case EMPTY:  // Should never happen.
+      ORC_SDK_REQUIRE_WITH_MSG(false, "[ERROR] Hash map slots are all full.");
+      return NULL;
+    case INVALID:
+      return NULL;
+    case OCCUPIED:
+      return (char *)ptr + kvsize * (size_t)h->buckets[slot.bucket].index[slot.slot];
+    };
+  }
+  return NULL;
+}
+
+static void _orc_sdk_hmap_compact(void *ptr)
+{
+  _OrcSdk_HashTableHeader *h        = _orc_sdk_hmap_header(ptr);
+  size_t const             nbuckets = (h->n_total / ORC_SDK_HMAP_BUCKET_SIZE);
+  orc_sdk_arr_clear(h->temp_buckets);
+  orc_sdk_arr_resize(h->temp_buckets, nbuckets);
+  orc_sdk_arr_resize(h->slots, h->n_total);
+  size_t const INVALID_IDX = SIZE_MAX;
+  orc_sdk_arr_fill(h->slots, INVALID_IDX);
+  _orc_sdk_hmap_redist_buckets(h->buckets, nbuckets, h->temp_buckets, nbuckets, h->slots);
+  h->n_removed = 0;
+  {  // Swap the buckets.
+    _OrcSdk_HashBucket *temp = h->temp_buckets;
+    h->temp_buckets          = h->buckets;
+    h->buckets               = temp;
+  }
+}
+
+bool _orc_sdk_hmap_remove_bin_impl(void        *ptr,
+                                   size_t const kvsize,
+                                   void        *keyptr,
+                                   size_t const keysize)
+{
+  _OrcSdk_HashTableHeader *h = _orc_sdk_hmap_header(ptr);
+  if (h) {
+    size_t const hash = fnv_hash_bytes(keyptr, keysize);
+    Slot const   slot =
+      _orc_sdk_hmap_find_readable_slot_bin(hash,
+                                           h->buckets,
+                                           h->n_total / ORC_SDK_HMAP_BUCKET_SIZE,
+                                           keyptr,
+                                           keysize,
+                                           ptr,
+                                           kvsize);
+    switch (slot.type) {
+    case EMPTY:  // Should never happen.
+      ORC_SDK_REQUIRE_WITH_MSG(false, "[ERROR] Hash map slots are all full.");
+    case INVALID:  // Doesn't contain the key. Do nothing.
+      break;
+    case OCCUPIED: {
+      _OrcSdk_HashBucket *bucket = h->buckets + slot.bucket;
+      bucket->hash[slot.slot]    = 1;
+      size_t const index         = (size_t)bucket->index[slot.slot];
+      bucket->index[slot.slot]   = -1;
+      ORC_SDK_REQUIRE_WITH_MSG(
+        slot.bucket * ORC_SDK_HMAP_BUCKET_SIZE + slot.slot == h->slots[index],
+        "The mapping between items and slots should be consistent.");
+      size_t const last = h->n_used - 1;
+      if (index != last) {
+        memcpy((char *)ptr + index * kvsize, (char *)ptr + last * kvsize, kvsize);
+        size_t const s = h->slots[last];
+        h->buckets[s / ORC_SDK_HMAP_BUCKET_SIZE].index[s % ORC_SDK_HMAP_BUCKET_SIZE] =
+          (ptrdiff_t)index;
+        h->slots[index] = s;
+      }
+      h->slots[last] = SIZE_MAX;
+      --h->n_used;
+      ++h->n_removed;
+      if (h->n_removed > h->n_total / 4) {
+        _orc_sdk_hmap_compact(ptr);
+      }
+      return true;
+    }
+    };
+  }
+  return false;
 }
 
 // ========== String ==========
@@ -1253,6 +1670,7 @@ void orc_sdk_init(OrcHost const *host, OrcSdkTypeCallbacksGetterFn type_fn)
     HOST_INIT = true;
   }
   PLUGIN_TYPE_FN = type_fn;
+  call_once(&REGISTRY_ONCE, _registry_init);
 }
 
 bool _is_type_info_valid(OrcSdkTypeInfo const *info)
@@ -1260,14 +1678,26 @@ bool _is_type_info_valid(OrcSdkTypeInfo const *info)
   return info->copy_fn != NULL && info->item_size != 0;
 }
 
+static void reset_handle(OrcHandle *const handle)
+{
+  handle->items         = 0;
+  handle->n_items       = 0;
+  handle->item_size     = 0;
+  handle->marks         = 0;
+  handle->stride_offset = 0;
+  handle->n_marks       = 0;
+  handle->strides       = 0;
+  handle->type_id       = 0;
+  memset(handle->dims, 0, sizeof(OrcDims));
+  handle->free_fn = 0;
+}
+
 OrcError _oh_free_fn(OrcHandle *const handle)
 {
   if (handle == NULL) {
     return ORC_ERROR_NONE;
   }
-  ORC_SDK_REQUIRE_WITH_MSG(handle->handle == (uint64_t)handle->items,
-                           "In this implementation the handle is just the pointer.");
-  ItemFreeFn free_fn = NULL;
+  ItemFreeFn item_free_fn = NULL;
   switch (handle->type_id) {
   case ORC_TYPE_U8:
   case ORC_TYPE_U16:
@@ -1290,23 +1720,29 @@ OrcError _oh_free_fn(OrcHandle *const handle)
       if (!_is_type_info_valid(&info)) {
         return ORC_ERROR_TYPE_MISMATCH;
       }
-      free_fn = info.free_fn;
+      item_free_fn = info.free_fn;
     }
     else {
       return ORC_ERROR_TYPE_MISMATCH;
     }
     break;
   }
-  if (free_fn) {
+  // Check registry ownership before touching anything.
+  // If this handle ID is not in our registry, this plugin doesn't own it — don't free.
+  OrcError const err = _orc_sdk_registry_remove(handle->handle);
+  if (err != ORC_ERROR_NONE) {
+    return err;
+  }
+  if (item_free_fn) {
     // Free the individual items from the deck before freeing the Deck container itself.
     size_t const count = orc_sdk_deck_len(handle->items);
     char        *data  = (char *)handle->items;
     for (size_t i = 0; i < count; ++i, data += handle->item_size) {
-      free_fn(data);
+      item_free_fn(data);
     }
   }
   _orc_sdk_deck_free_impl((void *)handle->items);  // Now we can free the deck container.
-  memset(handle, 0, sizeof(OrcHandle));
+  reset_handle(handle);
   return ORC_ERROR_NONE;
 }
 
@@ -1314,8 +1750,9 @@ void orc_sdk_oh_update(OrcHandle *handle)
 {
   ORC_SDK_REQUIRE_WITH_MSG(handle != NULL, "Invalid handle");
   ORC_SDK_REQUIRE_WITH_MSG(handle->type_id != 0, "Invalid type id");
+  ORC_SDK_REQUIRE_WITH_MSG(handle->items != NULL,
+                           "Cannot update a handle with no backing data");
   _OrcSdk_DeckHeader *h = _orc_sdk_deck_header(handle->items);
-  handle->handle        = (uint64_t)handle->items;
   handle->n_items       = h->count;
   handle->item_size     = h->item_size;
   handle->marks         = h->marks;
@@ -1323,26 +1760,6 @@ void orc_sdk_oh_update(OrcHandle *handle)
   handle->n_marks       = orc_sdk_arr_len(h->marks);
   handle->strides       = h->strides;
   handle->free_fn       = _oh_free_fn;
-}
-
-OrcError orc_sdk_oh_ensure_alloc(OrcTypeId const type_id, OrcHandle *handle)
-{
-  if ((handle->handle == 0) != (handle->items == NULL)) {
-    return ORC_ERROR_INVALID_HANDLE;
-  }
-  if (handle->items == NULL) {
-    return orc_sdk_handle_alloc(type_id, handle);
-  }
-  // The deck is already allocated. If the type doesn't match, we free it and reallocate.
-  if (handle->type_id != type_id) {
-    OrcError const err = orc_sdk_handle_free(handle);
-    if (err) {
-      return err;
-    }
-    return orc_sdk_handle_alloc(type_id, handle);
-  }
-  // No need to allocate. Handle already points to an allocated deck, of the correct type.
-  return ORC_ERROR_NONE;
 }
 
 void *orc_sdk_comb_init(OrcHandle const **inputs,
@@ -1534,12 +1951,34 @@ OrcSdk_DeckWriter *orc_sdk_comb_get_output(void *ptr, size_t const index)
   return comb->writer_matrix + (index + 1) * comb->stack_depth - 1;
 }
 
-// ========== FFI helper functions ==========
-
 OrcError orc_sdk_handle_alloc(OrcTypeId const id, OrcHandle *const out)
 {
   if (out == NULL) {
     return ORC_ERROR_INVALID_HANDLE;
+  }
+  {
+    void *found = _orc_sdk_registry_get(out->handle);
+    if (found != NULL) {
+      // This plugin owns this slot.
+      ORC_SDK_REQUIRE_WITH_MSG(
+        found == out->items,
+        "The owned deck pointer doesn't match the one store in the handle.");
+      if (out->type_id == id) {
+        return ORC_ERROR_NONE;  // Correct type — reuse as-is.
+      }
+      // Wrong type — free existing data and fall through to reallocate.
+      OrcError const err = orc_sdk_handle_free(out);
+      if (err != ORC_ERROR_NONE) {
+        return err;
+      }
+    }
+    else if (out->free_fn != NULL) {
+      // A different plugin owns this slot — evict it.
+      OrcError const err = out->free_fn(out);
+      if (err != ORC_ERROR_NONE) {
+        return err;
+      }
+    }
   }
   out->item_size = 0;
   switch (id) {
@@ -1594,9 +2033,17 @@ OrcError orc_sdk_handle_alloc(OrcTypeId const id, OrcHandle *const out)
   out->type_id           = id;
   size_t const INIT_SIZE = 1;
   void        *deck_ptr  = _orc_sdk_deck_grow_capacity(NULL, out->item_size, INIT_SIZE);
-  _OrcSdk_DeckHeader *h  = _orc_sdk_deck_header(deck_ptr);
-  // Assign to the output deck.
-  out->handle  = (uint64_t)deck_ptr;
+  if (deck_ptr == NULL) {
+    return ORC_ERROR_ALLOC_FAILED;
+  }
+  OrcError const reg_err = _orc_sdk_registry_insert(out->handle, deck_ptr);
+  if (reg_err != ORC_ERROR_NONE) {
+    _orc_sdk_deck_free_impl(deck_ptr);
+    return reg_err;
+  }
+  _OrcSdk_DeckHeader *h = _orc_sdk_deck_header(deck_ptr);
+  // Assign to the output deck. out->handle is the host-assigned ID — do not touch it.
+  memset(out->dims, 0, sizeof(OrcDims));
   out->items   = deck_ptr;
   out->free_fn = _oh_free_fn;
   ORC_SDK_REQUIRE_WITH_MSG(h->count == 0, "New deck must be empty");
@@ -1724,8 +2171,6 @@ OrcError orc_sdk_deck_from_proxy(OrcHandle const   *inputs,
   if (err != ORC_ERROR_NONE) {
     return err;
   }
-  ORC_SDK_REQUIRE_WITH_MSG(out->handle == (uint64_t)out->items,
-                           "In this implementation the handle is just the pointer.");
   switch (proxy_type) {
   case ORC_DECK_PROXY_COPY_ALL: {
     if (n_inputs != 1) {
@@ -1735,6 +2180,10 @@ OrcError orc_sdk_deck_from_proxy(OrcHandle const   *inputs,
     }
     size_t const n_items = inputs[0].n_items;
     void *deck = _orc_sdk_deck_grow_capacity((void *)out->items, item_size, n_items);
+    if (deck == NULL) {
+      orc_sdk_handle_free(out);
+      return ORC_ERROR_ALLOC_FAILED;
+    }
     _OrcSdk_DeckHeader *h = _orc_sdk_deck_header(deck);
     h->item_size          = item_size;
     memcpy(out->dims, inputs[0].dims, sizeof(OrcDims));
@@ -1743,6 +2192,7 @@ OrcError orc_sdk_deck_from_proxy(OrcHandle const   *inputs,
       memset(deck, 0, item_size * n_items);
       OrcError const e = _copy_items(id, inputs[0].items, deck, n_items);
       if (e) {
+        orc_sdk_handle_free(out);
         return e;
       }
     }
@@ -1764,6 +2214,10 @@ OrcError orc_sdk_deck_from_proxy(OrcHandle const   *inputs,
     }
     size_t const n_items = inputs[0].n_items;
     void *deck = _orc_sdk_deck_grow_capacity((void *)out->items, item_size, n_items);
+    if (deck == NULL) {
+      orc_sdk_handle_free(out);
+      return ORC_ERROR_ALLOC_FAILED;
+    }
     _OrcSdk_DeckHeader *h = _orc_sdk_deck_header(deck);
     h->item_size          = item_size;
     memcpy(out->dims, inputs[0].dims, sizeof(OrcDims));
@@ -1772,6 +2226,7 @@ OrcError orc_sdk_deck_from_proxy(OrcHandle const   *inputs,
       memset(deck, 0, item_size * n_items);
       OrcError const e = _copy_items(id, inputs[0].items, deck, n_items);
       if (e) {
+        orc_sdk_handle_free(out);
         return e;
       }
     }
@@ -1788,6 +2243,10 @@ OrcError orc_sdk_deck_from_proxy(OrcHandle const   *inputs,
   case ORC_DECK_PROXY_SHUFFLE: {
     size_t const n_items = proxy->n_items;
     void *deck = _orc_sdk_deck_grow_capacity((void *)out->items, item_size, n_items);
+    if (deck == NULL) {
+      orc_sdk_handle_free(out);
+      return ORC_ERROR_ALLOC_FAILED;
+    }
     _OrcSdk_DeckHeader *h = _orc_sdk_deck_header(deck);
     h->item_size          = item_size;
     memcpy(out->dims, proxy->dims, sizeof(OrcDims));
@@ -1803,6 +2262,7 @@ OrcError orc_sdk_deck_from_proxy(OrcHandle const   *inputs,
       void          *dst = (char *)deck + item_size * h->count;
       OrcError const e   = _copy_items(id, src, dst, 1);
       if (e) {
+        orc_sdk_handle_free(out);
         return e;
       }
       ++h->count;

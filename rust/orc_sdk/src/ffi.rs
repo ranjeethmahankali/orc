@@ -22,17 +22,17 @@ macro_rules! orc_plugin {
 
         #[unsafe(no_mangle)]
         pub unsafe extern "C" fn orc_deck_alloc(
-            id: orc_sdk::OrcTypeId,
+            type_id: orc_sdk::OrcTypeId,
             out: *mut orc_sdk::OrcHandle,
         ) -> orc_sdk::OrcError {
             if out.is_null() {
                 return orc_sdk::ORC_ERROR_INVALID_HANDLE;
             }
-            match <$plugin as orc_sdk::TOrcPluginAdaptor>::deck_alloc(id) {
-                Ok(mut handle) => {
+            let out = unsafe { &mut *out };
+            match <$plugin as orc_sdk::TOrcPluginAdaptor>::deck_alloc(type_id, out) {
+                Ok(()) => {
                     unsafe {
-                        handle.free_fn = Some(orc_deck_free);
-                        *out = handle;
+                        out.free_fn = Some(orc_deck_free);
                     }
                     orc_sdk::ORC_ERROR_NONE
                 }
@@ -91,8 +91,8 @@ macro_rules! orc_plugin {
     };
 }
 
-impl Drop for OrcHandle {
-    fn drop(&mut self) {
+impl OrcHandle {
+    pub fn free(&mut self) {
         if let Some(free_fn) = self.free_fn {
             let err = unsafe { free_fn(self as *mut OrcHandle) };
             if err != ORC_ERROR_NONE {
@@ -100,6 +100,12 @@ impl Drop for OrcHandle {
                 std::process::abort();
             }
         }
+    }
+}
+
+impl Drop for OrcHandle {
+    fn drop(&mut self) {
+        self.free();
     }
 }
 
@@ -127,7 +133,7 @@ pub enum ProxyType {
 
 pub trait TOrcPluginAdaptor {
     fn plugin_init(host: &OrcHost, out: &mut OrcPlugin) -> Result<(), Error>;
-    fn deck_alloc(id: OrcTypeId) -> Result<OrcHandle, Error>;
+    fn deck_alloc(id: OrcTypeId, handle: &mut OrcHandle) -> Result<(), Error>;
     fn deck_free(handle: &mut OrcHandle) -> Result<(), Error>;
     fn deck_from_proxy(
         inputs: &[OrcHandle],
