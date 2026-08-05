@@ -55,11 +55,14 @@ typedef struct
   void    *value;
 } _OrcSdk_RegistryEntry;
 
-static _OrcSdk_RegistryEntry *REGISTRY       = NULL;
+static _OrcSdk_RegistryEntry *REGISTRY = NULL;
 static mtx_t                  REGISTRY_LOCK;
-static once_flag              REGISTRY_ONCE  = ONCE_FLAG_INIT;
+static once_flag              REGISTRY_ONCE = ONCE_FLAG_INIT;
 
-static void _registry_init(void) { mtx_init(&REGISTRY_LOCK, mtx_plain); }
+static void _registry_init(void)
+{
+  mtx_init(&REGISTRY_LOCK, mtx_plain);
+}
 
 void orc_sdk_registry_insert(uint64_t id, void *deck_ptr)
 {
@@ -300,6 +303,13 @@ typedef struct
   } type;
 } Slot;
 
+_OrcSdk_HashTableHeader *_orc_sdk_hmap_header(void *ptr)
+{
+  _OrcSdk_HashTableHeader *h = (_OrcSdk_HashTableHeader *)ptr;
+  if (h)
+    return --h;
+  return NULL;
+}
 static Slot _orc_sdk_hmap_find_empty_slot(size_t const              hash,
                                           _OrcSdk_HashBucket const *buckets,
                                           size_t const              nb)

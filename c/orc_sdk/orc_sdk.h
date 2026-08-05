@@ -222,15 +222,10 @@ typedef struct
   _OrcSdk_HashBucket *buckets;
   _OrcSdk_HashBucket *temp_buckets;
   size_t             *slots;
+  size_t              _padding;  // For aligning the struct to 16 bytes.
 } _OrcSdk_HashTableHeader;
 
-static inline _OrcSdk_HashTableHeader *_orc_sdk_hmap_header(void *ptr)
-{
-  _OrcSdk_HashTableHeader *h = (_OrcSdk_HashTableHeader *)ptr;
-  if (h)
-    return --h;
-  return NULL;
-}
+_OrcSdk_HashTableHeader *_orc_sdk_hmap_header(void *ptr);
 
 void *_orc_sdk_hmap_grow_size(void *ptr, size_t const kvsize, size_t nelems);
 
