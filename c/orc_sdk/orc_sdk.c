@@ -63,11 +63,15 @@ static void _registry_init(void)
   mtx_init(&REGISTRY_LOCK, mtx_plain);
 }
 
-void orc_sdk_registry_insert(uint64_t id, void *deck_ptr)
+OrcError orc_sdk_registry_insert(uint64_t id, void *deck_ptr)
 {
+  if (deck_ptr == NULL) {
+    return ORC_ERROR_NULL_PTR;
+  }
   mtx_lock(&REGISTRY_LOCK);
   orc_sdk_hmap_put(REGISTRY, id, deck_ptr);
   mtx_unlock(&REGISTRY_LOCK);
+  return ORC_ERROR_NONE;
 }
 
 void *orc_sdk_registry_get(uint64_t id)
@@ -87,11 +91,12 @@ bool orc_sdk_registry_contains(uint64_t id)
   return result;
 }
 
-void orc_sdk_registry_remove(uint64_t id)
+OrcError orc_sdk_registry_remove(uint64_t id)
 {
   mtx_lock(&REGISTRY_LOCK);
-  orc_sdk_hmap_remove(REGISTRY, id);
+  bool const removed = orc_sdk_hmap_remove(REGISTRY, id);
   mtx_unlock(&REGISTRY_LOCK);
+  return removed ? ORC_ERROR_NONE : ORC_ERROR_INVALID_HANDLE;
 }
 
 void orc_sdk_registry_clear(void)
@@ -603,7 +608,7 @@ static void _orc_sdk_hmap_compact(void *ptr)
   }
 }
 
-void _orc_sdk_hmap_remove_bin_impl(void        *ptr,
+bool _orc_sdk_hmap_remove_bin_impl(void        *ptr,
                                    size_t const kvsize,
                                    void        *keyptr,
                                    size_t const keysize)
@@ -646,9 +651,11 @@ void _orc_sdk_hmap_remove_bin_impl(void        *ptr,
       if (h->n_removed > h->n_total / 4) {
         _orc_sdk_hmap_compact(ptr);
       }
+      return true;
     }
     };
   }
+  return false;
 }
 
 // ========== String ==========
@@ -1679,14 +1686,26 @@ bool _is_type_info_valid(OrcSdkTypeInfo const *info)
   return info->copy_fn != NULL && info->item_size != 0;
 }
 
+static void reset_handle(OrcHandle *const handle)
+{
+  handle->items         = 0;
+  handle->n_items       = 0;
+  handle->item_size     = 0;
+  handle->marks         = 0;
+  handle->stride_offset = 0;
+  handle->n_marks       = 0;
+  handle->strides       = 0;
+  handle->type_id       = 0;
+  memset(handle->dims, 0, sizeof(OrcDims));
+  handle->free_fn = 0;
+}
+
 OrcError _oh_free_fn(OrcHandle *const handle)
 {
   if (handle == NULL) {
     return ORC_ERROR_NONE;
   }
-  ORC_SDK_REQUIRE_WITH_MSG(handle->handle == (uint64_t)handle->items,
-                           "In this implementation the handle is just the pointer.");
-  ItemFreeFn free_fn = NULL;
+  ItemFreeFn item_free_fn = NULL;
   switch (handle->type_id) {
   case ORC_TYPE_U8:
   case ORC_TYPE_U16:
@@ -1709,24 +1728,27 @@ OrcError _oh_free_fn(OrcHandle *const handle)
       if (!_is_type_info_valid(&info)) {
         return ORC_ERROR_TYPE_MISMATCH;
       }
-      free_fn = info.free_fn;
+      item_free_fn = info.free_fn;
     }
     else {
       return ORC_ERROR_TYPE_MISMATCH;
     }
     break;
   }
-  if (free_fn) {
+  if (item_free_fn) {
     // Free the individual items from the deck before freeing the Deck container itself.
     size_t const count = orc_sdk_deck_len(handle->items);
     char        *data  = (char *)handle->items;
     for (size_t i = 0; i < count; ++i, data += handle->item_size) {
-      free_fn(data);
+      item_free_fn(data);
     }
   }
   _orc_sdk_deck_free_impl((void *)handle->items);  // Now we can free the deck container.
-  memset(handle, 0, sizeof(OrcHandle));
-  return ORC_ERROR_NONE;
+  OrcError const err = orc_sdk_registry_remove(handle->handle);
+  if (ORC_ERROR_NONE == err) {
+    reset_handle(handle);
+  }
+  return err;
 }
 
 void orc_sdk_oh_update(OrcHandle *handle)
@@ -2014,10 +2036,10 @@ OrcError orc_sdk_handle_alloc(OrcTypeId const id, OrcHandle *const out)
   size_t const INIT_SIZE = 1;
   void        *deck_ptr  = _orc_sdk_deck_grow_capacity(NULL, out->item_size, INIT_SIZE);
   _OrcSdk_DeckHeader *h  = _orc_sdk_deck_header(deck_ptr);
-  // Assign to the output deck.
-  out->handle  = (uint64_t)deck_ptr;
+  // Assign to the output deck. out->handle is the host-assigned ID — do not touch it.
   out->items   = deck_ptr;
   out->free_fn = _oh_free_fn;
+  orc_sdk_registry_insert(out->handle, deck_ptr);
   ORC_SDK_REQUIRE_WITH_MSG(h->count == 0, "New deck must be empty");
   out->n_items         = h->count;
   out->marks           = h->marks;
@@ -2143,8 +2165,6 @@ OrcError orc_sdk_deck_from_proxy(OrcHandle const   *inputs,
   if (err != ORC_ERROR_NONE) {
     return err;
   }
-  ORC_SDK_REQUIRE_WITH_MSG(out->handle == (uint64_t)out->items,
-                           "In this implementation the handle is just the pointer.");
   switch (proxy_type) {
   case ORC_DECK_PROXY_COPY_ALL: {
     if (n_inputs != 1) {

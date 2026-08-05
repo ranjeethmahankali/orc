@@ -3,7 +3,7 @@ use orc_sdk::{
     ORC_TYPE_I16, ORC_TYPE_I32, ORC_TYPE_I64, ORC_TYPE_U8, ORC_TYPE_U16, ORC_TYPE_U32,
     ORC_TYPE_U64, ObjectRegistry, OrcFuncInfo, OrcHandle, OrcHost, OrcHostCallbackAPI,
     OrcItemProxy, OrcPlugin, OrcTypeId, ProxyType, TOrcData, TOrcPluginAdaptor, handle_from_deck,
-    orc_fn_info, orc_plugin,
+    orc_fn_info, orc_plugin, reset_handle,
 };
 use std::sync::{LazyLock, OnceLock};
 
@@ -70,9 +70,13 @@ impl TOrcPluginAdaptor for Adaptor {
     }
 
     fn deck_free(handle: &mut OrcHandle) -> Result<(), Error> {
-        let id = handle.handle;
-        unsafe { std::ptr::write(handle, OrcHandle::default()) }
-        REGISTRY.free(id)
+        match REGISTRY.free(handle.handle) {
+            Ok(()) => {
+                reset_handle(handle);
+                Ok(())
+            }
+            Err(e) => Err(e),
+        }
     }
 
     fn deck_from_proxy(

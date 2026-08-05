@@ -290,14 +290,14 @@ void *_orc_sdk_hmap_get_bin_impl(void        *ptr,
 #define orc_sdk_hmap_contains(ptr, key) \
   (_orc_sdk_hmap_get_bin_impl((ptr), sizeof *(ptr), &(key), sizeof key) != NULL)
 
-void _orc_sdk_hmap_remove_bin_impl(void        *ptr,
+bool _orc_sdk_hmap_remove_bin_impl(void        *ptr,
                                    size_t const kvsize,
                                    void        *keyptr,
                                    size_t const keysize);
 
 /**
- * Remove the entry from the hashmap corresponding to the given key. If th ekey is not
- * present, the hash map is unaffected.
+ * Remove the entry from the hashmap corresponding to the given key. Returns true if the
+ * key was present and removed, false if the key was not found.
  */
 #define orc_sdk_hmap_remove(ptr, key) \
   _orc_sdk_hmap_remove_bin_impl((ptr), sizeof *(ptr), &(key), sizeof key)
@@ -815,11 +815,11 @@ void orc_sdk_report_message(uint64_t const        ctx,
 
 // ========== Registry ==========
 
-void  orc_sdk_registry_insert(uint64_t id, void *deck_ptr);
-void *orc_sdk_registry_get(uint64_t id);
-bool  orc_sdk_registry_contains(uint64_t id);
-void  orc_sdk_registry_remove(uint64_t id);
-void  orc_sdk_registry_clear(void);
+OrcError  orc_sdk_registry_insert(uint64_t id, void *deck_ptr);
+void     *orc_sdk_registry_get(uint64_t id);
+bool      orc_sdk_registry_contains(uint64_t id);
+OrcError  orc_sdk_registry_remove(uint64_t id);
+void      orc_sdk_registry_clear(void);
 
 // ========== ABI helpers ==========
 

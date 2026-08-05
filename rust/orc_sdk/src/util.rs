@@ -82,6 +82,19 @@ pub fn handle_from_deck<T: TOrcData>(deck: &Deck<T>, id: u64, free_fn: OrcDeckFr
     }
 }
 
+pub fn reset_handle(handle: &mut OrcHandle) {
+    handle.items = std::ptr::null();
+    handle.n_items = 0;
+    handle.item_size = 0;
+    handle.marks = std::ptr::null();
+    handle.stride_offset = std::ptr::null();
+    handle.n_marks = 0;
+    handle.strides = std::ptr::null();
+    handle.type_id = 0;
+    handle.dims = [0; ORC_NUM_DIMS as usize];
+    handle.free_fn = None;
+}
+
 type ObjEntry = Arc<RwLock<Box<dyn Any + Send + Sync>>>;
 
 pub struct ObjectRegistry {
@@ -121,8 +134,7 @@ impl ObjectRegistry {
             .handles
             .write()
             .map_err(|_e| Error::ConcurrencyProblem)?;
-        handles.remove(&id);
-        Ok(())
+        handles.remove(&id).ok_or(Error::InvalidHandle).map(|_| ())
     }
 
     pub fn with_mut<TResult, F>(&self, ids: &[u64], callback: F) -> Result<TResult, Error>

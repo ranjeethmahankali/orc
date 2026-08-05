@@ -797,6 +797,27 @@ void test_registry_multithreaded(void)
     "Registry should be empty after all threads remove their entries");
 }
 
+void test_handle_alloc_uses_host_id(void)
+{
+  orc_sdk_init(NULL, NULL);
+  orc_sdk_registry_clear();
+
+  OrcHandle out = {0};
+  out.handle    = 42;
+
+  OrcError err = orc_sdk_handle_alloc(ORC_TYPE_F64, &out);
+  TEST_ASSERT_TRUE_MESSAGE(err == ORC_ERROR_NONE, "Alloc should succeed");
+  TEST_ASSERT_TRUE_MESSAGE(out.handle == 42, "handle field must remain 42");
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_registry_contains(42), "Registry must contain ID 42");
+  TEST_ASSERT_TRUE_MESSAGE(out.items != NULL, "items pointer must be set");
+
+  orc_sdk_handle_free(&out);
+  TEST_ASSERT_TRUE_MESSAGE(out.handle == 42,
+                           "Even after freeing, the handle should be the same.");
+  TEST_ASSERT_TRUE_MESSAGE(!orc_sdk_registry_contains(42),
+                           "Registry must not contain ID 42 after free");
+}
+
 // Hashmap tests
 
 typedef struct
@@ -1662,6 +1683,28 @@ void test_hmap_remove_nonexistent(void)
                            "Key1 should still not be present");
   TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_contains(map, key2),
                            "Key2 should still be present");
+  orc_sdk_hmap_free(map);
+}
+
+void test_hmap_remove_returns_bool(void)
+{
+  typedef struct
+  {
+    int key;
+    int value;
+  } Entry;
+  Entry *map = NULL;
+  int    key = 42, val = 1;
+  // Remove from empty map — must return false.
+  TEST_ASSERT_TRUE_MESSAGE(!orc_sdk_hmap_remove(map, key),
+                           "Remove from empty map should return false");
+  orc_sdk_hmap_put(map, key, val);
+  // Remove existing key — must return true.
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_hmap_remove(map, key),
+                           "Remove of present key should return true");
+  // Remove same key again — must return false.
+  TEST_ASSERT_TRUE_MESSAGE(!orc_sdk_hmap_remove(map, key),
+                           "Remove of already-removed key should return false");
   orc_sdk_hmap_free(map);
 }
 
@@ -6126,6 +6169,7 @@ int main(void)
   RUN_TEST(test_deck_from_proxy_shuffle);
   RUN_TEST(test_deck_from_proxy_type_agnostic);
   RUN_TEST(test_registry_multithreaded);
+  RUN_TEST(test_handle_alloc_uses_host_id);
   RUN_TEST(test_hmap_basic);
   RUN_TEST(test_hmap_growth);
   RUN_TEST(test_hmap_edge_cases);
@@ -6144,6 +6188,7 @@ int main(void)
   RUN_TEST(test_hmap_fibo_indices);
   RUN_TEST(test_hmap_remove_basic);
   RUN_TEST(test_hmap_remove_nonexistent);
+  RUN_TEST(test_hmap_remove_returns_bool);
   RUN_TEST(test_hmap_remove_with_collisions);
   RUN_TEST(test_hmap_remove_after_growth);
   RUN_TEST(test_hmap_remove_and_reinsert);
