@@ -321,7 +321,6 @@
    - Remove ~counter: AtomicU64~ and the ~alloc~ method that auto-generates IDs.
    - Add ~insert(id, obj)~: inserts with a host-provided ID.
    - Add ~owns<T>(id)~: returns true if the registry contains ~id~ with type ~T~.
-   - Add ~with_ref<T, R, F>(id, f)~: read-only access to an entry.
    - Change ~ensure_alloc_default~ signature to accept ~handle: &mut OrcHandle~ and
      ~my_free_fn: OrcDeckFreeFn~ instead of ~id: &mut u64~. Remove the ~*id == 0~ sentinel.
      New logic mirrors Phase 6: registry lookup → reuse, replace, evict+alloc, or plain alloc.
@@ -336,8 +335,10 @@
 ** TODO Phase 9: Rust math_plugin — Update ABI functions (~rust/math_plugin/src/lib.rs~)
 
    - Rewrite ~alloc_deck<T>~ to accept ~out: &mut OrcHandle~, read ~out.handle~ as the key, check
-     ~REGISTRY.owns::<Deck<T>>(id)~, evict via ~free_fn~ if needed, insert into registry, then
-     populate handle fields via ~REGISTRY.with_ref~.
+     ~REGISTRY.owns::<Deck<T>>(id)~, evict via ~free_fn~ if needed, then: create a fresh
+     ~Deck::<T>::default()~, call ~handle_from_deck(&deck, id, Some(orc_deck_free))~ before moving
+     it, then ~REGISTRY.insert(id, deck)~. The Vec heap pointers in the handle remain valid after
+     the move. No ~with_ref~ needed.
    - Update ~Adaptor::deck_alloc~ signature to match Phase 8.
    - Update ~Adaptor::deck_from_proxy~ and ~deck_from_proxy_impl~ to pass the full ~OrcHandle~ to
      the new ~ensure_alloc_default~.
