@@ -253,6 +253,7 @@ mod tests {
         let inputs1 = [view(&lhs1), view(&rhs1)];
         unsafe { add(0, inputs1.as_ptr(), 2, &mut out, 1) };
         assert_eq!(DeckView::<f64>::from_handle(&out).unwrap().items(), &[3.0]);
+        let ptr_after_first = out.items;
 
         let lhs2: Deck<f64> = orc_sdk::deck![10.0];
         let rhs2: Deck<f64> = orc_sdk::deck![20.0];
@@ -261,6 +262,8 @@ mod tests {
         // Second call reuses the same registry slot.
         assert_eq!(DeckView::<f64>::from_handle(&out).unwrap().items(), &[30.0]);
         assert_eq!(out.handle, out.handle); // id unchanged (trivially)
+        // Same output size — Vec capacity is sufficient, buffer address unchanged.
+        assert_eq!(out.items, ptr_after_first);
     }
 
     #[test]
