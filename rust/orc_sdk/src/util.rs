@@ -122,15 +122,27 @@ impl DeckRegistry {
             .map_err(|_e| Error::ConcurrencyProblem)?;
         match handles.entry(handle.handle) {
             Entry::Occupied(mut occupied) => {
-                let realloc_needed = {
+                let type_matches = {
                     let read_lock = occupied
                         .get()
                         .try_read()
                         .map_err(|_e| Error::ConcurrencyProblem)?;
-                    read_lock.downcast_ref::<T>().is_none()
+                    read_lock.downcast_ref::<Deck<T>>().is_some()
                 };
-                if realloc_needed {
-                    // Drop the old object and overwrite it with a new one.
+                if type_matches {
+                    // Same type — reuse the allocation but clear the deck so the next write
+                    // starts fresh and doesn't see stale data from the previous call.
+                    let mut write_lock = occupied
+                        .get()
+                        .try_write()
+                        .map_err(|_e| Error::ConcurrencyProblem)?;
+                    let deck = write_lock
+                        .downcast_mut::<Deck<T>>()
+                        .ok_or(Error::DeckTypeMismatch)?;
+                    deck.assign_from_raw_data(Vec::new(), Vec::new());
+                    unsafe { update_handle_from_deck(deck, handle) };
+                } else {
+                    // Different type — drop the old deck and insert a fresh one.
                     let deck = Deck::<T>::default();
                     unsafe { update_handle_from_deck(&deck, handle) };
                     occupied.insert(Arc::new(RwLock::new(Box::new(deck))));
