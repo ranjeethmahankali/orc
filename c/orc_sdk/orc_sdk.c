@@ -1967,7 +1967,8 @@ OrcError orc_sdk_handle_alloc(OrcTypeId const id, OrcHandle *const out)
         found == out->items,
         "The owned deck pointer doesn't match the one store in the handle.");
       if (out->type_id == id) {
-        return ORC_ERROR_NONE;  // Correct type — reuse as-is.
+        orc_sdk_deck_clear(out->items);  // Clear for fresh output.
+        return ORC_ERROR_NONE;
       }
       // Wrong type — free existing data and fall through to reallocate.
       OrcError const err = orc_sdk_handle_free(out);
