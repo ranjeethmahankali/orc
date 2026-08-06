@@ -156,9 +156,12 @@
   wildly variadic and type agnostic. The metatdata should allow the functions to express that
   somehow.
 
-* TODO Implement Container Op Blocks in C
+* NEXT tjbrtc - Implement Container Op Blocks in C
   :PROPERTIES:
   :CREATED:  2026-08-03 Mon 18:22
+  :END:
+  :LOGBOOK:
+  - State "NEXT"       from "TODO"       [2026-08-05 Wed 21:51]
   :END:
 
   To test all the variations of this across plugin boundaries, I might need to add some custom
@@ -198,7 +201,7 @@
 
     Tests are from the perspective of a plugin using the SDK utilities.
 
-**** DONE DeckRegistry Tests    
+**** DONE DeckRegistry Tests
      CLOSED: [2026-08-05 Wed 19:11]
      :LOGBOOK:
      - State "DONE"       from "TODO"       [2026-08-05 Wed 19:11]
@@ -308,4 +311,3 @@
       type and data
     - ~add_clears_previous_data~ — calling ~add~ twice on the same output slot produces only the
       results of the second call; the deck is cleared and rewritten, not appended to
-
