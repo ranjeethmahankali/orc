@@ -1,5 +1,7 @@
+#include <bits/stdint-uintn.h>
 #include <orc_sdk/orc_sdk.h>
 #include <stdint.h>
+#include <string.h>
 #include "orc_abi.h"
 
 static void list_length(uint64_t         ctx,
@@ -61,16 +63,38 @@ OrcFuncInfo const LIST_LENGTH_INFO = {.name = "list_length",
                                       .func = list_length};
 
 static void flatten_deck(uint64_t         ctx,
-                         OrcHandle const *inputs,
+                         OrcHandle const *input,
                          uint64_t         n_inputs,
-                         OrcHandle       *outputs,
+                         OrcHandle       *output,
                          uint64_t         n_outputs)
 {
+  // Validate inputs.
+  if (n_inputs != 1 || n_outputs != 1) {
+    orc_sdk_report_message(
+      ctx, ORC_MSG_LEVEL_ERROR, "This function expects 1 input, and produces 1 output.");
+    return;
+  }
+  if (input == NULL) {
+    orc_sdk_report_message(ctx, ORC_MSG_LEVEL_ERROR, "Input handle is a null pointer.");
+    return;
+  }
+  if (output == NULL) {
+    orc_sdk_report_message(ctx, ORC_MSG_LEVEL_ERROR, "Output handle is a null pointer.");
+    return;
+  }
+  // Create a proxy on the stack - does not need a free_fn.
+  OrcHandle      proxy        = {0};
+  OrcMark const  first_mark   = {.depth = 0, .pos = 0};
+  uint64_t const first_stride = input->n_items;
+  uint64_t const zero         = 0;
+  proxy.marks                 = &first_mark;
+  proxy.stride_offset         = &zero;
+  proxy.n_marks               = 1;
+  proxy.strides               = &first_stride;
+  proxy.type_id               = ORC_TYPE_PROXY;
+  memcpy(proxy.dims, input->dims, sizeof(OrcDims));
+  // TODO: Make a proxy deck with copy_items.
   (void)ctx;
-  (void)inputs;
-  (void)n_inputs;
-  (void)outputs;
-  (void)n_outputs;
   ORC_SDK_TODO("Not implemented");
 }
 
