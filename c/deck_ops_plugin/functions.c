@@ -128,7 +128,7 @@ static void flatten_deck(uint64_t         ctx,
   // Validate inputs.
   if (n_inputs != n_outputs) {
     orc_sdk_report_message(
-      ctx, ORC_MSG_LEVEL_ERROR, "This function expects 1 input, and produces 1 output.");
+      ctx, ORC_MSG_LEVEL_ERROR, "The number of inputs and outputs must be the same.");
     return;
   }
   if (inputs == NULL) {
@@ -159,26 +159,26 @@ static void flatten_deck(uint64_t         ctx,
       ORC_SDK_REQUIRE_WITH_MSG(
         item_size != 0,
         "If this plugin recognized this type, the size should never be zero.");
-      OrcError const err = orc_sdk_deck_from_proxy(
-        input, n_inputs, ORC_DECK_PROXY_COPY_ITEMS, &proxy, output);
+      OrcError const err =
+        orc_sdk_deck_from_proxy(input, 1, ORC_DECK_PROXY_COPY_ITEMS, &proxy, output);
       if (err != ORC_ERROR_NONE) {
         orc_sdk_report_message(
-          ctx, ORC_MSG_LEVEL_ERROR, "Output handle is a null pointer.");
+          ctx, ORC_MSG_LEVEL_ERROR, "Unable to create a flattened deck.");
         return;
       }
     }
     else {
       OrcError const err = orc_sdk_host_create_proxy_deck(
-        input, n_inputs, ORC_DECK_PROXY_COPY_ITEMS, &proxy, output);
+        input, 1, ORC_DECK_PROXY_COPY_ITEMS, &proxy, output);
       if (err != ORC_ERROR_NONE) {
         orc_sdk_report_message(
-          ctx, ORC_MSG_LEVEL_ERROR, "Output handle is a null pointer.");
+          ctx, ORC_MSG_LEVEL_ERROR, "Unable to create a flattened deck.");
         return;
       }
     }
+    ++input;
+    ++output;
   }
-  ++input;
-  ++output;
 }
 
 OrcFuncInfo const FLATTEN_DECK_INFO = {
