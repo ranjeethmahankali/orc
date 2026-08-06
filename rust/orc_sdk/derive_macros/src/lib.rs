@@ -484,7 +484,7 @@ fn generate_type_dispatch(
 ) -> proc_macro2::TokenStream {
     let n_inputs = params.inputs.len();
     let scrutinee_elems: Vec<proc_macro2::TokenStream> = (0..n_inputs)
-        .map(|i| quote! { __inputs[#i].type_id })
+        .map(|i| quote! { inputs_[#i].type_id })
         .collect();
     let scrutinee = quote! { (#(#scrutinee_elems),*) };
 
@@ -531,7 +531,7 @@ fn generate_type_dispatch(
             .replace(">", "")
             .replace(",", "_")
             .to_uppercase();
-        let ident = format_ident!("__ORC_TYPE_ID_{mangled}");
+        let ident = format_ident!("ORC_TYPE_ID_{mangled}_");
         type_to_const.insert(key, ident.clone());
         type_consts.push((ident.clone(), ty.clone()));
         ident
@@ -577,7 +577,7 @@ fn generate_type_dispatch(
         };
 
         arms.push(quote! {
-            (#(#pattern_idents),*) => __dispatch #turbofish (&__host, #registry_expr, __inputs, __outputs),
+            (#(#pattern_idents),*) => dispatch_ #turbofish (&host_, #registry_expr, inputs_, outputs_),
         });
     }
 
@@ -594,12 +594,12 @@ fn generate_type_dispatch(
     quote! {
         #(#errors)*
         #(#const_decls)*
-        let __result = match #scrutinee {
+        let result_ = match #scrutinee {
             #(#arms)*
             _ => Err(orc_sdk::Error::DeckTypeMismatch),
         };
-        if let Err(e) = __result {
-            __host.error(&::std::format!("Failed to run: {e:?}"));
+        if let Err(e) = result_ {
+            host_.error(&::std::format!("Failed to run: {e:?}"));
         }
     }
 }
@@ -614,7 +614,7 @@ fn generate_dispatch_fn(
     let n_outputs = params.outputs.len();
     // Per-input: slice ident, inner type, call-arg expression.
     let in_slice_idents: Vec<proc_macro2::Ident> = (0..n_inputs)
-        .map(|i| format_ident!("__in_slice_{i}"))
+        .map(|i| format_ident!("in_slice_{i}_"))
         .collect();
     let input_item_slice_setup: Vec<proc_macro2::TokenStream> = params
         .inputs
@@ -625,7 +625,7 @@ fn generate_dispatch_fn(
             let inner_ty = &p.inner_type;
             quote! {
                 let #ident = unsafe {
-                    orc_sdk::slice_from_ptr(__inputs[#i].items.cast::<#inner_ty>(), __inputs[#i].n_items as usize)
+                    orc_sdk::slice_from_ptr(inputs_[#i].items.cast::<#inner_ty>(), inputs_[#i].n_items as usize)
                 };
             }
         })
@@ -638,22 +638,22 @@ fn generate_dispatch_fn(
             let ident = &in_slice_idents[i];
             match p.param.ty.as_ref() {
                 syn::Type::Reference(r) if r.mutability.is_none() => match r.elem.as_ref() {
-                    syn::Type::Slice(_) => quote! { __comb.get_input(#ident, #i).as_slice() },
-                    _ => quote! { __comb.get_input(#ident, #i).as_ref() },
+                    syn::Type::Slice(_) => quote! { comb_.get_input(#ident, #i).as_slice() },
+                    _ => quote! { comb_.get_input(#ident, #i).as_ref() },
                 },
-                _ => quote! { __comb.get_input(#ident, #i) }, // DeckView<T>
+                _ => quote! { comb_.get_input(#ident, #i) }, // DeckView<T>
             }
         })
         .collect();
     // Per-output: deck/view/item idents, inner type.
     let out_deck_idents: Vec<proc_macro2::Ident> = (0..n_outputs)
-        .map(|j| format_ident!("__out_deck_{j}"))
+        .map(|j| format_ident!("out_deck_{j}_"))
         .collect();
     let out_view_idents: Vec<proc_macro2::Ident> = (0..n_outputs)
-        .map(|j| format_ident!("__out_view_{j}"))
+        .map(|j| format_ident!("out_view_{j}_"))
         .collect();
     let out_item_idents: Vec<proc_macro2::Ident> = (0..n_outputs)
-        .map(|j| format_ident!("__out_item_{j}"))
+        .map(|j| format_ident!("out_item_{j}_"))
         .collect();
     let ensure_output_allocations: Vec<proc_macro2::TokenStream> = params
         .outputs
@@ -662,7 +662,7 @@ fn generate_dispatch_fn(
         .map(|(j, p)| {
             let inner_ty = &p.inner_type;
             quote! {
-                __registry.alloc::<#inner_ty>(&mut __outputs[#j])?;
+                registry_.alloc::<#inner_ty>(&mut outputs_[#j])?;
             }
         })
         .collect();
@@ -674,7 +674,7 @@ fn generate_dispatch_fn(
             let deck_ident = &out_deck_idents[j];
             let inner_ty = &p.inner_type;
             quote! {
-                let #deck_ident: &mut orc_sdk::Deck<#inner_ty> = __out_decks[#j]
+                let #deck_ident: &mut orc_sdk::Deck<#inner_ty> = out_decks_[#j]
                     .downcast_mut()
                     .ok_or(orc_sdk::Error::DeckTypeMismatch)?;
             }
@@ -686,13 +686,13 @@ fn generate_dispatch_fn(
             let item_ident = &out_item_idents[j];
             let deck_ident = &out_deck_idents[j];
             quote! {
-                let mut #view_ident = __comb.get_output(#deck_ident, #j);
+                let mut #view_ident = comb_.get_output(#deck_ident, #j);
                 let #item_ident = #view_ident.push_default_mut();
             }
         })
         .collect();
     let out_handle_refs: Vec<proc_macro2::TokenStream> = (0..n_outputs)
-        .map(|j| quote! { __outputs[#j].handle })
+        .map(|j| quote! { outputs_[#j].handle })
         .collect();
     let out_handle_updates: Vec<proc_macro2::TokenStream> = (0..n_outputs)
         .map(|j| {
@@ -700,40 +700,40 @@ fn generate_dispatch_fn(
             quote! {
                 // update_handle_from_deck preserves handle.handle; set free_fn so the host
                 // can call back into this plugin to free the data.
-                unsafe { orc_sdk::update_handle_from_deck(#deck_ident, &mut __outputs[#j]) };
-                __outputs[#j].free_fn = Some(crate::orc_deck_free);
+                unsafe { orc_sdk::update_handle_from_deck(#deck_ident, &mut outputs_[#j]) };
+                outputs_[#j].free_fn = Some(crate::orc_deck_free);
             }
         })
         .collect();
     let input_depths_vals: Vec<u8> = params.inputs.iter().map(|p| p.depth).collect();
     let output_depths_vals: Vec<u8> = params.outputs.iter().map(|p| p.depth).collect();
     quote! {
-        fn __dispatch #run_generics (
-            __host: &orc_sdk::HostCallbacks,
-            __registry: &orc_sdk::DeckRegistry,
-            __inputs: &[orc_sdk::OrcHandle],
-            __outputs: &mut [orc_sdk::OrcHandle],
+        fn dispatch_ #run_generics (
+            host_: &orc_sdk::HostCallbacks,
+            registry_: &orc_sdk::DeckRegistry,
+            inputs_: &[orc_sdk::OrcHandle],
+            outputs_: &mut [orc_sdk::OrcHandle],
         ) -> Result<(), orc_sdk::Error> #where_clause {
-            const __INPUT_DEPTHS: &[u8] = &[#(#input_depths_vals),*];
-            const __OUTPUT_DEPTHS: &[u8] = &[#(#output_depths_vals),*];
-            let mut __comb = orc_sdk::Combinations::from_handles(__inputs, __INPUT_DEPTHS, __OUTPUT_DEPTHS)?;
+            const INPUT_DEPTHS_: &[u8] = &[#(#input_depths_vals),*];
+            const OUTPUT_DEPTHS_: &[u8] = &[#(#output_depths_vals),*];
+            let mut comb_ = orc_sdk::Combinations::from_handles(inputs_, INPUT_DEPTHS_, OUTPUT_DEPTHS_)?;
             #(#ensure_output_allocations)*
             #(#input_item_slice_setup)*
-            let __result = __registry.with_mut(
+            let result_ = registry_.with_mut(
                 &[#(#out_handle_refs),*],
-                |__out_decks| -> Result<(), orc_sdk::Error> {
+                |out_decks_| -> Result<(), orc_sdk::Error> {
                     #(#out_downcasts)*
                     loop {
                         #(#out_view_setup)*
-                        run(__host, #(#in_call_args,)* #(#out_item_idents),*)?;
-                        if !__comb.advance() { break; }
+                        run(host_, #(#in_call_args,)* #(#out_item_idents),*)?;
+                        if !comb_.advance() { break; }
                     }
                     #(#out_handle_updates)*
                     Ok(())
                 },
             )
             .flatten();
-            __result
+            result_
         }
     }
 }
@@ -774,16 +774,16 @@ fn generate_orc_fn(cfg: FnConfig<'_>) -> proc_macro2::TokenStream {
     let (dims_fn_tokens, dims_call) = match dims_fn {
         Some(d) => {
             let in_args: Vec<proc_macro2::TokenStream> = (0..n_inputs)
-                .map(|i| quote! { &__inputs[#i].dims })
+                .map(|i| quote! { &inputs_[#i].dims })
                 .collect();
             let out_args: Vec<proc_macro2::TokenStream> = (0..n_outputs)
-                .map(|j| quote! { &mut __outputs[#j].dims })
+                .map(|j| quote! { &mut outputs_[#j].dims })
                 .collect();
             (
                 quote! { #d },
                 quote! {
                     orc_sdk::orc_check_return!(
-                        __host,
+                        host_,
                         dims(#(#in_args,)* #(#out_args),*).is_ok(),
                         "dims computation failed"
                     );
@@ -802,38 +802,38 @@ fn generate_orc_fn(cfg: FnConfig<'_>) -> proc_macro2::TokenStream {
             func: Some(#name),
         };
         unsafe extern "C" fn #name(
-            __ctx: u64,
-            __inputs_ptr: *const orc_sdk::OrcHandle,
-            __n_inputs: u64,
-            __outputs_ptr: *mut orc_sdk::OrcHandle,
-            __n_outputs: u64,
+            ctx_: u64,
+            inputs_ptr_: *const orc_sdk::OrcHandle,
+            n_inputs_: u64,
+            outputs_ptr_: *mut orc_sdk::OrcHandle,
+            n_outputs_: u64,
         ) {
-            let __orc_hc_ref: &orc_sdk::OrcHostCallbackAPI = #host_callbacks_expr;
-            let __host = orc_sdk::HostCallbacks {
-                inner: *__orc_hc_ref,
-                context: __ctx,
+            let orc_hc_ref_: &orc_sdk::OrcHostCallbackAPI = #host_callbacks_expr;
+            let host_ = orc_sdk::HostCallbacks {
+                inner: *orc_hc_ref_,
+                context: ctx_,
             };
             #(#user_items)*
             #run_fn
             #dims_fn_tokens
             // Check the number of inputs.
             orc_sdk::orc_check_return!(
-                __host,
-                __n_inputs == #n_inputs as u64,
+                host_,
+                n_inputs_ == #n_inputs as u64,
                 "Expected {} inputs, got {}",
                 #n_inputs,
-                __n_inputs
+                n_inputs_
             );
             // Check the number of outputs.
             orc_sdk::orc_check_return!(
-                __host,
-                __n_outputs == #n_outputs as u64,
+                host_,
+                n_outputs_ == #n_outputs as u64,
                 "Expected {} outputs, got {}",
                 #n_outputs,
-                __n_outputs
+                n_outputs_
             );
-            let __inputs = unsafe { orc_sdk::slice_from_ptr(__inputs_ptr, #n_inputs) };
-            let __outputs = unsafe { orc_sdk::slice_from_ptr_mut(__outputs_ptr, #n_outputs) };
+            let inputs_ = unsafe { orc_sdk::slice_from_ptr(inputs_ptr_, #n_inputs) };
+            let outputs_ = unsafe { orc_sdk::slice_from_ptr_mut(outputs_ptr_, #n_outputs) };
             #dims_call
             #dispatch_fn
             #type_dispatch
