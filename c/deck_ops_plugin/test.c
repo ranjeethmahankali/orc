@@ -375,8 +375,6 @@ void test_flatten_deck_multiple_inputs(void)
   FLATTEN_DECK_INFO.func(0, ins, 2, outs, 2);
   double const *r0 = (double const *)outs[0].items;
   double const *r1 = (double const *)outs[1].items;
-  (void)r0;
-  (void)r1;
   TEST_ASSERT_EQUAL_UINT64(3, outs[0].n_items);
   TEST_ASSERT_EQUAL_UINT64(1, outs[0].n_marks);
   TEST_ASSERT_EQUAL_DOUBLE(1.0, r0[0]);
