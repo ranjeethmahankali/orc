@@ -2190,7 +2190,7 @@ OrcError orc_sdk_deck_from_proxy(OrcHandle const   *inputs,
     }
     _OrcSdk_DeckHeader *h = _orc_sdk_deck_header(deck);
     h->item_size          = item_size;
-    memcpy(out->dims, inputs[0].dims, sizeof(OrcDims));
+    memcpy(out->dims, proxy->dims, sizeof(OrcDims));
     out->type_id = id;
     {  // Copy the data.
       memset(deck, 0, item_size * n_items);
@@ -2224,7 +2224,7 @@ OrcError orc_sdk_deck_from_proxy(OrcHandle const   *inputs,
     }
     _OrcSdk_DeckHeader *h = _orc_sdk_deck_header(deck);
     h->item_size          = item_size;
-    memcpy(out->dims, inputs[0].dims, sizeof(OrcDims));
+    memcpy(out->dims, proxy->dims, sizeof(OrcDims));
     out->type_id = id;
     {  // Copy the data.
       memset(deck, 0, item_size * n_items);

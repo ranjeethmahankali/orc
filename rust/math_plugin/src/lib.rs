@@ -116,7 +116,7 @@ fn deck_from_proxy_impl<T: TOrcData>(
         // All inputs must be of the same type. This is a problem.
         return Err(Error::InvalidProxy);
     }
-    // TODO: Copy the dims.
+    out.dims = proxy.dims;
     REGISTRY.alloc::<T>(out)?;
     REGISTRY
         .with_mut(&[out.handle], |out_decks| -> Result<(), Error> {
