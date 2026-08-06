@@ -164,12 +164,12 @@
   To test all the variations of this across plugin boundaries, I might need to add some custom
   datatypes in a Rust plugin.
 
-* DONE tjbhvp - Testing and CI
-  CLOSED: [2026-08-05 Wed 19:44]
+* NEXT tjbhvp - Testing and CI
   :PROPERTIES:
   :CREATED:  2026-08-03 Mon 17:47
   :END:
   :LOGBOOK:
+  - State "NEXT"       from "DONE"       [2026-08-05 Wed 20:04]
   - State "DONE"       from "NEXT"       [2026-08-05 Wed 19:44]
   - State "NEXT"       from "TODO"       [2026-08-05 Wed 18:17]
   :END:

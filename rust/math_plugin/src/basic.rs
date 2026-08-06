@@ -460,7 +460,6 @@ mod tests {
             DeckView::<f64>::from_handle(&out).unwrap().items(),
             &[13.0, 24.0]
         );
-
         // Second call: 1-item output — previous data must not bleed through.
         let lhs2: Deck<f64> = orc_sdk::deck![1.0];
         let rhs2: Deck<f64> = orc_sdk::deck![2.0];

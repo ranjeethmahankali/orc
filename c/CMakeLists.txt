@@ -51,7 +51,23 @@ if(NOT WIN32)
     target_link_libraries(deck_ops_plugin PRIVATE pthread)
 endif()
 
+# deck_ops_plugin_tests — executable
+add_executable(deck_ops_plugin_tests
+    deck_ops_plugin/test.c
+    deck_ops_plugin/functions.c
+    $<TARGET_OBJECTS:orc_sdk_obj>
+)
+target_include_directories(deck_ops_plugin_tests PRIVATE .)
+target_link_libraries(deck_ops_plugin_tests PRIVATE unity)
+if(NOT MSVC)
+    target_link_libraries(deck_ops_plugin_tests PRIVATE m)
+endif()
+if(NOT WIN32)
+    target_link_libraries(deck_ops_plugin_tests PRIVATE pthread)
+endif()
+
 # Tests
 enable_testing()
 add_test(NAME orc_sdk_tests COMMAND orc_sdk_tests)
+add_test(NAME deck_ops_plugin_tests COMMAND deck_ops_plugin_tests)
 
