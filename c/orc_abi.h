@@ -24,7 +24,11 @@ static const uint64_t ORC_ABI_VERSION = ORC_VERSION_PACK(0, 0, 1);
 // Types and Functions.
 // ==============================
 
-typedef uint64_t OrcTypeId;
+typedef uint64_t         OrcTypeId;
+typedef uint8_t          OrcMessageLevel;
+typedef uint32_t         OrcError;
+typedef uint8_t          OrcProxyType;
+typedef struct OrcHandle OrcHandle;
 
 // Unsigned integers.
 #define ORC_TYPE_U8 0x01u
@@ -42,18 +46,11 @@ typedef uint64_t OrcTypeId;
 // Proxy for an item in a tree.
 #define ORC_TYPE_PROXY 0x30u
 
-// Message levels
-typedef uint8_t OrcMessageLevel;
-
 #define ORC_MSG_LEVEL_DEBUG 1u
 #define ORC_MSG_LEVEL_INFO 2u
 #define ORC_MSG_LEVEL_WARN 3u
 #define ORC_MSG_LEVEL_ERROR 4u
 #define ORC_MSG_LEVEL_FATAL 5u
-
-typedef struct OrcHandle OrcHandle;
-typedef uint32_t         OrcError;
-typedef uint8_t          OrcProxyType;
 
 typedef struct
 {
