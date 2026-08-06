@@ -138,6 +138,20 @@ void orc_sdk_report_message(uint64_t const        ctx,
   }
 }
 
+OrcError orc_sdk_host_create_proxy_deck(const OrcHandle   *inputs,
+                                        const uint64_t     n_inputs,
+                                        const OrcProxyType proxy_type,
+                                        const OrcHandle   *proxy,
+                                        OrcHandle         *out)
+{
+  if (HOST.create_deck_from_proxy != NULL) {
+    return HOST.create_deck_from_proxy(inputs, n_inputs, proxy_type, proxy, out);
+  }
+  else {
+    return ORC_ERROR_MISSING_CAPABILITY;
+  }
+}
+
 void *_orc_sdk_arr_grow(void *ptr, size_t elemsize)
 {
   _OrcSdk_ArrHeader *h = _orc_sdk_arr_header(ptr);
@@ -1666,6 +1680,10 @@ void orc_sdk_init(OrcHost const *host, OrcSdkTypeCallbacksGetterFn type_fn)
     if (host->callbacks.report_intermediate_output) {
       HOST.callbacks.report_intermediate_output =
         host->callbacks.report_intermediate_output;
+    }
+    // Proxy deck creation callback.
+    if (host->create_deck_from_proxy) {
+      HOST.create_deck_from_proxy = host->create_deck_from_proxy;
     }
     HOST_INIT = true;
   }

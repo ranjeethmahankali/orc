@@ -813,6 +813,17 @@ void orc_sdk_report_message(uint64_t const        ctx,
                             OrcMessageLevel const level,
                             char const           *msg);
 
+/**
+ * Meant to be called by a plugin when it wants to create a proxy deck of a type that it
+ * doesn't know. This function requests the host to defer the task to the plugin that owns
+ * the type.
+ */
+OrcError orc_sdk_host_create_proxy_deck(OrcHandle const   *inputs,
+                                        uint64_t const     n_inputs,
+                                        OrcProxyType const proxy_type,
+                                        OrcHandle const   *proxy,
+                                        OrcHandle         *out);
+
 // ========== ABI helpers ==========
 
 typedef void (*ItemFreeFn)(void *);

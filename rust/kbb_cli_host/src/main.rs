@@ -27,6 +27,7 @@ const HOST: OrcHost = OrcHost {
         check_cancellation: None,
         report_intermediate_output: None,
     },
+    create_deck_from_proxy: None, // TODO: Implement this later.
 };
 
 unsafe extern "C" fn report_message(
