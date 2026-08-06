@@ -1,8 +1,65 @@
-#include <bits/stdint-uintn.h>
 #include <orc_sdk/orc_sdk.h>
 #include <stdint.h>
 #include <string.h>
 #include "orc_abi.h"
+
+static bool is_type_known(OrcTypeId const type_id, size_t *item_size_out)
+{
+  bool is_known  = false;
+  *item_size_out = 0;
+  switch (type_id) {
+    // Unsigned integers.
+  case ORC_TYPE_U8:
+    *item_size_out = sizeof(uint8_t);
+    is_known       = true;
+    break;
+  case ORC_TYPE_U16:
+    *item_size_out = sizeof(uint16_t);
+    is_known       = true;
+    break;
+  case ORC_TYPE_U32:
+    *item_size_out = sizeof(uint32_t);
+    is_known       = true;
+    break;
+  case ORC_TYPE_U64:
+    *item_size_out = sizeof(uint64_t);
+    is_known       = true;
+    break;
+    // Scalars.
+  case ORC_TYPE_F32:
+    *item_size_out = sizeof(float);
+    is_known       = true;
+    break;
+  case ORC_TYPE_F64:
+    *item_size_out = sizeof(double);
+    is_known       = true;
+    break;
+    // Signed integers.
+  case ORC_TYPE_I8:
+    *item_size_out = sizeof(int8_t);
+    is_known       = true;
+    break;
+  case ORC_TYPE_I16:
+    *item_size_out = sizeof(int16_t);
+    is_known       = true;
+    break;
+  case ORC_TYPE_I32:
+    *item_size_out = sizeof(int32_t);
+    is_known       = true;
+    break;
+  case ORC_TYPE_I64:
+    *item_size_out = sizeof(int64_t);
+    is_known       = true;
+    break;
+  case ORC_TYPE_PROXY:
+    *item_size_out = sizeof(OrcItemProxy);
+    is_known       = true;
+    break;
+  default:
+    break;
+  }
+  return is_known;
+}
 
 static void list_length(uint64_t         ctx,
                         OrcHandle const *input,
@@ -63,42 +120,65 @@ OrcFuncInfo const LIST_LENGTH_INFO = {.name = "list_length",
                                       .func = list_length};
 
 static void flatten_deck(uint64_t         ctx,
-                         OrcHandle const *input,
+                         OrcHandle const *inputs,
                          uint64_t         n_inputs,
-                         OrcHandle       *output,
+                         OrcHandle       *outputs,
                          uint64_t         n_outputs)
 {
-  // TODO: Should this function iterate over and flatten each input as long as the number
-  // of outputs is the same?
-
   // Validate inputs.
-  if (n_inputs != 1 || n_outputs != 1) {
+  if (n_inputs != n_outputs) {
     orc_sdk_report_message(
       ctx, ORC_MSG_LEVEL_ERROR, "This function expects 1 input, and produces 1 output.");
     return;
   }
-  if (input == NULL) {
+  if (inputs == NULL) {
     orc_sdk_report_message(ctx, ORC_MSG_LEVEL_ERROR, "Input handle is a null pointer.");
     return;
   }
-  if (output == NULL) {
+  if (outputs == NULL) {
     orc_sdk_report_message(ctx, ORC_MSG_LEVEL_ERROR, "Output handle is a null pointer.");
     return;
   }
-  // Create a proxy on the stack - does not need a free_fn.
-  OrcHandle      proxy        = {0};
-  OrcMark const  first_mark   = {.depth = 0, .pos = 0};
-  uint64_t const first_stride = input->n_items;
-  uint64_t const zero         = 0;
-  proxy.marks                 = &first_mark;
-  proxy.stride_offset         = &zero;
-  proxy.n_marks               = 1;
-  proxy.strides               = &first_stride;
-  proxy.type_id               = ORC_TYPE_PROXY;
-  memcpy(proxy.dims, input->dims, sizeof(OrcDims));
-  // TODO: Make a proxy deck with copy_items.
-  (void)ctx;
-  ORC_SDK_TODO("Not implemented");
+  OrcHandle const *input  = inputs;
+  OrcHandle       *output = outputs;
+  for (size_t i = 0; i < n_inputs; ++i) {
+    // Create a proxy on the stack - does not need a free_fn.
+    OrcHandle      proxy        = {0};
+    OrcMark const  first_mark   = {.depth = 0, .pos = 0};
+    uint64_t const first_stride = input->n_items;
+    uint64_t const zero         = 0;
+    proxy.marks                 = &first_mark;
+    proxy.stride_offset         = &zero;
+    proxy.n_marks               = 1;
+    proxy.strides               = &first_stride;
+    proxy.type_id               = ORC_TYPE_PROXY;
+    memcpy(proxy.dims, input->dims, sizeof(OrcDims));
+    // If we own the type, then we don't need to defer to the host.
+    size_t item_size = 0;
+    if (is_type_known(input->type_id, &item_size)) {
+      ORC_SDK_REQUIRE_WITH_MSG(
+        item_size != 0,
+        "If this plugin recognized this type, the size should never be zero.");
+      OrcError const err = orc_sdk_deck_from_proxy(
+        input, n_inputs, ORC_DECK_PROXY_COPY_ITEMS, &proxy, output);
+      if (err != ORC_ERROR_NONE) {
+        orc_sdk_report_message(
+          ctx, ORC_MSG_LEVEL_ERROR, "Output handle is a null pointer.");
+        return;
+      }
+    }
+    else {
+      OrcError const err = orc_sdk_host_create_proxy_deck(
+        input, n_inputs, ORC_DECK_PROXY_COPY_ITEMS, &proxy, output);
+      if (err != ORC_ERROR_NONE) {
+        orc_sdk_report_message(
+          ctx, ORC_MSG_LEVEL_ERROR, "Output handle is a null pointer.");
+        return;
+      }
+    }
+  }
+  ++input;
+  ++output;
 }
 
 OrcFuncInfo const FLATTEN_DECK_INFO = {
