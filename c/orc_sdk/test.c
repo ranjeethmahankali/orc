@@ -6,7 +6,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "threads_compat.h"  // C11 threads or pthreads shim on Apple
+#include "threads_compat.h"  // IWYU pragma: keep
 
 #ifdef _MSC_VER
 #include <intrin.h>

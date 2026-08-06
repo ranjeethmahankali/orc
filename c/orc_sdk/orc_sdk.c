@@ -10,7 +10,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "threads_compat.h"
+#include "threads_compat.h"  // IWYU pragma: keep
 
 static void *_default_alloc(uint64_t const size, uint64_t const alignment)
 {
