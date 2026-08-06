@@ -460,6 +460,7 @@ mod tests {
             DeckView::<f64>::from_handle(&out).unwrap().items(),
             &[13.0, 24.0]
         );
+        let ptr_after_first = out.items;
         // Second call: 1-item output — previous data must not bleed through.
         let lhs2: Deck<f64> = orc_sdk::deck![1.0];
         let rhs2: Deck<f64> = orc_sdk::deck![2.0];
@@ -468,6 +469,9 @@ mod tests {
         let result = DeckView::<f64>::from_handle(&out).unwrap();
         assert_eq!(result.items().len(), 1);
         assert_eq!(result.items(), &[3.0]);
+        // Writing fewer items than the first call — Vec capacity is sufficient,
+        // so no reallocation should occur: the buffer address is the same.
+        assert_eq!(out.items, ptr_after_first);
     }
 
     // ==================== handle lifetime invariants ====================

@@ -139,7 +139,7 @@ impl DeckRegistry {
                     let deck = write_lock
                         .downcast_mut::<Deck<T>>()
                         .ok_or(Error::DeckTypeMismatch)?;
-                    deck.assign_from_raw_data(Vec::new(), Vec::new());
+                    deck.clear();
                     unsafe { update_handle_from_deck(deck, handle) };
                 } else {
                     // Different type — drop the old deck and insert a fresh one.
