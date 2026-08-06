@@ -61,7 +61,11 @@ impl Plugin {
                     "Unable to load the plugin because of ABI version mismatch.".to_string()
                 );
             }
-            _ => return Err(format!("Unable to load the plugin. Error code: {err}")),
+            _ => {
+                return Err(format!(
+                    "Unable to load the plugin. Error code: {err:#010x}"
+                ));
+            }
         }
         if plugin_data.abi_version != ORC_ABI_VERSION {
             return Err("Unable to load the plugin because of ABI version mismatch.".to_string());
@@ -189,4 +193,60 @@ pub fn load_plugins(dir: &Path, host: &OrcHost) -> Result<Box<[Plugin]>, Error> 
         }
     }
     Ok(plugins.into())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{ORC_TYPE_F64, OrcHandle};
+    use std::sync::LazyLock;
+
+    fn math_plugin_path() -> std::path::PathBuf {
+        // The test binary is in build/debug/deps/; built DLLs are in build/debug/.
+        let exe = std::env::current_exe().unwrap();
+        let deps = exe.parent().unwrap();
+        let dir = if deps.ends_with("deps") {
+            deps.parent().unwrap()
+        } else {
+            deps
+        };
+        #[cfg(target_os = "windows")]
+        return dir.join("math_plugin.dll");
+        #[cfg(target_os = "macos")]
+        return dir.join("libmath_plugin.dylib");
+        #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+        return dir.join("libmath_plugin.so");
+    }
+
+    // Load once per process — the plugin's OnceLock<HOST> can only be set once.
+    static PLUGIN: LazyLock<Plugin> =
+        LazyLock::new(|| Plugin::load(&math_plugin_path(), &OrcHost::default()).unwrap());
+
+    #[test]
+    fn alloc_deck_populates_handle() {
+        let mut handle = OrcHandle {
+            handle: 5000,
+            ..Default::default()
+        };
+        let err = unsafe { (PLUGIN.deck_alloc)(ORC_TYPE_F64, &mut handle) };
+        assert_eq!(err, crate::ORC_ERROR_NONE);
+        assert!(handle.free_fn.is_some());
+        assert_eq!(handle.type_id, ORC_TYPE_F64);
+        assert_eq!(handle.handle, 5000);
+        handle.free();
+    }
+
+    #[test]
+    fn free_deck_resets_handle() {
+        let mut handle = OrcHandle {
+            handle: 5001,
+            ..Default::default()
+        };
+        unsafe { (PLUGIN.deck_alloc)(ORC_TYPE_F64, &mut handle) };
+        assert!(handle.free_fn.is_some());
+        PLUGIN.free_deck(&mut handle).unwrap();
+        assert!(handle.free_fn.is_none());
+        assert!(handle.items.is_null());
+        assert_eq!(handle.handle, 5001);
+    }
 }

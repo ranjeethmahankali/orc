@@ -164,150 +164,148 @@
   To test all the variations of this across plugin boundaries, I might need to add some custom
   datatypes in a Rust plugin.
 
-* TODO Testing and CI
+* DONE tjbhvp - Testing and CI
+  CLOSED: [2026-08-05 Wed 20:49]
   :PROPERTIES:
   :CREATED:  2026-08-03 Mon 17:47
+  :END:
+  :LOGBOOK:
+  - State "DONE"       from "NEXT"       [2026-08-05 Wed 20:49]
+  - State "NEXT"       from "DONE"       [2026-08-05 Wed 20:04]
+  - State "DONE"       from "NEXT"       [2026-08-05 Wed 19:44]
+  - State "NEXT"       from "TODO"       [2026-08-05 Wed 18:17]
   :END:
 
   I am making fast progress, adding lots of code. I have some tests, but I need to test a lot
   more. All the plugin code should be thoroughly tested. All the new SDK code should be tested. I
   should look through the ABI carefully, and make sure each feature is tested.
 
-* DONE tj92sq - OrcHandle Lifetimes and Identity
-  CLOSED: [2026-08-05 Wed 18:12]
-  :PROPERTIES:
-  :CREATED:  2026-08-04 Tue 09:32
-  :END:
-  :LOGBOOK:
-  - State "DONE"       from "NEXT"       [2026-08-05 Wed 18:12]
-  - State "NEXT"       from "TODO"       [2026-08-04 Tue 10:56]
-  :END:
+  <2026-08-05 Wed 18:28> Adding CI automation for the tests I have so far. The last merge broke all
+  the Rust tests, but I didn't run them before merging.
 
-  Handles pointing to data from one plugin can be passed in as inputs to any other plugin. This
-  works fine, because input handles are immutable. It is unclear what should happen when the host
-  passes in one of those handles as an output handle. In the current state, we will get some type of
-  UB / crash. This is a serious liability for the design and needs to be fixed ASAP.
+** DONE Test plan
+   CLOSED: [2026-08-05 Wed 19:44]
+   :LOGBOOK:
+   - State "DONE"       from              [2026-08-05 Wed 19:44]
+   :END:
 
-  Whatever solution I come up with, must make it hard to do the wrong thing, without creating too
-  much friction. Ideally the host keeps the output handles of each block separate and doesn't mix
-  and match them, but that becomes less clear when dealing with container operation blocks, that
-  request the host to allocate decks in other plugins, of types that it doesn't recognize.
+*** DONE ~rust/orc_sdk/src/util.rs~ — ~mod test~
+    CLOSED: [2026-08-05 Wed 19:44]
+    :LOGBOOK:
+    - State "DONE"       from "NEXT"       [2026-08-05 Wed 19:44]
+    - State "NEXT"       from "TODO"       [2026-08-05 Wed 19:11]
+    :END:
 
-  - Should the host think of the resulting deck as belonging to the plugin that implemented the
-    container op, or the plugin that created the deck from a proxy deck?
-  - What happens when the output datatype of a container operation is a primitive type that is
-    recognized by all plugins and the host? Who is responsible for the output then?
-  - The meaning of the ~handle~ property of ~OrcHandle~ can be different in each plugin. What if I
-    take an OrcHandle from plugin A, and pass it to plugin B, which also just happens to contain
-    something in it's registry with the same ~handle~?
+    Tests are from the perspective of a plugin using the SDK utilities.
 
-  This all feels like a mess, and needs to be solved immediately, otherwise the whole C API effort
-  can fall apart.
+**** DONE DeckRegistry Tests    
+     CLOSED: [2026-08-05 Wed 19:11]
+     :LOGBOOK:
+     - State "DONE"       from "TODO"       [2026-08-05 Wed 19:11]
+     :END:
 
-  Should the host take ownership of the ~handle~ property and assign it, and make sure it is
-  globally unique? And the plugins just use the host assigned ~handle~ as a unique identifier?
+    ~DeckRegistry~ — ownership and lifecycle:
+    - ~alloc_fresh~ — alloc on empty slot: ~free_fn~ set, handle fields populated, ID survives
+    - ~alloc_reuse_same_type~ — second alloc with same type is a no-op: ~Ok~, handle fields
+      unchanged. Should verify that the old free function has not been called.
+    - ~alloc_type_change~ — second alloc with different type: old deck gone, new type reflected in
+      handle. Should verify that the old deck has been freed.
+    - ~alloc_eviction_foreign~ — handle has a mock foreign ~free_fn~; alloc evicts it (mock called),
+      then populates handle.
+    - ~free_success~ — alloc then free: ~free_fn = None~, items cleared, ~handle.handle~ preserved
+    - ~free_unregistered~ — free on ID not in registry returns ~InvalidHandle~
+    - ~free_does_not_clear_handle_id~ — after free, ~handle.handle~ still has its original value
+    - ~with_mut_borrows_and_mutates~ — after alloc, ~with_mut~ successfully downcasts and modifies
+      the deck
+    - ~with_mut_missing_id~ — ~with_mut~ on an unregistered ID returns ~InvalidHandle~
+    - ~concurrent_alloc_free~ — multiple threads alloc/free disjoint IDs simultaneously, no data
+      corruption... how do you verify there is no corruption?
 
-  <2026-08-05 Wed 17:25> Did the refactor. At least I think I got everything. The LLM generated plan
-  below was 20% useful. Did most of it by hand, because the LLM plan was riddled with bad
-  choices. Now it is time to test the shit out of this new design, guarantee all the invariants, and
-  move on.
+**** DONE handle tests
+     CLOSED: [2026-08-05 Wed 19:14]
+     :LOGBOOK:
+     - State "DONE"       from "TODO"       [2026-08-05 Wed 19:14]
+     :END:
 
-  <2026-08-05 Wed 17:46> Will do some reviewing and thinking, but any bugs and issues in the current
-  design will surface once I start testing.
+    ~update_handle_from_deck~:
+    - ~fields_populated~ — items, marks, strides, type_id set from deck; ~handle.handle~ and
+      ~free_fn~ untouched
+    - ~empty_deck_gives_null_items~ — empty deck: items pointer is null, counts are zero, type_id
+      still set
+    - ~preserves_handle_id~ — ~handle.handle~ unchanged before and after call
+    - ~preserves_free_fn~ — ~free_fn~ unchanged before and after call
 
-* DONE tj5fbs - Figure out C SDK and write a simple plugin
-  CLOSED: [2026-08-04 Tue 10:55]
-  :PROPERTIES:
-  :CREATED:  2026-08-02 Sun 11:09
-  :END:
-  :LOGBOOK:
-  - State "DONE"       from "NEXT"       [2026-08-04 Tue 10:55]
-  - State "NEXT"       from "TODO"       [2026-08-02 Sun 11:44]
-  :END:
+    ~reset_handle~:
+    - ~clears_data_fields_not_id~ — items/marks/free_fn cleared to null/None; ~handle.handle~
+      unchanged
+    - ~idempotent~ — calling twice is safe, same result
 
-  The code for this is mostly in place. I just need to figure out the project structure, the
-  experience of various plugins that want to build off of ~orc_sdk~, and that of plugins that don't
-  want to build off of ~orc_sdk~ etc. I also need to figure out how to setup all these projects with
-  the ~nob~ build system.
+    ~ptr_from_slice~ / ~slice_from_ptr~ / ~slice_from_ptr_mut~:
+    - ~empty_slice_gives_null~ — ~ptr_from_slice(&[])~ returns null
+    - ~nonempty_round_trips~ — pointer from non-empty slice round-trips through ~slice_from_ptr~
+    - ~null_ptr_gives_empty_slice~ — ~slice_from_ptr(null, N)~ returns ~&[]~
+    - ~zero_len_gives_empty_slice~ — ~slice_from_ptr(valid, 0)~ returns ~&[]~
 
-  Container operations plugin is a prime candidate for writing in C, because it doesn't need any
-  special libraries. Don't want to add too many blocks at once, but just a few to make sure the
-  proxy stuff is working nicely across the ABI.
+*** DONE ~rust/orc_sdk/src/host.rs~ — ~mod test~
+    CLOSED: [2026-08-05 Wed 19:41]
+    :LOGBOOK:
+    - State "DONE"       from "NEXT"       [2026-08-05 Wed 19:41]
+    - State "NEXT"       from "TODO"       [2026-08-05 Wed 19:15]
+    :END:
 
-  <2026-08-02 Sun 11:43> orc_sdk should not implement definitions anything from orc_abi.h. orc_abi
-  should just contain pure forward declarations. It is up to each plugin how to implement
-  those. orc_sdk should provide namespaced equivalents of the things in orc_abi, and each plugin can
-  choose to simply call the orc_sdk functions if they don't want to write their own.
+    Tests are from the perspective of a host application loading and using plugins. These are
+    integration tests that require the built plugin DLLs to be present at test time.
 
-  - [X] namespace everything in orc_sdk.h with a prefix.
+    - ~alloc_deck_populates_handle~ — ~plugin.alloc_deck(type_id, &mut handle)~: ~free_fn~ set,
+      items non-null, ~handle.handle~ unchanged
+    - ~free_deck_resets_handle~ — alloc followed by free: ~free_fn = None~, items null, ID unchanged
 
-  <2026-08-02 Sun 14:02> LLM namespaced the entire public API of orc_sdk.
+*** DONE ~rust/math_plugin/src/basic.rs~ — ~mod test~
+    CLOSED: [2026-08-05 Wed 19:44]
+    :LOGBOOK:
+    - State "DONE"       from "NEXT"       [2026-08-05 Wed 19:44]
+    - State "NEXT"       from "TODO"       [2026-08-05 Wed 19:41]
+    :END:
 
-  <2026-08-02 Sun 22:38> Made more progress. Overhauled the project structure to build multiple C
-  projects with nob. Created a stubbed out plugin project. Hashed out many details in regards to the
-  SDK / plugin boundary. Addressed almost all TODOs that were in the SDK code.
+    Tests call the plugin functions directly through the generated FFI entry points.  Input handles
+    are view handles (~free_fn = None~); output handles are owned by the plugin.
 
-  - [X] Upon plugin init, the plugin should set an allocator within the SDK, it it receives one from
-    the host. All the SDK code should be scoured for alloc, free, and realloc calls. Those should be
-    wired through the host's API. SDK should have the usual allcoators, if the host doesn't provide
-    one.
+    ~add~:
+    - ~add_f64_elementwise~ — ~[1,2,3] + [10,20,30] = [11,22,33]~
+    - ~add_f32_elementwise~ — same for f32
+    - ~add_integer_types~ — u32, i64: ~[5] + [3] = [8]~
+    - ~add_broadcast_scalar_to_list~ — depth-2 list input broadcasts correctly
+    - ~add_mismatched_types~ — i32 input + f64 input → function does not write output (type
+      mismatch)
+    - ~add_mismatched_dimensions~ — dim vectors differ → ~InvalidDimensions~, output not written
+    - ~add_wrong_n_inputs~ — 1 input instead of 2 → error logged, output not written
+    - ~add_output_reuse_same_type~ — call add twice on same output slot: second call reuses deck, no
+      leak
+    - ~add_output_type_change~ — call add then mul on same output slot: handle transitions type
+      cleanly
 
-  <2026-08-03 Mon 15:45> Did the allocator refactor. Tried to load the C plugin into a Rust
-  host. Works on Linux, but didn't work on Windows. Turned out I was using cygwin-gcc with it's own
-  runtime, and the dlls built that way don't work like that on Windows. So I ditched nob.h, and
-  started using cmake. Now everything builds and runs on Windows and Linux. The DLL loads
-  properly. Fixed many small gaps in the C SDK along the way. All that is left to do is to write a
-  simple block in C. And test running DLLs with a custom allocator.
+    ~mul~: same matrix as add with multiplication values.
 
-  - [X] Test running plugins with a custom allocator.
-  - [X] Write simple container operation block in C.
+    ~sub~ / ~div~:
+    - ~sub_f64~ / ~div_f64~ — basic f64 correctness
+    - ~sub_unsupported_type~ — sub(u32, u32) → type mismatch (sub is floats-only)
+    - ~div_by_zero~ — ~[1.0] / [0.0]~ → produces IEEE 754 inf, no panic
+    - ~div_unsupported_type~ — div(i32, i32) → type mismatch
 
-  <2026-08-03 Mon 21:54> Made a lot of prgress. Rust OrcHandles now have RAII. Successfully tested
-  a C plugin function for the first time. Also tested the ability to share data across the FFI
-  boundary between C and Rust.
+    Handle lifetime / ownership invariants (all functions):
+    - ~output_free_fn_set_after_call~ — after any function call, ~out.free_fn~ is
+      ~Some(orc_deck_free)~
+    - ~output_handle_id_preserved~ — ~out.handle~ unchanged before and after call
+    - ~output_owned_by_plugin_registry~ — after call, plugin registry contains the output handle ID
+    - ~input_handles_unaffected~ — input ~free_fn~ and ~items~ are unchanged after the call
 
-* CLOSED More general use of handles for data that is not decks
-  CLOSED: [2026-08-03 Mon 17:46]
-  :PROPERTIES:
-  :CREATED:  2026-08-02 Sun 20:05
-  :END:
-  :LOGBOOK:
-  - State "CLOSED"     from "TODO"       [2026-08-03 Mon 17:46]
-  :END:
-
-  Plugins should be allowed to use the handles to point to data that is not a deck. All the deck
-  specific pointers and parameters should not be read by the host or any other plugin when this is
-  the case. I am thinking this can be achieved with either a boolean flag.
-
-  This is making things more complicated than it is worth. I am going to put this off for now. I
-  think the plugins that want to do this can still do it. They just need to populate the handle data
-  to imply the deck has just 1 item. That is very easy to do. So adding a whole other property for
-  that, and all the branching that comes with it, is not worth it.
-
-* DONE tj2fe7 - Proxy decks through the ABI
-  CLOSED: [2026-08-02 Sun 11:23]
-  :PROPERTIES:
-  :CREATED:  2026-07-31 Fri 20:44
-  :END:
-  :LOGBOOK:
-  - State "DONE"       from "NEXT"       [2026-08-02 Sun 11:23]
-  - State "NEXT"       from "TODO"       [2026-08-01 Sat 18:50]
-  :END:
-
-  Currently proxy deck stuff is not fully fleshed out through the ABI. Requires a bit more thought
-  and [[*tj2fch - OrcHandle type_id rework][type_id rework]] needs to happen before this. I will just flesh this out first in the Rust SDK,
-  and Rust examples. The C SDK has not taken shape yet.
-
-  <2026-08-01 Sat 21:08> Started implementing it. Made some progress. Close to finishing. But hit a
-  small snag. I realized that the refactor I just made to the type id system changes some of the
-  ownership semantics. It allows many plugins to deal with the same type ids. Which means the host
-  cannot clearly determine which plugin is supposed to free a deck. The deck MUST be freed by the
-  same plugin that created it. Because only that plugin knows the implementation of the deck
-  datastructure it used. Which means each handle needs to contain a pointer to a free function, that
-  takes the u64 handle, and returns an error. The dll need not export the free function. This
-  changes the ABI design. I need to figure this out before making progress on the proxy stuff
-
-  <2026-08-02 Sun 10:56> Updated the ownership semantics of handles. The handles now carry their own
-  free functions. Finished implementing the proxy stuff in the Rust plugin. Not tested it yet. I am
-  considering merging this in, and testing it later as I write more plugins.
+    Output deck reuse / reallocation / update invariants (tested via ~add~ only):
+    - ~add_reuse_same_type_handle_updated~ — when the output slot already holds a deck of the
+      same type, ~add~ reuses it and still updates ~out.items~, ~out.n_items~, ~out.type_id~ to
+      reflect what was written in this call
+    - ~add_type_change_handle_updated~ — when the output slot holds a deck of a different type,
+      ~add~ frees it, allocates a new one of the correct type, and the handle reflects the new
+      type and data
+    - ~add_clears_previous_data~ — calling ~add~ twice on the same output slot produces only the
+      results of the second call; the deck is cleared and rewritten, not appended to
 

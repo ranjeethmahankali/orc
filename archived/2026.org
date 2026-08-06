@@ -241,3 +241,161 @@ Archived entries from file /home/rnjth94/dev/orc/PROJECT.org
    <2026-08-01 Sat 17:39> Turning this into a subtask, because it will get merged as part of another
    task. Marking it done. The design I have on this branch seems good enough for now.
 
+
+* DONE tj2fe7 - Proxy decks through the ABI
+  CLOSED: [2026-08-02 Sun 11:23]
+  :PROPERTIES:
+  :CREATED:  2026-07-31 Fri 20:44
+  :ARCHIVE_TIME: 2026-08-05 Wed 19:05
+  :ARCHIVE_FILE: d:/dev/orc/PROJECT.org
+  :ARCHIVE_CATEGORY: PROJECT
+  :ARCHIVE_TODO: DONE
+  :END:
+  :LOGBOOK:
+  - State "DONE"       from "NEXT"       [2026-08-02 Sun 11:23]
+  - State "NEXT"       from "TODO"       [2026-08-01 Sat 18:50]
+  :END:
+
+  Currently proxy deck stuff is not fully fleshed out through the ABI. Requires a bit more thought
+  and [[*tj2fch - OrcHandle type_id rework][type_id rework]] needs to happen before this. I will just flesh this out first in the Rust SDK,
+  and Rust examples. The C SDK has not taken shape yet.
+
+  <2026-08-01 Sat 21:08> Started implementing it. Made some progress. Close to finishing. But hit a
+  small snag. I realized that the refactor I just made to the type id system changes some of the
+  ownership semantics. It allows many plugins to deal with the same type ids. Which means the host
+  cannot clearly determine which plugin is supposed to free a deck. The deck MUST be freed by the
+  same plugin that created it. Because only that plugin knows the implementation of the deck
+  datastructure it used. Which means each handle needs to contain a pointer to a free function, that
+  takes the u64 handle, and returns an error. The dll need not export the free function. This
+  changes the ABI design. I need to figure this out before making progress on the proxy stuff
+
+  <2026-08-02 Sun 10:56> Updated the ownership semantics of handles. The handles now carry their own
+  free functions. Finished implementing the proxy stuff in the Rust plugin. Not tested it yet. I am
+  considering merging this in, and testing it later as I write more plugins.
+
+
+* CLOSED More general use of handles for data that is not decks
+  CLOSED: [2026-08-03 Mon 17:46]
+  :PROPERTIES:
+  :CREATED:  2026-08-02 Sun 20:05
+  :ARCHIVE_TIME: 2026-08-05 Wed 19:05
+  :ARCHIVE_FILE: d:/dev/orc/PROJECT.org
+  :ARCHIVE_CATEGORY: PROJECT
+  :ARCHIVE_TODO: CLOSED
+  :END:
+  :LOGBOOK:
+  - State "CLOSED"     from "TODO"       [2026-08-03 Mon 17:46]
+  :END:
+
+  Plugins should be allowed to use the handles to point to data that is not a deck. All the deck
+  specific pointers and parameters should not be read by the host or any other plugin when this is
+  the case. I am thinking this can be achieved with either a boolean flag.
+
+  This is making things more complicated than it is worth. I am going to put this off for now. I
+  think the plugins that want to do this can still do it. They just need to populate the handle data
+  to imply the deck has just 1 item. That is very easy to do. So adding a whole other property for
+  that, and all the branching that comes with it, is not worth it.
+
+
+* DONE tj5fbs - Figure out C SDK and write a simple plugin
+  CLOSED: [2026-08-04 Tue 10:55]
+  :PROPERTIES:
+  :CREATED:  2026-08-02 Sun 11:09
+  :ARCHIVE_TIME: 2026-08-05 Wed 19:05
+  :ARCHIVE_FILE: d:/dev/orc/PROJECT.org
+  :ARCHIVE_CATEGORY: PROJECT
+  :ARCHIVE_TODO: DONE
+  :END:
+  :LOGBOOK:
+  - State "DONE"       from "NEXT"       [2026-08-04 Tue 10:55]
+  - State "NEXT"       from "TODO"       [2026-08-02 Sun 11:44]
+  :END:
+
+  The code for this is mostly in place. I just need to figure out the project structure, the
+  experience of various plugins that want to build off of ~orc_sdk~, and that of plugins that don't
+  want to build off of ~orc_sdk~ etc. I also need to figure out how to setup all these projects with
+  the ~nob~ build system.
+
+  Container operations plugin is a prime candidate for writing in C, because it doesn't need any
+  special libraries. Don't want to add too many blocks at once, but just a few to make sure the
+  proxy stuff is working nicely across the ABI.
+
+  <2026-08-02 Sun 11:43> orc_sdk should not implement definitions anything from orc_abi.h. orc_abi
+  should just contain pure forward declarations. It is up to each plugin how to implement
+  those. orc_sdk should provide namespaced equivalents of the things in orc_abi, and each plugin can
+  choose to simply call the orc_sdk functions if they don't want to write their own.
+
+  - [X] namespace everything in orc_sdk.h with a prefix.
+
+  <2026-08-02 Sun 14:02> LLM namespaced the entire public API of orc_sdk.
+
+  <2026-08-02 Sun 22:38> Made more progress. Overhauled the project structure to build multiple C
+  projects with nob. Created a stubbed out plugin project. Hashed out many details in regards to the
+  SDK / plugin boundary. Addressed almost all TODOs that were in the SDK code.
+
+  - [X] Upon plugin init, the plugin should set an allocator within the SDK, it it receives one from
+    the host. All the SDK code should be scoured for alloc, free, and realloc calls. Those should be
+    wired through the host's API. SDK should have the usual allcoators, if the host doesn't provide
+    one.
+
+  <2026-08-03 Mon 15:45> Did the allocator refactor. Tried to load the C plugin into a Rust
+  host. Works on Linux, but didn't work on Windows. Turned out I was using cygwin-gcc with it's own
+  runtime, and the dlls built that way don't work like that on Windows. So I ditched nob.h, and
+  started using cmake. Now everything builds and runs on Windows and Linux. The DLL loads
+  properly. Fixed many small gaps in the C SDK along the way. All that is left to do is to write a
+  simple block in C. And test running DLLs with a custom allocator.
+
+  - [X] Test running plugins with a custom allocator.
+  - [X] Write simple container operation block in C.
+
+  <2026-08-03 Mon 21:54> Made a lot of prgress. Rust OrcHandles now have RAII. Successfully tested
+  a C plugin function for the first time. Also tested the ability to share data across the FFI
+  boundary between C and Rust.
+
+
+* DONE tj92sq - OrcHandle Lifetimes and Identity
+  CLOSED: [2026-08-05 Wed 18:12]
+  :PROPERTIES:
+  :CREATED:  2026-08-04 Tue 09:32
+  :ARCHIVE_TIME: 2026-08-05 Wed 19:05
+  :ARCHIVE_FILE: d:/dev/orc/PROJECT.org
+  :ARCHIVE_CATEGORY: PROJECT
+  :ARCHIVE_TODO: DONE
+  :END:
+  :LOGBOOK:
+  - State "DONE"       from "NEXT"       [2026-08-05 Wed 18:12]
+  - State "NEXT"       from "TODO"       [2026-08-04 Tue 10:56]
+  :END:
+
+  Handles pointing to data from one plugin can be passed in as inputs to any other plugin. This
+  works fine, because input handles are immutable. It is unclear what should happen when the host
+  passes in one of those handles as an output handle. In the current state, we will get some type of
+  UB / crash. This is a serious liability for the design and needs to be fixed ASAP.
+
+  Whatever solution I come up with, must make it hard to do the wrong thing, without creating too
+  much friction. Ideally the host keeps the output handles of each block separate and doesn't mix
+  and match them, but that becomes less clear when dealing with container operation blocks, that
+  request the host to allocate decks in other plugins, of types that it doesn't recognize.
+
+  - Should the host think of the resulting deck as belonging to the plugin that implemented the
+    container op, or the plugin that created the deck from a proxy deck?
+  - What happens when the output datatype of a container operation is a primitive type that is
+    recognized by all plugins and the host? Who is responsible for the output then?
+  - The meaning of the ~handle~ property of ~OrcHandle~ can be different in each plugin. What if I
+    take an OrcHandle from plugin A, and pass it to plugin B, which also just happens to contain
+    something in it's registry with the same ~handle~?
+
+  This all feels like a mess, and needs to be solved immediately, otherwise the whole C API effort
+  can fall apart.
+
+  Should the host take ownership of the ~handle~ property and assign it, and make sure it is
+  globally unique? And the plugins just use the host assigned ~handle~ as a unique identifier?
+
+  <2026-08-05 Wed 17:25> Did the refactor. At least I think I got everything. The LLM generated plan
+  below was 20% useful. Did most of it by hand, because the LLM plan was riddled with bad
+  choices. Now it is time to test the shit out of this new design, guarantee all the invariants, and
+  move on.
+
+  <2026-08-05 Wed 17:46> Will do some reviewing and thinking, but any bugs and issues in the current
+  design will surface once I start testing.
+

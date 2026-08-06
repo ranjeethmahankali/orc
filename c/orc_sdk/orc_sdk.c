@@ -10,7 +10,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <threads.h>
+#include "threads_compat.h"  // IWYU pragma: keep
 
 static void *_default_alloc(uint64_t const size, uint64_t const alignment)
 {
@@ -1760,6 +1760,9 @@ void orc_sdk_oh_update(OrcHandle *handle)
   handle->n_marks       = orc_sdk_arr_len(h->marks);
   handle->strides       = h->strides;
   handle->free_fn       = _oh_free_fn;
+  // The deck may have been reallocated (grown) since it was first registered.
+  // Keep the registry in sync so orc_sdk_handle_alloc sees the current pointer.
+  _orc_sdk_registry_insert(handle->handle, (void *)handle->items);
 }
 
 void *orc_sdk_comb_init(OrcHandle const **inputs,
@@ -1964,7 +1967,8 @@ OrcError orc_sdk_handle_alloc(OrcTypeId const id, OrcHandle *const out)
         found == out->items,
         "The owned deck pointer doesn't match the one store in the handle.");
       if (out->type_id == id) {
-        return ORC_ERROR_NONE;  // Correct type — reuse as-is.
+        orc_sdk_deck_clear(out->items);  // Clear for fresh output.
+        return ORC_ERROR_NONE;
       }
       // Wrong type — free existing data and fall through to reallocate.
       OrcError const err = orc_sdk_handle_free(out);

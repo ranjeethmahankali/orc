@@ -60,6 +60,10 @@ pub fn string_from_ffi(ptr: *const std::ffi::c_char) -> String {
     }
 }
 
+/// # SAFETY
+///
+/// The caller must ensure the handle they're passing in, uniquely owns the deck they're passing. If
+/// this invariant is not met, this could lead to use after free and other sorts of bugs.
 pub unsafe fn update_handle_from_deck<T: TOrcData>(deck: &Deck<T>, handle: &mut OrcHandle) {
     // We should not touch the handle.handle. We only reassign things that we can infer from the Deck<T>.
     let (items, marks, (stride_offset, strides)) = (deck.items(), deck.marks(), deck.stride_info());
@@ -118,15 +122,27 @@ impl DeckRegistry {
             .map_err(|_e| Error::ConcurrencyProblem)?;
         match handles.entry(handle.handle) {
             Entry::Occupied(mut occupied) => {
-                let realloc_needed = {
+                let type_matches = {
                     let read_lock = occupied
                         .get()
                         .try_read()
                         .map_err(|_e| Error::ConcurrencyProblem)?;
-                    read_lock.downcast_ref::<T>().is_none()
+                    read_lock.downcast_ref::<Deck<T>>().is_some()
                 };
-                if realloc_needed {
-                    // Drop the old object and overwrite it with a new one.
+                if type_matches {
+                    // Same type — reuse the allocation but clear the deck so the next write
+                    // starts fresh and doesn't see stale data from the previous call.
+                    let mut write_lock = occupied
+                        .get()
+                        .try_write()
+                        .map_err(|_e| Error::ConcurrencyProblem)?;
+                    let deck = write_lock
+                        .downcast_mut::<Deck<T>>()
+                        .ok_or(Error::DeckTypeMismatch)?;
+                    deck.clear();
+                    unsafe { update_handle_from_deck(deck, handle) };
+                } else {
+                    // Different type — drop the old deck and insert a fresh one.
                     let deck = Deck::<T>::default();
                     unsafe { update_handle_from_deck(&deck, handle) };
                     occupied.insert(Arc::new(RwLock::new(Box::new(deck))));
@@ -448,3 +464,323 @@ pub const BUILTIN_TYPES: &[OrcTypeInfo] = &[
     i32::TYPE_INFO,
     i64::TYPE_INFO,
 ];
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{Deck, ORC_ERROR_NONE, ORC_NUM_DIMS, OrcError, OrcHandle, ffi::TOrcData};
+    use std::sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    };
+
+    // Provide orc_deck_free for the test binary. Each plugin normally defines this via
+    // orc_plugin!. In tests we manage the registry directly, so this is a no-op.
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn orc_deck_free(_handle: *mut OrcHandle) -> OrcError {
+        ORC_ERROR_NONE
+    }
+
+    fn fresh_handle(id: u64) -> OrcHandle {
+        OrcHandle {
+            handle: id,
+            ..Default::default()
+        }
+    }
+
+    // Helper: suppress the no-op Drop call on a handle we already cleaned up.
+    fn disarm(h: &mut OrcHandle) {
+        h.free_fn = None;
+    }
+
+    // ==================== DeckRegistry ====================
+
+    #[test]
+    fn alloc_fresh() {
+        let reg = DeckRegistry::new();
+        let mut h = fresh_handle(1);
+        reg.alloc::<f32>(&mut h).unwrap();
+        assert!(h.free_fn.is_some());
+        assert_eq!(h.type_id, f32::TYPE_INFO.type_id);
+        assert_eq!(h.handle, 1);
+        disarm(&mut h);
+    }
+
+    #[test]
+    fn alloc_reuse_same_type() {
+        // Second alloc with the same type should be a no-op: no error, type and ID unchanged.
+        // We verify the old free_fn is NOT called by checking the handle still has a valid entry
+        // in the registry after the second alloc.
+        let reg = DeckRegistry::new();
+        let mut h = fresh_handle(2);
+        reg.alloc::<f64>(&mut h).unwrap();
+        let type_id_before = h.type_id;
+        reg.alloc::<f64>(&mut h).unwrap();
+        assert_eq!(h.type_id, type_id_before);
+        assert_eq!(h.handle, 2);
+        // Entry must still be accessible (not freed).
+        reg.with_mut::<(), _>(&[2], |_| ()).unwrap();
+        disarm(&mut h);
+    }
+
+    #[test]
+    fn alloc_type_change() {
+        // Second alloc with a different type: old deck replaced, new type reflected in handle.
+        let reg = DeckRegistry::new();
+        let mut h = fresh_handle(3);
+        reg.alloc::<i32>(&mut h).unwrap();
+        assert_eq!(h.type_id, i32::TYPE_INFO.type_id);
+        reg.alloc::<f64>(&mut h).unwrap();
+        assert_eq!(h.type_id, f64::TYPE_INFO.type_id);
+        assert_eq!(h.handle, 3);
+        // New type is accessible.
+        reg.with_mut(&[3], |decks| {
+            assert!(decks[0].downcast_mut::<Deck<f64>>().is_some());
+        })
+        .unwrap();
+        disarm(&mut h);
+    }
+
+    #[test]
+    fn alloc_eviction_foreign() {
+        // A handle whose free_fn belongs to a foreign plugin: alloc must evict it first.
+        static FOREIGN_CALLED: AtomicUsize = AtomicUsize::new(0);
+        unsafe extern "C" fn mock_foreign(_handle: *mut OrcHandle) -> OrcError {
+            FOREIGN_CALLED.fetch_add(1, Ordering::Relaxed);
+            ORC_ERROR_NONE
+        }
+        let reg = DeckRegistry::new();
+        let mut h = OrcHandle {
+            handle: 4,
+            free_fn: Some(mock_foreign),
+            ..Default::default()
+        };
+        let before = FOREIGN_CALLED.load(Ordering::Relaxed);
+        reg.alloc::<u32>(&mut h).unwrap();
+        assert_eq!(FOREIGN_CALLED.load(Ordering::Relaxed), before + 1);
+        assert_eq!(h.handle, 4);
+        assert_eq!(h.type_id, u32::TYPE_INFO.type_id);
+        disarm(&mut h);
+    }
+
+    #[test]
+    fn free_success() {
+        let reg = DeckRegistry::new();
+        let mut h = fresh_handle(5);
+        reg.alloc::<f32>(&mut h).unwrap();
+        reg.free(5).unwrap();
+        // A plugin calls reset_handle after registry.free to clear the handle fields.
+        reset_handle(&mut h);
+        assert!(h.free_fn.is_none());
+        assert!(h.items.is_null());
+        assert_eq!(h.handle, 5);
+    }
+
+    #[test]
+    fn free_unregistered() {
+        let reg = DeckRegistry::new();
+        assert!(matches!(reg.free(999), Err(Error::InvalidHandle)));
+    }
+
+    #[test]
+    fn free_does_not_clear_handle_id() {
+        let reg = DeckRegistry::new();
+        let mut h = fresh_handle(6);
+        reg.alloc::<u8>(&mut h).unwrap();
+        reg.free(6).unwrap();
+        assert_eq!(h.handle, 6);
+        disarm(&mut h);
+    }
+
+    #[test]
+    fn with_mut_borrows_and_mutates() {
+        let reg = DeckRegistry::new();
+        let mut h = fresh_handle(10);
+        reg.alloc::<f64>(&mut h).unwrap();
+        reg.with_mut(&[10], |decks| {
+            let deck = decks[0].downcast_mut::<Deck<f64>>().expect("wrong type");
+            deck.push(3.1234, 1);
+        })
+        .unwrap();
+        reg.with_mut(&[10], |decks| {
+            let deck = decks[0].downcast_mut::<Deck<f64>>().expect("wrong type");
+            assert_eq!(deck.items(), &[3.1234]);
+        })
+        .unwrap();
+        disarm(&mut h);
+    }
+
+    #[test]
+    fn with_mut_missing_id() {
+        let reg = DeckRegistry::new();
+        assert!(matches!(
+            reg.with_mut::<(), _>(&[42], |_| ()),
+            Err(Error::InvalidHandle)
+        ));
+    }
+
+    #[test]
+    fn concurrent_alloc_free() {
+        use std::thread;
+        let reg = Arc::new(DeckRegistry::new());
+        let threads: Vec<_> = (0u64..16)
+            .map(|id| {
+                let reg = Arc::clone(&reg);
+                thread::spawn(move || {
+                    let mut h = OrcHandle {
+                        handle: id,
+                        ..Default::default()
+                    };
+                    reg.alloc::<f32>(&mut h).unwrap();
+                    // Write a value that encodes this thread's id.
+                    reg.with_mut(&[id], |decks| {
+                        let deck = decks[0].downcast_mut::<Deck<f32>>().unwrap();
+                        deck.push(id as f32, 1);
+                    })
+                    .unwrap();
+                    // Read it back — another thread must not have overwritten it.
+                    reg.with_mut(&[id], |decks| {
+                        let deck = decks[0].downcast_mut::<Deck<f32>>().unwrap();
+                        assert_eq!(deck.items(), &[id as f32]);
+                    })
+                    .unwrap();
+                    reg.free(id).unwrap();
+                    disarm(&mut h);
+                })
+            })
+            .collect();
+        for t in threads {
+            t.join().unwrap();
+        }
+        // All entries freed — none should be accessible.
+        assert!(matches!(
+            reg.with_mut::<(), _>(&[0], |_| ()),
+            Err(Error::InvalidHandle)
+        ));
+    }
+
+    // ==================== update_handle_from_deck ====================
+
+    #[test]
+    fn fields_populated() {
+        let mut deck: Deck<f32> = Deck::default();
+        deck.push(1.0, 1);
+        deck.push(2.0, 0);
+        deck.push(3.0, 0);
+        let mut h = OrcHandle {
+            handle: 99,
+            free_fn: None,
+            ..Default::default()
+        };
+        unsafe { update_handle_from_deck(&deck, &mut h) };
+        assert_eq!(h.type_id, f32::TYPE_INFO.type_id);
+        assert_eq!(h.n_items, 3);
+        assert!(!h.items.is_null());
+        assert_eq!(h.handle, 99);
+        assert!(h.free_fn.is_none());
+    }
+
+    #[test]
+    fn empty_deck_gives_null_items() {
+        let deck: Deck<u64> = Deck::default();
+        let mut h = OrcHandle {
+            handle: 55,
+            ..Default::default()
+        };
+        unsafe { update_handle_from_deck(&deck, &mut h) };
+        assert!(h.items.is_null());
+        assert_eq!(h.n_items, 0);
+        assert_eq!(h.type_id, u64::TYPE_INFO.type_id);
+    }
+
+    #[test]
+    fn preserves_handle_id() {
+        let mut deck: Deck<i32> = Deck::default();
+        deck.push(42, 1);
+        let mut h = OrcHandle {
+            handle: 77,
+            ..Default::default()
+        };
+        unsafe { update_handle_from_deck(&deck, &mut h) };
+        assert_eq!(h.handle, 77);
+    }
+
+    #[test]
+    fn preserves_free_fn() {
+        let deck: Deck<i32> = Deck::default();
+        let mut h = OrcHandle {
+            handle: 88,
+            free_fn: None,
+            ..Default::default()
+        };
+        unsafe { update_handle_from_deck(&deck, &mut h) };
+        assert!(h.free_fn.is_none());
+    }
+
+    // ==================== reset_handle ====================
+
+    #[test]
+    fn clears_data_fields_not_id() {
+        let mut h = OrcHandle {
+            handle: 42,
+            n_items: 5,
+            n_marks: 2,
+            type_id: 1,
+            free_fn: Some(orc_deck_free),
+            ..Default::default()
+        };
+        reset_handle(&mut h);
+        assert_eq!(h.handle, 42);
+        assert_eq!(h.n_items, 0);
+        assert_eq!(h.n_marks, 0);
+        assert_eq!(h.type_id, 0);
+        assert!(h.free_fn.is_none());
+        assert!(h.items.is_null());
+        assert!(h.marks.is_null());
+        assert_eq!(h.dims, [0i32; ORC_NUM_DIMS as usize]);
+    }
+
+    #[test]
+    fn reset_idempotent() {
+        let mut h = OrcHandle {
+            handle: 11,
+            n_items: 3,
+            ..Default::default()
+        };
+        reset_handle(&mut h);
+        reset_handle(&mut h);
+        assert_eq!(h.handle, 11);
+        assert_eq!(h.n_items, 0);
+        assert!(h.items.is_null());
+    }
+
+    // ==================== ptr helpers ====================
+
+    #[test]
+    fn empty_slice_gives_null() {
+        let empty: &[u32] = &[];
+        assert!(ptr_from_slice(empty).is_null());
+    }
+
+    #[test]
+    fn nonempty_round_trips() {
+        let data = [1u32, 2, 3];
+        let ptr = ptr_from_slice(&data);
+        assert!(!ptr.is_null());
+        let back = unsafe { slice_from_ptr(ptr, 3) };
+        assert_eq!(back, &data);
+    }
+
+    #[test]
+    fn null_ptr_gives_empty_slice() {
+        let s: &[u32] = unsafe { slice_from_ptr(std::ptr::null(), 5) };
+        assert!(s.is_empty());
+    }
+
+    #[test]
+    fn zero_len_gives_empty_slice() {
+        let data = [42u32];
+        let s: &[u32] = unsafe { slice_from_ptr(data.as_ptr(), 0) };
+        assert!(s.is_empty());
+    }
+}
