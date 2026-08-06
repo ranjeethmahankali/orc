@@ -68,6 +68,9 @@ static void flatten_deck(uint64_t         ctx,
                          OrcHandle       *output,
                          uint64_t         n_outputs)
 {
+  // TODO: Should this function iterate over and flatten each input as long as the number
+  // of outputs is the same?
+
   // Validate inputs.
   if (n_inputs != 1 || n_outputs != 1) {
     orc_sdk_report_message(

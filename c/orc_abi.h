@@ -52,6 +52,8 @@ typedef uint8_t OrcMessageLevel;
 #define ORC_MSG_LEVEL_FATAL 5u
 
 typedef struct OrcHandle OrcHandle;
+typedef uint32_t         OrcError;
+typedef uint8_t          OrcProxyType;
 
 typedef struct
 {
@@ -104,6 +106,12 @@ typedef struct OrcHost
   uint64_t           abi_version;
   OrcHostMemoryAPI   memory_api;
   OrcHostCallbackAPI callbacks;
+
+  OrcError (*create_deck_from_proxy)(OrcHandle const   *inputs,
+                                     uint64_t const     n_inputs,
+                                     OrcProxyType const proxy_type,
+                                     OrcHandle const   *proxy,
+                                     OrcHandle         *out);
 } OrcHost;
 
 #define ORC_DIM_LENGTH 0u
@@ -124,8 +132,6 @@ typedef struct
   uint64_t pos;
 } OrcMark;
 
-typedef uint32_t OrcError;
-
 #define ORC_ERROR_NONE 0u
 #define ORC_ERROR_ABI_VERSION_MISMATCH 0xff01u
 #define ORC_ERROR_INVALID_HANDLE 0xff02u
@@ -140,8 +146,6 @@ typedef uint32_t OrcError;
 #define ORC_ERROR_ALLOC_FAILED 0xff0bu
 #define ORC_ERROR_NULL_PTR 0xff0cu
 #define ORC_ERROR_UNKNOWN 0xffffu
-
-typedef uint8_t OrcProxyType;
 
 #define ORC_DECK_PROXY_COPY_ALL 0x01u
 #define ORC_DECK_PROXY_COPY_ITEMS 0x02u
