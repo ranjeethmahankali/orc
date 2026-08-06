@@ -311,3 +311,16 @@
       type and data
     - ~add_clears_previous_data~ — calling ~add~ twice on the same output slot produces only the
       results of the second call; the deck is cleared and rewritten, not appended to
+
+* DONE tjctcr - Fix the generated variable names in Rust macros
+  CLOSED: [2026-08-06 Thu 11:31]
+  :PROPERTIES:
+  :CREATED:  2026-08-06 Thu 11:20
+  :END:
+  :LOGBOOK:
+  - State "DONE"       from "NEXT"       [2026-08-06 Thu 11:31]
+  - State "NEXT"       from "TODO"       [2026-08-06 Thu 11:22]
+  :END:
+
+  The generated variable names are currently prefixed with __. That can throw off the linter,
+  because it could mean unused variable. Instead the should be suffixed with a _.
