@@ -77,15 +77,15 @@ fn main() -> Result<(), Error> {
         println!();
     }
     // --- Test some plugin functions ---
-
-    let add_fn = plugins
-        .iter()
-        .flat_map(|p| p.functions().iter())
-        .find(|f| f.name == "add")
-        .expect("add function not found in math_plugin");
-    let a: Deck<f64> = deck![[1.0, 2.0, 3.0], [2.0, 4.0, 6.0, 8.0]];
-    let b: Deck<f64> = deck![10.0, 20.0, 30.0];
     {
+        // Test the add function.
+        let add_fn = plugins
+            .iter()
+            .flat_map(|p| p.functions().iter())
+            .find(|f| f.name == "add")
+            .expect("add function not found in math_plugin");
+        let a: Deck<f64> = deck![[1.0, 2.0, 3.0], [2.0, 4.0, 6.0, 8.0]];
+        let b: Deck<f64> = deck![10.0, 20.0, 30.0];
         let mut a_handle = OrcHandle {
             handle: 0,
             ..Default::default()
@@ -111,12 +111,15 @@ fn main() -> Result<(), Error> {
             out_handle.display::<f64>()
         );
     }
-    let list_length_fn = plugins
-        .iter()
-        .flat_map(|p| p.functions().iter())
-        .find(|f| f.name == "list_length")
-        .expect("list_length function not found in math_plugin");
     {
+        // Test the list_length function.
+        let list_length_fn = plugins
+            .iter()
+            .flat_map(|p| p.functions().iter())
+            .find(|f| f.name == "list_length")
+            .expect("list_length function not found in math_plugin");
+
+        let a: Deck<f64> = deck![[1.0, 2.0, 3.0], [2.0, 4.0, 6.0, 8.0]];
         let mut a_handle = OrcHandle {
             handle: 0,
             ..Default::default()
@@ -133,6 +136,32 @@ fn main() -> Result<(), Error> {
             (list_length_fn.func)(0, inputs.as_ptr(), inputs.len() as u64, &mut out_handle, 1);
         }
         println!("List length output:\n{}", out_handle.display::<u64>());
+    }
+    {
+        // Test the flatten_deck function.
+        let flatten_fn = plugins
+            .iter()
+            .flat_map(|p| p.functions().iter())
+            .find(|f| f.name == "flatten_deck")
+            .expect("flatten_deck function not found");
+
+        let a: Deck<f64> = deck![[1.0, 2.0, 3.0], [4.0, 5.0]];
+        let mut a_handle = OrcHandle {
+            handle: 0,
+            ..Default::default()
+        };
+        let mut out_handle = OrcHandle {
+            handle: 1,
+            ..Default::default()
+        };
+        unsafe {
+            update_handle_from_deck(&a, &mut a_handle);
+            (flatten_fn.func)(0, &a_handle, 1, &mut out_handle, 1);
+        }
+        println!(
+            "flatten_deck([[1,2,3],[4,5]]):\n{}",
+            out_handle.display::<f64>()
+        );
     }
     Ok(())
 }
