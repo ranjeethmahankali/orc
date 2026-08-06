@@ -265,8 +265,9 @@ void test_list_length_reuse_output_same_type(void)
   orc_sdk_oh_update(&in);
   CALL_LIST_LENGTH(in, out);
   TEST_ASSERT_EQUAL_UINT64(2, out.n_items);
+  void const *ptr_after_first = out.items;
 
-  /* Second call: [[7]] -> [1] */
+  /* Second call: [[7]] -> [1] — fewer items, deck has capacity, no realloc. */
   ORC_SDK_DECK_INIT(in.items, double, ((7.0)));
   orc_sdk_oh_update(&in);
   CALL_LIST_LENGTH(in, out);
@@ -274,6 +275,7 @@ void test_list_length_reuse_output_same_type(void)
   uint64_t const *result = (uint64_t const *)out.items;
   TEST_ASSERT_EQUAL_UINT64(1, out.n_items);
   TEST_ASSERT_EQUAL_UINT64(1, result[0]);
+  TEST_ASSERT_EQUAL_PTR(ptr_after_first, out.items);
   orc_sdk_handle_free(&in);
   orc_sdk_handle_free(&out);
 }
@@ -315,8 +317,9 @@ void test_list_length_clears_previous_output(void)
   orc_sdk_oh_update(&in);
   CALL_LIST_LENGTH(in, out);
   TEST_ASSERT_EQUAL_UINT64(3, out.n_items);
+  void const *ptr_after_first = out.items;
 
-  /* Second call: 1 list of 3 items -> [3] */
+  /* Second call: 1 list of 3 items -> [3] — fewer items, no realloc. */
   ORC_SDK_DECK_INIT(in.items, double, ((9.0, 8.0, 7.0)));
   orc_sdk_oh_update(&in);
   CALL_LIST_LENGTH(in, out);
@@ -324,6 +327,7 @@ void test_list_length_clears_previous_output(void)
   uint64_t const *result = (uint64_t const *)out.items;
   TEST_ASSERT_EQUAL_UINT64(1, out.n_items);
   TEST_ASSERT_EQUAL_UINT64(3, result[0]);
+  TEST_ASSERT_EQUAL_PTR(ptr_after_first, out.items);
   orc_sdk_handle_free(&in);
   orc_sdk_handle_free(&out);
 }
