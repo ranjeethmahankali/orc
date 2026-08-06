@@ -2019,6 +2019,9 @@ OrcError orc_sdk_handle_alloc(OrcTypeId const id, OrcHandle *const out)
   case ORC_TYPE_I64:
     out->item_size = sizeof(int64_t);
     break;
+  case ORC_TYPE_PROXY:
+    out->item_size = sizeof(OrcItemProxy);
+    break;
   default: {
     if (PLUGIN_TYPE_FN) {
       OrcSdkTypeInfo info = PLUGIN_TYPE_FN(id);
