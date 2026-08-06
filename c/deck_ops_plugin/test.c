@@ -22,7 +22,7 @@ void tearDown(void) {}
    Correctness
    ============================================================ */
 
-void test_list_length_basic(void)
+static void test_list_length_basic(void)
 {
   /* [[1,2,3],[4,5]] -> [3,2] */
   orc_sdk_init(NULL, NULL);
@@ -41,7 +41,7 @@ void test_list_length_basic(void)
   orc_sdk_handle_free(&out);
 }
 
-void test_list_length_with_empty_lists(void)
+static void test_list_length_with_empty_lists(void)
 {
   /* [[],[1],[]] -> [0,1,0] */
   orc_sdk_init(NULL, NULL);
@@ -61,7 +61,7 @@ void test_list_length_with_empty_lists(void)
   orc_sdk_handle_free(&out);
 }
 
-void test_list_length_single_list(void)
+static void test_list_length_single_list(void)
 {
   /* [[42]] -> [1] */
   orc_sdk_init(NULL, NULL);
@@ -79,7 +79,7 @@ void test_list_length_single_list(void)
   orc_sdk_handle_free(&out);
 }
 
-void test_list_length_depth3(void)
+static void test_list_length_depth3(void)
 {
   /* Depth-3 input: (((1,2),(3)),((4,5,6)))
      Inner list lengths: group 0 -> [2,1], group 1 -> [3]
@@ -105,7 +105,7 @@ void test_list_length_depth3(void)
    Error / validation
    ============================================================ */
 
-void test_list_length_wrong_n_inputs(void)
+static void test_list_length_wrong_n_inputs(void)
 {
   /* n_inputs != 1 -> early return, output untouched. */
   orc_sdk_init(NULL, NULL);
@@ -121,7 +121,7 @@ void test_list_length_wrong_n_inputs(void)
   orc_sdk_handle_free(&in);
 }
 
-void test_list_length_wrong_n_outputs(void)
+static void test_list_length_wrong_n_outputs(void)
 {
   /* n_outputs != 1 -> early return, output untouched. */
   orc_sdk_init(NULL, NULL);
@@ -137,7 +137,7 @@ void test_list_length_wrong_n_outputs(void)
   orc_sdk_handle_free(&in);
 }
 
-void test_list_length_null_input_ptr(void)
+static void test_list_length_null_input_ptr(void)
 {
   /* Passing NULL as inputs pointer -> early return, no crash. */
   orc_sdk_init(NULL, NULL);
@@ -148,7 +148,7 @@ void test_list_length_null_input_ptr(void)
   TEST_ASSERT_NULL(out.items);
 }
 
-void test_list_length_null_output_ptr(void)
+static void test_list_length_null_output_ptr(void)
 {
   /* Passing NULL as outputs pointer -> early return, no crash. */
   orc_sdk_init(NULL, NULL);
@@ -165,7 +165,7 @@ void test_list_length_null_output_ptr(void)
    Ownership and lifetime invariants
    ============================================================ */
 
-void test_list_length_output_free_fn_set(void)
+static void test_list_length_output_free_fn_set(void)
 {
   /* After a successful call, out.free_fn must be set (plugin owns the deck). */
   orc_sdk_init(NULL, NULL);
@@ -181,7 +181,7 @@ void test_list_length_output_free_fn_set(void)
   orc_sdk_handle_free(&out);
 }
 
-void test_list_length_output_id_preserved(void)
+static void test_list_length_output_id_preserved(void)
 {
   /* out.handle must be unchanged before and after the call. */
   orc_sdk_init(NULL, NULL);
@@ -197,7 +197,7 @@ void test_list_length_output_id_preserved(void)
   orc_sdk_handle_free(&out);
 }
 
-void test_list_length_output_is_u64(void)
+static void test_list_length_output_is_u64(void)
 {
   /* list_length always allocates ORC_TYPE_U64 output regardless of input type. */
   orc_sdk_init(NULL, NULL);
@@ -213,7 +213,7 @@ void test_list_length_output_is_u64(void)
   orc_sdk_handle_free(&out);
 }
 
-void test_list_length_input_handle_unaffected(void)
+static void test_list_length_input_handle_unaffected(void)
 {
   /* The input handle's free_fn, items pointer, and n_items must not change. */
   orc_sdk_init(NULL, NULL);
@@ -234,7 +234,7 @@ void test_list_length_input_handle_unaffected(void)
   orc_sdk_handle_free(&out);
 }
 
-void test_list_length_reuse_output_same_type(void)
+static void test_list_length_reuse_output_same_type(void)
 {
   /* Calling list_length twice on the same output handle rewrites it without appending. */
   orc_sdk_init(NULL, NULL);
@@ -260,7 +260,7 @@ void test_list_length_reuse_output_same_type(void)
   orc_sdk_handle_free(&out);
 }
 
-void test_list_length_output_type_change(void)
+static void test_list_length_output_type_change(void)
 {
   /* If out was previously allocated as a different type, list_length reallocates it as
    * u64. */
@@ -281,7 +281,7 @@ void test_list_length_output_type_change(void)
   orc_sdk_handle_free(&out);
 }
 
-void test_list_length_clears_previous_output(void)
+static void test_list_length_clears_previous_output(void)
 {
   /* A second call with fewer output items must not leave stale data in the output. */
   orc_sdk_init(NULL, NULL);
@@ -311,7 +311,7 @@ void test_list_length_clears_previous_output(void)
    flatten_deck — Correctness
    ============================================================ */
 
-void test_flatten_deck_basic(void)
+static void test_flatten_deck_basic(void)
 {
   /* [[1,2,3],[4,5]] -> [1,2,3,4,5] */
   orc_sdk_init(NULL, NULL);
@@ -334,7 +334,7 @@ void test_flatten_deck_basic(void)
   orc_sdk_handle_free(&out);
 }
 
-void test_flatten_deck_already_flat(void)
+static void test_flatten_deck_already_flat(void)
 {
   /* A depth-1 (already flat) input comes out unchanged. */
   orc_sdk_init(NULL, NULL);
@@ -355,7 +355,7 @@ void test_flatten_deck_already_flat(void)
   orc_sdk_handle_free(&out);
 }
 
-void test_flatten_deck_multiple_inputs(void)
+static void test_flatten_deck_multiple_inputs(void)
 {
   /* Two inputs flattened independently: [[1,2],[3]] and [[4,5,6]] -> [1,2,3] and [4,5,6].
    * This verifies the loop correctly advances through the input/output arrays. */
@@ -391,7 +391,7 @@ void test_flatten_deck_multiple_inputs(void)
   orc_sdk_handle_free(&outs[1]);
 }
 
-void test_flatten_deck_integer_type(void)
+static void test_flatten_deck_integer_type(void)
 {
   /* Works for u32, not just f64. [[10,20],[30]] -> [10,20,30] */
   orc_sdk_init(NULL, NULL);
@@ -416,7 +416,7 @@ void test_flatten_deck_integer_type(void)
    flatten_deck — Error / validation
    ============================================================ */
 
-void test_flatten_deck_mismatched_counts(void)
+static void test_flatten_deck_mismatched_counts(void)
 {
   /* n_inputs != n_outputs -> early return, output untouched. */
   orc_sdk_init(NULL, NULL);
@@ -434,7 +434,7 @@ void test_flatten_deck_mismatched_counts(void)
   orc_sdk_handle_free(&in);
 }
 
-void test_flatten_deck_null_inputs_ptr(void)
+static void test_flatten_deck_null_inputs_ptr(void)
 {
   /* NULL inputs pointer -> early return, no crash. */
   orc_sdk_init(NULL, NULL);
@@ -447,7 +447,7 @@ void test_flatten_deck_null_inputs_ptr(void)
   TEST_ASSERT_NULL(out.free_fn);
 }
 
-void test_flatten_deck_null_outputs_ptr(void)
+static void test_flatten_deck_null_outputs_ptr(void)
 {
   /* NULL outputs pointer -> early return, no crash. */
   orc_sdk_init(NULL, NULL);
@@ -462,7 +462,7 @@ void test_flatten_deck_null_outputs_ptr(void)
   orc_sdk_handle_free(&in);
 }
 
-void test_flatten_deck_no_create_proxy_capability(void)
+static void test_flatten_deck_no_create_proxy_capability(void)
 {
   /* An input with an unknown type triggers the host fallback path.
    * orc_sdk_init(NULL, NULL) leaves HOST.create_deck_from_proxy == NULL, so
@@ -485,7 +485,7 @@ void test_flatten_deck_no_create_proxy_capability(void)
    flatten_deck — Ownership and lifetime invariants
    ============================================================ */
 
-void test_flatten_deck_output_free_fn_set(void)
+static void test_flatten_deck_output_free_fn_set(void)
 {
   /* After a successful call, out.free_fn must be set (plugin owns the deck). */
   orc_sdk_init(NULL, NULL);
@@ -503,7 +503,7 @@ void test_flatten_deck_output_free_fn_set(void)
   orc_sdk_handle_free(&out);
 }
 
-void test_flatten_deck_output_type_matches_input(void)
+static void test_flatten_deck_output_type_matches_input(void)
 {
   /* The output type_id must match the input type_id. */
   orc_sdk_init(NULL, NULL);
@@ -521,7 +521,7 @@ void test_flatten_deck_output_type_matches_input(void)
   orc_sdk_handle_free(&out);
 }
 
-void test_flatten_deck_output_handle_preserved(void)
+static void test_flatten_deck_output_handle_preserved(void)
 {
   /* out.handle must be unchanged after the call. */
   orc_sdk_init(NULL, NULL);
@@ -539,7 +539,7 @@ void test_flatten_deck_output_handle_preserved(void)
   orc_sdk_handle_free(&out);
 }
 
-void test_flatten_deck_dims_preserved(void)
+static void test_flatten_deck_dims_preserved(void)
 {
   /* Dims from the input must be propagated to the output. */
   orc_sdk_init(NULL, NULL);
