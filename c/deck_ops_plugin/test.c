@@ -5,7 +5,12 @@
 extern OrcFuncInfo const LIST_LENGTH_INFO;
 extern OrcFuncInfo const FLATTEN_DECK_INFO;
 
-void setUp(void) {}
+void _orc_sdk_registry_clear(void);  // Forward decl for a function defined in orc_sdk.c
+
+void setUp(void)
+{
+  _orc_sdk_registry_clear();
+}
 void tearDown(void) {}
 
 #define CALL_FLATTEN_DECK(in_h, out_h) FLATTEN_DECK_INFO.func(0, &(in_h), 1, &(out_h), 1)
