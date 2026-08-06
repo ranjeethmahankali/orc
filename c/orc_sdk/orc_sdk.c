@@ -1760,6 +1760,9 @@ void orc_sdk_oh_update(OrcHandle *handle)
   handle->n_marks       = orc_sdk_arr_len(h->marks);
   handle->strides       = h->strides;
   handle->free_fn       = _oh_free_fn;
+  // The deck may have been reallocated (grown) since it was first registered.
+  // Keep the registry in sync so orc_sdk_handle_alloc sees the current pointer.
+  _orc_sdk_registry_insert(handle->handle, (void *)handle->items);
 }
 
 void *orc_sdk_comb_init(OrcHandle const **inputs,

@@ -1,15 +1,14 @@
 #include <orc_sdk/orc_sdk.h>
-#include "unity.h"
 #include <stdint.h>
+#include "unity.h"
 
 extern OrcFuncInfo const LIST_LENGTH_INFO;
 
-void setUp(void)    {}
+void setUp(void) {}
 void tearDown(void) {}
 
 /* Shorthand for the common 1-in / 1-out call. */
-#define CALL_LIST_LENGTH(in_h, out_h) \
-  LIST_LENGTH_INFO.func(0, &(in_h), 1, &(out_h), 1)
+#define CALL_LIST_LENGTH(in_h, out_h) LIST_LENGTH_INFO.func(0, &(in_h), 1, &(out_h), 1)
 
 /* ============================================================
    Correctness
@@ -20,7 +19,8 @@ void test_list_length_basic(void)
   /* [[1,2,3],[4,5]] -> [3,2] */
   orc_sdk_init(NULL, NULL);
   OrcHandle in = {0}, out = {0};
-  in.handle = 1; out.handle = 2;
+  in.handle  = 1;
+  out.handle = 2;
   orc_sdk_handle_alloc(ORC_TYPE_F64, &in);
   ORC_SDK_DECK_INIT(in.items, double, ((1.0, 2.0, 3.0), (4.0, 5.0)));
   orc_sdk_oh_update(&in);
@@ -40,7 +40,8 @@ void test_list_length_with_empty_lists(void)
   /* [[],[1],[]] -> [0,1,0] */
   orc_sdk_init(NULL, NULL);
   OrcHandle in = {0}, out = {0};
-  in.handle = 1; out.handle = 2;
+  in.handle  = 1;
+  out.handle = 2;
   orc_sdk_handle_alloc(ORC_TYPE_F64, &in);
   ORC_SDK_DECK_INIT(in.items, double, ((), (1.0), ()));
   orc_sdk_oh_update(&in);
@@ -61,7 +62,8 @@ void test_list_length_single_list(void)
   /* [[42]] -> [1] */
   orc_sdk_init(NULL, NULL);
   OrcHandle in = {0}, out = {0};
-  in.handle = 1; out.handle = 2;
+  in.handle  = 1;
+  out.handle = 2;
   orc_sdk_handle_alloc(ORC_TYPE_F64, &in);
   ORC_SDK_DECK_INIT(in.items, double, ((42.0)));
   orc_sdk_oh_update(&in);
@@ -82,7 +84,8 @@ void test_list_length_depth3(void)
      Flat output items: [2,1,3] in a depth-2 deck. */
   orc_sdk_init(NULL, NULL);
   OrcHandle in = {0}, out = {0};
-  in.handle = 1; out.handle = 2;
+  in.handle  = 1;
+  out.handle = 2;
   orc_sdk_handle_alloc(ORC_TYPE_F64, &in);
   ORC_SDK_DECK_INIT(in.items, double, (((1.0, 2.0), (3.0)), ((4.0, 5.0, 6.0))));
   orc_sdk_oh_update(&in);
@@ -107,7 +110,8 @@ void test_list_length_wrong_n_inputs(void)
   /* n_inputs != 1 -> early return, output untouched. */
   orc_sdk_init(NULL, NULL);
   OrcHandle in = {0}, out = {0};
-  in.handle = 1; out.handle = 2;
+  in.handle  = 1;
+  out.handle = 2;
   orc_sdk_handle_alloc(ORC_TYPE_F64, &in);
   ORC_SDK_DECK_INIT(in.items, double, ((1.0)));
   orc_sdk_oh_update(&in);
@@ -124,7 +128,8 @@ void test_list_length_wrong_n_outputs(void)
   /* n_outputs != 1 -> early return, output untouched. */
   orc_sdk_init(NULL, NULL);
   OrcHandle in = {0}, out = {0};
-  in.handle = 1; out.handle = 2;
+  in.handle  = 1;
+  out.handle = 2;
   orc_sdk_handle_alloc(ORC_TYPE_F64, &in);
   ORC_SDK_DECK_INIT(in.items, double, ((1.0)));
   orc_sdk_oh_update(&in);
@@ -141,7 +146,7 @@ void test_list_length_null_input_ptr(void)
   /* Passing NULL as inputs pointer -> early return, no crash. */
   orc_sdk_init(NULL, NULL);
   OrcHandle out = {0};
-  out.handle = 2;
+  out.handle    = 2;
 
   LIST_LENGTH_INFO.func(0, NULL, 1, &out, 1);
 
@@ -154,7 +159,7 @@ void test_list_length_null_output_ptr(void)
   /* Passing NULL as outputs pointer -> early return, no crash. */
   orc_sdk_init(NULL, NULL);
   OrcHandle in = {0};
-  in.handle = 1;
+  in.handle    = 1;
   orc_sdk_handle_alloc(ORC_TYPE_F64, &in);
   ORC_SDK_DECK_INIT(in.items, double, ((1.0)));
   orc_sdk_oh_update(&in);
@@ -173,7 +178,8 @@ void test_list_length_output_free_fn_set(void)
   /* After a successful call, out.free_fn must be set (plugin owns the deck). */
   orc_sdk_init(NULL, NULL);
   OrcHandle in = {0}, out = {0};
-  in.handle = 1; out.handle = 2;
+  in.handle  = 1;
+  out.handle = 2;
   orc_sdk_handle_alloc(ORC_TYPE_F64, &in);
   ORC_SDK_DECK_INIT(in.items, double, ((1.0)));
   orc_sdk_oh_update(&in);
@@ -190,7 +196,8 @@ void test_list_length_output_id_preserved(void)
   /* out.handle must be unchanged before and after the call. */
   orc_sdk_init(NULL, NULL);
   OrcHandle in = {0}, out = {0};
-  in.handle = 1; out.handle = 99;
+  in.handle  = 1;
+  out.handle = 99;
   orc_sdk_handle_alloc(ORC_TYPE_F64, &in);
   ORC_SDK_DECK_INIT(in.items, double, ((1.0)));
   orc_sdk_oh_update(&in);
@@ -207,7 +214,8 @@ void test_list_length_output_is_u64(void)
   /* list_length always allocates ORC_TYPE_U64 output regardless of input type. */
   orc_sdk_init(NULL, NULL);
   OrcHandle in = {0}, out = {0};
-  in.handle = 1; out.handle = 2;
+  in.handle  = 1;
+  out.handle = 2;
   orc_sdk_handle_alloc(ORC_TYPE_F64, &in);
   ORC_SDK_DECK_INIT(in.items, double, ((1.0, 2.0)));
   orc_sdk_oh_update(&in);
@@ -224,14 +232,15 @@ void test_list_length_input_handle_unaffected(void)
   /* The input handle's free_fn, items pointer, and n_items must not change. */
   orc_sdk_init(NULL, NULL);
   OrcHandle in = {0}, out = {0};
-  in.handle = 1; out.handle = 2;
+  in.handle  = 1;
+  out.handle = 2;
   orc_sdk_handle_alloc(ORC_TYPE_F64, &in);
   ORC_SDK_DECK_INIT(in.items, double, ((1.0, 2.0), (3.0)));
   orc_sdk_oh_update(&in);
 
-  void const *items_before   = in.items;
-  uint64_t    n_items_before = in.n_items;
-  OrcError  (*free_fn_before)(OrcHandle *) = in.free_fn;
+  void const *items_before                = in.items;
+  uint64_t    n_items_before              = in.n_items;
+  OrcError (*free_fn_before)(OrcHandle *) = in.free_fn;
 
   CALL_LIST_LENGTH(in, out);
 
@@ -247,7 +256,8 @@ void test_list_length_reuse_output_same_type(void)
   /* Calling list_length twice on the same output handle rewrites it without appending. */
   orc_sdk_init(NULL, NULL);
   OrcHandle in = {0}, out = {0};
-  in.handle = 1; out.handle = 2;
+  in.handle  = 1;
+  out.handle = 2;
   orc_sdk_handle_alloc(ORC_TYPE_F64, &in);
 
   /* First call: [[1,2,3],[4,5]] -> [3,2] */
@@ -270,10 +280,12 @@ void test_list_length_reuse_output_same_type(void)
 
 void test_list_length_output_type_change(void)
 {
-  /* If out was previously allocated as a different type, list_length reallocates it as u64. */
+  /* If out was previously allocated as a different type, list_length reallocates it as
+   * u64. */
   orc_sdk_init(NULL, NULL);
   OrcHandle in = {0}, out = {0};
-  in.handle = 1; out.handle = 2;
+  in.handle  = 1;
+  out.handle = 2;
   orc_sdk_handle_alloc(ORC_TYPE_F64, &in);
   /* Pre-allocate output as F64. */
   orc_sdk_handle_alloc(ORC_TYPE_F64, &out);
@@ -294,7 +306,8 @@ void test_list_length_clears_previous_output(void)
   /* A second call with fewer output items must not leave stale data in the output. */
   orc_sdk_init(NULL, NULL);
   OrcHandle in = {0}, out = {0};
-  in.handle = 1; out.handle = 2;
+  in.handle  = 1;
+  out.handle = 2;
   orc_sdk_handle_alloc(ORC_TYPE_F64, &in);
 
   /* First call: 3 singleton lists -> [1,1,1] */
