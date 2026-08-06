@@ -146,7 +146,7 @@
   Something that allows for multiple named inputs and outputs. When a block has just one output,
   they can be nested as you normally do in LISP.
 
-* TODO Improve Function Metadata
+* TODO tjd838 - Improve Function Metadata
   :PROPERTIES:
   :CREATED:  2026-08-02 Sun 19:14
   :END:
@@ -156,16 +156,22 @@
   wildly variadic and type agnostic. The metatdata should allow the functions to express that
   somehow.
 
-* NEXT tjbrtc - Implement Container Op Blocks in C
+* DONE tjbrtc - Implement Container Op Blocks in C
+  CLOSED: [2026-08-06 Thu 16:40]
   :PROPERTIES:
   :CREATED:  2026-08-03 Mon 18:22
   :END:
   :LOGBOOK:
+  - State "DONE"       from "NEXT"       [2026-08-06 Thu 16:40]
   - State "NEXT"       from "TODO"       [2026-08-05 Wed 21:51]
   :END:
 
   To test all the variations of this across plugin boundaries, I might need to add some custom
   datatypes in a Rust plugin.
+
+  <2026-08-06 Thu 16:39> This is working for basic primitive types, that don't require deferring the
+  deck construction to the host. I just have one container op function at this time, but I want to
+  waiti till the ABI is more stable before I add more functions.
 
 * DONE tjbhvp - Testing and CI
   CLOSED: [2026-08-05 Wed 20:49]
