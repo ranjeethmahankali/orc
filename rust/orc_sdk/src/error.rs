@@ -14,6 +14,7 @@ pub enum Error {
     OutOfBounds,
     AllocFailed,
     NullPointer,
+    MissingCapability,
     Unknown,
 }
 
@@ -33,6 +34,7 @@ impl Error {
             crate::ORC_ERROR_OUT_OF_BOUNDS => Err(Error::OutOfBounds),
             crate::ORC_ERROR_ALLOC_FAILED => Err(Error::AllocFailed),
             crate::ORC_ERROR_NULL_PTR => Err(Error::NullPointer),
+            crate::ORC_ERROR_MISSING_CAPABILITY => Err(Error::MissingCapability),
             _ => Err(Error::Unknown),
         }
     }
@@ -52,8 +54,9 @@ impl std::fmt::Display for Error {
             Error::CannotLoadPlugins => write!(f, "Cannot load plugins"),
             Error::OutOfBounds => write!(f, "Memory out of bounds"),
             Error::AllocFailed => write!(f, "Memory allocation failed"),
-            Error::Unknown => write!(f, "Unknown error"),
             Error::NullPointer => write!(f, "Null pointer"),
+            Error::MissingCapability => write!(f, "This capability is missing / not implemented"),
+            Error::Unknown => write!(f, "Unknown error"),
         }
     }
 }
@@ -75,6 +78,7 @@ impl From<Error> for OrcError {
             Error::OutOfBounds => crate::ORC_ERROR_OUT_OF_BOUNDS,
             Error::AllocFailed => crate::ORC_ERROR_ALLOC_FAILED,
             Error::NullPointer => crate::ORC_ERROR_NULL_PTR,
+            Error::MissingCapability => crate::ORC_ERROR_MISSING_CAPABILITY,
             Error::Unknown => crate::ORC_ERROR_UNKNOWN,
         }
     }

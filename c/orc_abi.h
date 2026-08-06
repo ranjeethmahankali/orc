@@ -145,6 +145,7 @@ typedef struct
 #define ORC_ERROR_OUT_OF_BOUNDS 0xff0au
 #define ORC_ERROR_ALLOC_FAILED 0xff0bu
 #define ORC_ERROR_NULL_PTR 0xff0cu
+#define ORC_ERROR_MISSING_CAPABILITY 0xff0du
 #define ORC_ERROR_UNKNOWN 0xffffu
 
 #define ORC_DECK_PROXY_COPY_ALL 0x01u
