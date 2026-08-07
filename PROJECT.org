@@ -146,9 +146,12 @@
   Something that allows for multiple named inputs and outputs. When a block has just one output,
   they can be nested as you normally do in LISP.
 
-* TODO tjd838 - Improve Function Metadata
+* NEXT tjd838 - Improve Function Metadata
   :PROPERTIES:
   :CREATED:  2026-08-02 Sun 19:14
+  :END:
+  :LOGBOOK:
+  - State "NEXT"       from "TODO"       [2026-08-07 Fri 09:14]
   :END:
 
   We want the function metadata to also contain information about how many inputs and outputs the
