@@ -25,40 +25,6 @@ fn docs_from_attrs(attrs: &[syn::Attribute]) -> String {
         .join(" ")
 }
 
-fn extract_doc(func: &ItemFn) -> String {
-    docs_from_attrs(&func.attrs)
-}
-
-/// `#[orc_generate_fn_info]` or `#[orc_generate_fn_info("add")]` — generates an `OrcFuncInfo` const alongside the function.
-#[proc_macro_attribute]
-pub fn orc_generate_fn_info(attr: TokenStream, item: TokenStream) -> TokenStream {
-    let func = parse_macro_input!(item as ItemFn);
-    let fn_name = &func.sig.ident;
-    let fn_name_str = fn_name.to_string();
-    let const_name = info_const_name(&fn_name_str);
-    let display_name = if attr.is_empty() {
-        fn_name_str.clone()
-    } else {
-        let lit = parse_macro_input!(attr as syn::LitStr);
-        lit.value()
-    };
-    let desc = extract_doc(&func);
-    let name_lit = proc_macro2::Literal::c_string(
-        &std::ffi::CString::new(display_name).expect("function name contains a null byte"),
-    );
-    let desc_lit = proc_macro2::Literal::c_string(
-        &std::ffi::CString::new(desc).expect("doc comment contains a null byte"),
-    );
-    quote! {
-        pub const #const_name: orc_sdk::OrcFuncInfo = orc_sdk::OrcFuncInfo {
-            name: #name_lit.as_ptr(),
-            desc: #desc_lit.as_ptr(),
-            func: Some(#fn_name),
-        };
-        #func
-    }
-    .into()
-}
 
 /// `orc_fn_info!(add)` expands to `ORC_FN_INFO_ADD`.
 /// `orc_fn_info!(basic::add)` expands to `basic::ORC_FN_INFO_ADD`.

@@ -14,7 +14,7 @@ mod error;
 pub use error::Error;
 
 #[cfg(feature = "derive")]
-pub use orc_sdk_derive::{orc_fn, orc_fn_info, orc_generate_fn_info};
+pub use orc_sdk_derive::{orc_fn, orc_fn_info};
 
 mod util;
 pub use util::{
