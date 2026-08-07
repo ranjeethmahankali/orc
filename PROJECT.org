@@ -138,13 +138,20 @@
   <2026-07-31 Fri 20:45> Trying to temporarily stop on this task, and finish a few other smaller
   tasks before continuing.
 
-* TODO A LISP like syntax with multiple outputs?
+* NEXT tjewz9 - A LISP like syntax with multiple outputs?
   :PROPERTIES:
   :CREATED:  2026-08-04 Tue 08:37
+  :END:
+  :LOGBOOK:
+  - State "NEXT"       from "TODO"       [2026-08-07 Fri 14:34]
   :END:
 
   Something that allows for multiple named inputs and outputs. When a block has just one output,
   they can be nested as you normally do in LISP.
+
+  <2026-08-07 Fri 14:33> Having this will make it easy to really test functions in various
+  combinations, type system edge cases etc. So doing this task before making more progress with the
+  SDK, functions, and types.
 
 * DONE tjd838 - Improve Function Metadata
   CLOSED: [2026-08-07 Fri 14:25]
