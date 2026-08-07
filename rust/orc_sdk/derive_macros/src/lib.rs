@@ -25,7 +25,6 @@ fn docs_from_attrs(attrs: &[syn::Attribute]) -> String {
         .join(" ")
 }
 
-
 /// `orc_fn_info!(add)` expands to `ORC_FN_INFO_ADD`.
 /// `orc_fn_info!(basic::add)` expands to `basic::ORC_FN_INFO_ADD`.
 #[proc_macro]
@@ -83,7 +82,6 @@ fn is_deck_writer_param(ty: &syn::Type) -> bool {
         && matches!(r.elem.as_ref(), syn::Type::Path(p)
             if p.path.segments.last().is_some_and(|s| s.ident == "DeckWriter")))
 }
-
 
 fn infer_depth(ty: &syn::Type) -> Option<u8> {
     match ty {
@@ -1142,11 +1140,17 @@ mod tests {
         // &[T] → input
         assert_eq!(is_output_param(&parse_quote! { &[T] }).unwrap(), false);
         // DeckView<T> → input
-        assert_eq!(is_output_param(&parse_quote! { DeckView<T> }).unwrap(), false);
+        assert_eq!(
+            is_output_param(&parse_quote! { DeckView<T> }).unwrap(),
+            false
+        );
         // &mut T → output
         assert_eq!(is_output_param(&parse_quote! { &mut T }).unwrap(), true);
         // &mut DeckWriter<T> → output
-        assert_eq!(is_output_param(&parse_quote! { &mut DeckWriter<T> }).unwrap(), true);
+        assert_eq!(
+            is_output_param(&parse_quote! { &mut DeckWriter<T> }).unwrap(),
+            true
+        );
         // bare DeckWriter<T> → error
         assert!(is_output_param(&parse_quote! { DeckWriter<T> }).is_err());
         // bare T → error
