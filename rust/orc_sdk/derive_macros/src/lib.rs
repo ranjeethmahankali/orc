@@ -25,41 +25,6 @@ fn docs_from_attrs(attrs: &[syn::Attribute]) -> String {
         .join(" ")
 }
 
-fn extract_doc(func: &ItemFn) -> String {
-    docs_from_attrs(&func.attrs)
-}
-
-/// `#[orc_generate_fn_info]` or `#[orc_generate_fn_info("add")]` — generates an `OrcFuncInfo` const alongside the function.
-#[proc_macro_attribute]
-pub fn orc_generate_fn_info(attr: TokenStream, item: TokenStream) -> TokenStream {
-    let func = parse_macro_input!(item as ItemFn);
-    let fn_name = &func.sig.ident;
-    let fn_name_str = fn_name.to_string();
-    let const_name = info_const_name(&fn_name_str);
-    let display_name = if attr.is_empty() {
-        fn_name_str.clone()
-    } else {
-        let lit = parse_macro_input!(attr as syn::LitStr);
-        lit.value()
-    };
-    let desc = extract_doc(&func);
-    let name_lit = proc_macro2::Literal::c_string(
-        &std::ffi::CString::new(display_name).expect("function name contains a null byte"),
-    );
-    let desc_lit = proc_macro2::Literal::c_string(
-        &std::ffi::CString::new(desc).expect("doc comment contains a null byte"),
-    );
-    quote! {
-        pub const #const_name: orc_sdk::OrcFuncInfo = orc_sdk::OrcFuncInfo {
-            name: #name_lit.as_ptr(),
-            desc: #desc_lit.as_ptr(),
-            func: Some(#fn_name),
-        };
-        #func
-    }
-    .into()
-}
-
 /// `orc_fn_info!(add)` expands to `ORC_FN_INFO_ADD`.
 /// `orc_fn_info!(basic::add)` expands to `basic::ORC_FN_INFO_ADD`.
 #[proc_macro]
@@ -111,10 +76,18 @@ fn is_deck_type(ty: &syn::Type) -> bool {
         if p.path.segments.last().is_some_and(|s| s.ident == "DeckView" || s.ident == "DeckWriter"))
 }
 
+fn is_deck_writer_param(ty: &syn::Type) -> bool {
+    matches!(ty, syn::Type::Reference(r)
+        if r.mutability.is_some()
+        && matches!(r.elem.as_ref(), syn::Type::Path(p)
+            if p.path.segments.last().is_some_and(|s| s.ident == "DeckWriter")))
+}
+
 fn infer_depth(ty: &syn::Type) -> Option<u8> {
     match ty {
         syn::Type::Reference(r) => match r.elem.as_ref() {
             syn::Type::Slice(_) => Some(1),
+            inner if is_deck_type(inner) => None,
             _ => Some(0),
         },
         _ if is_deck_type(ty) => None,
@@ -125,14 +98,6 @@ fn infer_depth(ty: &syn::Type) -> Option<u8> {
 fn is_output_param(ty: &syn::Type) -> syn::Result<bool> {
     match ty {
         syn::Type::Reference(r) if r.mutability.is_some() => Ok(true),
-        syn::Type::Path(p)
-            if p.path
-                .segments
-                .last()
-                .is_some_and(|s| s.ident == "DeckWriter") =>
-        {
-            Ok(true)
-        }
         syn::Type::Reference(r) if r.mutability.is_none() => Ok(false),
         syn::Type::Path(p)
             if p.path
@@ -144,18 +109,19 @@ fn is_output_param(ty: &syn::Type) -> syn::Result<bool> {
         }
         other => Err(syn::Error::new_spanned(
             other,
-            "run parameter must be `&T`, `&[T]`, `&mut T`, `DeckView<T>`, or `DeckWriter<T>`",
+            "run parameter must be `&T`, `&[T]`, `&mut T`, `&mut DeckWriter<T>`, or `DeckView<T>`",
         )),
     }
 }
 
 /// Strips depth wrappers and returns the inner element type:
 /// `&[T]` → `T`, `&T` → `T`, `&mut T` → `T`,
-/// `DeckView<T>` → `T`, `DeckWriter<T>` → `T`, anything else → itself.
+/// `&mut DeckWriter<T>` → `T`, `DeckView<T>` → `T`, anything else → itself.
 fn inner_type(ty: &syn::Type) -> &syn::Type {
     match ty {
         syn::Type::Reference(r) => match r.elem.as_ref() {
             syn::Type::Slice(s) => s.elem.as_ref(),
+            inner if is_deck_type(inner) => inner_type(inner),
             inner => inner,
         },
         syn::Type::Path(p) => {
@@ -455,6 +421,18 @@ fn validate_dims_fn(dims: &ItemFn, n_inputs: usize, n_outputs: usize) -> syn::Re
     Ok(())
 }
 
+/// Returns true if `ty` is a bare identifier matching one of the generic type parameters.
+fn is_generic_type(ty: &syn::Type, generics: &[&syn::GenericParam]) -> bool {
+    if let syn::Type::Path(p) = ty
+        && let Some(ident) = p.path.get_ident()
+    {
+        return generics
+            .iter()
+            .any(|gp| matches!(gp, syn::GenericParam::Type(tp) if tp.ident == *ident));
+    }
+    false
+}
+
 /// If `ty` is a bare ident matching a type generic, returns the substituted concrete type.
 /// Otherwise returns a clone of `ty` unchanged.
 fn substitute_type(
@@ -462,9 +440,11 @@ fn substitute_type(
     generics: &[&syn::GenericParam],
     case_args: &[&syn::GenericArgument],
 ) -> syn::Type {
-    if let syn::Type::Path(p) = ty
-        && let Some(ident) = p.path.get_ident()
-    {
+    if is_generic_type(ty, generics) {
+        let ident = match ty {
+            syn::Type::Path(p) => p.path.get_ident().unwrap(),
+            _ => unreachable!(),
+        };
         for (gp, arg) in generics.iter().zip(case_args.iter()) {
             if let (syn::GenericParam::Type(tp), syn::GenericArgument::Type(concrete)) = (gp, arg)
                 && tp.ident == *ident
@@ -649,8 +629,8 @@ fn generate_dispatch_fn(
     let out_deck_idents: Vec<proc_macro2::Ident> = (0..n_outputs)
         .map(|j| format_ident!("out_deck_{j}_"))
         .collect();
-    let out_view_idents: Vec<proc_macro2::Ident> = (0..n_outputs)
-        .map(|j| format_ident!("out_view_{j}_"))
+    let out_writer_idents: Vec<proc_macro2::Ident> = (0..n_outputs)
+        .map(|j| format_ident!("out_writer_{j}_"))
         .collect();
     let out_item_idents: Vec<proc_macro2::Ident> = (0..n_outputs)
         .map(|j| format_ident!("out_item_{j}_"))
@@ -680,14 +660,31 @@ fn generate_dispatch_fn(
             }
         })
         .collect();
-    let out_view_setup: Vec<proc_macro2::TokenStream> = (0..n_outputs)
+    let out_writer_setup: Vec<proc_macro2::TokenStream> = (0..n_outputs)
         .map(|j| {
-            let view_ident = &out_view_idents[j];
-            let item_ident = &out_item_idents[j];
+            let writer_ident = &out_writer_idents[j];
             let deck_ident = &out_deck_idents[j];
-            quote! {
-                let mut #view_ident = comb_.get_output(#deck_ident, #j);
-                let #item_ident = #view_ident.push_default_mut();
+            if is_deck_writer_param(params.outputs[j].param.ty.as_ref()) {
+                quote! {
+                    let mut #writer_ident = comb_.get_output(#deck_ident, #j);
+                }
+            } else {
+                let item_ident = &out_item_idents[j];
+                quote! {
+                    let mut #writer_ident = comb_.get_output(#deck_ident, #j);
+                    let #item_ident = #writer_ident.push_default_mut();
+                }
+            }
+        })
+        .collect();
+    let out_call_args: Vec<proc_macro2::TokenStream> = (0..n_outputs)
+        .map(|j| {
+            if is_deck_writer_param(params.outputs[j].param.ty.as_ref()) {
+                let writer_ident = &out_writer_idents[j];
+                quote! { &mut #writer_ident }
+            } else {
+                let item_ident = &out_item_idents[j];
+                quote! { #item_ident }
             }
         })
         .collect();
@@ -724,8 +721,8 @@ fn generate_dispatch_fn(
                 |out_decks_| -> Result<(), orc_sdk::Error> {
                     #(#out_downcasts)*
                     loop {
-                        #(#out_view_setup)*
-                        run(host_, #(#in_call_args,)* #(#out_item_idents),*)?;
+                        #(#out_writer_setup)*
+                        run(host_, #(#in_call_args,)* #(#out_call_args),*)?;
                         if !comb_.advance() { break; }
                     }
                     #(#out_handle_updates)*
@@ -795,10 +792,53 @@ fn generate_orc_fn(cfg: FnConfig<'_>) -> proc_macro2::TokenStream {
     let dispatch_fn = generate_dispatch_fn(run_fn, params);
     let registry_expr = registry_expr.map(|r| quote! { #r }).unwrap_or_default();
     let type_dispatch = generate_type_dispatch(run_fn, types, params, &registry_expr);
+    let all_generics: Vec<&syn::GenericParam> = run_fn.sig.generics.params.iter().collect();
+    let fn_type_id_expr = |p: &ParamInfo| -> proc_macro2::TokenStream {
+        if is_generic_type(&p.inner_type, &all_generics) {
+            quote! { orc_sdk::ORC_TYPE_ANY }
+        } else {
+            let ty = &p.inner_type;
+            quote! { <#ty as orc_sdk::TOrcData>::TYPE_INFO.type_id }
+        }
+    };
+    let input_types_ptr = if n_inputs == 0
+        || params
+            .inputs
+            .iter()
+            .all(|p| is_generic_type(&p.inner_type, &all_generics))
+    {
+        quote! { ::std::ptr::null_mut() }
+    } else {
+        let exprs: Vec<_> = params.inputs.iter().map(&fn_type_id_expr).collect();
+        quote! {
+            (&[#(#exprs),*] as *const [orc_sdk::OrcTypeId; #n_inputs])
+                .cast::<orc_sdk::OrcTypeId>()
+                .cast_mut()
+        }
+    };
+    let output_types_ptr = if n_outputs == 0
+        || params
+            .outputs
+            .iter()
+            .all(|p| is_generic_type(&p.inner_type, &all_generics))
+    {
+        quote! { ::std::ptr::null_mut() }
+    } else {
+        let exprs: Vec<_> = params.outputs.iter().map(&fn_type_id_expr).collect();
+        quote! {
+            (&[#(#exprs),*] as *const [orc_sdk::OrcTypeId; #n_outputs])
+                .cast::<orc_sdk::OrcTypeId>()
+                .cast_mut()
+        }
+    };
     quote! {
         pub const #info_name: orc_sdk::OrcFuncInfo = orc_sdk::OrcFuncInfo {
             name: #name_lit.as_ptr(),
             desc: #desc_lit.as_ptr(),
+            n_inputs: #n_inputs as u64,
+            n_outputs: #n_outputs as u64,
+            input_types: #input_types_ptr,
+            output_types: #output_types_ptr,
             func: Some(#name),
         };
         unsafe extern "C" fn #name(
@@ -1072,4 +1112,42 @@ pub fn orc_fn(input: TokenStream) -> TokenStream {
         params: &validated_params,
     })
     .into()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use syn::parse_quote;
+
+    #[test]
+    fn test_infer_depth() {
+        // Input: &T → depth 0
+        assert_eq!(infer_depth(&parse_quote! { &T }), Some(0));
+        // Input: &[T] → depth 1
+        assert_eq!(infer_depth(&parse_quote! { &[T] }), Some(1));
+        // Input: DeckView<T> → cannot infer
+        assert_eq!(infer_depth(&parse_quote! { DeckView<T> }), None);
+        // Output: &mut T → depth 0
+        assert_eq!(infer_depth(&parse_quote! { &mut T }), Some(0));
+        // Output: &mut DeckWriter<T> → cannot infer
+        assert_eq!(infer_depth(&parse_quote! { &mut DeckWriter<T> }), None);
+    }
+
+    #[test]
+    fn test_is_output_param() {
+        // &T → input
+        assert!(!is_output_param(&parse_quote! { &T }).unwrap());
+        // &[T] → input
+        assert!(!is_output_param(&parse_quote! { &[T] }).unwrap());
+        // DeckView<T> → input
+        assert!(!is_output_param(&parse_quote! { DeckView<T> }).unwrap());
+        // &mut T → output
+        assert!(is_output_param(&parse_quote! { &mut T }).unwrap());
+        // &mut DeckWriter<T> → output
+        assert!(is_output_param(&parse_quote! { &mut DeckWriter<T> }).unwrap());
+        // bare DeckWriter<T> → error
+        assert!(is_output_param(&parse_quote! { DeckWriter<T> }).is_err());
+        // bare T → error
+        assert!(is_output_param(&parse_quote! { T }).is_err());
+    }
 }

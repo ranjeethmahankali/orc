@@ -146,15 +146,23 @@
   Something that allows for multiple named inputs and outputs. When a block has just one output,
   they can be nested as you normally do in LISP.
 
-* TODO tjd838 - Improve Function Metadata
+* DONE tjd838 - Improve Function Metadata
+  CLOSED: [2026-08-07 Fri 14:25]
   :PROPERTIES:
   :CREATED:  2026-08-02 Sun 19:14
+  :END:
+  :LOGBOOK:
+  - State "DONE"       from "NEXT"       [2026-08-07 Fri 14:25]
+  - State "NEXT"       from "TODO"       [2026-08-07 Fri 09:14]
   :END:
 
   We want the function metadata to also contain information about how many inputs and outputs the
   function has, and what types. All of this has to be optional, and functions may choose to be
   wildly variadic and type agnostic. The metatdata should allow the functions to express that
   somehow.
+
+  <2026-08-07 Fri 14:24> Was easy enough to do. Not much I can test right now. Just need to make
+  sure this works as expected as more things take shape and I am able to test more things.
 
 * DONE tjbrtc - Implement Container Op Blocks in C
   CLOSED: [2026-08-06 Thu 16:40]
