@@ -146,7 +146,7 @@
   Something that allows for multiple named inputs and outputs. When a block has just one output,
   they can be nested as you normally do in LISP.
 
-* TODO Improve Function Metadata
+* TODO tjd838 - Improve Function Metadata
   :PROPERTIES:
   :CREATED:  2026-08-02 Sun 19:14
   :END:
@@ -156,168 +156,19 @@
   wildly variadic and type agnostic. The metatdata should allow the functions to express that
   somehow.
 
-* TODO Implement Container Op Blocks in C
+* DONE tjbrtc - Implement Container Op Blocks in C
+  CLOSED: [2026-08-06 Thu 16:40]
   :PROPERTIES:
   :CREATED:  2026-08-03 Mon 18:22
+  :END:
+  :LOGBOOK:
+  - State "DONE"       from "NEXT"       [2026-08-06 Thu 16:40]
+  - State "NEXT"       from "TODO"       [2026-08-05 Wed 21:51]
   :END:
 
   To test all the variations of this across plugin boundaries, I might need to add some custom
   datatypes in a Rust plugin.
 
-* DONE tjbhvp - Testing and CI
-  CLOSED: [2026-08-05 Wed 20:49]
-  :PROPERTIES:
-  :CREATED:  2026-08-03 Mon 17:47
-  :END:
-  :LOGBOOK:
-  - State "DONE"       from "NEXT"       [2026-08-05 Wed 20:49]
-  - State "NEXT"       from "DONE"       [2026-08-05 Wed 20:04]
-  - State "DONE"       from "NEXT"       [2026-08-05 Wed 19:44]
-  - State "NEXT"       from "TODO"       [2026-08-05 Wed 18:17]
-  :END:
-
-  I am making fast progress, adding lots of code. I have some tests, but I need to test a lot
-  more. All the plugin code should be thoroughly tested. All the new SDK code should be tested. I
-  should look through the ABI carefully, and make sure each feature is tested.
-
-  <2026-08-05 Wed 18:28> Adding CI automation for the tests I have so far. The last merge broke all
-  the Rust tests, but I didn't run them before merging.
-
-** DONE Test plan
-   CLOSED: [2026-08-05 Wed 19:44]
-   :LOGBOOK:
-   - State "DONE"       from              [2026-08-05 Wed 19:44]
-   :END:
-
-*** DONE ~rust/orc_sdk/src/util.rs~ — ~mod test~
-    CLOSED: [2026-08-05 Wed 19:44]
-    :LOGBOOK:
-    - State "DONE"       from "NEXT"       [2026-08-05 Wed 19:44]
-    - State "NEXT"       from "TODO"       [2026-08-05 Wed 19:11]
-    :END:
-
-    Tests are from the perspective of a plugin using the SDK utilities.
-
-**** DONE DeckRegistry Tests
-     CLOSED: [2026-08-05 Wed 19:11]
-     :LOGBOOK:
-     - State "DONE"       from "TODO"       [2026-08-05 Wed 19:11]
-     :END:
-
-    ~DeckRegistry~ — ownership and lifecycle:
-    - ~alloc_fresh~ — alloc on empty slot: ~free_fn~ set, handle fields populated, ID survives
-    - ~alloc_reuse_same_type~ — second alloc with same type is a no-op: ~Ok~, handle fields
-      unchanged. Should verify that the old free function has not been called.
-    - ~alloc_type_change~ — second alloc with different type: old deck gone, new type reflected in
-      handle. Should verify that the old deck has been freed.
-    - ~alloc_eviction_foreign~ — handle has a mock foreign ~free_fn~; alloc evicts it (mock called),
-      then populates handle.
-    - ~free_success~ — alloc then free: ~free_fn = None~, items cleared, ~handle.handle~ preserved
-    - ~free_unregistered~ — free on ID not in registry returns ~InvalidHandle~
-    - ~free_does_not_clear_handle_id~ — after free, ~handle.handle~ still has its original value
-    - ~with_mut_borrows_and_mutates~ — after alloc, ~with_mut~ successfully downcasts and modifies
-      the deck
-    - ~with_mut_missing_id~ — ~with_mut~ on an unregistered ID returns ~InvalidHandle~
-    - ~concurrent_alloc_free~ — multiple threads alloc/free disjoint IDs simultaneously, no data
-      corruption... how do you verify there is no corruption?
-
-**** DONE handle tests
-     CLOSED: [2026-08-05 Wed 19:14]
-     :LOGBOOK:
-     - State "DONE"       from "TODO"       [2026-08-05 Wed 19:14]
-     :END:
-
-    ~update_handle_from_deck~:
-    - ~fields_populated~ — items, marks, strides, type_id set from deck; ~handle.handle~ and
-      ~free_fn~ untouched
-    - ~empty_deck_gives_null_items~ — empty deck: items pointer is null, counts are zero, type_id
-      still set
-    - ~preserves_handle_id~ — ~handle.handle~ unchanged before and after call
-    - ~preserves_free_fn~ — ~free_fn~ unchanged before and after call
-
-    ~reset_handle~:
-    - ~clears_data_fields_not_id~ — items/marks/free_fn cleared to null/None; ~handle.handle~
-      unchanged
-    - ~idempotent~ — calling twice is safe, same result
-
-    ~ptr_from_slice~ / ~slice_from_ptr~ / ~slice_from_ptr_mut~:
-    - ~empty_slice_gives_null~ — ~ptr_from_slice(&[])~ returns null
-    - ~nonempty_round_trips~ — pointer from non-empty slice round-trips through ~slice_from_ptr~
-    - ~null_ptr_gives_empty_slice~ — ~slice_from_ptr(null, N)~ returns ~&[]~
-    - ~zero_len_gives_empty_slice~ — ~slice_from_ptr(valid, 0)~ returns ~&[]~
-
-*** DONE ~rust/orc_sdk/src/host.rs~ — ~mod test~
-    CLOSED: [2026-08-05 Wed 19:41]
-    :LOGBOOK:
-    - State "DONE"       from "NEXT"       [2026-08-05 Wed 19:41]
-    - State "NEXT"       from "TODO"       [2026-08-05 Wed 19:15]
-    :END:
-
-    Tests are from the perspective of a host application loading and using plugins. These are
-    integration tests that require the built plugin DLLs to be present at test time.
-
-    - ~alloc_deck_populates_handle~ — ~plugin.alloc_deck(type_id, &mut handle)~: ~free_fn~ set,
-      items non-null, ~handle.handle~ unchanged
-    - ~free_deck_resets_handle~ — alloc followed by free: ~free_fn = None~, items null, ID unchanged
-
-*** DONE ~rust/math_plugin/src/basic.rs~ — ~mod test~
-    CLOSED: [2026-08-05 Wed 19:44]
-    :LOGBOOK:
-    - State "DONE"       from "NEXT"       [2026-08-05 Wed 19:44]
-    - State "NEXT"       from "TODO"       [2026-08-05 Wed 19:41]
-    :END:
-
-    Tests call the plugin functions directly through the generated FFI entry points.  Input handles
-    are view handles (~free_fn = None~); output handles are owned by the plugin.
-
-    ~add~:
-    - ~add_f64_elementwise~ — ~[1,2,3] + [10,20,30] = [11,22,33]~
-    - ~add_f32_elementwise~ — same for f32
-    - ~add_integer_types~ — u32, i64: ~[5] + [3] = [8]~
-    - ~add_broadcast_scalar_to_list~ — depth-2 list input broadcasts correctly
-    - ~add_mismatched_types~ — i32 input + f64 input → function does not write output (type
-      mismatch)
-    - ~add_mismatched_dimensions~ — dim vectors differ → ~InvalidDimensions~, output not written
-    - ~add_wrong_n_inputs~ — 1 input instead of 2 → error logged, output not written
-    - ~add_output_reuse_same_type~ — call add twice on same output slot: second call reuses deck, no
-      leak
-    - ~add_output_type_change~ — call add then mul on same output slot: handle transitions type
-      cleanly
-
-    ~mul~: same matrix as add with multiplication values.
-
-    ~sub~ / ~div~:
-    - ~sub_f64~ / ~div_f64~ — basic f64 correctness
-    - ~sub_unsupported_type~ — sub(u32, u32) → type mismatch (sub is floats-only)
-    - ~div_by_zero~ — ~[1.0] / [0.0]~ → produces IEEE 754 inf, no panic
-    - ~div_unsupported_type~ — div(i32, i32) → type mismatch
-
-    Handle lifetime / ownership invariants (all functions):
-    - ~output_free_fn_set_after_call~ — after any function call, ~out.free_fn~ is
-      ~Some(orc_deck_free)~
-    - ~output_handle_id_preserved~ — ~out.handle~ unchanged before and after call
-    - ~output_owned_by_plugin_registry~ — after call, plugin registry contains the output handle ID
-    - ~input_handles_unaffected~ — input ~free_fn~ and ~items~ are unchanged after the call
-
-    Output deck reuse / reallocation / update invariants (tested via ~add~ only):
-    - ~add_reuse_same_type_handle_updated~ — when the output slot already holds a deck of the
-      same type, ~add~ reuses it and still updates ~out.items~, ~out.n_items~, ~out.type_id~ to
-      reflect what was written in this call
-    - ~add_type_change_handle_updated~ — when the output slot holds a deck of a different type,
-      ~add~ frees it, allocates a new one of the correct type, and the handle reflects the new
-      type and data
-    - ~add_clears_previous_data~ — calling ~add~ twice on the same output slot produces only the
-      results of the second call; the deck is cleared and rewritten, not appended to
-
-* DONE tjctcr - Fix the generated variable names in Rust macros
-  CLOSED: [2026-08-06 Thu 11:31]
-  :PROPERTIES:
-  :CREATED:  2026-08-06 Thu 11:20
-  :END:
-  :LOGBOOK:
-  - State "DONE"       from "NEXT"       [2026-08-06 Thu 11:31]
-  - State "NEXT"       from "TODO"       [2026-08-06 Thu 11:22]
-  :END:
-
-  The generated variable names are currently prefixed with __. That can throw off the linter,
-  because it could mean unused variable. Instead the should be suffixed with a _.
+  <2026-08-06 Thu 16:39> This is working for basic primitive types, that don't require deferring the
+  deck construction to the host. I just have one container op function at this time, but I want to
+  wait till the ABI is more stable before I add more functions.

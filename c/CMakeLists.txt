@@ -22,6 +22,7 @@ endif()
 # unity — static library
 add_library(unity STATIC third_party/unity.c)
 target_include_directories(unity PUBLIC third_party)
+target_compile_definitions(unity PUBLIC UNITY_INCLUDE_DOUBLE)
 
 # orc_sdk_obj — object library
 add_library(orc_sdk_obj OBJECT orc_sdk/orc_sdk.c)

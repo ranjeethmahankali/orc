@@ -27,7 +27,7 @@ typedef union
   void       *p;
 } _MaxAlignCompat;
 
-void test_arr_null_pointer_operations(void)
+static void test_arr_null_pointer_operations(void)
 {
   double *null_arr = NULL;
   TEST_ASSERT_TRUE_MESSAGE(orc_sdk_arr_len(null_arr) == 0,
@@ -47,7 +47,7 @@ void test_arr_null_pointer_operations(void)
   orc_sdk_arr_free(ptr);
 }
 
-void test_arr_empty_array_operations(void)
+static void test_arr_empty_array_operations(void)
 {
   double *arr = NULL;
   TEST_ASSERT_TRUE_MESSAGE(orc_sdk_arr_reserve(arr, 0) == ORC_ERROR_NONE,
@@ -61,7 +61,7 @@ void test_arr_empty_array_operations(void)
   orc_sdk_arr_free(arr);
 }
 
-void test_arr_index_boundary_conditions(void)
+static void test_arr_index_boundary_conditions(void)
 {
   double *arr = NULL;
   orc_sdk_arr_push(arr, 1.0);
@@ -82,7 +82,7 @@ void test_arr_index_boundary_conditions(void)
   orc_sdk_arr_free(arr);
 }
 
-void test_orc_sdk_arr_capacity_management(void)
+static void test_orc_sdk_arr_capacity_management(void)
 {
   double *arr = NULL;
   // Reserve initial capacity
@@ -113,7 +113,7 @@ void test_orc_sdk_arr_capacity_management(void)
   orc_sdk_arr_free(arr);
 }
 
-void test_arr_double_free_safety(void)
+static void test_arr_double_free_safety(void)
 {
   double *arr = NULL;
   orc_sdk_arr_push(arr, 1.0);
@@ -121,7 +121,7 @@ void test_arr_double_free_safety(void)
   orc_sdk_arr_free(arr);  // Second free on NULL, should not crash
 }
 
-void test_arr_swap_remove_correctness(void)
+static void test_arr_swap_remove_correctness(void)
 {
   double *arr = NULL;
   // Setup: [0, 1, 2, 3, 4]
@@ -148,7 +148,7 @@ void test_arr_swap_remove_correctness(void)
   orc_sdk_arr_free(arr);
 }
 
-void test_arr_memory_stress(void)
+static void test_arr_memory_stress(void)
 {
   double      *arr        = NULL;
   const size_t LARGE_SIZE = 1000;
@@ -172,7 +172,7 @@ void test_arr_memory_stress(void)
   orc_sdk_arr_free(arr);
 }
 
-void test_arr_different_types(void)
+static void test_arr_different_types(void)
 {
   // Test with int
   int *ints = NULL;
@@ -225,7 +225,7 @@ void test_arr_different_types(void)
   orc_sdk_arr_free(longs);
 }
 
-void test_arr_ordered_remove(void)
+static void test_arr_ordered_remove(void)
 {
   int *arr = NULL;
   // Setup: [10, 20, 30, 40, 50]
@@ -273,7 +273,7 @@ void test_arr_ordered_remove(void)
                            "Remove from NULL should fail");
 }
 
-void test_arr_resize_zero_fill(void)
+static void test_arr_resize_zero_fill(void)
 {
   double *arr = NULL;
   // Test resize from empty array - should zero-fill all elements
@@ -400,7 +400,7 @@ void test_arr_resize_zero_fill(void)
   orc_sdk_arr_free(single_arr);
 }
 
-void test_orc_sdk_arr_fill(void)
+static void test_orc_sdk_arr_fill(void)
 {
   // Test 1: Basic fill with integers (power of 2 size)
   int *ints = NULL;
@@ -460,7 +460,7 @@ void test_orc_sdk_arr_fill(void)
   orc_sdk_arr_free(structs);
 }
 
-void test_orc_sdk_arr_clear(void)
+static void test_orc_sdk_arr_clear(void)
 {
   double *arr = NULL;
   // Test clear on empty array
@@ -498,7 +498,7 @@ void test_orc_sdk_arr_clear(void)
   orc_sdk_arr_clear(null_arr);  // Should not crash
 }
 
-void test_arr_remove_range(void)
+static void test_arr_remove_range(void)
 {
   int *arr = NULL;
   // Setup test array: [10, 20, 30, 40, 50]
@@ -605,7 +605,7 @@ void test_arr_remove_range(void)
   orc_sdk_arr_free(large_arr);
 }
 
-void test_arr_pop(void)
+static void test_arr_pop(void)
 {
   double *arr   = NULL;
   double  value = 0.0;
@@ -712,7 +712,7 @@ void test_arr_pop(void)
   orc_sdk_arr_free(reuse_arr);
 }
 
-void test_arr_fibonacci(void)
+static void test_arr_fibonacci(void)
 {
   uint32_t *fibo = NULL;
   TEST_ASSERT_TRUE(orc_sdk_arr_push(fibo, 1) == ORC_ERROR_NONE);
@@ -730,7 +730,7 @@ void test_arr_fibonacci(void)
   orc_sdk_arr_free(fibo);
 }
 
-void test_arr_header_alignment(void)
+static void test_arr_header_alignment(void)
 {
   TEST_ASSERT_TRUE_MESSAGE(
     (sizeof(_OrcSdk_ArrHeader) % sizeof(_MaxAlignCompat)) == 0,
@@ -777,7 +777,7 @@ static int _handle_thread_fn(void *arg)
   return 0;
 }
 
-void test_handle_alloc_concurrent(void)
+static void test_handle_alloc_concurrent(void)
 {
   orc_sdk_init(NULL, NULL);
 
@@ -795,7 +795,7 @@ void test_handle_alloc_concurrent(void)
   TEST_ASSERT_TRUE_MESSAGE(all_ok, "All threads should succeed");
 }
 
-void test_handle_alloc_id_survives(void)
+static void test_handle_alloc_id_survives(void)
 {
   // host-assigned ID must survive alloc and free unchanged.
   orc_sdk_init(NULL, NULL);
@@ -814,7 +814,7 @@ void test_handle_alloc_id_survives(void)
   TEST_ASSERT_TRUE_MESSAGE(out.free_fn == NULL, "free_fn must be cleared after free");
 }
 
-void test_handle_alloc_reuse(void)
+static void test_handle_alloc_reuse(void)
 {
   // Allocating same type on an already-owned slot reuses without reallocating.
   orc_sdk_init(NULL, NULL);
@@ -831,7 +831,7 @@ void test_handle_alloc_reuse(void)
   orc_sdk_handle_free(&h);
 }
 
-void test_handle_alloc_type_change(void)
+static void test_handle_alloc_type_change(void)
 {
   // Allocating a different type on an already-owned slot frees and reallocates.
   orc_sdk_init(NULL, NULL);
@@ -849,7 +849,7 @@ void test_handle_alloc_type_change(void)
   orc_sdk_handle_free(&h);
 }
 
-void test_handle_alloc_fresh(void)
+static void test_handle_alloc_fresh(void)
 {
   // Allocating on an empty slot (no free_fn) just allocates.
   orc_sdk_init(NULL, NULL);
@@ -873,7 +873,7 @@ static OrcError _mock_free_fn(OrcHandle *const handle)
   return ORC_ERROR_NONE;
 }
 
-void test_handle_alloc_eviction(void)
+static void test_handle_alloc_eviction(void)
 {
   // Allocating on a slot owned by another plugin evicts it first.
   orc_sdk_init(NULL, NULL);
@@ -917,7 +917,7 @@ static HMapStats _hmap_stats(void *ptr)
   return (HMapStats) {0};
 }
 
-void test_hmap_basic(void)
+static void test_hmap_basic(void)
 {
   typedef struct
   {
@@ -985,7 +985,7 @@ void test_hmap_basic(void)
   orc_sdk_hmap_free(map);
 }
 
-void test_hmap_growth(void)
+static void test_hmap_growth(void)
 {
   typedef struct
   {
@@ -1017,7 +1017,7 @@ void test_hmap_growth(void)
   orc_sdk_hmap_free(map);
 }
 
-void test_hmap_edge_cases(void)
+static void test_hmap_edge_cases(void)
 {
   typedef struct
   {
@@ -1059,7 +1059,7 @@ void test_hmap_edge_cases(void)
   orc_sdk_hmap_free(map);
 }
 
-void test_hmap_null_operations(void)
+static void test_hmap_null_operations(void)
 {
   typedef struct
   {
@@ -1080,7 +1080,7 @@ void test_hmap_null_operations(void)
   orc_sdk_hmap_free(null_map);
 }
 
-void test_hmap_stress_test(void)
+static void test_hmap_stress_test(void)
 {
   typedef struct
   {
@@ -1143,7 +1143,7 @@ void test_hmap_stress_test(void)
   orc_sdk_hmap_free(map);
 }
 
-void test_hmap_hash_collision_simulation(void)
+static void test_hmap_hash_collision_simulation(void)
 {
   typedef struct
   {
@@ -1200,7 +1200,7 @@ void test_hmap_hash_collision_simulation(void)
   orc_sdk_hmap_free(map);
 }
 
-void test_hmap_boundary_conditions(void)
+static void test_hmap_boundary_conditions(void)
 {
   typedef struct
   {
@@ -1258,7 +1258,7 @@ void test_hmap_boundary_conditions(void)
   orc_sdk_hmap_free(map);
 }
 
-void test_hmap_extreme_values(void)
+static void test_hmap_extreme_values(void)
 {
   typedef struct
   {
@@ -1306,7 +1306,7 @@ void test_hmap_extreme_values(void)
   orc_sdk_hmap_free(map);
 }
 
-void test_hmap_repeated_growth(void)
+static void test_hmap_repeated_growth(void)
 {
   typedef struct
   {
@@ -1357,7 +1357,7 @@ void test_hmap_repeated_growth(void)
   orc_sdk_hmap_free(map);
 }
 
-void test_hmap_get_basic(void)
+static void test_hmap_get_basic(void)
 {
   typedef struct
   {
@@ -1410,7 +1410,7 @@ void test_hmap_get_basic(void)
   orc_sdk_hmap_free(map);
 }
 
-void test_hmap_get_after_updates(void)
+static void test_hmap_get_after_updates(void)
 {
   typedef struct
   {
@@ -1443,7 +1443,7 @@ void test_hmap_get_after_updates(void)
   orc_sdk_hmap_free(map);
 }
 
-void test_hmap_get_with_collisions(void)
+static void test_hmap_get_with_collisions(void)
 {
   typedef struct
   {
@@ -1484,7 +1484,7 @@ void test_hmap_get_with_collisions(void)
   orc_sdk_hmap_free(map);
 }
 
-void test_hmap_get_after_growth(void)
+static void test_hmap_get_after_growth(void)
 {
   typedef struct
   {
@@ -1534,7 +1534,7 @@ void test_hmap_get_after_growth(void)
   orc_sdk_hmap_free(map);
 }
 
-void test_hmap_get_edge_cases(void)
+static void test_hmap_get_edge_cases(void)
 {
   typedef struct
   {
@@ -1568,7 +1568,7 @@ void test_hmap_get_edge_cases(void)
   orc_sdk_hmap_free(map);
 }
 
-void test_hmap_get_null_safety(void)
+static void test_hmap_get_null_safety(void)
 {
   typedef struct
   {
@@ -1595,7 +1595,7 @@ void test_hmap_get_null_safety(void)
   // Note: Don't test after free as that would be undefined behavior
 }
 
-void test_hmap_fibo_indices(void)
+static void test_hmap_fibo_indices(void)
 {
   typedef struct
   {
@@ -1646,7 +1646,7 @@ void test_hmap_fibo_indices(void)
   orc_sdk_arr_free(fibo);
 }
 
-void test_hmap_remove_basic(void)
+static void test_hmap_remove_basic(void)
 {
   typedef struct
   {
@@ -1699,7 +1699,7 @@ void test_hmap_remove_basic(void)
   orc_sdk_hmap_free(map);
 }
 
-void test_hmap_remove_nonexistent(void)
+static void test_hmap_remove_nonexistent(void)
 {
   typedef struct
   {
@@ -1760,7 +1760,7 @@ void test_hmap_remove_nonexistent(void)
   orc_sdk_hmap_free(map);
 }
 
-void test_hmap_remove_returns_bool(void)
+static void test_hmap_remove_returns_bool(void)
 {
   typedef struct
   {
@@ -1782,7 +1782,7 @@ void test_hmap_remove_returns_bool(void)
   orc_sdk_hmap_free(map);
 }
 
-void test_hmap_remove_with_collisions(void)
+static void test_hmap_remove_with_collisions(void)
 {
   typedef struct
   {
@@ -1844,7 +1844,7 @@ void test_hmap_remove_with_collisions(void)
   orc_sdk_hmap_free(map);
 }
 
-void test_hmap_remove_after_growth(void)
+static void test_hmap_remove_after_growth(void)
 {
   typedef struct
   {
@@ -1902,7 +1902,7 @@ void test_hmap_remove_after_growth(void)
   orc_sdk_hmap_free(map);
 }
 
-void test_hmap_remove_and_reinsert(void)
+static void test_hmap_remove_and_reinsert(void)
 {
   typedef struct
   {
@@ -1961,7 +1961,7 @@ void test_hmap_remove_and_reinsert(void)
   orc_sdk_hmap_free(map);
 }
 
-void test_hmap_remove_null_safety(void)
+static void test_hmap_remove_null_safety(void)
 {
   typedef struct
   {
@@ -2000,7 +2000,7 @@ void test_hmap_remove_null_safety(void)
 // =============================================================================
 
 // Test different primitive data types
-void test_hmap_data_types_int8(void)
+static void test_hmap_data_types_int8(void)
 {
   typedef struct
   {
@@ -2024,7 +2024,7 @@ void test_hmap_data_types_int8(void)
   orc_sdk_hmap_free(map);
 }
 
-void test_hmap_data_types_int64(void)
+static void test_hmap_data_types_int64(void)
 {
   typedef struct
   {
@@ -2059,7 +2059,7 @@ void test_hmap_data_types_int64(void)
   orc_sdk_hmap_free(map);
 }
 
-void test_hmap_data_types_float(void)
+static void test_hmap_data_types_float(void)
 {
   typedef struct
   {
@@ -2085,7 +2085,7 @@ void test_hmap_data_types_float(void)
   orc_sdk_hmap_free(map);
 }
 
-void test_hmap_data_types_double(void)
+static void test_hmap_data_types_double(void)
 {
   typedef struct
   {
@@ -2113,7 +2113,7 @@ void test_hmap_data_types_double(void)
 }
 
 // Compaction stress test - force multiple compactions
-void test_hmap_compaction_stress(void)
+static void test_hmap_compaction_stress(void)
 {
   typedef struct
   {
@@ -2164,7 +2164,7 @@ void test_hmap_compaction_stress(void)
 }
 
 // Hash collision stress test - keys designed to have similar hash values
-void test_hmap_hash_collision_stress(void)
+static void test_hmap_hash_collision_stress(void)
 {
   typedef struct
   {
@@ -2230,7 +2230,7 @@ void test_hmap_hash_collision_stress(void)
 }
 
 // Large-scale performance and correctness test
-void test_hmap_large_scale_operations(void)
+static void test_hmap_large_scale_operations(void)
 {
   typedef struct
   {
@@ -2301,7 +2301,7 @@ void test_hmap_large_scale_operations(void)
 }
 
 // Mixed operation patterns test
-void test_hmap_mixed_operation_patterns(void)
+static void test_hmap_mixed_operation_patterns(void)
 {
   typedef struct
   {
@@ -2358,7 +2358,7 @@ void test_hmap_mixed_operation_patterns(void)
   orc_sdk_hmap_free(map);
 }
 
-void test_hmap_header_alignment(void)
+static void test_hmap_header_alignment(void)
 {
   TEST_ASSERT_TRUE_MESSAGE(
     sizeof(_OrcSdk_HashTableHeader) % sizeof(_MaxAlignCompat) == 0,
@@ -2367,7 +2367,7 @@ void test_hmap_header_alignment(void)
     "SIMD types. The containers are not meant to be used with SIMD types.");
 }
 
-void test_hmap_is_empty(void)
+static void test_hmap_is_empty(void)
 {
   typedef struct
   {
@@ -2407,7 +2407,7 @@ void test_hmap_is_empty(void)
   orc_sdk_hmap_free(map);
 }
 
-void test_hmap_iterate_after_remove(void)
+static void test_hmap_iterate_after_remove(void)
 {
   typedef struct
   {
@@ -2616,7 +2616,7 @@ void test_hmap_iterate_after_remove(void)
 
 // Hash Set Tests
 
-void test_hset_basic_operations(void)
+static void test_hset_basic_operations(void)
 {
   int *set = NULL;
   // Test empty set
@@ -2656,7 +2656,7 @@ void test_hset_basic_operations(void)
   orc_sdk_hset_free(set);
 }
 
-void test_hset_remove_operations(void)
+static void test_hset_remove_operations(void)
 {
   int *set = NULL;
   // Add some elements
@@ -2688,7 +2688,7 @@ void test_hset_remove_operations(void)
   orc_sdk_hset_free(set);
 }
 
-void test_hset_different_types(void)
+static void test_hset_different_types(void)
 {
   // Test with doubles
   double *dset = NULL;
@@ -2714,7 +2714,7 @@ void test_hset_different_types(void)
   orc_sdk_hset_free(cset);
 }
 
-void test_hset_large_scale(void)
+static void test_hset_large_scale(void)
 {
   int      *set  = NULL;
   const int SIZE = 1000;
@@ -2755,7 +2755,7 @@ void test_hset_large_scale(void)
   orc_sdk_hset_free(set);
 }
 
-void test_hset_edge_cases(void)
+static void test_hset_edge_cases(void)
 {
   int *set = NULL;
   // Test operations on NULL set
@@ -2793,7 +2793,7 @@ void test_hset_edge_cases(void)
   orc_sdk_hset_free(set);
 }
 
-void test_hset_memory_operations(void)
+static void test_hset_memory_operations(void)
 {
   int *set = NULL;
   // Test reserve functionality
@@ -2811,7 +2811,7 @@ void test_hset_memory_operations(void)
   orc_sdk_hset_free(set);  // Should not crash
 }
 
-void test_hset_is_empty_comprehensive(void)
+static void test_hset_is_empty_comprehensive(void)
 {
   int *set = NULL;
   // Test empty states
@@ -2845,7 +2845,7 @@ void test_hset_is_empty_comprehensive(void)
 // String tests
 // ============================================================================
 
-void test_str_null_pointer_operations(void)
+static void test_str_null_pointer_operations(void)
 {
   char *s = NULL;
   TEST_ASSERT_TRUE_MESSAGE(orc_str_len(s) == 0, "Null string has length 0");
@@ -2856,7 +2856,7 @@ void test_str_null_pointer_operations(void)
   orc_str_free(s);
 }
 
-void test_str_push_basic(void)
+static void test_str_push_basic(void)
 {
   char *s = NULL;
   TEST_ASSERT_TRUE(orc_str_push(s, 'h') == ORC_ERROR_NONE);
@@ -2870,7 +2870,7 @@ void test_str_push_basic(void)
   orc_str_free(s);
 }
 
-void test_str_push_from_null(void)
+static void test_str_push_from_null(void)
 {
   char *s = NULL;
   // First push allocates
@@ -2889,7 +2889,7 @@ void test_str_push_from_null(void)
   orc_str_free(s);
 }
 
-void test_orc_str_remove_basic(void)
+static void test_orc_str_remove_basic(void)
 {
   char *s = NULL;
   // Build "abcde"
@@ -2916,7 +2916,7 @@ void test_orc_str_remove_basic(void)
   orc_str_free(s);
 }
 
-void test_orc_str_remove_boundary_conditions(void)
+static void test_orc_str_remove_boundary_conditions(void)
 {
   // Single character string
   char *s = NULL;
@@ -2940,7 +2940,7 @@ void test_orc_str_remove_boundary_conditions(void)
   orc_str_free(s);
 }
 
-void test_orc_str_len_and_end(void)
+static void test_orc_str_len_and_end(void)
 {
   char *s = NULL;
   TEST_ASSERT_TRUE(orc_str_len(s) == 0);
@@ -2959,7 +2959,7 @@ void test_orc_str_len_and_end(void)
   orc_str_free(s);
 }
 
-void test_orc_str_free_and_reuse(void)
+static void test_orc_str_free_and_reuse(void)
 {
   char *s = NULL;
   TEST_ASSERT_TRUE(orc_str_push(s, 'a') == ORC_ERROR_NONE);
@@ -2975,7 +2975,7 @@ void test_orc_str_free_and_reuse(void)
   orc_str_free(s);
 }
 
-void test_str_push_special_characters(void)
+static void test_str_push_special_characters(void)
 {
   char *s = NULL;
   // Whitespace characters
@@ -3012,7 +3012,7 @@ void test_str_push_special_characters(void)
   orc_str_free(s);
 }
 
-void test_str_capacity_growth(void)
+static void test_str_capacity_growth(void)
 {
   char        *s = NULL;
   size_t const n = 256;
@@ -3033,7 +3033,7 @@ void test_str_capacity_growth(void)
   orc_str_free(s);
 }
 
-void test_str_mixed_operations(void)
+static void test_str_mixed_operations(void)
 {
   char *s = NULL;
   // Build "hello"
@@ -3065,7 +3065,7 @@ void test_str_mixed_operations(void)
   orc_str_free(s);
 }
 
-void test_str_single_character(void)
+static void test_str_single_character(void)
 {
   char *s = NULL;
   TEST_ASSERT_TRUE(orc_str_push(s, 'x') == ORC_ERROR_NONE);
@@ -3086,7 +3086,7 @@ void test_str_single_character(void)
   orc_str_free(s);
 }
 
-void test_str_long_string(void)
+static void test_str_long_string(void)
 {
   char        *s = NULL;
   size_t const n = 10000;
@@ -3122,7 +3122,7 @@ void test_str_long_string(void)
 
 // orc_str_clear tests
 
-void test_orc_str_clear_basic(void)
+static void test_orc_str_clear_basic(void)
 {
   char *s = NULL;
   TEST_ASSERT_TRUE(orc_str_push(s, 'a') == ORC_ERROR_NONE);
@@ -3138,7 +3138,7 @@ void test_orc_str_clear_basic(void)
   orc_str_free(s);
 }
 
-void test_orc_str_clear_null(void)
+static void test_orc_str_clear_null(void)
 {
   // Should not crash
   char *s = NULL;
@@ -3146,7 +3146,7 @@ void test_orc_str_clear_null(void)
   TEST_ASSERT_TRUE(s == NULL);
 }
 
-void test_orc_str_clear_and_reuse(void)
+static void test_orc_str_clear_and_reuse(void)
 {
   char *s = NULL;
   TEST_ASSERT_TRUE(orc_str_push(s, 'x') == ORC_ERROR_NONE);
@@ -3165,7 +3165,7 @@ void test_orc_str_clear_and_reuse(void)
   orc_str_free(s);
 }
 
-void test_orc_str_clear_already_empty(void)
+static void test_orc_str_clear_already_empty(void)
 {
   char *s = NULL;
   TEST_ASSERT_TRUE(orc_str_push(s, 'a') == ORC_ERROR_NONE);
@@ -3180,7 +3180,7 @@ void test_orc_str_clear_already_empty(void)
 
 // orc_str_push_str tests
 
-void test_str_push_str_basic(void)
+static void test_str_push_str_basic(void)
 {
   char *s = NULL;
   TEST_ASSERT_TRUE(orc_str_push(s, 'h') == ORC_ERROR_NONE);
@@ -3192,7 +3192,7 @@ void test_str_push_str_basic(void)
   orc_str_free(s);
 }
 
-void test_str_push_str_to_null(void)
+static void test_str_push_str_to_null(void)
 {
   // Push string onto NULL pointer
   char *s = NULL;
@@ -3204,7 +3204,7 @@ void test_str_push_str_to_null(void)
   orc_str_free(s);
 }
 
-void test_str_push_str_empty_tail(void)
+static void test_str_push_str_empty_tail(void)
 {
   // Push empty string onto existing string
   char *s = NULL;
@@ -3216,7 +3216,7 @@ void test_str_push_str_empty_tail(void)
   orc_str_free(s);
 }
 
-void test_str_push_str_empty_tail_to_null(void)
+static void test_str_push_str_empty_tail_to_null(void)
 {
   // Push empty string onto NULL - should allocate an empty string, not fail
   char *s = NULL;
@@ -3228,7 +3228,7 @@ void test_str_push_str_empty_tail_to_null(void)
   orc_str_free(s);
 }
 
-void test_str_push_str_multiple(void)
+static void test_str_push_str_multiple(void)
 {
   char *s = NULL;
   TEST_ASSERT_TRUE(orc_str_push_str(s, "foo") == ORC_ERROR_NONE);
@@ -3240,7 +3240,7 @@ void test_str_push_str_multiple(void)
   orc_str_free(s);
 }
 
-void test_str_push_str_after_remove(void)
+static void test_str_push_str_after_remove(void)
 {
   char *s = NULL;
   TEST_ASSERT_TRUE(orc_str_push_str(s, "abcde") == ORC_ERROR_NONE);
@@ -3255,7 +3255,7 @@ void test_str_push_str_after_remove(void)
   orc_str_free(s);
 }
 
-void test_str_push_str_after_clear(void)
+static void test_str_push_str_after_clear(void)
 {
   char *s = NULL;
   TEST_ASSERT_TRUE(orc_str_push_str(s, "hello") == ORC_ERROR_NONE);
@@ -3267,7 +3267,7 @@ void test_str_push_str_after_clear(void)
   orc_str_free(s);
 }
 
-void test_str_push_str_long(void)
+static void test_str_push_str_long(void)
 {
   char *s = NULL;
   // Build a long string by appending many times
@@ -3284,7 +3284,7 @@ void test_str_push_str_long(void)
   orc_str_free(s);
 }
 
-void test_str_push_str_single_char(void)
+static void test_str_push_str_single_char(void)
 {
   // Push a single-character string (compare behavior with orc_str_push)
   char *s = NULL;
@@ -3302,13 +3302,13 @@ void test_str_push_str_single_char(void)
 
 // orc_str_is_empty tests
 
-void test_orc_str_is_empty_null(void)
+static void test_orc_str_is_empty_null(void)
 {
   char *s = NULL;
   TEST_ASSERT_TRUE_MESSAGE(orc_str_is_empty(s), "NULL string is empty");
 }
 
-void test_orc_str_is_empty_after_operations(void)
+static void test_orc_str_is_empty_after_operations(void)
 {
   char *s = NULL;
   TEST_ASSERT_TRUE(orc_str_is_empty(s));
@@ -3325,7 +3325,7 @@ void test_orc_str_is_empty_after_operations(void)
 
 // Mixed operations across new and old API
 
-void test_str_mixed_new_operations(void)
+static void test_str_mixed_new_operations(void)
 {
   char *s = NULL;
   TEST_ASSERT_TRUE(orc_str_push_str(s, "hello") == ORC_ERROR_NONE);
@@ -3347,7 +3347,7 @@ void test_str_mixed_new_operations(void)
 
 // String view.
 
-void test_orc_sv_from_str_and_basics(void)
+static void test_orc_sv_from_str_and_basics(void)
 {
   // From a normal string
   char       buf[] = "hello";
@@ -3371,7 +3371,7 @@ void test_orc_sv_from_str_and_basics(void)
   TEST_ASSERT_TRUE(orc_sv_is_empty(n));
 }
 
-void test_orc_sv_trim(void)
+static void test_orc_sv_trim(void)
 {
   // Trim left
   char       buf1[] = "  hi";
@@ -3414,7 +3414,7 @@ void test_orc_sv_trim(void)
   TEST_ASSERT_TRUE(null_sv.end == NULL);
 }
 
-void test_orc_sv_split_at_delim(void)
+static void test_orc_sv_split_at_delim(void)
 {
   // Basic split on comma
   char       buf[] = "one,two,three";
@@ -3460,7 +3460,7 @@ void test_orc_sv_split_at_delim(void)
   TEST_ASSERT_TRUE(sv4.start == NULL);
 }
 
-void test_orc_sv_split_line(void)
+static void test_orc_sv_split_line(void)
 {
   char       buf[] = "line1\nline2\nline3";
   OrcStrView sv    = orc_sv_from_str(buf);
@@ -3476,7 +3476,7 @@ void test_orc_sv_split_line(void)
   TEST_ASSERT_TRUE(sv.start == NULL);
 }
 
-void test_sv_trim_combined(void)
+static void test_sv_trim_combined(void)
 {
   char       buf1[] = " \t hello \n ";
   OrcStrView sv1    = orc_sv_trim(orc_sv_from_str(buf1));
@@ -3496,7 +3496,7 @@ void test_sv_trim_combined(void)
   TEST_ASSERT_TRUE(orc_sv_trim((OrcStrView) {0}).start == NULL);
 }
 
-void test_orc_sv_starts_with(void)
+static void test_orc_sv_starts_with(void)
 {
   char       buf[] = "hello world";
   OrcStrView sv    = orc_sv_from_str(buf);
@@ -3521,7 +3521,7 @@ void test_orc_sv_starts_with(void)
   TEST_ASSERT_TRUE(!orc_sv_starts_with(sv2, "xy"));
 }
 
-void test_orc_sv_ends_with(void)
+static void test_orc_sv_ends_with(void)
 {
   char       buf[] = "hello world";
   OrcStrView sv    = orc_sv_from_str(buf);
@@ -3546,7 +3546,7 @@ void test_orc_sv_ends_with(void)
   TEST_ASSERT_TRUE(!orc_sv_ends_with(sv2, "yx"));
 }
 
-void test_orc_sv_contains_str(void)
+static void test_orc_sv_contains_str(void)
 {
   char       buf[] = "hello world";
   OrcStrView sv    = orc_sv_from_str(buf);
@@ -3587,7 +3587,7 @@ void test_orc_sv_contains_str(void)
   TEST_ASSERT_TRUE(orc_sv_contains_str(sv4, "abc"));
 }
 
-void test_orc_sv_find(void)
+static void test_orc_sv_find(void)
 {
   char       buf[] = "hello";
   OrcStrView sv    = orc_sv_from_str(buf);
@@ -3608,7 +3608,7 @@ void test_orc_sv_find(void)
   TEST_ASSERT_TRUE(orc_sv_find(sv2, 'y') == NULL);
 }
 
-void test_orc_sv_rfind(void)
+static void test_orc_sv_rfind(void)
 {
   char       buf[] = "hello";
   OrcStrView sv    = orc_sv_from_str(buf);
@@ -3640,7 +3640,7 @@ void test_orc_sv_rfind(void)
   TEST_ASSERT_TRUE(orc_sv_rfind(sv4, 'c') == buf4 + 2);
 }
 
-void test_orc_str_eq(void)
+static void test_orc_str_eq(void)
 {
   // Equal strings
   char *a = NULL;
@@ -3669,7 +3669,7 @@ void test_orc_str_eq(void)
   orc_str_free(b);
 }
 
-void test_orc_sv_contains_char(void)
+static void test_orc_sv_contains_char(void)
 {
   char       buf[] = "hello";
   OrcStrView sv    = orc_sv_from_str(buf);
@@ -3681,7 +3681,7 @@ void test_orc_sv_contains_char(void)
   TEST_ASSERT_TRUE(!orc_sv_contains_char((OrcStrView) {0}, 'a'));
 }
 
-void test_orc_sv_strip_prefix(void)
+static void test_orc_sv_strip_prefix(void)
 {
   char       buf[] = "hello world";
   OrcStrView sv    = orc_sv_from_str(buf);
@@ -3714,7 +3714,7 @@ void test_orc_sv_strip_prefix(void)
   TEST_ASSERT_TRUE(!orc_sv_strip_prefix(NULL, "a"));
 }
 
-void test_orc_sv_strip_suffix(void)
+static void test_orc_sv_strip_suffix(void)
 {
   char       buf[] = "hello world";
   OrcStrView sv    = orc_sv_from_str(buf);
@@ -3747,7 +3747,7 @@ void test_orc_sv_strip_suffix(void)
   TEST_ASSERT_TRUE(!orc_sv_strip_suffix(NULL, "a"));
 }
 
-void test_orc_sv_slice(void)
+static void test_orc_sv_slice(void)
 {
   char       buf[] = "hello world";
   OrcStrView sv    = orc_sv_from_str(buf);
@@ -3789,7 +3789,7 @@ void test_orc_sv_slice(void)
   TEST_ASSERT_TRUE(bad3.start == NULL);
 }
 
-void test_orc_sv_eq(void)
+static void test_orc_sv_eq(void)
 {
   char       buf1[] = "hello";
   char       buf2[] = "hello";
@@ -3826,7 +3826,7 @@ void test_orc_sv_eq(void)
   TEST_ASSERT_TRUE(orc_sv_eq(sub, match));
 }
 
-void test_orc_sdk_deck_header_alignment(void)
+static void test_orc_sdk_deck_header_alignment(void)
 {
   TEST_ASSERT_TRUE_MESSAGE(
     (sizeof(_OrcSdk_DeckHeader) % sizeof(_MaxAlignCompat)) == 0,
@@ -3849,7 +3849,7 @@ static size_t *_binary_deck(uint8_t depth)
   return deck;
 }
 
-void test_deck_basic_push_and_length(void)
+static void test_deck_basic_push_and_length(void)
 {
   size_t *deck = NULL;
   TEST_ASSERT_TRUE(orc_sdk_deck_len(deck) == 0);
@@ -3871,7 +3871,7 @@ void test_deck_basic_push_and_length(void)
   orc_sdk_deck_free(deck);
 }
 
-void test_deck_binary_deck(void)
+static void test_deck_binary_deck(void)
 {
   uint8_t const DEPTH = 5;
   size_t       *deck  = _binary_deck(DEPTH);
@@ -3884,7 +3884,7 @@ void test_deck_binary_deck(void)
   orc_sdk_deck_free(deck);
 }
 
-void test_deck_mark_structure(void)
+static void test_deck_mark_structure(void)
 {
   // Depth-3 binary deck: marks at positions 0,2,4,6 with depths 2,0,1,0.
   size_t             *deck = _binary_deck(3);
@@ -3901,7 +3901,7 @@ void test_deck_mark_structure(void)
   TEST_ASSERT_TRUE(h->marks[3].pos == 6);
   orc_sdk_deck_free(deck);
 }
-void test_orc_sdk_deck_clear(void)
+static void test_orc_sdk_deck_clear(void)
 {
   size_t *deck = _binary_deck(3);
   TEST_ASSERT_TRUE(orc_sdk_deck_len(deck) == 8);
@@ -3921,7 +3921,7 @@ void test_orc_sdk_deck_clear(void)
   orc_sdk_deck_free(deck);
 }
 
-void test_orc_sdk_deck_flatten(void)
+static void test_orc_sdk_deck_flatten(void)
 {
   size_t *deck = _binary_deck(4);
   size_t  n    = orc_sdk_deck_len(deck);
@@ -3953,7 +3953,7 @@ void test_orc_sdk_deck_flatten(void)
   orc_sdk_deck_free(deck2);
 }
 
-void test_orc_sdk_deck_reserve(void)
+static void test_orc_sdk_deck_reserve(void)
 {
   size_t *deck = NULL;
   TEST_ASSERT_TRUE(orc_sdk_deck_reserve(deck, 32) == ORC_ERROR_NONE);
@@ -3971,7 +3971,7 @@ void test_orc_sdk_deck_reserve(void)
   orc_sdk_deck_free(deck);
 }
 
-void test_deck_depth_clamping(void)
+static void test_deck_depth_clamping(void)
 {
   // Depth higher than the first mark's depth should be clamped.
   size_t *deck = NULL;
@@ -3991,7 +3991,7 @@ void test_deck_depth_clamping(void)
   orc_sdk_deck_free(deck);
 }
 
-void test_deck_single_element(void)
+static void test_deck_single_element(void)
 {
   // Depth 0: bare leaf, no marks.
   size_t *deck = NULL;
@@ -4012,14 +4012,14 @@ void test_deck_single_element(void)
   orc_sdk_deck_free(deck2);
 }
 
-void test_orc_sdk_deck_free_null(void)
+static void test_orc_sdk_deck_free_null(void)
 {
   size_t *deck = NULL;
   orc_sdk_deck_free(deck);
   TEST_ASSERT_TRUE(deck == NULL);
 }
 
-void test_deck_many_pushes(void)
+static void test_deck_many_pushes(void)
 {
   size_t *deck = NULL;
   size_t  n    = 1000;
@@ -4035,7 +4035,7 @@ void test_deck_many_pushes(void)
   orc_sdk_deck_free(deck);
 }
 
-void test_orc_sdk_deck_graft(void)
+static void test_orc_sdk_deck_graft(void)
 {
   // Graft a depth-3 binary deck: depth should increase by 1, items unchanged.
   size_t *deck = _binary_deck(3);
@@ -4099,7 +4099,7 @@ void test_orc_sdk_deck_graft(void)
   TEST_ASSERT_TRUE(orc_sdk_deck_len(deck4) == 0);
 }
 
-void test_orc_sdk_deck_simplify(void)
+static void test_orc_sdk_deck_simplify(void)
 {
   // A deck whose mark depths already use every level is unchanged.
   {
@@ -4194,7 +4194,7 @@ void _print_size_t(void *item, char *dst, size_t len)
   snprintf(dst, len, "%zu", val);
 }
 
-void test_deck_printf(void)
+static void test_deck_printf(void)
 {
   size_t *deck = _binary_deck(5);
   TEST_ASSERT_TRUE(_orc_sdk_deck_header(deck)->item_size == sizeof(size_t));
@@ -4288,7 +4288,7 @@ void test_deck_printf(void)
                                              "     2 ------| 3\n")));
 }
 
-void test_deck_init(void)
+static void test_deck_init(void)
 {
   size_t             *deck = NULL;
   _OrcSdk_DeckHeader *h    = NULL;
@@ -4341,7 +4341,7 @@ void test_deck_init(void)
 
 // ========== OrcSdk_DeckView ==========
 
-void test_dv_binary_deck(void)
+static void test_dv_binary_deck(void)
 {
   const uint8_t DEPTH = 5;
   size_t       *deck  = _binary_deck(DEPTH);
@@ -4442,7 +4442,7 @@ void test_dv_binary_deck(void)
 
 // ========== OrcSdk_DeckWriter ==========
 
-void test_dw_basic_depth2(void)
+static void test_dw_basic_depth2(void)
 {
   // Build ((0,1,2),(3,4,5),(6,7,8)) via OrcSdk_DeckWriter, then verify via
   // OrcSdk_DeckView.
@@ -4478,7 +4478,7 @@ void test_dw_basic_depth2(void)
   orc_sdk_deck_free(deck);
 }
 
-void test_dw_depth3_nested(void)
+static void test_dw_depth3_nested(void)
 {
   // Build 3x3x3 tree at depth 3, mirroring Rust t_deck_writer_basic.
   uint32_t *deck    = NULL;
@@ -4522,7 +4522,7 @@ void test_dw_depth3_nested(void)
   orc_sdk_deck_free(deck);
 }
 
-void test_dw_unbalanced_tree(void)
+static void test_dw_unbalanced_tree(void)
 {
   // ((1), (2,3,4), (5,6)) — groups of different sizes.
   uint32_t *deck = NULL;
@@ -4582,7 +4582,7 @@ void test_dw_unbalanced_tree(void)
   orc_sdk_deck_free(deck);
 }
 
-void test_dw_empty_groups(void)
+static void test_dw_empty_groups(void)
 {
   // Build ((), (1,2), (), (3), ()) via orc_sdk_dw_close for empty groups.
   uint32_t *deck = NULL;
@@ -4633,7 +4633,7 @@ void test_dw_empty_groups(void)
   orc_sdk_deck_free(deck);
 }
 
-void test_dw_nested_empty(void)
+static void test_dw_nested_empty(void)
 {
   // Build (((), (1,2)), ((3,)), (())) at depth 3.
   uint32_t *deck = NULL;
@@ -4708,7 +4708,7 @@ void test_dw_nested_empty(void)
   orc_sdk_deck_free(deck);
 }
 
-void test_dw_single_element_deep(void)
+static void test_dw_single_element_deep(void)
 {
   // One item wrapped at depth 5: (((((42)))))
   uint32_t *deck = NULL;
@@ -4736,7 +4736,7 @@ void test_dw_single_element_deep(void)
   orc_sdk_deck_free(deck);
 }
 
-void test_orc_sdk_dw_len_tracking(void)
+static void test_orc_sdk_dw_len_tracking(void)
 {
   // Verify orc_sdk_dw_len reflects items added at each scope level.
   uint32_t *deck = NULL;
@@ -4783,7 +4783,7 @@ void test_orc_sdk_dw_len_tracking(void)
   orc_sdk_deck_free(deck);
 }
 
-void test_dw_append_to_existing(void)
+static void test_dw_append_to_existing(void)
 {
   // Build ((1,2),(3,4)) manually, then append (5,6) via writer.
   uint32_t *deck = NULL;
@@ -4827,7 +4827,7 @@ void test_dw_append_to_existing(void)
   orc_sdk_deck_free(deck);
 }
 
-void test_dw_flat_depth1(void)
+static void test_dw_flat_depth1(void)
 {
   // Depth-1 writer: just a flat list.
   uint32_t *deck = NULL;
@@ -4852,7 +4852,7 @@ void test_dw_flat_depth1(void)
   orc_sdk_deck_free(deck);
 }
 
-void test_dw_orc_sdk_deck_item_ptr(void)
+static void test_dw_orc_sdk_deck_item_ptr(void)
 {
   // Verify orc_sdk_deck_item_ptr points to the right items.
   uint32_t *deck = NULL;
@@ -4891,7 +4891,7 @@ void test_dw_orc_sdk_deck_item_ptr(void)
   orc_sdk_deck_free(deck);
 }
 
-void test_orc_sdk_dw_close_idempotent(void)
+static void test_orc_sdk_dw_close_idempotent(void)
 {
   // orc_sdk_dw_close on an already-written writer should be a no-op.
   // orc_sdk_dw_close on an already-closed writer should be a no-op.
@@ -4933,7 +4933,7 @@ void test_orc_sdk_dw_close_idempotent(void)
   orc_sdk_deck_free(deck);
 }
 
-void test_dw_all_empty_depth3(void)
+static void test_dw_all_empty_depth3(void)
 {
   // (((), ()), (())) — depth 3, no items at all.
   uint32_t *deck = NULL;
@@ -4985,7 +4985,7 @@ void test_dw_all_empty_depth3(void)
 
 // ========== Dims (Units) ==========
 
-void test_orc_sdk_dims_equal(void)
+static void test_orc_sdk_dims_equal(void)
 {
   OrcDims a = {1, 0, -2, 0, 0, 0, 0};
   OrcDims b = {1, 0, -2, 0, 0, 0, 0};
@@ -5001,7 +5001,7 @@ void test_orc_sdk_dims_equal(void)
   TEST_ASSERT_TRUE(!orc_sdk_dims_equal(zero_a, d));
 }
 
-void test_orc_sdk_dims_multiply(void)
+static void test_orc_sdk_dims_multiply(void)
 {
   // force * distance = energy
   OrcDims force  = {1, 1, -2, 0, 0, 0, 0};
@@ -5021,7 +5021,7 @@ void test_orc_sdk_dims_multiply(void)
   TEST_ASSERT_TRUE(orc_sdk_dims_equal(out, zero));
 }
 
-void test_orc_sdk_dims_divide(void)
+static void test_orc_sdk_dims_divide(void)
 {
   // velocity / time = acceleration
   OrcDims velocity = {1, 0, -1, 0, 0, 0, 0};
@@ -5040,7 +5040,7 @@ void test_orc_sdk_dims_divide(void)
   TEST_ASSERT_TRUE(orc_sdk_dims_equal(out, inv_time));
 }
 
-void test_orc_sdk_dims_pow(void)
+static void test_orc_sdk_dims_pow(void)
 {
   OrcDims length = {1, 0, 0, 0, 0, 0, 0};
   OrcDims out;
@@ -5263,7 +5263,7 @@ void _plugin_function_first_add(OrcHandle const *a_handle,
   orc_sdk_comb_free(combinations);
 }
 
-void test_list_item_combinations(void)
+static void test_list_item_combinations(void)
 {
   /*=== This test simulates the running of a list-element block. ===*/
   // Allocate decks - In a real scenario, the host program is allocating these,
@@ -5360,7 +5360,7 @@ void test_list_item_combinations(void)
   TEST_ASSERT_TRUE(ORC_ERROR_NONE == orc_sdk_handle_free(&out_items));
 }
 
-void test_add_f64_combinations(void)
+static void test_add_f64_combinations(void)
 {
   /*=== Tests two-input scalar addition: equal lengths, broadcast, and depth-2 inputs.
    * ===*/
@@ -5505,7 +5505,7 @@ void _plugin_function_list_length(OrcHandle const *in_handle, OrcHandle *out_han
   orc_sdk_comb_free(combinations);
 }
 
-void test_list_length_combinations(void)
+static void test_list_length_combinations(void)
 {
   /*=== Tests arg_depth=1 with U64 output: outputs the length of each input list, with
    * empty lists producing zeros. ===*/
@@ -5565,7 +5565,7 @@ void test_list_length_combinations(void)
   TEST_ASSERT_TRUE(ORC_ERROR_NONE == orc_sdk_handle_free(&out));
 }
 
-void test_two_output_combinations(void)
+static void test_two_output_combinations(void)
 {
   /*=== Tests multiple-output Combinations: sq+cb (1 in, 2 out) and add+mul (2 in, 2 out).
    * ===*/
@@ -5636,7 +5636,7 @@ void test_two_output_combinations(void)
   TEST_ASSERT_TRUE(ORC_ERROR_NONE == orc_sdk_handle_free(&out2));
 }
 
-void test_first_add_combinations(void)
+static void test_first_add_combinations(void)
 {
   /*=== Tests arg_depth=1: plugin receives depth-1 list views and sums their first
    * elements. ===*/
@@ -5822,7 +5822,7 @@ static void _assert_decks_match(void const  *actual,
   }
 }
 
-void test_deck_from_proxy_copy_items(void)
+static void test_deck_from_proxy_copy_items(void)
 {
   /*=== COPY_ITEMS: copies items from input, structure (marks) from proxy. ===*/
   { /* Flatten a depth-2 deck. */
@@ -5926,7 +5926,7 @@ void test_deck_from_proxy_copy_items(void)
   }
 }
 
-void test_deck_from_proxy_shuffle(void)
+static void test_deck_from_proxy_shuffle(void)
 {
   /*=== SHUFFLE: copies items one-at-a-time using proxy ItemProxy references. ===*/
   { /* Flat reverse: (1, 2, 3) → (3, 2, 1). */
@@ -6057,7 +6057,7 @@ void test_deck_from_proxy_shuffle(void)
   }
 }
 
-void test_deck_from_proxy_type_agnostic(void)
+static void test_deck_from_proxy_type_agnostic(void)
 {
   /*=== Verifies orc_deck_from_proxy preserves type across u32, i32, i16. ===*/
   { /* u32 flatten. */

@@ -115,6 +115,7 @@ impl Default for OrcHost {
             abi_version: ORC_ABI_VERSION,
             memory_api: Default::default(),
             callbacks: Default::default(),
+            create_deck_from_proxy: None,
         }
     }
 }

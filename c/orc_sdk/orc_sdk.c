@@ -138,6 +138,20 @@ void orc_sdk_report_message(uint64_t const        ctx,
   }
 }
 
+OrcError orc_sdk_host_create_proxy_deck(const OrcHandle   *inputs,
+                                        const uint64_t     n_inputs,
+                                        const OrcProxyType proxy_type,
+                                        const OrcHandle   *proxy,
+                                        OrcHandle         *out)
+{
+  if (HOST.create_deck_from_proxy != NULL) {
+    return HOST.create_deck_from_proxy(inputs, n_inputs, proxy_type, proxy, out);
+  }
+  else {
+    return ORC_ERROR_MISSING_CAPABILITY;
+  }
+}
+
 void *_orc_sdk_arr_grow(void *ptr, size_t elemsize)
 {
   _OrcSdk_ArrHeader *h = _orc_sdk_arr_header(ptr);
@@ -1667,6 +1681,10 @@ void orc_sdk_init(OrcHost const *host, OrcSdkTypeCallbacksGetterFn type_fn)
       HOST.callbacks.report_intermediate_output =
         host->callbacks.report_intermediate_output;
     }
+    // Proxy deck creation callback.
+    if (host->create_deck_from_proxy) {
+      HOST.create_deck_from_proxy = host->create_deck_from_proxy;
+    }
     HOST_INIT = true;
   }
   PLUGIN_TYPE_FN = type_fn;
@@ -2019,6 +2037,9 @@ OrcError orc_sdk_handle_alloc(OrcTypeId const id, OrcHandle *const out)
   case ORC_TYPE_I64:
     out->item_size = sizeof(int64_t);
     break;
+  case ORC_TYPE_PROXY:
+    out->item_size = sizeof(OrcItemProxy);
+    break;
   default: {
     if (PLUGIN_TYPE_FN) {
       OrcSdkTypeInfo info = PLUGIN_TYPE_FN(id);
@@ -2190,7 +2211,7 @@ OrcError orc_sdk_deck_from_proxy(OrcHandle const   *inputs,
     }
     _OrcSdk_DeckHeader *h = _orc_sdk_deck_header(deck);
     h->item_size          = item_size;
-    memcpy(out->dims, inputs[0].dims, sizeof(OrcDims));
+    memcpy(out->dims, proxy->dims, sizeof(OrcDims));
     out->type_id = id;
     {  // Copy the data.
       memset(deck, 0, item_size * n_items);
@@ -2224,7 +2245,7 @@ OrcError orc_sdk_deck_from_proxy(OrcHandle const   *inputs,
     }
     _OrcSdk_DeckHeader *h = _orc_sdk_deck_header(deck);
     h->item_size          = item_size;
-    memcpy(out->dims, inputs[0].dims, sizeof(OrcDims));
+    memcpy(out->dims, proxy->dims, sizeof(OrcDims));
     out->type_id = id;
     {  // Copy the data.
       memset(deck, 0, item_size * n_items);

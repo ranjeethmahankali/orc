@@ -116,6 +116,7 @@ fn deck_from_proxy_impl<T: TOrcData>(
         // All inputs must be of the same type. This is a problem.
         return Err(Error::InvalidProxy);
     }
+    out.dims = proxy.dims;
     REGISTRY.alloc::<T>(out)?;
     REGISTRY
         .with_mut(&[out.handle], |out_decks| -> Result<(), Error> {
@@ -159,9 +160,7 @@ fn deck_from_proxy_impl<T: TOrcData>(
                 }
             };
             out_deck.assign_from_raw_data(items, marks);
-            unsafe {
-                update_handle_from_deck(out_deck, out);
-            }
+            unsafe { update_handle_from_deck(out_deck, out) }; // SAFETY: we pulled the deck out of the same handle.
             Ok(())
         })
         .flatten()
