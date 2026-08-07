@@ -1140,15 +1140,11 @@ mod tests {
         // &[T] → input
         assert!(!is_output_param(&parse_quote! { &[T] }).unwrap());
         // DeckView<T> → input
-        assert!(
-            !is_output_param(&parse_quote! { DeckView<T> }).unwrap()
-        );
+        assert!(!is_output_param(&parse_quote! { DeckView<T> }).unwrap());
         // &mut T → output
         assert!(is_output_param(&parse_quote! { &mut T }).unwrap());
         // &mut DeckWriter<T> → output
-        assert!(
-            is_output_param(&parse_quote! { &mut DeckWriter<T> }).unwrap()
-        );
+        assert!(is_output_param(&parse_quote! { &mut DeckWriter<T> }).unwrap());
         // bare DeckWriter<T> → error
         assert!(is_output_param(&parse_quote! { DeckWriter<T> }).is_err());
         // bare T → error
