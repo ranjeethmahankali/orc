@@ -455,6 +455,18 @@ fn validate_dims_fn(dims: &ItemFn, n_inputs: usize, n_outputs: usize) -> syn::Re
     Ok(())
 }
 
+/// Returns true if `ty` is a bare identifier matching one of the generic type parameters.
+fn is_generic_type(ty: &syn::Type, generics: &[&syn::GenericParam]) -> bool {
+    if let syn::Type::Path(p) = ty
+        && let Some(ident) = p.path.get_ident()
+    {
+        return generics
+            .iter()
+            .any(|gp| matches!(gp, syn::GenericParam::Type(tp) if tp.ident == *ident));
+    }
+    false
+}
+
 /// If `ty` is a bare ident matching a type generic, returns the substituted concrete type.
 /// Otherwise returns a clone of `ty` unchanged.
 fn substitute_type(
@@ -462,9 +474,11 @@ fn substitute_type(
     generics: &[&syn::GenericParam],
     case_args: &[&syn::GenericArgument],
 ) -> syn::Type {
-    if let syn::Type::Path(p) = ty
-        && let Some(ident) = p.path.get_ident()
-    {
+    if is_generic_type(ty, generics) {
+        let ident = match ty {
+            syn::Type::Path(p) => p.path.get_ident().unwrap(),
+            _ => unreachable!(),
+        };
         for (gp, arg) in generics.iter().zip(case_args.iter()) {
             if let (syn::GenericParam::Type(tp), syn::GenericArgument::Type(concrete)) = (gp, arg)
                 && tp.ident == *ident
@@ -795,10 +809,53 @@ fn generate_orc_fn(cfg: FnConfig<'_>) -> proc_macro2::TokenStream {
     let dispatch_fn = generate_dispatch_fn(run_fn, params);
     let registry_expr = registry_expr.map(|r| quote! { #r }).unwrap_or_default();
     let type_dispatch = generate_type_dispatch(run_fn, types, params, &registry_expr);
+    let all_generics: Vec<&syn::GenericParam> = run_fn.sig.generics.params.iter().collect();
+    let fn_type_id_expr = |p: &ParamInfo| -> proc_macro2::TokenStream {
+        if is_generic_type(&p.inner_type, &all_generics) {
+            quote! { orc_sdk::ORC_TYPE_ANY }
+        } else {
+            let ty = &p.inner_type;
+            quote! { <#ty as orc_sdk::TOrcData>::TYPE_INFO.type_id }
+        }
+    };
+    let input_types_ptr = if n_inputs == 0
+        || params
+            .inputs
+            .iter()
+            .all(|p| is_generic_type(&p.inner_type, &all_generics))
+    {
+        quote! { ::std::ptr::null_mut() }
+    } else {
+        let exprs: Vec<_> = params.inputs.iter().map(&fn_type_id_expr).collect();
+        quote! {
+            (&[#(#exprs),*] as *const [orc_sdk::OrcTypeId; #n_inputs])
+                .cast::<orc_sdk::OrcTypeId>()
+                .cast_mut()
+        }
+    };
+    let output_types_ptr = if n_outputs == 0
+        || params
+            .outputs
+            .iter()
+            .all(|p| is_generic_type(&p.inner_type, &all_generics))
+    {
+        quote! { ::std::ptr::null_mut() }
+    } else {
+        let exprs: Vec<_> = params.outputs.iter().map(&fn_type_id_expr).collect();
+        quote! {
+            (&[#(#exprs),*] as *const [orc_sdk::OrcTypeId; #n_outputs])
+                .cast::<orc_sdk::OrcTypeId>()
+                .cast_mut()
+        }
+    };
     quote! {
         pub const #info_name: orc_sdk::OrcFuncInfo = orc_sdk::OrcFuncInfo {
             name: #name_lit.as_ptr(),
             desc: #desc_lit.as_ptr(),
+            n_inputs: #n_inputs as u64,
+            n_outputs: #n_outputs as u64,
+            input_types: #input_types_ptr,
+            output_types: #output_types_ptr,
             func: Some(#name),
         };
         unsafe extern "C" fn #name(
