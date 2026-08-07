@@ -59,10 +59,17 @@ typedef struct
   char const *desc;
 } OrcTypeInfo;
 
+#define ORC_ARGS_VARIADIC 0xffffffffffffffff
+#define ORC_TYPE_ANY 0xffffffffffffffff
+
 typedef struct
 {
   char const *name;
   char const *desc;
+  uint64_t    n_inputs;
+  uint64_t    n_outputs;
+  OrcTypeId  *input_types;
+  OrcTypeId  *output_types;
 
   void (*func)(uint64_t const   ctx,
                OrcHandle const *inputs,
