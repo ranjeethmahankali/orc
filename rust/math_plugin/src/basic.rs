@@ -1,5 +1,5 @@
 use crate::{host_callbacks, registry};
-use orc_sdk::{Error, HostCallbacks, OrcDims, TOrcData, orc_fn};
+use orc_sdk::{DeckWriter, Error, HostCallbacks, OrcDims, TOrcData, orc_fn};
 use std::ops::{Add, Div, Mul, Sub};
 
 orc_fn!(add, {
@@ -113,6 +113,50 @@ orc_fn!(div, {
     }
 });
 
+orc_fn!(pow_f32, {
+    let host_callbacks = host_callbacks();
+    let registry: &ObjectRegistry = registry();
+
+    fn run(_host: &HostCallbacks, lhs: &f32, rhs: &f32, out: &mut f32) -> Result<(), Error> {
+        *out = lhs.powf(*rhs);
+        Ok(())
+    }
+});
+
+orc_fn!(repeat_list, {
+    let host_callbacks = host_callbacks();
+    let registry: &ObjectRegistry = registry();
+
+    type Types = (
+        Case<f32>,
+        Case<f64>,
+        Case<u8>,
+        Case<u16>,
+        Case<u32>,
+        Case<u64>,
+        Case<i8>,
+        Case<i16>,
+        Case<i32>,
+        Case<i64>,
+    );
+
+    const OUTPUT_DEPTHS: [u8; 1] = [1u8];
+    fn run<T>(
+        _host: &HostCallbacks,
+        list: &[T],
+        repeat_count: &u64,
+        out: &mut DeckWriter<T>,
+    ) -> Result<(), Error>
+    where
+        T: TOrcData + Sub<Output = T> + Copy,
+    {
+        for _ in 0..(*repeat_count as usize) {
+            out.extend_from_slice(list);
+        }
+        Ok(())
+    }
+});
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -145,7 +189,7 @@ mod tests {
     // ==================== add ====================
 
     #[test]
-    fn add_f64_elementwise() {
+    fn t_add_f64_elementwise() {
         let lhs: Deck<f64> = orc_sdk::deck![1.0, 2.0, 3.0];
         let rhs: Deck<f64> = orc_sdk::deck![10.0, 20.0, 30.0];
         let mut out = out_handle();
@@ -158,7 +202,7 @@ mod tests {
     }
 
     #[test]
-    fn add_f32_elementwise() {
+    fn t_add_f32_elementwise() {
         let lhs: Deck<f32> = orc_sdk::deck![1.0f32, 2.0, 3.0];
         let rhs: Deck<f32> = orc_sdk::deck![10.0f32, 20.0, 30.0];
         let mut out = out_handle();
@@ -171,7 +215,7 @@ mod tests {
     }
 
     #[test]
-    fn add_integer_types() {
+    fn t_add_integer_types() {
         // u32
         let lhs: Deck<u32> = orc_sdk::deck![5u32];
         let rhs: Deck<u32> = orc_sdk::deck![3u32];
@@ -193,7 +237,7 @@ mod tests {
     }
 
     #[test]
-    fn add_broadcast_scalar_to_list() {
+    fn t_add_broadcast_scalar_to_list() {
         // b has 1 item; it stays at its last value (10.0) once exhausted.
         let lhs: Deck<f64> = orc_sdk::deck![1.0, 2.0, 3.0];
         let rhs: Deck<f64> = orc_sdk::deck![10.0];
@@ -207,7 +251,7 @@ mod tests {
     }
 
     #[test]
-    fn add_mismatched_types() {
+    fn t_add_mismatched_types() {
         // i32 lhs + f64 rhs → no match in type dispatch → output untouched.
         let lhs: Deck<i32> = orc_sdk::deck![1i32];
         let rhs: Deck<f64> = orc_sdk::deck![1.0f64];
@@ -219,7 +263,7 @@ mod tests {
     }
 
     #[test]
-    fn add_mismatched_dimensions() {
+    fn t_add_mismatched_dimensions() {
         let lhs: Deck<f64> = orc_sdk::deck![1.0];
         let rhs: Deck<f64> = orc_sdk::deck![2.0];
         let mut lhs_h = view(&lhs);
@@ -235,7 +279,7 @@ mod tests {
     }
 
     #[test]
-    fn add_wrong_n_inputs() {
+    fn t_add_wrong_n_inputs() {
         let lhs: Deck<f64> = orc_sdk::deck![1.0];
         let mut out = out_handle();
         let inputs = [view(&lhs)]; // 1 instead of 2
@@ -245,7 +289,7 @@ mod tests {
     }
 
     #[test]
-    fn add_output_reuse_same_type() {
+    fn t_add_output_reuse_same_type() {
         let lhs1: Deck<f64> = orc_sdk::deck![1.0];
         let rhs1: Deck<f64> = orc_sdk::deck![2.0];
         let mut out = out_handle();
@@ -267,7 +311,7 @@ mod tests {
     }
 
     #[test]
-    fn add_output_type_change() {
+    fn t_add_output_type_change() {
         let mut out = out_handle();
         let out_id = out.handle;
 
@@ -294,7 +338,7 @@ mod tests {
     // ==================== mul ====================
 
     #[test]
-    fn mul_f64_elementwise() {
+    fn t_mul_f64_elementwise() {
         let lhs: Deck<f64> = orc_sdk::deck![2.0, 3.0, 4.0];
         let rhs: Deck<f64> = orc_sdk::deck![5.0, 6.0, 7.0];
         let mut out = out_handle();
@@ -307,7 +351,7 @@ mod tests {
     }
 
     #[test]
-    fn mul_integer_types() {
+    fn t_mul_integer_types() {
         let lhs: Deck<i32> = orc_sdk::deck![3i32, 4];
         let rhs: Deck<i32> = orc_sdk::deck![7i32, 8];
         let mut out = out_handle();
@@ -320,7 +364,7 @@ mod tests {
     }
 
     #[test]
-    fn mul_mismatched_types() {
+    fn t_mul_mismatched_types() {
         let lhs: Deck<u32> = orc_sdk::deck![2u32];
         let rhs: Deck<f64> = orc_sdk::deck![3.0f64];
         let mut out = out_handle();
@@ -333,7 +377,7 @@ mod tests {
     // ==================== sub ====================
 
     #[test]
-    fn sub_f64() {
+    fn t_sub_f64() {
         let lhs: Deck<f64> = orc_sdk::deck![10.0, 20.0];
         let rhs: Deck<f64> = orc_sdk::deck![3.0, 7.0];
         let mut out = out_handle();
@@ -346,7 +390,7 @@ mod tests {
     }
 
     #[test]
-    fn sub_unsupported_type() {
+    fn t_sub_unsupported_type() {
         // sub only supports f32/f64; u32 inputs → type dispatch fails.
         let lhs: Deck<u32> = orc_sdk::deck![5u32];
         let rhs: Deck<u32> = orc_sdk::deck![3u32];
@@ -360,7 +404,7 @@ mod tests {
     // ==================== div ====================
 
     #[test]
-    fn div_f64() {
+    fn t_div_f64() {
         let lhs: Deck<f64> = orc_sdk::deck![10.0, 9.0];
         let rhs: Deck<f64> = orc_sdk::deck![2.0, 3.0];
         let mut out = out_handle();
@@ -373,7 +417,7 @@ mod tests {
     }
 
     #[test]
-    fn div_by_zero() {
+    fn t_div_by_zero() {
         // IEEE 754: dividing by zero produces infinity, no panic.
         let lhs: Deck<f64> = orc_sdk::deck![1.0];
         let rhs: Deck<f64> = orc_sdk::deck![0.0];
@@ -385,7 +429,7 @@ mod tests {
     }
 
     #[test]
-    fn div_unsupported_type() {
+    fn t_div_unsupported_type() {
         let lhs: Deck<i32> = orc_sdk::deck![6i32];
         let rhs: Deck<i32> = orc_sdk::deck![2i32];
         let mut out = out_handle();
@@ -398,7 +442,7 @@ mod tests {
     // ==================== output reuse / reallocation / update ====================
 
     #[test]
-    fn add_reuse_same_type_handle_updated() {
+    fn t_add_reuse_same_type_handle_updated() {
         // First call: 1-item output.
         let lhs1: Deck<f64> = orc_sdk::deck![1.0];
         let rhs1: Deck<f64> = orc_sdk::deck![2.0];
@@ -426,7 +470,7 @@ mod tests {
     }
 
     #[test]
-    fn add_type_change_handle_updated() {
+    fn t_add_type_change_handle_updated() {
         // First call: f64.
         let lhs1: Deck<f64> = orc_sdk::deck![5.0];
         let rhs1: Deck<f64> = orc_sdk::deck![3.0];
@@ -452,7 +496,7 @@ mod tests {
     }
 
     #[test]
-    fn add_clears_previous_data() {
+    fn t_add_clears_previous_data() {
         // First call: 2-item output.
         let lhs1: Deck<f64> = orc_sdk::deck![3.0, 4.0];
         let rhs1: Deck<f64> = orc_sdk::deck![10.0, 20.0];
@@ -480,7 +524,7 @@ mod tests {
     // ==================== handle lifetime invariants ====================
 
     #[test]
-    fn output_free_fn_set_after_call() {
+    fn t_output_free_fn_set_after_call() {
         let lhs: Deck<f64> = orc_sdk::deck![1.0];
         let rhs: Deck<f64> = orc_sdk::deck![2.0];
         let mut out = out_handle();
@@ -490,7 +534,7 @@ mod tests {
     }
 
     #[test]
-    fn output_handle_id_preserved() {
+    fn t_output_handle_id_preserved() {
         let lhs: Deck<f64> = orc_sdk::deck![1.0];
         let rhs: Deck<f64> = orc_sdk::deck![2.0];
         let mut out = out_handle();
@@ -501,7 +545,7 @@ mod tests {
     }
 
     #[test]
-    fn output_owned_by_plugin_registry() {
+    fn t_output_owned_by_plugin_registry() {
         let lhs: Deck<f64> = orc_sdk::deck![1.0];
         let rhs: Deck<f64> = orc_sdk::deck![2.0];
         let mut out = out_handle();
@@ -515,7 +559,7 @@ mod tests {
     }
 
     #[test]
-    fn input_handles_unaffected() {
+    fn t_input_handles_unaffected() {
         let lhs: Deck<f64> = orc_sdk::deck![1.0];
         let rhs: Deck<f64> = orc_sdk::deck![2.0];
         let lhs_h = view(&lhs);

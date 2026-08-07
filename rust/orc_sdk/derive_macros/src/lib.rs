@@ -77,10 +77,19 @@ fn is_deck_type(ty: &syn::Type) -> bool {
         if p.path.segments.last().is_some_and(|s| s.ident == "DeckView" || s.ident == "DeckWriter"))
 }
 
+fn is_deck_writer_param(ty: &syn::Type) -> bool {
+    matches!(ty, syn::Type::Reference(r)
+        if r.mutability.is_some()
+        && matches!(r.elem.as_ref(), syn::Type::Path(p)
+            if p.path.segments.last().is_some_and(|s| s.ident == "DeckWriter")))
+}
+
+
 fn infer_depth(ty: &syn::Type) -> Option<u8> {
     match ty {
         syn::Type::Reference(r) => match r.elem.as_ref() {
             syn::Type::Slice(_) => Some(1),
+            inner if is_deck_type(inner) => None,
             _ => Some(0),
         },
         _ if is_deck_type(ty) => None,
@@ -91,14 +100,6 @@ fn infer_depth(ty: &syn::Type) -> Option<u8> {
 fn is_output_param(ty: &syn::Type) -> syn::Result<bool> {
     match ty {
         syn::Type::Reference(r) if r.mutability.is_some() => Ok(true),
-        syn::Type::Path(p)
-            if p.path
-                .segments
-                .last()
-                .is_some_and(|s| s.ident == "DeckWriter") =>
-        {
-            Ok(true)
-        }
         syn::Type::Reference(r) if r.mutability.is_none() => Ok(false),
         syn::Type::Path(p)
             if p.path
@@ -110,18 +111,19 @@ fn is_output_param(ty: &syn::Type) -> syn::Result<bool> {
         }
         other => Err(syn::Error::new_spanned(
             other,
-            "run parameter must be `&T`, `&[T]`, `&mut T`, `DeckView<T>`, or `DeckWriter<T>`",
+            "run parameter must be `&T`, `&[T]`, `&mut T`, `&mut DeckWriter<T>`, or `DeckView<T>`",
         )),
     }
 }
 
 /// Strips depth wrappers and returns the inner element type:
 /// `&[T]` → `T`, `&T` → `T`, `&mut T` → `T`,
-/// `DeckView<T>` → `T`, `DeckWriter<T>` → `T`, anything else → itself.
+/// `&mut DeckWriter<T>` → `T`, `DeckView<T>` → `T`, anything else → itself.
 fn inner_type(ty: &syn::Type) -> &syn::Type {
     match ty {
         syn::Type::Reference(r) => match r.elem.as_ref() {
             syn::Type::Slice(s) => s.elem.as_ref(),
+            inner if is_deck_type(inner) => inner_type(inner),
             inner => inner,
         },
         syn::Type::Path(p) => {
@@ -629,8 +631,8 @@ fn generate_dispatch_fn(
     let out_deck_idents: Vec<proc_macro2::Ident> = (0..n_outputs)
         .map(|j| format_ident!("out_deck_{j}_"))
         .collect();
-    let out_view_idents: Vec<proc_macro2::Ident> = (0..n_outputs)
-        .map(|j| format_ident!("out_view_{j}_"))
+    let out_writer_idents: Vec<proc_macro2::Ident> = (0..n_outputs)
+        .map(|j| format_ident!("out_writer_{j}_"))
         .collect();
     let out_item_idents: Vec<proc_macro2::Ident> = (0..n_outputs)
         .map(|j| format_ident!("out_item_{j}_"))
@@ -660,14 +662,31 @@ fn generate_dispatch_fn(
             }
         })
         .collect();
-    let out_view_setup: Vec<proc_macro2::TokenStream> = (0..n_outputs)
+    let out_writer_setup: Vec<proc_macro2::TokenStream> = (0..n_outputs)
         .map(|j| {
-            let view_ident = &out_view_idents[j];
-            let item_ident = &out_item_idents[j];
+            let writer_ident = &out_writer_idents[j];
             let deck_ident = &out_deck_idents[j];
-            quote! {
-                let mut #view_ident = comb_.get_output(#deck_ident, #j);
-                let #item_ident = #view_ident.push_default_mut();
+            if is_deck_writer_param(params.outputs[j].param.ty.as_ref()) {
+                quote! {
+                    let mut #writer_ident = comb_.get_output(#deck_ident, #j);
+                }
+            } else {
+                let item_ident = &out_item_idents[j];
+                quote! {
+                    let mut #writer_ident = comb_.get_output(#deck_ident, #j);
+                    let #item_ident = #writer_ident.push_default_mut();
+                }
+            }
+        })
+        .collect();
+    let out_call_args: Vec<proc_macro2::TokenStream> = (0..n_outputs)
+        .map(|j| {
+            if is_deck_writer_param(params.outputs[j].param.ty.as_ref()) {
+                let writer_ident = &out_writer_idents[j];
+                quote! { &mut #writer_ident }
+            } else {
+                let item_ident = &out_item_idents[j];
+                quote! { #item_ident }
             }
         })
         .collect();
@@ -704,8 +723,8 @@ fn generate_dispatch_fn(
                 |out_decks_| -> Result<(), orc_sdk::Error> {
                     #(#out_downcasts)*
                     loop {
-                        #(#out_view_setup)*
-                        run(host_, #(#in_call_args,)* #(#out_item_idents),*)?;
+                        #(#out_writer_setup)*
+                        run(host_, #(#in_call_args,)* #(#out_call_args),*)?;
                         if !comb_.advance() { break; }
                     }
                     #(#out_handle_updates)*
@@ -1095,4 +1114,42 @@ pub fn orc_fn(input: TokenStream) -> TokenStream {
         params: &validated_params,
     })
     .into()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use syn::parse_quote;
+
+    #[test]
+    fn test_infer_depth() {
+        // Input: &T → depth 0
+        assert_eq!(infer_depth(&parse_quote! { &T }), Some(0));
+        // Input: &[T] → depth 1
+        assert_eq!(infer_depth(&parse_quote! { &[T] }), Some(1));
+        // Input: DeckView<T> → cannot infer
+        assert_eq!(infer_depth(&parse_quote! { DeckView<T> }), None);
+        // Output: &mut T → depth 0
+        assert_eq!(infer_depth(&parse_quote! { &mut T }), Some(0));
+        // Output: &mut DeckWriter<T> → cannot infer
+        assert_eq!(infer_depth(&parse_quote! { &mut DeckWriter<T> }), None);
+    }
+
+    #[test]
+    fn test_is_output_param() {
+        // &T → input
+        assert_eq!(is_output_param(&parse_quote! { &T }).unwrap(), false);
+        // &[T] → input
+        assert_eq!(is_output_param(&parse_quote! { &[T] }).unwrap(), false);
+        // DeckView<T> → input
+        assert_eq!(is_output_param(&parse_quote! { DeckView<T> }).unwrap(), false);
+        // &mut T → output
+        assert_eq!(is_output_param(&parse_quote! { &mut T }).unwrap(), true);
+        // &mut DeckWriter<T> → output
+        assert_eq!(is_output_param(&parse_quote! { &mut DeckWriter<T> }).unwrap(), true);
+        // bare DeckWriter<T> → error
+        assert!(is_output_param(&parse_quote! { DeckWriter<T> }).is_err());
+        // bare T → error
+        assert!(is_output_param(&parse_quote! { T }).is_err());
+    }
 }
