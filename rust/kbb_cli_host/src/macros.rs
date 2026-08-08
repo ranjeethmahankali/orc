@@ -113,8 +113,10 @@ mod tests {
     use std::sync::atomic::{AtomicU64, Ordering};
 
     fn make_handle(hc: &AtomicU64, deck: &Deck<f64>) -> OrcHandle {
-        let mut h = OrcHandle::default();
-        h.handle = hc.fetch_add(1, Ordering::Relaxed);
+        let mut h = OrcHandle {
+            handle: hc.fetch_add(1, Ordering::Relaxed),
+            ..Default::default()
+        };
         unsafe { update_handle_from_deck(deck, &mut h) };
         h
     }
@@ -269,7 +271,6 @@ mod tests {
     #[test]
     fn t_empty_block() {
         let hc = AtomicU64::new(0);
-        let result = kbb_dag!(*PLUGIN_SET, &hc, {});
-        assert_eq!(result, ());
+        assert_eq!(kbb_dag!(*PLUGIN_SET, &hc, {}), ());
     }
 }

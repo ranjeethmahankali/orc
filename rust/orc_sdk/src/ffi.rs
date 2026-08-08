@@ -102,7 +102,9 @@ impl OrcHandle {
         }
     }
 
-    /// SAFETY: The caller is responsible for ensuring the clone never outlives the original
+    /// # SAFETY
+    ///
+    /// The caller is responsible for ensuring the clone never outlives the original
     /// handle. Otherwise, it will result in use after free bug.
     pub unsafe fn non_owning_clone(&self) -> Self {
         OrcHandle {
