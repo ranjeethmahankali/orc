@@ -22,12 +22,14 @@ const HOST: OrcHost = OrcHost {
 };
 
 static PLUGIN_SET: LazyLock<PluginSet> = LazyLock::new(|| {
-    let exe_dir = std::env::current_exe()
-        .expect("Cannot determine executable path")
-        .parent()
-        .expect("Executable has no parent directory")
-        .to_path_buf();
-    orc_sdk::load_plugins(&exe_dir, &HOST).unwrap()
+    let exe = std::env::current_exe().expect("Cannot determine executable path");
+    let deps = exe.parent().unwrap();
+    let dir = if deps.ends_with("deps") {
+        deps.parent().unwrap()
+    } else {
+        deps
+    };
+    orc_sdk::load_plugins(dir, &HOST).unwrap()
 });
 
 #[test]
