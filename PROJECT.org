@@ -101,6 +101,21 @@
   line of text, or a list of strings such as a several lines read from a file, or a list of list of
   strings, such as lines of text read from several files.
 
+* TODO Using string functions to display custom types the UI
+  :PROPERTIES:
+  :CREATED:  2026-08-08 Sat 08:56
+  :END:
+
+* TODO Python SDK
+  :PROPERTIES:
+  :CREATED:  2026-08-08 Sat 08:51
+  :END:
+
+  I vaguely recall that there are ways to produce shared libraries out of Python code, that somehow
+  wrap the python interpreter inside the shared library. The shared library exposes some native
+  functions, that in turn run the embedded Python interpreter. I could be totally off base, but if
+  this is true, then writing plugins in Python could be very interesting.
+
 * TODO tj45qx - C++ SDK
   :PROPERTIES:
   :CREATED:  2026-08-01 Sat 18:58
@@ -137,6 +152,21 @@
 
   <2026-07-31 Fri 20:45> Trying to temporarily stop on this task, and finish a few other smaller
   tasks before continuing.
+
+* TODO Test with custom types
+  :PROPERTIES:
+  :CREATED:  2026-08-08 Sat 08:50
+  :END:
+
+* TODO Test proxy functions with custom types across plugins
+  :PROPERTIES:
+  :CREATED:  2026-08-08 Sat 08:50
+  :END:
+
+* TODO Python bindings
+  :PROPERTIES:
+  :CREATED:  2026-08-08 Sat 08:50
+  :END:
 
 * DONE tjewz9 - A LISP like syntax with multiple outputs?
   CLOSED: [2026-08-07 Fri 23:56]
