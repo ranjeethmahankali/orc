@@ -1,3 +1,5 @@
+mod macros;
+
 use orc_sdk::{
     Deck, Error, ORC_ABI_VERSION, OrcHandle, OrcHost, OrcHostCallbackAPI, OrcHostMemoryAPI, deck,
     update_handle_from_deck,
