@@ -267,6 +267,17 @@ for the plugin function calls.
 modify it. The plugin may use it as a key to point to data allocated within it's memory,
 when said data is owned by the same plugin. The host uses this integer to keep track of
 all the data alive during a session.
+- items, and n_items: These are the actual data stored in the deck that this handles
+points to. This handle can be backed by any implementation of a Deck datastructure,
+written in any language, as long as these pointers meet the ABI requirements to be read
+across the FFI boundary.
+- marks, stride_offset, and n_mmarks: These define the structure / nesting inside a deck.
+- type_id: Indicates the type of the data stored in the deck backs this handle.
+- dims: Optional units. Just metadata, the plugin functions and host can do whatever they
+want with it.
+- free_fn: Destructor. Whichever plugin allocates the backing deck, and populates this
+handle with the corresponding pointers, is also responsible for setting the destructor
+function pointer. Without this, the memory may leak.
  */
 struct OrcHandle
 {
@@ -286,8 +297,11 @@ struct OrcHandle
   OrcDeckFreeFn   free_fn;
 };
 
-// Each plugin has to provide a generic way to construct decks out of a given input deck,
-// for all of its custom datatypes.
+/**
+Each plugin has to provide a generic way to construct decks out of a given input deck, for
+all of its custom datatypes. This proxy refers to a particular item in a particular deck.
+Both the deck and the item are referenced by their index.
+ */
 typedef struct
 {
   uint64_t tree;
@@ -298,7 +312,11 @@ typedef struct
 // Functions meant to be implemented by the plugin.
 // ===========================================================
 
-// Loading the plugin, and register the host with the plugin.
+/**
+The host will call this plugin when it loads a plugin. It must communicate it's own
+capabilities via the host argument, and let the plugin populate it's own information into
+teh `plugin_data_out` argument.
+ */
 ORC_PLUGIN_EXPORT OrcError orc_plugin_init(OrcHost const *host,
                                            OrcPlugin     *plugin_data_out);
 
