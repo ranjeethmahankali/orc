@@ -189,6 +189,11 @@ typedef struct OrcHost
                                      OrcHandle         *out);
 } OrcHost;
 
+/**
+The ABI optionally supports attaching units to the inputs and outputs of the plugin
+functions. These are completely optional, and it is up to each plugin function / and each
+host whether they're respected, checked or used in anyway.
+ */
 #define ORC_DIM_LENGTH 0u
 #define ORC_DIM_MASS 1u
 #define ORC_DIM_TIME 2u
@@ -207,6 +212,7 @@ typedef struct
   uint64_t pos;
 } OrcMark;
 
+/// Error codes.
 #define ORC_ERROR_NONE 0u
 #define ORC_ERROR_ABI_VERSION_MISMATCH 0xff01u
 #define ORC_ERROR_INVALID_HANDLE 0xff02u
@@ -223,12 +229,45 @@ typedef struct
 #define ORC_ERROR_MISSING_CAPABILITY 0xff0du
 #define ORC_ERROR_UNKNOWN 0xffffu
 
+/**
+Various types of proxy decks.
+
+- COPY_ALL: This is only valid for a single input deck. All the contents of the input deck
+will be copied.
+- COPY_ITEMS: This is only valid for a single input deck. All the items of the input deck
+will be copied into the output deck, but the structure of the deck will be copied from the
+proxy deck.
+- SHUFFLE: This supports more than one input decks. The output deck will be populated by
+items that are referenced by the proxy deck via `OrcItemProxy`. The structure of the deck
+will match that of the proxy deck.
+
+All input decks must be of the same type, and hence have the same type_id. This will be
+copied into the output deck. Other metadata such as `dims` are copied from the proxy deck.
+
+ */
 #define ORC_DECK_PROXY_COPY_ALL 0x01u
 #define ORC_DECK_PROXY_COPY_ITEMS 0x02u
 #define ORC_DECK_PROXY_SHUFFLE 0x03u
 
+/**
+In C++ vocabulary, this is the destructor of the data behind an `OrcHandle`. When said
+data doesn't need a destructor, say, when it is allocated directly on the stack, this can
+be left `NULL` inside `OrcHandle`.
+
+The plugin or the host may call this function when they want to free the data, and use the
+same handle to allocate some other data.
+ */
 typedef OrcError (*OrcDeckFreeFn)(OrcHandle *const handle);
 
+/**
+This is the primary handle passed around between hosts and plugins as input and outputs
+for the plugin function calls.
+
+- handle: This is a unique integer assigned by the host program. The plugin MUST NOT
+modify it. The plugin may use it as a key to point to data allocated within it's memory,
+when said data is owned by the same plugin. The host uses this integer to keep track of
+all the data alive during a session.
+ */
 struct OrcHandle
 {
   // Assigned by the host before lending this handle to any plugin.  Never modified after
