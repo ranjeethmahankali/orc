@@ -81,11 +81,37 @@ fn generate_python_bindings() {
 }
 
 /// Extract `#define ORC_*` integer constants and `static const` values.
+/// Also passes through `// comment` lines that appear between #define groups.
 fn emit_constants(header: &str, out: &mut String) {
     use std::fmt::Write;
 
+    // Track whether we're inside a region that emits constants, so we can
+    // pass through section comments (e.g. "// Unsigned integers.").
+    let mut in_constant_region = false;
+    let mut pending_comment: Option<String> = None;
+
     for line in header.lines() {
         let line = line.trim();
+
+        // Buffer comment lines — they'll be flushed when the next #define is emitted.
+        if let Some(comment) = line.strip_prefix("// ") {
+            if in_constant_region {
+                writeln!(out, "# {comment}").unwrap();
+            } else {
+                pending_comment = Some(comment.to_string());
+            }
+            continue;
+        }
+
+        // Blank lines reset the region flag and drop any buffered comment.
+        if line.is_empty() {
+            if in_constant_region {
+                writeln!(out).unwrap();
+                in_constant_region = false;
+            }
+            pending_comment = None;
+            continue;
+        }
 
         // #define NAME VALUE
         if let Some(rest) = line.strip_prefix("#define ") {
@@ -109,7 +135,11 @@ fn emit_constants(header: &str, out: &mut String) {
             }
 
             if let Some(val) = parse_c_integer(value) {
+                if let Some(comment) = pending_comment.take() {
+                    writeln!(out, "# {comment}").unwrap();
+                }
                 writeln!(out, "{name} = {val}").unwrap();
+                in_constant_region = true;
             }
         }
 
@@ -126,6 +156,7 @@ fn emit_constants(header: &str, out: &mut String) {
                     let patch: u64 = args[2].trim().parse().unwrap_or(0);
                     let version = (major << 42) | (minor << 21) | patch;
                     writeln!(out, "ORC_ABI_VERSION = {version}").unwrap();
+                    in_constant_region = true;
                 }
             }
         }
@@ -158,7 +189,8 @@ fn parse_c_integer(s: &str) -> Option<String> {
 /// A collected struct definition.
 struct StructDef {
     name: String,
-    fields: Vec<(String, String)>, // (field_name, ctypes_expr)
+    comment: Option<String>,
+    fields: Vec<(String, String, Option<String>)>, // (field_name, ctypes_expr, comment)
 }
 
 /// A named function-pointer type (for anonymous fn-ptr fields in structs).
@@ -234,12 +266,17 @@ fn emit_types(tu: &clang::TranslationUnit, out: &mut String) {
                         };
                         if decl.is_definition() {
                             seen_structs.insert(name.clone());
+                            let comment = entity_comment(&child).or_else(|| entity_comment(&decl));
                             let fields = collect_struct_fields(
                                 &decl,
                                 &mut struct_field_fn_types,
                                 &mut seen_fn_ptrs,
                             );
-                            struct_defs.push(StructDef { name, fields });
+                            struct_defs.push(StructDef {
+                                name,
+                                comment,
+                                fields,
+                            });
                         }
                     }
 
@@ -278,9 +315,14 @@ fn emit_types(tu: &clang::TranslationUnit, out: &mut String) {
                     continue;
                 }
                 seen_structs.insert(name.clone());
+                let comment = entity_comment(&child);
                 let fields =
                     collect_struct_fields(&child, &mut struct_field_fn_types, &mut seen_fn_ptrs);
-                struct_defs.push(StructDef { name, fields });
+                struct_defs.push(StructDef {
+                    name,
+                    comment,
+                    fields,
+                });
             }
 
             _ => {}
@@ -298,7 +340,11 @@ fn emit_types(tu: &clang::TranslationUnit, out: &mut String) {
     // 2. Forward-declare all structs.
     for sd in &struct_defs {
         writeln!(out, "class {}(ctypes.Structure):", sd.name).unwrap();
-        writeln!(out, "    pass").unwrap();
+        if let Some(comment) = &sd.comment {
+            writeln!(out, "    \"\"\"{}\"\"\"", comment).unwrap();
+        } else {
+            writeln!(out, "    pass").unwrap();
+        }
         writeln!(out).unwrap();
     }
 
@@ -329,8 +375,12 @@ fn emit_types(tu: &clang::TranslationUnit, out: &mut String) {
     // 6. Set _fields_ on all structs (in definition order from the header).
     for sd in &struct_defs {
         writeln!(out, "{}._fields_ = [", sd.name).unwrap();
-        for (fname, ftype) in &sd.fields {
-            writeln!(out, "    (\"{fname}\", {ftype}),").unwrap();
+        for (fname, ftype, comment) in &sd.fields {
+            if let Some(c) = comment {
+                writeln!(out, "    (\"{fname}\", {ftype}),  # {c}").unwrap();
+            } else {
+                writeln!(out, "    (\"{fname}\", {ftype}),").unwrap();
+            }
         }
         writeln!(out, "]").unwrap();
         writeln!(out).unwrap();
@@ -341,7 +391,7 @@ fn collect_struct_fields(
     decl: &clang::Entity,
     fn_type_names: &mut Vec<FnPtrDef>,
     seen_fn_ptrs: &mut std::collections::HashSet<String>,
-) -> Vec<(String, String)> {
+) -> Vec<(String, String, Option<String>)> {
     use clang::EntityKind;
 
     let mut fields = Vec::new();
@@ -357,6 +407,7 @@ fn collect_struct_fields(
             Some(t) => t,
             None => continue,
         };
+        let comment = entity_comment(&child);
 
         // If the field type is a named Orc typedef, use it directly.
         if matches!(
@@ -366,7 +417,7 @@ fn collect_struct_fields(
             let display = ftype.get_display_name();
             let clean = strip_qualifiers(&display);
             if clean.starts_with("Orc") {
-                fields.push((fname, clean.to_string()));
+                fields.push((fname, clean.to_string(), comment));
                 continue;
             }
         }
@@ -388,11 +439,11 @@ fn collect_struct_fields(
                     cfunctype,
                 });
             }
-            fields.push((fname, type_name));
+            fields.push((fname, type_name, comment));
             continue;
         }
 
-        fields.push((fname, type_to_ctypes(&ftype)));
+        fields.push((fname, type_to_ctypes(&ftype), comment));
     }
     fields
 }
@@ -432,6 +483,35 @@ fn generate_cfunctype(func_ty: &clang::Type) -> String {
         format!("ctypes.CFUNCTYPE({ret})")
     } else {
         format!("ctypes.CFUNCTYPE({ret}, {})", args.join(", "))
+    }
+}
+
+/// Extract and clean a comment from a clang entity.
+fn entity_comment(entity: &clang::Entity) -> Option<String> {
+    let raw = entity.get_comment()?;
+    let cleaned: String = raw
+        .lines()
+        .map(|l| l.trim())
+        // Filter out bare block-comment delimiters.
+        .filter(|l| *l != "/*" && *l != "*/" && *l != "/**")
+        .map(|l| {
+            l.strip_prefix("///")
+                .or_else(|| l.strip_prefix("//"))
+                .or_else(|| l.strip_prefix("/**"))
+                .or_else(|| l.strip_prefix("/*"))
+                .or_else(|| l.strip_prefix("* "))
+                .or_else(|| l.strip_prefix("*"))
+                .unwrap_or(l)
+        })
+        .map(|l| l.strip_suffix("*/").unwrap_or(l))
+        .map(|l| l.trim())
+        .filter(|l| !l.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ");
+    if cleaned.is_empty() {
+        None
+    } else {
+        Some(cleaned)
     }
 }
 
