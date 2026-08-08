@@ -179,6 +179,25 @@
   - [ ] Load a plugin into Python, convert strings, and metadata.
   - [ ] Call plugin functions from Python and display the results.
 
+** Alternative Plan to Generate Python Bindings with syn crate
+   :PROPERTIES:
+   :CREATED:  2026-08-08 Sat 15:31
+   :END:
+
+   1. Add syn to [build-dependencies] in rust/orc_sdk/Cargo.toml — for parsing bindgen's Rust output
+   2. In build.rs, after bindgen generates bindings:
+      - Get the output as a string via bindings.to_string()
+      - Parse it with syn::parse_file()
+      - Walk the AST and emit Python ctypes code for:
+     - pub const NAME: u64 = 0x12 → NAME = 0x12
+     - #[repr(C)] pub struct Foo { ... } → class Foo(ctypes.Structure): _fields_ = [...]
+     - pub type Name = u64 → Name = ctypes.c_uint64
+     - Option<unsafe extern "C" fn(...)> fields → ctypes.CFUNCTYPE(...)
+      - Handle forward declarations (e.g. OrcHandle used in OrcDeckFreeFn before its struct
+        definition) — emit class OrcHandle(ctypes.Structure): pass first, set _fields_ later
+   3. Write output to ../../python/bindings.py
+   4. Add python/bindings.py to .gitignore — it's generated, not checked in
+
 * DONE tjewz9 - A LISP like syntax with multiple outputs?
   CLOSED: [2026-08-07 Fri 23:56]
   :PROPERTIES:
