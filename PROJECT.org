@@ -171,6 +171,10 @@
   - State "NEXT"       from "TODO"       [2026-08-08 Sat 09:25]
   :END:
 
+  Ideally, this solution won't be tied to one specific version of Python, and only uses things that
+  are built in to Python, and works with shared libraries that are built by third parties, as long
+  as they conform to the ABI.
+
   - [ ] Figure out the basics of calling a DLL function from Python.
   - [ ] Load a plugin into Python, convert strings, and metadata.
   - [ ] Call plugin functions from Python and display the results.
