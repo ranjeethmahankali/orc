@@ -183,11 +183,11 @@ pub fn load_plugins(dir: &Path, host: &OrcHost) -> Result<PluginSet, Error> {
                                         ));
                                         return Err(Error::CannotLoadPlugins);
                                     }
-                                    TypeOwner::Plugin(plugin_index, type_index) => {
+                                    TypeOwner::Plugin(plugin_index, conflicting_type_index) => {
                                         callbacks.error(&format!(
                                         "The id of type {} from plugin {} conflicts with that of {} from {}.",
                                         &plugins[*plugin_index].name,
-                                        &plugins[*plugin_index].types()[*type_index].name,
+                                        &plugins[*plugin_index].types()[*conflicting_type_index].name,
                                         type_info.name,
                                         plugin.name));
                                         return Err(Error::CannotLoadPlugins);
