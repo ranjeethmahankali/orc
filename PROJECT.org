@@ -153,6 +153,10 @@
   combinations, type system edge cases etc. So doing this task before making more progress with the
   SDK, functions, and types.
 
+  <2026-08-07 Fri 22:46> In the long run this might end up as a plaint text format to save DAGs. For
+  now, I just need something that lets me easily compose, run and test DAGs. So I went with a
+  ~eiche~ style declarative macro in Rust.
+
 * DONE tjd838 - Improve Function Metadata
   CLOSED: [2026-08-07 Fri 14:25]
   :PROPERTIES:
