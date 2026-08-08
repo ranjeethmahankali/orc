@@ -132,12 +132,31 @@ typedef struct
   uint64_t           n_functions;
 } OrcPlugin;
 
+/**
+Optionally the host may provide a memory allocator for the plugin. This struct is how the
+host passes the function pointers to the plugin. The host may choose to leave these
+`NULL`, and leave the plugin to use it's own allocator.
+ */
 typedef struct
 {
   void *(*alloc)(uint64_t const size, uint64_t const alignment);
   void (*dealloc)(void *ptr, uint64_t const size, uint64_t const alignment);
 } OrcHostMemoryAPI;
 
+/**
+The host may populate any of these function pointers, or leave them as `NULL` to
+communicate its capabilities with the plugin.
+
+- report_progress: The plugin can use this to report the progress of a function that is
+currently running, back to the host.
+- report_message: The plugin can use this to communicate, errors, warnings, and other
+types of messages with the host.
+- check_cancellation: The host may desire to cancel a function call before it completes.
+The plugin can use this callback to check if the host requested cancellation.
+- report_intermediate_output: Sometiems, plugin functions that take a long time to run may
+choose to report intermediate data to the host. The plugin can populate one of it's output
+handles with intermediate data, and call this function to report it to the host.
+ */
 typedef struct
 {
   void (*report_progress)(uint64_t const ctx, double progress);
@@ -148,6 +167,15 @@ typedef struct
   void (*report_intermediate_output)(uint64_t const ctx, OrcHandle const *handle);
 } OrcHostCallbackAPI;
 
+/**
+This is how the host communicates information about itself to the plugin. This includes an
+optional memory allocator, various callbacks etc. The host MUST set the abi_version to
+that of the header used to compile the host program.
+
+- create_deck_from_proxy: If the plugin wants to create a deck by proxy, of a type that it
+doesn't own, it will call this function to defer to host. The host must identify which
+other plugin owns that datatype, and dispatch the proxy deck creation to that plugin.
+ */
 typedef struct OrcHost
 {
   uint64_t           abi_version;
