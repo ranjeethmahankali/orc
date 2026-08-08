@@ -7,9 +7,9 @@
 /// ```ignore
 /// let mut hc = 0u64;
 /// kbb_dag!(plugin_set, hc, {
-///     (define tmp (mul a b))
-///     (define result (add tmp c))
-///     (define (mean variance) (compute_stats data))
+///     (let tmp (mul a b))
+///     (let result (add tmp c))
+///     (let (mean variance) (compute_stats data))
 ///     (add (mul a b) c)
 /// })
 /// ```
@@ -25,14 +25,14 @@ macro_rules! kbb_dag {
 
     // --- Statements ---
 
-    // define single output, more statements follow
-    (@stmts $ps:ident, $hc:ident, (define $name:ident ($func:ident $($arg:tt)*)) $($rest:tt)*) => {{
+    // let single output, more statements follow
+    (@stmts $ps:ident, $hc:ident, (let $name:ident ($func:ident $($arg:tt)*)) $($rest:tt)*) => {{
         let $name = kbb_dag!(@call1 $ps, $hc, $func, $($arg)*);
         kbb_dag!(@stmts $ps, $hc, $($rest)*)
     }};
 
-    // define multiple outputs, more statements follow
-    (@stmts $ps:ident, $hc:ident, (define ($($name:ident)+) ($func:ident $($arg:tt)*)) $($rest:tt)*) => {{
+    // let multiple outputs, more statements follow
+    (@stmts $ps:ident, $hc:ident, (let ($($name:ident)+) ($func:ident $($arg:tt)*)) $($rest:tt)*) => {{
         kbb_dag!(@call_n $ps, $hc, ($($name)+) $func, $($arg)*);
         kbb_dag!(@stmts $ps, $hc, $($rest)*)
     }};

@@ -121,7 +121,8 @@ fn main() -> Result<(), Error> {
         flat_c.display::<f64>()
     );
     let fmad_abc = kbb_dag!(plugin_set, handle_counter, {
-        (add (mul a b) c)
+        (let m (mul a b))
+        (add m c)
     });
     println!("mul_add_a_b_c:\n{}", fmad_abc.display::<f64>());
     Ok(())
