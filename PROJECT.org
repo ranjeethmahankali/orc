@@ -163,10 +163,17 @@
   :CREATED:  2026-08-08 Sat 08:50
   :END:
 
-* TODO Python bindings
+* NEXT tjgdan - Python bindings
   :PROPERTIES:
   :CREATED:  2026-08-08 Sat 08:50
   :END:
+  :LOGBOOK:
+  - State "NEXT"       from "TODO"       [2026-08-08 Sat 09:25]
+  :END:
+
+  - [ ] Figure out the basics of calling a DLL function from Python.
+  - [ ] Load a plugin into Python, convert strings, and metadata.
+  - [ ] Call plugin functions from Python and display the results.
 
 * DONE tjewz9 - A LISP like syntax with multiple outputs?
   CLOSED: [2026-08-07 Fri 23:56]
