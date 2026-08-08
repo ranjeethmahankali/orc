@@ -101,6 +101,11 @@
   line of text, or a list of strings such as a several lines read from a file, or a list of list of
   strings, such as lines of text read from several files.
 
+* TODO Using string functions to display custom types the UI
+  :PROPERTIES:
+  :CREATED:  2026-08-08 Sat 08:56
+  :END:
+
 * TODO Python SDK
   :PROPERTIES:
   :CREATED:  2026-08-08 Sat 08:51
