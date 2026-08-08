@@ -32,28 +32,31 @@ pub(crate) static PLUGIN_SET: LazyLock<PluginSet> = LazyLock::new(|| {
     orc_sdk::load_plugins(dir, &HOST).unwrap()
 });
 
-use std::sync::RwLock;
+use std::sync::atomic::{AtomicU64, Ordering};
 
-pub(crate) static HANDLE_COUNTER: RwLock<u64> = RwLock::new(0);
+pub(crate) static HANDLE_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+fn next_id() -> u64 {
+    HANDLE_COUNTER.fetch_add(1, Ordering::Relaxed)
+}
 
 #[test]
 fn t_add_fn() {
-    // Test the add function.
     let add_fn = PLUGIN_SET
         .get_function("add")
         .expect("add function not found");
     let a: Deck<f64> = deck![[1.0, 2.0, 3.0], [2.0, 4.0, 6.0, 8.0]];
     let b: Deck<f64> = deck![10.0, 20.0, 30.0];
     let mut a_handle = OrcHandle {
-        handle: 0,
+        handle: next_id(),
         ..Default::default()
     };
     let mut b_handle = OrcHandle {
-        handle: 1,
+        handle: next_id(),
         ..Default::default()
     };
     let mut out_handle = OrcHandle {
-        handle: 2,
+        handle: next_id(),
         ..Default::default()
     };
     unsafe {
@@ -80,11 +83,11 @@ fn t_list_length_fn() {
         .expect("list_length function not found");
     let a: Deck<f64> = deck![[1.0, 2.0, 3.0], [2.0, 4.0, 6.0, 8.0]];
     let mut a_handle = OrcHandle {
-        handle: 0,
+        handle: next_id(),
         ..Default::default()
     };
     let mut out_handle = OrcHandle {
-        handle: 2,
+        handle: next_id(),
         ..Default::default()
     };
     unsafe {
@@ -105,11 +108,11 @@ fn t_flatten_deck_fn() {
         .expect("flatten_deck function not found");
     let a: Deck<f64> = deck![[1.0, 2.0, 3.0], [4.0, 5.0]];
     let mut a_handle = OrcHandle {
-        handle: 0,
+        handle: next_id(),
         ..Default::default()
     };
     let mut out_handle = OrcHandle {
-        handle: 1,
+        handle: next_id(),
         ..Default::default()
     };
     unsafe {

@@ -81,7 +81,7 @@ fn main() -> Result<(), Error> {
         }
         println!();
     }
-    let mut handle_counter = 0u64;
+    let handle_counter = std::sync::atomic::AtomicU64::new(0);
     let a_deck: Deck<f64> = deck![[1.0, 2.0, 3.0], [2.0, 4.0, 6.0, 8.0]];
     let b_deck: Deck<f64> = deck![10.0, 20.0, 30.0];
     let c_deck: Deck<f64> = deck![[1.0, 2.0, 3.0], [4.0, 5.0]];
@@ -91,10 +91,9 @@ fn main() -> Result<(), Error> {
             OrcHandle::default(),
             OrcHandle::default(),
         );
-        a.handle = handle_counter;
-        b.handle = handle_counter + 1;
-        c.handle = handle_counter + 2;
-        handle_counter += 3;
+        a.handle = handle_counter.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        b.handle = handle_counter.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        c.handle = handle_counter.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         unsafe {
             update_handle_from_deck(&a_deck, &mut a);
             update_handle_from_deck(&b_deck, &mut b);
@@ -102,25 +101,25 @@ fn main() -> Result<(), Error> {
         }
         (a, b, c)
     };
-    let a_plus_b = kbb_dag!(plugin_set, handle_counter, {
+    let a_plus_b = kbb_dag!(plugin_set, &handle_counter, {
         (add a b)
     });
     println!(
         "math_plugin add([1,2,3], [10,20,30]):\n{}",
         a_plus_b.display::<f64>()
     );
-    let len_a = kbb_dag!(plugin_set, handle_counter, {
+    let len_a = kbb_dag!(plugin_set, &handle_counter, {
         (list_length a)
     });
     println!("List length output:\n{}", len_a.display::<u64>());
-    let flat_c = kbb_dag!(plugin_set, handle_counter, {
+    let flat_c = kbb_dag!(plugin_set, &handle_counter, {
         (flatten_deck c)
     });
     println!(
         "flatten_deck([[1,2,3],[4,5]]):\n{}",
         flat_c.display::<f64>()
     );
-    let fmad_abc = kbb_dag!(plugin_set, handle_counter, {
+    let fmad_abc = kbb_dag!(plugin_set, &handle_counter, {
         (let m (mul a b))
         (add m c)
     });
