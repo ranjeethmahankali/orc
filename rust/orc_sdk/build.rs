@@ -85,29 +85,23 @@ fn generate_python_bindings() {
 fn emit_constants(header: &str, out: &mut String) {
     use std::fmt::Write;
 
-    // Track whether we're inside a region that emits constants, so we can
-    // pass through section comments (e.g. "// Unsigned integers.").
-    let mut in_constant_region = false;
-    let mut pending_comment: Option<String> = None;
+    let mut pending_comment: Option<&str> = None;
+    let mut emitted_any = false;
 
     for line in header.lines() {
         let line = line.trim();
 
-        // Buffer comment lines — they'll be flushed when the next #define is emitted.
+        // Buffer comment lines — flushed when the next constant is emitted.
         if let Some(comment) = line.strip_prefix("// ") {
-            if in_constant_region {
-                writeln!(out, "# {comment}").unwrap();
-            } else {
-                pending_comment = Some(comment.to_string());
-            }
+            pending_comment = Some(comment);
             continue;
         }
 
-        // Blank lines reset the region flag and drop any buffered comment.
+        // Blank lines: emit a separator if we've been emitting constants.
         if line.is_empty() {
-            if in_constant_region {
+            if emitted_any {
                 writeln!(out).unwrap();
-                in_constant_region = false;
+                emitted_any = false;
             }
             pending_comment = None;
             continue;
@@ -139,7 +133,7 @@ fn emit_constants(header: &str, out: &mut String) {
                     writeln!(out, "# {comment}").unwrap();
                 }
                 writeln!(out, "{name} = {val}").unwrap();
-                in_constant_region = true;
+                emitted_any = true;
             }
         }
 
@@ -149,14 +143,16 @@ fn emit_constants(header: &str, out: &mut String) {
         {
             let args_start = start + "ORC_VERSION_PACK(".len();
             if let Some(end) = line[args_start..].find(')') {
-                let args: Vec<&str> = line[args_start..args_start + end].split(',').collect();
-                if args.len() == 3 {
-                    let major: u64 = args[0].trim().parse().unwrap_or(0);
-                    let minor: u64 = args[1].trim().parse().unwrap_or(0);
-                    let patch: u64 = args[2].trim().parse().unwrap_or(0);
+                let mut parts = line[args_start..args_start + end].split(',');
+                if let (Some(a), Some(b), Some(c)) = (parts.next(), parts.next(), parts.next())
+                    && parts.next().is_none()
+                {
+                    let major: u64 = a.trim().parse().unwrap_or(0);
+                    let minor: u64 = b.trim().parse().unwrap_or(0);
+                    let patch: u64 = c.trim().parse().unwrap_or(0);
                     let version = (major << 42) | (minor << 21) | patch;
                     writeln!(out, "ORC_ABI_VERSION = {version}").unwrap();
-                    in_constant_region = true;
+                    emitted_any = true;
                 }
             }
         }
@@ -164,7 +160,7 @@ fn emit_constants(header: &str, out: &mut String) {
     writeln!(out).unwrap();
 }
 
-fn parse_c_integer(s: &str) -> Option<String> {
+fn parse_c_integer(s: &str) -> Option<&str> {
     let s = s.trim();
     let s = s.trim_end_matches('u').trim_end_matches('U');
     let s = s
@@ -173,14 +169,14 @@ fn parse_c_integer(s: &str) -> Option<String> {
         .trim_end_matches('L')
         .trim_end_matches('l');
 
-    if let Some(hex) = s.strip_prefix("0x").or_else(|| s.strip_prefix("0X")) {
-        u64::from_str_radix(hex, 16)
-            .ok()
-            .map(|_| format!("0x{hex}"))
+    if s.starts_with("0x") || s.starts_with("0X") {
+        u64::from_str_radix(&s[2..], 16).ok().map(|_| s)
     } else {
-        s.parse::<u64>().ok().map(|_| s.to_string())
+        s.parse::<u64>().ok().map(|_| s)
     }
 }
+
+use std::borrow::Cow;
 
 // ---------------------------------------------------------------------------
 // AST-driven type emission
@@ -190,7 +186,7 @@ fn parse_c_integer(s: &str) -> Option<String> {
 struct StructDef {
     name: String,
     comment: Option<String>,
-    fields: Vec<(String, String, Option<String>)>, // (field_name, ctypes_expr, comment)
+    fields: Vec<(String, Cow<'static, str>, Option<String>)>, // (field_name, ctypes_expr, comment)
 }
 
 /// A named function-pointer type (for anonymous fn-ptr fields in structs).
@@ -206,8 +202,8 @@ fn emit_types(tu: &clang::TranslationUnit, out: &mut String) {
 
     let root = tu.get_entity();
 
-    let mut simple_typedefs: Vec<(String, String)> = Vec::new();
-    let mut array_typedefs: Vec<(String, String, usize)> = Vec::new(); // (name, elem, count)
+    let mut simple_typedefs: Vec<(String, Cow<'static, str>)> = Vec::new();
+    let mut array_typedefs: Vec<(String, Cow<'static, str>, usize)> = Vec::new(); // (name, elem, count)
     let mut fn_ptr_typedefs: Vec<(String, String)> = Vec::new(); // (name, cfunctype_expr)
     let mut struct_defs: Vec<StructDef> = Vec::new();
     let mut struct_field_fn_types: Vec<FnPtrDef> = Vec::new();
@@ -391,7 +387,7 @@ fn collect_struct_fields(
     decl: &clang::Entity,
     fn_type_names: &mut Vec<FnPtrDef>,
     seen_fn_ptrs: &mut std::collections::HashSet<String>,
-) -> Vec<(String, String, Option<String>)> {
+) -> Vec<(String, Cow<'static, str>, Option<String>)> {
     use clang::EntityKind;
 
     let mut fields = Vec::new();
@@ -409,15 +405,21 @@ fn collect_struct_fields(
         };
         let comment = entity_comment(&child);
 
-        // If the field type is a named Orc typedef, use it directly.
+        // If the field type is a named Orc typedef (e.g. OrcDeckFreeFn), use it directly
+        // rather than letting the fn-ptr check below generate a new name from the field name.
         if matches!(
             ftype.get_kind(),
             clang::TypeKind::Typedef | clang::TypeKind::Elaborated
         ) {
             let display = ftype.get_display_name();
-            let clean = strip_qualifiers(&display);
+            let clean = strip_const_struct(&display);
             if clean.starts_with("Orc") {
-                fields.push((fname, clean.to_string(), comment));
+                let cow: Cow<'static, str> = if clean.len() == display.len() {
+                    display.into()
+                } else {
+                    clean.to_string().into()
+                };
+                fields.push((fname, cow, comment));
                 continue;
             }
         }
@@ -439,7 +441,7 @@ fn collect_struct_fields(
                     cfunctype,
                 });
             }
-            fields.push((fname, type_name, comment));
+            fields.push((fname, type_name.into(), comment));
             continue;
         }
 
@@ -451,63 +453,62 @@ fn collect_struct_fields(
 /// Convert a snake_case field name to a CamelCase function-pointer type name.
 /// e.g. "report_message" → "OrcReportMessageFn"
 fn fn_field_type_name(field_name: &str) -> String {
-    let camel: String = field_name
-        .split('_')
-        .map(|part| {
-            let mut chars = part.chars();
-            match chars.next() {
-                None => String::new(),
-                Some(c) => {
-                    let mut s = c.to_uppercase().to_string();
-                    s.push_str(chars.as_str());
-                    s
-                }
+    let mut out = String::from("Orc");
+    for part in field_name.split('_') {
+        let mut chars = part.chars();
+        if let Some(c) = chars.next() {
+            for upper in c.to_uppercase() {
+                out.push(upper);
             }
-        })
-        .collect();
-    format!("Orc{camel}Fn")
+            out.push_str(chars.as_str());
+        }
+    }
+    out.push_str("Fn");
+    out
 }
 
 fn generate_cfunctype(func_ty: &clang::Type) -> String {
+    use std::fmt::Write;
+
     let ret = func_ty
         .get_result_type()
         .map(|r| type_to_ctypes(&r))
-        .unwrap_or_else(|| "None".to_string());
-    let args: Vec<String> = func_ty
-        .get_argument_types()
-        .unwrap_or_default()
-        .iter()
-        .map(|a| type_to_ctypes(a))
-        .collect();
-    if args.is_empty() {
-        format!("ctypes.CFUNCTYPE({ret})")
-    } else {
-        format!("ctypes.CFUNCTYPE({ret}, {})", args.join(", "))
+        .unwrap_or_else(|| "None".into());
+    let args = func_ty.get_argument_types().unwrap_or_default();
+
+    let mut buf = format!("ctypes.CFUNCTYPE({ret}");
+    for a in &args {
+        write!(buf, ", {}", type_to_ctypes(a)).unwrap();
     }
+    buf.push(')');
+    buf
 }
 
 /// Extract and clean a comment from a clang entity.
 fn entity_comment(entity: &clang::Entity) -> Option<String> {
     let raw = entity.get_comment()?;
-    let cleaned: String = raw
-        .lines()
-        .map(|l| l.trim())
-        // Filter out bare block-comment delimiters.
-        .filter(|l| *l != "/*" && *l != "*/" && *l != "/**")
-        .map(|l| {
-            l.strip_prefix("///")
-                .or_else(|| l.strip_prefix("//"))
-                .or_else(|| l.strip_prefix("/**"))
-                .or_else(|| l.strip_prefix("/*"))
-                .or_else(|| l.strip_prefix("* "))
-                .or_else(|| l.strip_prefix("*"))
-                .unwrap_or(l)
-        })
-        .map(|l| l.strip_suffix("*/").unwrap_or(l))
-        .map(|l| l.trim())
-        .filter(|l| !l.is_empty())
-        .collect::<Vec<_>>()
-        .join(" ");
+    let mut cleaned = String::new();
+    for l in raw.lines() {
+        let l = l.trim();
+        if l == "/*" || l == "*/" || l == "/**" {
+            continue;
+        }
+        let l = l
+            .strip_prefix("///")
+            .or_else(|| l.strip_prefix("//"))
+            .or_else(|| l.strip_prefix("/*"))
+            .or_else(|| l.strip_prefix("* "))
+            .or_else(|| l.strip_prefix("*"))
+            .unwrap_or(l);
+        let l = l.strip_suffix("*/").unwrap_or(l).trim();
+        if l.is_empty() {
+            continue;
+        }
+        if !cleaned.is_empty() {
+            cleaned.push(' ');
+        }
+        cleaned.push_str(l);
+    }
     if cleaned.is_empty() {
         None
     } else {
@@ -515,60 +516,49 @@ fn entity_comment(entity: &clang::Entity) -> Option<String> {
     }
 }
 
-/// Strip `const ` and `struct ` prefixes from a type display name.
-fn strip_qualifiers(name: &str) -> &str {
+/// Strip `const ` and `struct ` prefixes from a clang type display name.
+fn strip_const_struct(name: &str) -> &str {
     let s = name.strip_prefix("const ").unwrap_or(name);
     s.strip_prefix("struct ").unwrap_or(s)
 }
 
-fn type_to_ctypes(ty: &clang::Type) -> String {
+fn type_to_ctypes(ty: &clang::Type) -> Cow<'static, str> {
     use clang::TypeKind;
     match ty.get_kind() {
-        // Named Orc typedef — use it directly.
-        TypeKind::Typedef => {
+        // Named Orc typedef or elaborated/record type — use it directly if it's ours.
+        TypeKind::Typedef | TypeKind::Elaborated | TypeKind::Record => {
             let display = ty.get_display_name();
-            let name = strip_qualifiers(&display);
-            if name.starts_with("Orc") {
-                return name.to_string();
-            }
-            // Standard typedef (uint64_t, etc.) — resolve to canonical.
-            type_to_ctypes(&ty.get_canonical_type())
-        }
-
-        // Elaborated type (struct Name, etc.).
-        TypeKind::Elaborated => {
-            let display = ty.get_display_name();
-            let name = strip_qualifiers(&display);
-            if name.starts_with("Orc") {
-                return name.to_string();
+            let name = strip_const_struct(&display);
+            if name.starts_with("Orc") || ty.get_kind() == TypeKind::Record {
+                // Avoid re-allocating if no prefix was stripped.
+                return if name.len() == display.len() {
+                    display.into()
+                } else {
+                    name.to_string().into()
+                };
             }
             type_to_ctypes(&ty.get_canonical_type())
-        }
-
-        TypeKind::Record => {
-            let display = ty.get_display_name();
-            strip_qualifiers(&display).to_string()
         }
 
         TypeKind::Pointer => {
             let pointee = match ty.get_pointee_type() {
                 Some(p) => p,
-                None => return "ctypes.c_void_p".to_string(),
+                None => return "ctypes.c_void_p".into(),
             };
             let canon_pointee = pointee.get_canonical_type();
             match canon_pointee.get_kind() {
-                TypeKind::Void => "ctypes.c_void_p".to_string(),
+                TypeKind::Void => "ctypes.c_void_p".into(),
                 TypeKind::CharS | TypeKind::SChar | TypeKind::CharU | TypeKind::UChar
                     if looks_like_char(&pointee) =>
                 {
-                    "ctypes.c_char_p".to_string()
+                    "ctypes.c_char_p".into()
                 }
                 TypeKind::FunctionPrototype | TypeKind::FunctionNoPrototype => {
-                    generate_cfunctype(&canon_pointee)
+                    generate_cfunctype(&canon_pointee).into()
                 }
                 _ => {
                     let inner = type_to_ctypes(&pointee);
-                    format!("ctypes.POINTER({inner})")
+                    format!("ctypes.POINTER({inner})").into()
                 }
             }
         }
@@ -577,9 +567,9 @@ fn type_to_ctypes(ty: &clang::Type) -> String {
             let elem = ty
                 .get_element_type()
                 .map(|e| type_to_ctypes(&e))
-                .unwrap_or_else(|| "ctypes.c_uint8".to_string());
+                .unwrap_or_else(|| "ctypes.c_uint8".into());
             let count = get_array_element_count(ty).unwrap_or(0);
-            format!("{elem} * {count}")
+            format!("{elem} * {count}").into()
         }
 
         // Primitives.
@@ -593,22 +583,23 @@ fn looks_like_char(ty: &clang::Type) -> bool {
     display.contains("char") && !display.contains("uint") && !display.contains("int")
 }
 
-fn primitive_to_ctypes(ty: &clang::Type) -> String {
+fn primitive_to_ctypes(ty: &clang::Type) -> Cow<'static, str> {
     use clang::TypeKind;
     match ty.get_kind() {
-        TypeKind::Void => "None".to_string(),
-        TypeKind::Bool => "ctypes.c_bool".to_string(),
-        TypeKind::UChar => "ctypes.c_uint8".to_string(),
-        TypeKind::UShort => "ctypes.c_uint16".to_string(),
-        TypeKind::UInt => "ctypes.c_uint32".to_string(),
-        TypeKind::ULong | TypeKind::ULongLong => "ctypes.c_uint64".to_string(),
-        TypeKind::SChar | TypeKind::CharS => "ctypes.c_int8".to_string(),
-        TypeKind::Short => "ctypes.c_int16".to_string(),
-        TypeKind::Int => "ctypes.c_int32".to_string(),
-        TypeKind::Long | TypeKind::LongLong => "ctypes.c_int64".to_string(),
-        TypeKind::Float => "ctypes.c_float".to_string(),
-        TypeKind::Double => "ctypes.c_double".to_string(),
-        _ => format!("ctypes.c_void_p  # FIXME: {:?}", ty.get_kind()),
+        TypeKind::Void => "None".into(),
+        TypeKind::Bool => "ctypes.c_bool".into(),
+        TypeKind::UChar => "ctypes.c_uint8".into(),
+        TypeKind::UShort => "ctypes.c_uint16".into(),
+        TypeKind::UInt => "ctypes.c_uint32".into(),
+        // Assumes LP64 — unsigned long is 64-bit. The header uses fixed-width types.
+        TypeKind::ULong | TypeKind::ULongLong => "ctypes.c_uint64".into(),
+        TypeKind::SChar | TypeKind::CharS => "ctypes.c_int8".into(),
+        TypeKind::Short => "ctypes.c_int16".into(),
+        TypeKind::Int => "ctypes.c_int32".into(),
+        TypeKind::Long | TypeKind::LongLong => "ctypes.c_int64".into(), // LP64 assumption
+        TypeKind::Float => "ctypes.c_float".into(),
+        TypeKind::Double => "ctypes.c_double".into(),
+        _ => format!("ctypes.c_void_p  # FIXME: {:?}", ty.get_kind()).into(),
     }
 }
 

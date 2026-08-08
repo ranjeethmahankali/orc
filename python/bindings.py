@@ -59,90 +59,51 @@ ORC_DECK_PROXY_COPY_ALL = 0x01
 ORC_DECK_PROXY_COPY_ITEMS = 0x02
 ORC_DECK_PROXY_SHUFFLE = 0x03
 
+
 OrcTypeId = ctypes.c_uint64
 OrcMessageLevel = ctypes.c_uint8
 OrcError = ctypes.c_uint32
 OrcProxyType = ctypes.c_uint8
 
-
 class OrcHandle(ctypes.Structure):
-    pass
-
+    """This is the primary handle passed around between hosts and plugins as input and outputs for the plugin function calls. - handle: This is a unique integer assigned by the host program. The plugin MUST NOT modify it. The plugin may use it as a key to point to data allocated within it's memory, when said data is owned by the same plugin. The host uses this integer to keep track of all the data alive during a session."""
 
 class OrcTypeInfo(ctypes.Structure):
-    """This is just a tag used to identify the types of inputs and outputs of plugin
-    functions. `OrcTypeId`, is the actual tag used by the host and plugin to distinguish the
-    types. `name` and `desc` are just optional information to help the host / user understand what
-    the type is."""
-
+    """This is just a tag used to identify the types of inputs and outputs of plugin functions. `OrcTypeId`, is the actual tag used by the host and plugin to distinguish the types. `name` and `desc` are just optional information to help the host / user understand what the type is."""
 
 class OrcFuncInfo(ctypes.Structure):
-    """Metadata for a function exposed by the plugin. All plugin functions have the same
-    signature. The metadata encodes information about the inputs, outputs, and the function
-    pointer. `name` and `desc` are optional strings that are meant to help the host / user
-    understand what the function does. `n_inputs` and `n_outputs` can be any value, except
-    `ORC_ARGS_VARIADIC`. If they are set to `ORC_ARGS_VARIADIC`, host will infer that the functions
-    will support any number of inputs / outputs. If `n_inputs` / `n_outputs` are set to a value
-    other than `ORC_ARGS_VARIADIC`, then the host can read the corresponding `input_types` and
-    `output_types` arrays to infer the types expected by the function. This should only be set if
-    the function expects one concrete type. If the function is generic / and can process many types,
-    the corresponding type must be set to `ORC_TYPE_ANY`. If the `input_types` and `output_types`
-    pointers are set to `NULL`, the host must infer that all inputs and outputs can be of any
-    type. This metadata is a hint for the host. The plugin function must still validate all it's
-    inputs, and outputs, counts, and types, and return appropriate errors. Conversely, even if the
-    metadata implies a certain input/output configuration is supported by the function, the function
-    may still fail when called with said inputs/outputs."""
-
+    """Metadata for a function exposed by the plugin. All plugin functions have the same signature. The metadata encodes information about the inputs, outputs, and the function pointer. `name` and `desc` are optional strings that are meant to help the host / user understand what the function does. `n_inputs` and `n_outputs` can be any value, except `ORC_ARGS_VARIADIC`. If they are set to `ORC_ARGS_VARIADIC`, host will infer that the functions will support any number of inputs / outputs. If `n_inputs` / `n_outputs` are set to a value other than `ORC_ARGS_VARIADIC`, then the host can read the corresponding `input_types` and `output_types` arrays to infer the types expected by the function. This should only be set if the function expects one concrete type. If the function is generic / and can process many types, the corresponding type must be set to `ORC_TYPE_ANY`. If the `input_types` and `output_types` pointers are set to `NULL`, the host must infer that all inputs and outputs can be of any type. This metadata is a hint for the host. The plugin function must still validate all it's inputs, and outputs, counts, and types, and return appropriate errors. Conversely, even if the metadata implies a certain input/output configuration is supported by the function, the function may still fail when called with said inputs/outputs."""
 
 class OrcPlugin(ctypes.Structure):
-    """This struct is how the plugin communicates to the host about itself. - abi_version: Must be
-    populated with the that of the header that was used to compile the plugin. - name and desc:
-    Optional information to help the host / user understand what the plugin is about. - types: Array
-    of custom types that used by the functions of this plugin."""
-
+    """This struct is how the plugin communicates to the host about itself. - abi_version: Must be populated with the that of the header that was used to compile the plugin. - name and desc: Optional information to help the host / user understand what the plugin is about. - types and n_types: Array of custom types that used by the functions of this plugin. It can be `NULL` if `n_types` is zero. The plugin must not redeclare any of the primitive types, nor can its types conflict with the types of other types loaded by other plugins. The plugin is advised to choose a randmly generated 64 bit string as it's `OrcTypeId`, so that it doesn't conflict with any other plugin's types. - functions and n_functions: Array of functions exposed by this plugin. The pointer can be `NULL` if n_types is zero."""
 
 class OrcHostMemoryAPI(ctypes.Structure):
-    pass
-
+    """Optionally the host may provide a memory allocator for the plugin. This struct is how the host passes the function pointers to the plugin. The host may choose to leave these `NULL`, and leave the plugin to use it's own allocator."""
 
 class OrcHostCallbackAPI(ctypes.Structure):
-    pass
-
+    """The host may populate any of these function pointers, or leave them as `NULL` to communicate its capabilities with the plugin. - report_progress: The plugin can use this to report the progress of a function that is currently running, back to the host. - report_message: The plugin can use this to communicate, errors, warnings, and other types of messages with the host. - check_cancellation: The host may desire to cancel a function call before it completes. The plugin can use this callback to check if the host requested cancellation. - report_intermediate_output: Sometiems, plugin functions that take a long time to run may choose to report intermediate data to the host. The plugin can populate one of it's output handles with intermediate data, and call this function to report it to the host."""
 
 class OrcHost(ctypes.Structure):
-    pass
-
+    """This is how the host communicates information about itself to the plugin. This includes an optional memory allocator, various callbacks etc. The host MUST set the abi_version to that of the header used to compile the host program. - create_deck_from_proxy: If the plugin wants to create a deck by proxy, of a type that it doesn't own, it will call this function to defer to host. The host must identify which other plugin owns that datatype, and dispatch the proxy deck creation to that plugin."""
 
 class OrcMark(ctypes.Structure):
     pass
 
-
 class OrcItemProxy(ctypes.Structure):
     pass
-
 
 OrcDims = ctypes.c_int32 * 7
 
 OrcDeckFreeFn = ctypes.CFUNCTYPE(ctypes.c_uint32, ctypes.POINTER(OrcHandle))
 
-OrcFuncFn = ctypes.CFUNCTYPE(None, ctypes.c_uint64,
-                             ctypes.POINTER(OrcHandle), ctypes.c_uint64,
-                             ctypes.POINTER(OrcHandle), ctypes.c_uint64)
-OrcAllocFn = ctypes.CFUNCTYPE(ctypes.c_void_p, ctypes.c_uint64,
-                              ctypes.c_uint64)
-OrcDeallocFn = ctypes.CFUNCTYPE(None, ctypes.c_void_p, ctypes.c_uint64,
-                                ctypes.c_uint64)
+OrcFuncFn = ctypes.CFUNCTYPE(None, ctypes.c_uint64, ctypes.POINTER(OrcHandle), ctypes.c_uint64, ctypes.POINTER(OrcHandle), ctypes.c_uint64)
+OrcAllocFn = ctypes.CFUNCTYPE(ctypes.c_void_p, ctypes.c_uint64, ctypes.c_uint64)
+OrcDeallocFn = ctypes.CFUNCTYPE(None, ctypes.c_void_p, ctypes.c_uint64, ctypes.c_uint64)
 OrcReportProgressFn = ctypes.CFUNCTYPE(None, ctypes.c_uint64, ctypes.c_double)
-OrcReportMessageFn = ctypes.CFUNCTYPE(None, ctypes.c_uint64, ctypes.c_uint8,
-                                      ctypes.c_char_p)
+OrcReportMessageFn = ctypes.CFUNCTYPE(None, ctypes.c_uint64, ctypes.c_uint8, ctypes.c_char_p)
 OrcCheckCancellationFn = ctypes.CFUNCTYPE(ctypes.c_bool, ctypes.c_uint64)
-OrcReportIntermediateOutputFn = ctypes.CFUNCTYPE(None, ctypes.c_uint64,
-                                                 ctypes.POINTER(OrcHandle))
-OrcCreateDeckFromProxyFn = ctypes.CFUNCTYPE(ctypes.c_uint32,
-                                            ctypes.POINTER(OrcHandle),
-                                            ctypes.c_uint64, ctypes.c_uint8,
-                                            ctypes.POINTER(OrcHandle),
-                                            ctypes.POINTER(OrcHandle))
+OrcReportIntermediateOutputFn = ctypes.CFUNCTYPE(None, ctypes.c_uint64, ctypes.POINTER(OrcHandle))
+OrcCreateDeckFromProxyFn = ctypes.CFUNCTYPE(ctypes.c_uint32, ctypes.POINTER(OrcHandle), ctypes.c_uint64, ctypes.c_uint8, ctypes.POINTER(OrcHandle), ctypes.POINTER(OrcHandle))
 
 OrcHandle._fields_ = [
     ("handle", ctypes.c_uint64),
@@ -212,3 +173,4 @@ OrcItemProxy._fields_ = [
     ("tree", ctypes.c_uint64),
     ("item", ctypes.c_uint64),
 ]
+
