@@ -62,10 +62,10 @@ fn main() -> Result<(), Error> {
         .expect("Executable has no parent directory")
         .to_path_buf();
     println!("Loading plugins from {}", exe_dir.display());
-    let plugins = orc_sdk::load_plugins(&exe_dir, &HOST)?;
-    println!("Loaded {} plugin(s)\n", plugins.len());
+    let plugin_set = orc_sdk::load_plugins(&exe_dir, &HOST)?;
+    println!("Loaded {} plugin(s)\n", plugin_set.num_plugins());
     // Print the loaded plugins and functions.
-    for plugin in &plugins {
+    for plugin in plugin_set.plugins() {
         println!(
             "{} plugin has {} function(s):",
             plugin.name(),
@@ -79,10 +79,8 @@ fn main() -> Result<(), Error> {
     // --- Test some plugin functions ---
     {
         // Test the add function.
-        let add_fn = plugins
-            .iter()
-            .flat_map(|p| p.functions().iter())
-            .find(|f| f.name == "add")
+        let add_fn = plugin_set
+            .get_function("add")
             .expect("add function not found in math_plugin");
         let a: Deck<f64> = deck![[1.0, 2.0, 3.0], [2.0, 4.0, 6.0, 8.0]];
         let b: Deck<f64> = deck![10.0, 20.0, 30.0];
@@ -113,10 +111,8 @@ fn main() -> Result<(), Error> {
     }
     {
         // Test the list_length function.
-        let list_length_fn = plugins
-            .iter()
-            .flat_map(|p| p.functions().iter())
-            .find(|f| f.name == "list_length")
+        let list_length_fn = plugin_set
+            .get_function("list_length")
             .expect("list_length function not found in math_plugin");
 
         let a: Deck<f64> = deck![[1.0, 2.0, 3.0], [2.0, 4.0, 6.0, 8.0]];
@@ -139,10 +135,8 @@ fn main() -> Result<(), Error> {
     }
     {
         // Test the flatten_deck function.
-        let flatten_fn = plugins
-            .iter()
-            .flat_map(|p| p.functions().iter())
-            .find(|f| f.name == "flatten_deck")
+        let flatten_fn = plugin_set
+            .get_function("flatten_deck")
             .expect("flatten_deck function not found");
 
         let a: Deck<f64> = deck![[1.0, 2.0, 3.0], [4.0, 5.0]];

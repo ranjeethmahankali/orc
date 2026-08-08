@@ -452,7 +452,7 @@ macro_rules! orc_check_warn {
 }
 
 /// Helper to quickly access all the built_in_types.
-pub const BUILTIN_TYPES: &[OrcTypeInfo] = &[
+pub const PRIMITIVE_TYPES: &[OrcTypeInfo] = &[
     u8::TYPE_INFO,
     u16::TYPE_INFO,
     u32::TYPE_INFO,
