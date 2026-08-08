@@ -21,7 +21,7 @@ const HOST: OrcHost = OrcHost {
     create_deck_from_proxy: None, // TODO: Implement this later.
 };
 
-static PLUGIN_SET: LazyLock<PluginSet> = LazyLock::new(|| {
+pub(crate) static PLUGIN_SET: LazyLock<PluginSet> = LazyLock::new(|| {
     let exe = std::env::current_exe().expect("Cannot determine executable path");
     let deps = exe.parent().unwrap();
     let dir = if deps.ends_with("deps") {
@@ -31,6 +31,10 @@ static PLUGIN_SET: LazyLock<PluginSet> = LazyLock::new(|| {
     };
     orc_sdk::load_plugins(dir, &HOST).unwrap()
 });
+
+use std::sync::RwLock;
+
+pub(crate) static HANDLE_COUNTER: RwLock<u64> = RwLock::new(0);
 
 #[test]
 fn t_add_fn() {
