@@ -159,6 +159,9 @@
 
   - [ ] Get rid of the vec allocations in the kbb_dag macro.
 
+  <2026-08-07 Fri 23:27> Added tests for the macro, and got all the tests passing by using a global
+  atomic to assign the handle ids.
+
 * DONE tjd838 - Improve Function Metadata
   CLOSED: [2026-08-07 Fri 14:25]
   :PROPERTIES:
