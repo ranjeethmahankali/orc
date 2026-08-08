@@ -37,12 +37,17 @@ macro_rules! kbb_dag {
         kbb_dag!(@stmts $ps, $($rest)*)
     };
 
+    // Trailing expression — bare function call as the block's return value
+    (@stmts $ps:ident, ($func:ident $($arg:tt)*)) => {
+        kbb_dag!(@call1 $ps, $func, $($arg)*)
+    };
+
     // Empty — end of statements
     (@stmts $ps:ident,) => { () };
 
     // --- Single-output function call ---
     (@call1 $ps:ident, $func:ident, $($arg:ident)*) => {{
-        let inputs_: &[OrcHandle] = &[$($arg.non_owning_clone()),*];
+        let inputs_: &[OrcHandle] = &[$(unsafe { $arg.non_owning_clone() }),*];
         let mut out_: OrcHandle = OrcHandle::default();
         let func_ = $ps.get_function(stringify!($func))
             .expect(concat!("function '", stringify!($func), "' not found"));
@@ -55,7 +60,7 @@ macro_rules! kbb_dag {
     // --- Multi-output function call ---
     // We count the output names to determine n_outputs, create an array, then destructure.
     (@call_n $ps:ident, ($($name:ident)+) $func:ident, $($arg:ident)*) => {
-        let inputs_: &[OrcHandle] = &[$($arg.non_owning_clone()),*];
+        let inputs_: &[OrcHandle] = &[$(unsafe { $arg.non_owning_clone() }),*];
         let func_ = $ps.get_function(stringify!($func))
             .expect(concat!("function '", stringify!($func), "' not found"));
         let n_outs_: u64 = kbb_dag!(@count $($name)+) as u64;
