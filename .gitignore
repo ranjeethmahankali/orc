@@ -41,3 +41,7 @@ Cargo.lock
 /c/make.exe
 /c/make
 /c/make.exe.old
+
+# Python
+
+__pycache__/
