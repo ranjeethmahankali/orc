@@ -18,10 +18,10 @@ pub use orc_sdk_derive::{orc_fn, orc_fn_info};
 
 mod util;
 pub use util::{
-    BUILTIN_TYPES, DeckRegistry, FuncInfo, HandleDisplayWrapper, HostCallbacks, PluginAllocator,
+    DeckRegistry, FuncInfo, HandleDisplayWrapper, HostCallbacks, PRIMITIVE_TYPES, PluginAllocator,
     TypeInfo, ptr_from_slice, reset_handle, slice_from_ptr, slice_from_ptr_mut,
     update_handle_from_deck,
 };
 
 mod host;
-pub use host::{Plugin, load_plugins};
+pub use host::{Plugin, PluginSet, TypeOwner, load_plugins};

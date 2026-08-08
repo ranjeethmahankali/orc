@@ -1,3 +1,8 @@
+mod macros;
+
+#[cfg(test)]
+mod test;
+
 use orc_sdk::{
     Deck, Error, ORC_ABI_VERSION, OrcHandle, OrcHost, OrcHostCallbackAPI, OrcHostMemoryAPI, deck,
     update_handle_from_deck,
@@ -62,10 +67,10 @@ fn main() -> Result<(), Error> {
         .expect("Executable has no parent directory")
         .to_path_buf();
     println!("Loading plugins from {}", exe_dir.display());
-    let plugins = orc_sdk::load_plugins(&exe_dir, &HOST)?;
-    println!("Loaded {} plugin(s)\n", plugins.len());
+    let plugin_set = orc_sdk::load_plugins(&exe_dir, &HOST)?;
+    println!("Loaded {} plugin(s)\n", plugin_set.num_plugins());
     // Print the loaded plugins and functions.
-    for plugin in &plugins {
+    for plugin in plugin_set.plugins() {
         println!(
             "{} plugin has {} function(s):",
             plugin.name(),
@@ -76,92 +81,48 @@ fn main() -> Result<(), Error> {
         }
         println!();
     }
-    // --- Test some plugin functions ---
-    {
-        // Test the add function.
-        let add_fn = plugins
-            .iter()
-            .flat_map(|p| p.functions().iter())
-            .find(|f| f.name == "add")
-            .expect("add function not found in math_plugin");
-        let a: Deck<f64> = deck![[1.0, 2.0, 3.0], [2.0, 4.0, 6.0, 8.0]];
-        let b: Deck<f64> = deck![10.0, 20.0, 30.0];
-        let mut a_handle = OrcHandle {
-            handle: 0,
-            ..Default::default()
-        };
-        let mut b_handle = OrcHandle {
-            handle: 1,
-            ..Default::default()
-        };
-        let mut out_handle = OrcHandle {
-            handle: 2,
-            ..Default::default()
-        };
-        unsafe {
-            update_handle_from_deck(&a, &mut a_handle);
-            update_handle_from_deck(&b, &mut b_handle);
-        }
-        let inputs: &[OrcHandle] = &[a_handle, b_handle];
-        unsafe {
-            (add_fn.func)(0, inputs.as_ptr(), inputs.len() as u64, &mut out_handle, 1);
-        }
-        println!(
-            "math_plugin add([1,2,3], [10,20,30]):\n{}",
-            out_handle.display::<f64>()
+    let handle_counter = std::sync::atomic::AtomicU64::new(0);
+    let a_deck: Deck<f64> = deck![[1.0, 2.0, 3.0], [2.0, 4.0, 6.0, 8.0]];
+    let b_deck: Deck<f64> = deck![10.0, 20.0, 30.0];
+    let c_deck: Deck<f64> = deck![[1.0, 2.0, 3.0], [4.0, 5.0]];
+    let (a, b, c) = {
+        let (mut a, mut b, mut c) = (
+            OrcHandle::default(),
+            OrcHandle::default(),
+            OrcHandle::default(),
         );
-    }
-    {
-        // Test the list_length function.
-        let list_length_fn = plugins
-            .iter()
-            .flat_map(|p| p.functions().iter())
-            .find(|f| f.name == "list_length")
-            .expect("list_length function not found in math_plugin");
-
-        let a: Deck<f64> = deck![[1.0, 2.0, 3.0], [2.0, 4.0, 6.0, 8.0]];
-        let mut a_handle = OrcHandle {
-            handle: 0,
-            ..Default::default()
-        };
-        let mut out_handle = OrcHandle {
-            handle: 2,
-            ..Default::default()
-        };
+        a.handle = handle_counter.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        b.handle = handle_counter.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        c.handle = handle_counter.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         unsafe {
-            update_handle_from_deck(&a, &mut a_handle);
+            update_handle_from_deck(&a_deck, &mut a);
+            update_handle_from_deck(&b_deck, &mut b);
+            update_handle_from_deck(&c_deck, &mut c);
         }
-        let inputs: &[OrcHandle] = &[a_handle];
-        unsafe {
-            (list_length_fn.func)(0, inputs.as_ptr(), inputs.len() as u64, &mut out_handle, 1);
-        }
-        println!("List length output:\n{}", out_handle.display::<u64>());
-    }
-    {
-        // Test the flatten_deck function.
-        let flatten_fn = plugins
-            .iter()
-            .flat_map(|p| p.functions().iter())
-            .find(|f| f.name == "flatten_deck")
-            .expect("flatten_deck function not found");
-
-        let a: Deck<f64> = deck![[1.0, 2.0, 3.0], [4.0, 5.0]];
-        let mut a_handle = OrcHandle {
-            handle: 0,
-            ..Default::default()
-        };
-        let mut out_handle = OrcHandle {
-            handle: 1,
-            ..Default::default()
-        };
-        unsafe {
-            update_handle_from_deck(&a, &mut a_handle);
-            (flatten_fn.func)(0, &a_handle, 1, &mut out_handle, 1);
-        }
-        println!(
-            "flatten_deck([[1,2,3],[4,5]]):\n{}",
-            out_handle.display::<f64>()
-        );
-    }
+        (a, b, c)
+    };
+    let a_plus_b = kbb_dag!(plugin_set, &handle_counter, {
+        (add a b)
+    });
+    println!(
+        "math_plugin add([1,2,3], [10,20,30]):\n{}",
+        a_plus_b.display::<f64>()
+    );
+    let len_a = kbb_dag!(plugin_set, &handle_counter, {
+        (list_length a)
+    });
+    println!("List length output:\n{}", len_a.display::<u64>());
+    let flat_c = kbb_dag!(plugin_set, &handle_counter, {
+        (flatten_deck c)
+    });
+    println!(
+        "flatten_deck([[1,2,3],[4,5]]):\n{}",
+        flat_c.display::<f64>()
+    );
+    let fmad_abc = kbb_dag!(plugin_set, &handle_counter, {
+        (let m (mul a b))
+        (add m c)
+    });
+    println!("mul_add_a_b_c:\n{}", fmad_abc.display::<f64>());
     Ok(())
 }

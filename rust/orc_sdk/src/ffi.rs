@@ -101,6 +101,26 @@ impl OrcHandle {
             }
         }
     }
+
+    /// # SAFETY
+    ///
+    /// The caller is responsible for ensuring the clone never outlives the original
+    /// handle. Otherwise, it will result in use after free bug.
+    pub unsafe fn non_owning_clone(&self) -> Self {
+        OrcHandle {
+            handle: self.handle,
+            items: self.items,
+            n_items: self.n_items,
+            item_size: self.item_size,
+            marks: self.marks,
+            stride_offset: self.stride_offset,
+            n_marks: self.n_marks,
+            strides: self.strides,
+            type_id: self.type_id,
+            dims: self.dims,
+            free_fn: None,
+        }
+    }
 }
 
 impl Drop for OrcHandle {
