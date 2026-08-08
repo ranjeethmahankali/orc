@@ -2,6 +2,7 @@
 ///
 /// Takes a PluginSet, a mutable handle counter, and a block of statements.
 /// The counter is used to assign unique handle IDs to all output handles.
+/// Supports nesting single-output calls: `(add (mul a b) c)`.
 ///
 /// ```ignore
 /// let mut hc = 0u64;
@@ -9,6 +10,7 @@
 ///     (define tmp (mul a b))
 ///     (define result (add tmp c))
 ///     (define (mean variance) (compute_stats data))
+///     (add (mul a b) c)
 /// })
 /// ```
 #[macro_export]
@@ -43,9 +45,19 @@ macro_rules! kbb_dag {
     // Empty — end of statements
     (@stmts $ps:ident, $hc:ident,) => { () };
 
+    // --- Expression: either a variable reference or a nested function call ---
+    // Nested call: (func args...)
+    (@expr $ps:ident, $hc:ident, ($func:ident $($arg:tt)*)) => {
+        kbb_dag!(@call1 $ps, $hc, $func, $($arg)*)
+    };
+    // Variable reference
+    (@expr $ps:ident, $hc:ident, $var:ident) => {
+        unsafe { $var.non_owning_clone() }
+    };
+
     // --- Single-output function call ---
-    (@call1 $ps:ident, $hc:ident, $func:ident, $($arg:ident)*) => {{
-        let inputs_: &[OrcHandle] = &[$(unsafe { $arg.non_owning_clone() }),*];
+    (@call1 $ps:ident, $hc:ident, $func:ident, $($arg:tt)*) => {{
+        let inputs_: Vec<OrcHandle> = vec![$(kbb_dag!(@expr $ps, $hc, $arg)),*];
         let mut out_: OrcHandle = OrcHandle::default();
         out_.handle = *$hc;
         *$hc += 1;
@@ -58,8 +70,8 @@ macro_rules! kbb_dag {
     }};
 
     // --- Multi-output function call ---
-    (@call_n $ps:ident, $hc:ident, ($($name:ident)+) $func:ident, $($arg:ident)*) => {
-        let inputs_: &[OrcHandle] = &[$(unsafe { $arg.non_owning_clone() }),*];
+    (@call_n $ps:ident, $hc:ident, ($($name:ident)+) $func:ident, $($arg:tt)*) => {
+        let inputs_: Vec<OrcHandle> = vec![$(kbb_dag!(@expr $ps, $hc, $arg)),*];
         let func_ = $ps.get_function(stringify!($func))
             .expect(concat!("function '", stringify!($func), "' not found"));
         let n_outs_: u64 = kbb_dag!(@count $($name)+) as u64;
