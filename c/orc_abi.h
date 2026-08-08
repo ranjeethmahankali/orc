@@ -52,6 +52,12 @@ typedef struct OrcHandle OrcHandle;
 #define ORC_MSG_LEVEL_ERROR 4u
 #define ORC_MSG_LEVEL_FATAL 5u
 
+/**
+This is just a tag used to identify the types of inputs and outputs of plugin functions.
+`OrcTypeId`, is the actual tag used by the host and plugin to distinguish the types.
+`name` and `desc` are just optional information to help the host / user understand what
+the type is.
+ */
 typedef struct
 {
   OrcTypeId   type_id;
@@ -62,6 +68,28 @@ typedef struct
 #define ORC_ARGS_VARIADIC 0xffffffffffffffff
 #define ORC_TYPE_ANY 0xffffffffffffffff
 
+/**
+Metadata for a function exposed by the plugin. All plugin functions have the same
+signature. The metadata encodes information about the inputs, outputs, and the function
+pointer.
+
+`name` and `desc` are optional strings that are meant to help the host / user understand
+what the function does. `n_inputs` and `n_outputs` can be any value, except
+`ORC_ARGS_VARIADIC`. If they are set to `ORC_ARGS_VARIADIC`, host will infer that the
+functions will support any number of inputs / outputs.
+
+If `n_inputs` / `n_outputs` are set to a value other than `ORC_ARGS_VARIADIC`, then the
+host can read the corresponding `input_types` and `output_types` arrays to infer the types
+expected by the function. This should only be set if the function expects one concrete
+type. If the function is generic / and can process many types, the corresponding type must
+be set to `ORC_TYPE_ANY`. If the `input_types` and `output_types` pointers are set to
+`NULL`, the host must infer that all inputs and outputs can be of any type.
+
+This metadata is a hint for the host. The plugin function must still validate all it's
+inputs, and outputs, counts, and types, and return appropriate errors. Conversely, even if
+the metadata implies a certain input/output configuration is supported by the function,
+the function may still fail when called with said inputs/outputs.
+ */
 typedef struct
 {
   char const *name;
@@ -78,6 +106,21 @@ typedef struct
                uint64_t const   n_outputs);
 } OrcFuncInfo;
 
+/**
+This struct is how the plugin communicates to the host about itself.
+
+- abi_version: Must be populated with the that of the header that was used to compile the
+plugin.
+- name and desc: Optional information to help the host / user understand what the plugin
+is about.
+- types and n_types: Array of custom types that used by the functions of this plugin. It
+can be `NULL` if `n_types` is zero. The plugin must not redeclare any of the primitive
+types, nor can its types conflict with the types of other types loaded by other plugins.
+The plugin is advised to choose a randmly generated 64 bit string as it's `OrcTypeId`, so
+that it doesn't conflict with any other plugin's types.
+- functions and n_functions: Array of functions exposed by this plugin. The pointer can be
+`NULL` if n_types is zero.
+ */
 typedef struct
 {
   uint64_t           abi_version;
