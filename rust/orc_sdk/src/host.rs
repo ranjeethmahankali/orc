@@ -51,18 +51,9 @@ impl Plugin {
         };
         let mut plugin_data = OrcPlugin::default();
         let err = unsafe { init(host, &mut plugin_data) };
-        match err {
-            crate::ORC_ERROR_NONE => {} // Do nothing.
-            crate::ORC_ERROR_ABI_VERSION_MISMATCH => {
-                return Err(
-                    "Unable to load the plugin because of ABI version mismatch.".to_string()
-                );
-            }
-            _ => {
-                return Err(format!(
-                    "Unable to load the plugin. Error code: {err:#010x}"
-                ));
-            }
+        match Error::from_raw(err) {
+            Ok(()) => {} // Do nothing.
+            Err(err) => return Err(format!("Unable to load the plugin: {err}")),
         }
         if plugin_data.abi_version != ORC_ABI_VERSION {
             return Err("Unable to load the plugin because of ABI version mismatch.".to_string());
