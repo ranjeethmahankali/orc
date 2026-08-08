@@ -116,7 +116,6 @@ fn main() -> Result<(), Error> {
         let list_length_fn = plugin_set
             .get_function("list_length")
             .expect("list_length function not found in math_plugin");
-
         let a: Deck<f64> = deck![[1.0, 2.0, 3.0], [2.0, 4.0, 6.0, 8.0]];
         let mut a_handle = OrcHandle {
             handle: 0,
@@ -140,7 +139,6 @@ fn main() -> Result<(), Error> {
         let flatten_fn = plugin_set
             .get_function("flatten_deck")
             .expect("flatten_deck function not found");
-
         let a: Deck<f64> = deck![[1.0, 2.0, 3.0], [4.0, 5.0]];
         let mut a_handle = OrcHandle {
             handle: 0,
