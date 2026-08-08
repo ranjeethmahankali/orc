@@ -12,3 +12,4 @@ libloading = "0.8"
 
 [build-dependencies]
 bindgen = "0.72"
+clang = { version = "2", features = ["runtime"] }
