@@ -215,30 +215,76 @@ def read_f64_handle(h):
     return [ptr[i] for i in range(h.n_items)]
 
 
-def find_plugin_lib(search_dir):
-    """Find the plugin shared library."""
+REQUIRED_SYMBOLS = [
+    "orc_plugin_init",
+    "orc_deck_alloc",
+    "orc_deck_free",
+    "orc_deck_from_proxy",
+]
+
+
+def _shared_lib_ext():
     system = platform.system()
     if system == "Linux":
-        prefix, ext = "libdeck_ops", ".so"
-    elif system == "Darwin":
-        prefix, ext = "libdeck_ops", ".dylib"
-    elif system == "Windows":
-        prefix, ext = "deck_ops", ".dll"
-    else:
-        raise RuntimeError(f"Unsupported platform: {system}")
+        return ".so"
+    if system == "Darwin":
+        return ".dylib"
+    if system == "Windows":
+        return ".dll"
+    raise RuntimeError(f"Unsupported platform: {system}")
+
+
+def _is_plugin(path):
+    """Return True if the shared library exports all required plugin symbols."""
+    try:
+        lib = ctypes.CDLL(path)
+    except OSError:
+        return False
+    for sym in REQUIRED_SYMBOLS:
+        if not hasattr(lib, sym):
+            return False
+    return True
+
+
+def load_plugins(search_dir, host):
+    """Load all compatible plugin shared libraries from search_dir.
+
+    Returns a list of (lib, OrcPlugin) tuples.
+    """
+    ext = _shared_lib_ext()
+    plugins = []
+    if not os.path.isdir(search_dir):
+        return plugins
     for f in os.listdir(search_dir):
-        if f.startswith(prefix) and f.endswith(ext):
-            return os.path.join(search_dir, f)
-    return None
+        if not f.endswith(ext):
+            continue
+        path = os.path.join(search_dir, f)
+        if not _is_plugin(path):
+            continue
+        lib = ctypes.CDLL(path)
+        lib.orc_plugin_init.argtypes = [
+            ctypes.POINTER(OrcHost),
+            ctypes.POINTER(OrcPlugin),
+        ]
+        lib.orc_plugin_init.restype = OrcError
+        plugin = OrcPlugin()
+        err = lib.orc_plugin_init(ctypes.byref(host), ctypes.byref(plugin))
+        if err != ORC_ERROR_NONE:
+            print(f"Skipping {f}: orc_plugin_init failed ({err:#x})")
+            continue
+        plugins.append((lib, plugin))
+        print(f"Loaded plugin: {f}")
+    return plugins
 
 
-def get_function(plugin, name):
-    """Find a function by name in the plugin's function table."""
-    for i in range(plugin.n_functions):
-        fi = plugin.functions[i]
-        if fi.name.decode("utf-8") == name:
-            return fi
-    raise KeyError(f"Function '{name}' not found in plugin")
+def get_function(plugins, name):
+    """Find a function by name across all loaded plugins."""
+    for _lib, plugin in plugins:
+        for i in range(plugin.n_functions):
+            fi = plugin.functions[i]
+            if fi.name.decode("utf-8") == name:
+                return fi
+    raise KeyError(f"Function '{name}' not found in any plugin")
 
 
 # ---------------------------------------------------------------------------
@@ -249,28 +295,7 @@ def get_function(plugin, name):
 def main():
     script_dir = os.path.dirname(os.path.abspath(__file__))
     project_root = os.path.dirname(script_dir)
-    search_dirs = [os.path.join(project_root, "build", "debug")]
-
-    lib_path = None
-    for d in search_dirs:
-        print(f"Searching dir: {d}")
-        if os.path.isdir(d):
-            lib_path = find_plugin_lib(d)
-            if lib_path:
-                break
-
-    if not lib_path:
-        print(f"Could not find deck_ops plugin library in: {search_dirs}")
-        sys.exit(1)
-
-    print(f"Loading plugin: {lib_path}")
-    lib = ctypes.CDLL(lib_path)
-
-    lib.orc_plugin_init.argtypes = [
-        ctypes.POINTER(OrcHost),
-        ctypes.POINTER(OrcPlugin),
-    ]
-    lib.orc_plugin_init.restype = OrcError
+    search_dir = os.path.join(project_root, "build", "debug")
 
     # Build the host
     host = OrcHost()
@@ -279,23 +304,23 @@ def main():
     host.memory_api.dealloc = host_dealloc
     host.callbacks.report_message = report_message
 
-    # Init plugin
-    plugin = OrcPlugin()
-    err = lib.orc_plugin_init(ctypes.byref(host), ctypes.byref(plugin))
-    if err != ORC_ERROR_NONE:
-        print(f"orc_plugin_init failed: {err:#x}")
+    # Load all plugins from the search directory
+    print(f"Searching for plugins in: {search_dir}")
+    plugins = load_plugins(search_dir, host)
+    if not plugins:
+        print("No plugins found.")
         sys.exit(1)
 
-    print(f"Plugin: {plugin.name.decode()}")
-    print(f"  {plugin.desc.decode()}")
-    print(f"  {plugin.n_functions} function(s):")
-    for i in range(plugin.n_functions):
-        fi = plugin.functions[i]
-        print(f"    - {fi.name.decode()}: {fi.desc.decode()}")
+    print(f"\nLoaded {len(plugins)} plugin(s):")
+    for _lib, plugin in plugins:
+        print(f"  {plugin.name.decode()}: {plugin.desc.decode()}")
+        for i in range(plugin.n_functions):
+            fi = plugin.functions[i]
+            print(f"    - {fi.name.decode()}: {fi.desc.decode()}")
     print()
 
     # Call 'add' on two f64 arrays
-    add_fn = get_function(plugin, "add")
+    add_fn = get_function(plugins, "add")
 
     a = make_f64_handle([1.0, 2.0, 3.0])
     b = make_f64_handle([10.0, 20.0, 30.0])
