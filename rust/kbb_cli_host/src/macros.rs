@@ -59,7 +59,7 @@ macro_rules! kbb_dag {
 
     // --- Single-output function call ---
     (@call1 $ps:ident, $hc:ident, $func:ident, $($arg:tt)*) => {{
-        let inputs_: Vec<OrcHandle> = vec![$(kbb_dag!(@expr $ps, $hc, $arg)),*];
+        let inputs_ = [$(kbb_dag!(@expr $ps, $hc, $arg)),*];
         let mut out_: OrcHandle = OrcHandle::default();
         out_.handle = $hc.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let func_ = $ps.get_function(stringify!($func))
@@ -72,18 +72,18 @@ macro_rules! kbb_dag {
 
     // --- Multi-output function call ---
     (@call_n $ps:ident, $hc:ident, ($($name:ident)+) $func:ident, $($arg:tt)*) => {
-        let inputs_: Vec<OrcHandle> = vec![$(kbb_dag!(@expr $ps, $hc, $arg)),*];
+        let inputs_ = [$(kbb_dag!(@expr $ps, $hc, $arg)),*];
         let func_ = $ps.get_function(stringify!($func))
             .expect(concat!("function '", stringify!($func), "' not found"));
-        let n_outs_: u64 = kbb_dag!(@count $($name)+) as u64;
-        let base_handle_ = $hc.fetch_add(n_outs_, std::sync::atomic::Ordering::Relaxed);
-        let mut outs_: Vec<OrcHandle> = (0..n_outs_).map(|i| {
+        const N_OUTS_: u64 = kbb_dag!(@count $($name)+) as u64;
+        let base_handle_ = $hc.fetch_add(N_OUTS_, std::sync::atomic::Ordering::Relaxed);
+        let mut outs_: [OrcHandle; N_OUTS_ as usize] = std::array::from_fn(|i| {
             let mut h = OrcHandle::default();
-            h.handle = base_handle_ + i;
+            h.handle = base_handle_ + i as u64;
             h
-        }).collect();
+        });
         unsafe {
-            (func_.func)(0, inputs_.as_ptr(), inputs_.len() as u64, outs_.as_mut_ptr(), n_outs_);
+            (func_.func)(0, inputs_.as_ptr(), inputs_.len() as u64, outs_.as_mut_ptr(), N_OUTS_);
         }
         let mut idx_ = 0usize;
         $(
