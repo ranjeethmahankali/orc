@@ -3,24 +3,32 @@
 import ctypes
 
 ORC_ABI_VERSION = 1
+
+# Unsigned integers.
 ORC_TYPE_U8 = 0x01
 ORC_TYPE_U16 = 0x02
 ORC_TYPE_U32 = 0x03
 ORC_TYPE_U64 = 0x04
+# Scalars.
 ORC_TYPE_F32 = 0x11
 ORC_TYPE_F64 = 0x12
+# Signed integers.
 ORC_TYPE_I8 = 0x21
 ORC_TYPE_I16 = 0x22
 ORC_TYPE_I32 = 0x23
 ORC_TYPE_I64 = 0x24
+# Proxy for an item in a tree.
 ORC_TYPE_PROXY = 0x30
+
 ORC_MSG_LEVEL_DEBUG = 1
 ORC_MSG_LEVEL_INFO = 2
 ORC_MSG_LEVEL_WARN = 3
 ORC_MSG_LEVEL_ERROR = 4
 ORC_MSG_LEVEL_FATAL = 5
+
 ORC_ARGS_VARIADIC = 0xffffffffffffffff
 ORC_TYPE_ANY = 0xffffffffffffffff
+
 ORC_DIM_LENGTH = 0
 ORC_DIM_MASS = 1
 ORC_DIM_TIME = 2
@@ -28,7 +36,9 @@ ORC_DIM_ELECTRIC_CURRENT = 3
 ORC_DIM_TEMPERATURE = 4
 ORC_DIM_SUBSTANCE = 5
 ORC_DIM_LUMINOSITY = 6
+
 ORC_NUM_DIMS = 7
+
 ORC_ERROR_NONE = 0
 ORC_ERROR_ABI_VERSION_MISMATCH = 0xff01
 ORC_ERROR_INVALID_HANDLE = 0xff02
@@ -44,6 +54,7 @@ ORC_ERROR_ALLOC_FAILED = 0xff0b
 ORC_ERROR_NULL_PTR = 0xff0c
 ORC_ERROR_MISSING_CAPABILITY = 0xff0d
 ORC_ERROR_UNKNOWN = 0xffff
+
 ORC_DECK_PROXY_COPY_ALL = 0x01
 ORC_DECK_PROXY_COPY_ITEMS = 0x02
 ORC_DECK_PROXY_SHUFFLE = 0x03
@@ -59,15 +70,35 @@ class OrcHandle(ctypes.Structure):
 
 
 class OrcTypeInfo(ctypes.Structure):
-    pass
+    """This is just a tag used to identify the types of inputs and outputs of plugin
+    functions. `OrcTypeId`, is the actual tag used by the host and plugin to distinguish the
+    types. `name` and `desc` are just optional information to help the host / user understand what
+    the type is."""
 
 
 class OrcFuncInfo(ctypes.Structure):
-    pass
+    """Metadata for a function exposed by the plugin. All plugin functions have the same
+    signature. The metadata encodes information about the inputs, outputs, and the function
+    pointer. `name` and `desc` are optional strings that are meant to help the host / user
+    understand what the function does. `n_inputs` and `n_outputs` can be any value, except
+    `ORC_ARGS_VARIADIC`. If they are set to `ORC_ARGS_VARIADIC`, host will infer that the functions
+    will support any number of inputs / outputs. If `n_inputs` / `n_outputs` are set to a value
+    other than `ORC_ARGS_VARIADIC`, then the host can read the corresponding `input_types` and
+    `output_types` arrays to infer the types expected by the function. This should only be set if
+    the function expects one concrete type. If the function is generic / and can process many types,
+    the corresponding type must be set to `ORC_TYPE_ANY`. If the `input_types` and `output_types`
+    pointers are set to `NULL`, the host must infer that all inputs and outputs can be of any
+    type. This metadata is a hint for the host. The plugin function must still validate all it's
+    inputs, and outputs, counts, and types, and return appropriate errors. Conversely, even if the
+    metadata implies a certain input/output configuration is supported by the function, the function
+    may still fail when called with said inputs/outputs."""
 
 
 class OrcPlugin(ctypes.Structure):
-    pass
+    """This struct is how the plugin communicates to the host about itself. - abi_version: Must be
+    populated with the that of the header that was used to compile the plugin. - name and desc:
+    Optional information to help the host / user understand what the plugin is about. - types: Array
+    of custom types that used by the functions of this plugin."""
 
 
 class OrcHostMemoryAPI(ctypes.Structure):
