@@ -162,6 +162,8 @@
   <2026-08-07 Fri 23:27> Added tests for the macro, and got all the tests passing by using a global
   atomic to assign the handle ids.
 
+  - [ ] The macro should return an error instead of doing unwrap / expect internally.
+
 * DONE tjd838 - Improve Function Metadata
   CLOSED: [2026-08-07 Fri 14:25]
   :PROPERTIES:
