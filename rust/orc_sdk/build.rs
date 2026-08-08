@@ -47,10 +47,8 @@ impl bindgen::callbacks::ParseCallbacks for TypeAliasCallback {
 
 fn generate_python_bindings() {
     use std::fmt::Write;
-
     let header_path = "../../c/orc_abi.h";
     let header_content = std::fs::read_to_string(header_path).expect("Failed to read orc_abi.h");
-
     let mut out = String::new();
     writeln!(
         out,
@@ -60,10 +58,8 @@ fn generate_python_bindings() {
     writeln!(out).unwrap();
     writeln!(out, "import ctypes").unwrap();
     writeln!(out).unwrap();
-
     // Phase 1: Extract constants from preprocessor macros and static const.
     emit_constants(&header_content, &mut out);
-
     // Phase 2: Use libclang to parse structs, typedefs, and function pointers.
     let cl = clang::Clang::new().expect("Failed to initialize libclang");
     let index = clang::Index::new(&cl, false, false);
@@ -72,11 +68,8 @@ fn generate_python_bindings() {
         .arguments(&["-std=c11"])
         .parse()
         .expect("Failed to parse orc_abi.h");
-
     emit_types(&tu, &mut out);
-
     std::fs::write("../../python/bindings.py", &out).expect("Failed to write python/bindings.py");
-
     println!("cargo:rerun-if-changed={header_path}");
 }
 
@@ -84,19 +77,15 @@ fn generate_python_bindings() {
 /// Also passes through `// comment` lines that appear between #define groups.
 fn emit_constants(header: &str, out: &mut String) {
     use std::fmt::Write;
-
     let mut pending_comment: Option<&str> = None;
     let mut emitted_any = false;
-
     for line in header.lines() {
         let line = line.trim();
-
         // Buffer comment lines — flushed when the next constant is emitted.
         if let Some(comment) = line.strip_prefix("// ") {
             pending_comment = Some(comment);
             continue;
         }
-
         // Blank lines: emit a separator if we've been emitting constants.
         if line.is_empty() {
             if emitted_any {
@@ -106,7 +95,6 @@ fn emit_constants(header: &str, out: &mut String) {
             pending_comment = None;
             continue;
         }
-
         // #define NAME VALUE
         if let Some(rest) = line.strip_prefix("#define ") {
             let mut parts = rest.splitn(2, ' ');
@@ -118,7 +106,6 @@ fn emit_constants(header: &str, out: &mut String) {
                 Some(v) => v.trim(),
                 None => continue,
             };
-
             // Skip function-like macros, non-ORC, non-value macros.
             if name.contains('(') || !name.starts_with("ORC_") {
                 continue;
@@ -127,7 +114,6 @@ fn emit_constants(header: &str, out: &mut String) {
             if value.starts_with("__") {
                 continue;
             }
-
             if let Some(val) = parse_c_integer(value) {
                 if let Some(comment) = pending_comment.take() {
                     writeln!(out, "# {comment}").unwrap();
@@ -136,7 +122,6 @@ fn emit_constants(header: &str, out: &mut String) {
                 emitted_any = true;
             }
         }
-
         // static const uint64_t ORC_ABI_VERSION = ORC_VERSION_PACK(M, m, p);
         if line.starts_with("static const uint64_t ORC_ABI_VERSION")
             && let Some(start) = line.find("ORC_VERSION_PACK(")
@@ -168,7 +153,6 @@ fn parse_c_integer(s: &str) -> Option<&str> {
         .trim_end_matches("ll")
         .trim_end_matches('L')
         .trim_end_matches('l');
-
     if s.starts_with("0x") || s.starts_with("0X") {
         u64::from_str_radix(&s[2..], 16).ok().map(|_| s)
     } else {
@@ -199,9 +183,7 @@ fn emit_types(tu: &clang::TranslationUnit, out: &mut String) {
     use clang::EntityKind;
     use std::collections::HashSet;
     use std::fmt::Write;
-
     let root = tu.get_entity();
-
     let mut simple_typedefs: Vec<(String, Cow<'static, str>)> = Vec::new();
     let mut array_typedefs: Vec<(String, Cow<'static, str>, usize)> = Vec::new(); // (name, elem, count)
     let mut fn_ptr_typedefs: Vec<(String, String)> = Vec::new(); // (name, cfunctype_expr)
@@ -209,7 +191,6 @@ fn emit_types(tu: &clang::TranslationUnit, out: &mut String) {
     let mut struct_field_fn_types: Vec<FnPtrDef> = Vec::new();
     let mut seen_structs: HashSet<String> = HashSet::new();
     let mut seen_fn_ptrs: HashSet<String> = HashSet::new();
-
     for child in root.get_children() {
         // Only process entities from our header, skip system includes.
         if let Some(loc) = child.get_location() {
@@ -219,7 +200,6 @@ fn emit_types(tu: &clang::TranslationUnit, out: &mut String) {
         } else {
             continue;
         }
-
         match child.get_kind() {
             EntityKind::TypedefDecl => {
                 let name = match child.get_name() {
@@ -230,7 +210,6 @@ fn emit_types(tu: &clang::TranslationUnit, out: &mut String) {
                     Some(t) => t,
                     None => continue,
                 };
-
                 let canon = underlying.get_canonical_type();
                 match canon.get_kind() {
                     // Simple primitive alias: typedef uint64_t OrcTypeId;
@@ -250,7 +229,6 @@ fn emit_types(tu: &clang::TranslationUnit, out: &mut String) {
                     | clang::TypeKind::Bool => {
                         simple_typedefs.push((name, primitive_to_ctypes(&canon)));
                     }
-
                     // Struct: typedef struct { ... } Name; or forward decl.
                     clang::TypeKind::Record => {
                         if seen_structs.contains(&name) {
@@ -275,7 +253,6 @@ fn emit_types(tu: &clang::TranslationUnit, out: &mut String) {
                             });
                         }
                     }
-
                     // Function pointer: typedef OrcError (*Fn)(...);
                     clang::TypeKind::Pointer => {
                         if let Some(pointee) = canon.get_pointee_type()
@@ -288,7 +265,6 @@ fn emit_types(tu: &clang::TranslationUnit, out: &mut String) {
                             fn_ptr_typedefs.push((name, generate_cfunctype(&pointee)));
                         }
                     }
-
                     // Array: typedef int32_t OrcDims[N];
                     clang::TypeKind::ConstantArray => {
                         if let (Some(elem), Some(count)) =
@@ -297,11 +273,9 @@ fn emit_types(tu: &clang::TranslationUnit, out: &mut String) {
                             array_typedefs.push((name, type_to_ctypes(&elem), count));
                         }
                     }
-
                     _ => {}
                 }
             }
-
             EntityKind::StructDecl => {
                 let name = match child.get_name() {
                     Some(n) => n,
@@ -320,19 +294,15 @@ fn emit_types(tu: &clang::TranslationUnit, out: &mut String) {
                     fields,
                 });
             }
-
             _ => {}
         }
     }
-
     // --- Emit Python code ---
-
     // 1. Simple typedefs.
     for (name, expr) in &simple_typedefs {
         writeln!(out, "{name} = {expr}").unwrap();
     }
     writeln!(out).unwrap();
-
     // 2. Forward-declare all structs.
     for sd in &struct_defs {
         writeln!(out, "class {}(ctypes.Structure):", sd.name).unwrap();
@@ -343,7 +313,6 @@ fn emit_types(tu: &clang::TranslationUnit, out: &mut String) {
         }
         writeln!(out).unwrap();
     }
-
     // 3. Array typedefs.
     for (name, elem, count) in &array_typedefs {
         writeln!(out, "{name} = {elem} * {count}").unwrap();
@@ -351,7 +320,6 @@ fn emit_types(tu: &clang::TranslationUnit, out: &mut String) {
     if !array_typedefs.is_empty() {
         writeln!(out).unwrap();
     }
-
     // 4. Named function-pointer typedefs from the C header.
     for (name, cfunc) in &fn_ptr_typedefs {
         writeln!(out, "{name} = {cfunc}").unwrap();
@@ -359,7 +327,6 @@ fn emit_types(tu: &clang::TranslationUnit, out: &mut String) {
     if !fn_ptr_typedefs.is_empty() {
         writeln!(out).unwrap();
     }
-
     // 5. Named function-pointer types generated for anonymous fn-ptr struct fields.
     for fp in &struct_field_fn_types {
         writeln!(out, "{} = {}", fp.name, fp.cfunctype).unwrap();
@@ -367,7 +334,6 @@ fn emit_types(tu: &clang::TranslationUnit, out: &mut String) {
     if !struct_field_fn_types.is_empty() {
         writeln!(out).unwrap();
     }
-
     // 6. Set _fields_ on all structs (in definition order from the header).
     for sd in &struct_defs {
         writeln!(out, "{}._fields_ = [", sd.name).unwrap();
@@ -389,7 +355,6 @@ fn collect_struct_fields(
     seen_fn_ptrs: &mut std::collections::HashSet<String>,
 ) -> Vec<(String, Cow<'static, str>, Option<String>)> {
     use clang::EntityKind;
-
     let mut fields = Vec::new();
     for child in decl.get_children() {
         if child.get_kind() != EntityKind::FieldDecl {
@@ -404,7 +369,6 @@ fn collect_struct_fields(
             None => continue,
         };
         let comment = entity_comment(&child);
-
         // If the field type is a named Orc typedef (e.g. OrcDeckFreeFn), use it directly
         // rather than letting the fn-ptr check below generate a new name from the field name.
         if matches!(
@@ -423,7 +387,6 @@ fn collect_struct_fields(
                 continue;
             }
         }
-
         // If the field is an anonymous function pointer, generate a named type.
         let canon = ftype.get_canonical_type();
         if canon.get_kind() == clang::TypeKind::Pointer
@@ -444,7 +407,6 @@ fn collect_struct_fields(
             fields.push((fname, type_name.into(), comment));
             continue;
         }
-
         fields.push((fname, type_to_ctypes(&ftype), comment));
     }
     fields
@@ -469,13 +431,11 @@ fn fn_field_type_name(field_name: &str) -> String {
 
 fn generate_cfunctype(func_ty: &clang::Type) -> String {
     use std::fmt::Write;
-
     let ret = func_ty
         .get_result_type()
         .map(|r| type_to_ctypes(&r))
         .unwrap_or_else(|| "None".into());
     let args = func_ty.get_argument_types().unwrap_or_default();
-
     let mut buf = format!("ctypes.CFUNCTYPE({ret}");
     for a in &args {
         write!(buf, ", {}", type_to_ctypes(a)).unwrap();
@@ -539,7 +499,6 @@ fn type_to_ctypes(ty: &clang::Type) -> Cow<'static, str> {
             }
             type_to_ctypes(&ty.get_canonical_type())
         }
-
         TypeKind::Pointer => {
             let pointee = match ty.get_pointee_type() {
                 Some(p) => p,
@@ -562,7 +521,6 @@ fn type_to_ctypes(ty: &clang::Type) -> Cow<'static, str> {
                 }
             }
         }
-
         TypeKind::ConstantArray => {
             let elem = ty
                 .get_element_type()
@@ -571,7 +529,6 @@ fn type_to_ctypes(ty: &clang::Type) -> Cow<'static, str> {
             let count = get_array_element_count(ty).unwrap_or(0);
             format!("{elem} * {count}").into()
         }
-
         // Primitives.
         _ => primitive_to_ctypes(ty),
     }

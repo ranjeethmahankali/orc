@@ -66,7 +66,7 @@ OrcError = ctypes.c_uint32
 OrcProxyType = ctypes.c_uint8
 
 class OrcHandle(ctypes.Structure):
-    """This is the primary handle passed around between hosts and plugins as input and outputs for the plugin function calls. - handle: This is a unique integer assigned by the host program. The plugin MUST NOT modify it. The plugin may use it as a key to point to data allocated within it's memory, when said data is owned by the same plugin. The host uses this integer to keep track of all the data alive during a session."""
+    """This is the primary handle passed around between hosts and plugins as input and outputs for the plugin function calls. - handle: This is a unique integer assigned by the host program. The plugin MUST NOT modify it. The plugin may use it as a key to point to data allocated within it's memory, when said data is owned by the same plugin. The host uses this integer to keep track of all the data alive during a session. - items, and n_items: These are the actual data stored in the deck that this handles points to. This handle can be backed by any implementation of a Deck datastructure, written in any language, as long as these pointers meet the ABI requirements to be read across the FFI boundary. - marks, stride_offset, and n_mmarks: These define the structure / nesting inside a deck. - type_id: Indicates the type of the data stored in the deck backs this handle. - dims: Optional units. Just metadata, the plugin functions and host can do whatever they want with it. - free_fn: Destructor. Whichever plugin allocates the backing deck, and populates this handle with the corresponding pointers, is also responsible for setting the destructor function pointer. Without this, the memory may leak."""
 
 class OrcTypeInfo(ctypes.Structure):
     """This is just a tag used to identify the types of inputs and outputs of plugin functions. `OrcTypeId`, is the actual tag used by the host and plugin to distinguish the types. `name` and `desc` are just optional information to help the host / user understand what the type is."""
@@ -90,7 +90,7 @@ class OrcMark(ctypes.Structure):
     pass
 
 class OrcItemProxy(ctypes.Structure):
-    pass
+    """Each plugin has to provide a generic way to construct decks out of a given input deck, for all of its custom datatypes. This proxy refers to a particular item in a particular deck. Both the deck and the item are referenced by their index."""
 
 OrcDims = ctypes.c_int32 * 7
 
