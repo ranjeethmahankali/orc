@@ -157,6 +157,8 @@
   now, I just need something that lets me easily compose, run and test DAGs. So I went with a
   ~eiche~ style declarative macro in Rust.
 
+  - [ ] Get rid of the vec allocations in the kbb_dag macro.
+
 * DONE tjd838 - Improve Function Metadata
   CLOSED: [2026-08-07 Fri 14:25]
   :PROPERTIES:
