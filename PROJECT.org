@@ -138,11 +138,14 @@
   <2026-07-31 Fri 20:45> Trying to temporarily stop on this task, and finish a few other smaller
   tasks before continuing.
 
-* NEXT tjewz9 - A LISP like syntax with multiple outputs?
+* DONE tjewz9 - A LISP like syntax with multiple outputs?
+  CLOSED: [2026-08-07 Fri 23:56]
   :PROPERTIES:
   :CREATED:  2026-08-04 Tue 08:37
   :END:
   :LOGBOOK:
+  - State "DONE"       from "DONE"       [2026-08-07 Fri 23:56]
+  - State "DONE"       from "NEXT"       [2026-08-07 Fri 23:56]
   - State "NEXT"       from "TODO"       [2026-08-07 Fri 14:34]
   :END:
 
@@ -162,7 +165,11 @@
   <2026-08-07 Fri 23:27> Added tests for the macro, and got all the tests passing by using a global
   atomic to assign the handle ids.
 
-  - [ ] The macro should return an error instead of doing unwrap / expect internally.
+  - [X] The macro should return an error instead of doing unwrap / expect internally.
+
+  <2026-08-07 Fri 23:55> Getting ready to merge, trying to get the tests passing on Windows. CMake
+  output path related issues cause the DLLs to be not found by the test binaries. But now that is
+  fixed.
 
 * DONE tjd838 - Improve Function Metadata
   CLOSED: [2026-08-07 Fri 14:25]
