@@ -24,16 +24,16 @@ macro_rules! kbb_dag {
     // --- Statements ---
 
     // define single output, more statements follow
-    (@stmts $ps:ident, $hc:ident, (define $name:ident ($func:ident $($arg:tt)*)) $($rest:tt)*) => {
+    (@stmts $ps:ident, $hc:ident, (define $name:ident ($func:ident $($arg:tt)*)) $($rest:tt)*) => {{
         let $name = kbb_dag!(@call1 $ps, $hc, $func, $($arg)*);
         kbb_dag!(@stmts $ps, $hc, $($rest)*)
-    };
+    }};
 
     // define multiple outputs, more statements follow
-    (@stmts $ps:ident, $hc:ident, (define ($($name:ident)+) ($func:ident $($arg:tt)*)) $($rest:tt)*) => {
+    (@stmts $ps:ident, $hc:ident, (define ($($name:ident)+) ($func:ident $($arg:tt)*)) $($rest:tt)*) => {{
         kbb_dag!(@call_n $ps, $hc, ($($name)+) $func, $($arg)*);
         kbb_dag!(@stmts $ps, $hc, $($rest)*)
-    };
+    }};
 
     // Trailing expression — bare function call as the block's return value
     (@stmts $ps:ident, $hc:ident, ($func:ident $($arg:tt)*)) => {
