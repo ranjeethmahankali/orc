@@ -153,6 +153,34 @@
   <2026-07-31 Fri 20:45> Trying to temporarily stop on this task, and finish a few other smaller
   tasks before continuing.
 
+* TODO Demo with a simple optimization workflow with UI app
+  :PROPERTIES:
+  :CREATED:  2026-08-09 Sun 00:04
+  :END:
+
+  Just recording an idea for the demo. A UI app, where I can create a parametric curve such as a
+  quad with it's vertices on a circle. I then select a menu option in the UI app that copies the DAG
+  as Python code into my clipboard. I paste that into a Python file, that already contains a pure
+  Python black box optimizer. From that point on, I use pure Python to run the optimizer, generate
+  plots using matplotlib etc.
+
+  Maybe I can write a rasterizer for my curve types, and somehow get the optimizer to export images
+  of the sample points in the design space, so that I can visualize them when viewing the DOE.
+
+* TODO Don't use build.rs
+  :PROPERTIES:
+  :CREATED:  2026-08-09 Sun 00:18
+  :END:
+
+  - Pull the bindings generation into a separate crate somewhere in the repo, that is not built by
+    default. It should be built only if directly asked to build that crate.
+  - Generate the bindings using that binary crate once, for both Python and Rust, and commit them
+    into the repo. Rust bindings go directly into the src/bindings.rs instead of the OUT_DIR as they
+    do now.
+  - Add a test to the CI, that runs the bindings generator binary, and asserts the diff is empty.
+  - Might be a good idea to include a timestamp in the generated code. If I end up doing that, I
+    should account for that when checking the diff in CI.
+
 * TODO Test with custom types
   :PROPERTIES:
   :CREATED:  2026-08-08 Sat 08:50
@@ -163,75 +191,56 @@
   :CREATED:  2026-08-08 Sat 08:50
   :END:
 
-* TODO Python bindings
+* DONE tjgdan - Python bindings
+  CLOSED: [2026-08-09 Sun 00:22]
   :PROPERTIES:
   :CREATED:  2026-08-08 Sat 08:50
   :END:
-
-* DONE tjewz9 - A LISP like syntax with multiple outputs?
-  CLOSED: [2026-08-07 Fri 23:56]
-  :PROPERTIES:
-  :CREATED:  2026-08-04 Tue 08:37
-  :END:
   :LOGBOOK:
-  - State "DONE"       from "DONE"       [2026-08-07 Fri 23:56]
-  - State "DONE"       from "NEXT"       [2026-08-07 Fri 23:56]
-  - State "NEXT"       from "TODO"       [2026-08-07 Fri 14:34]
+  - State "DONE"       from "NEXT"       [2026-08-09 Sun 00:22]
+  - State "NEXT"       from "TODO"       [2026-08-08 Sat 09:25]
   :END:
 
-  Something that allows for multiple named inputs and outputs. When a block has just one output,
-  they can be nested as you normally do in LISP.
+  Ideally, this solution won't be tied to one specific version of Python, and only uses things that
+  are built in to Python, and works with shared libraries that are built by third parties, as long
+  as they conform to the ABI.
 
-  <2026-08-07 Fri 14:33> Having this will make it easy to really test functions in various
-  combinations, type system edge cases etc. So doing this task before making more progress with the
-  SDK, functions, and types.
+  - [X] Figure out the basics of calling a DLL function from Python.
+  - [X] Load a plugin into Python, convert strings, and metadata.
+  - [X] Call plugin functions from Python and display the results.
 
-  <2026-08-07 Fri 22:46> In the long run this might end up as a plaint text format to save DAGs. For
-  now, I just need something that lets me easily compose, run and test DAGs. So I went with a
-  ~eiche~ style declarative macro in Rust.
+  <2026-08-08 Sat 22:40> Got this all to work. Also implemented conversion between decks and Python
+  nested lists. Also added tests for all the loaded plugin functions.
 
-  - [ ] Get rid of the vec allocations in the kbb_dag macro.
+  <2026-08-08 Sat 23:27> Found a memory leak when running the example. Debugging it now.
 
-  <2026-08-07 Fri 23:27> Added tests for the macro, and got all the tests passing by using a global
-  atomic to assign the handle ids.
+  - [X] All unit tests should assert that none of the memory is leaked.
 
-  - [X] The macro should return an error instead of doing unwrap / expect internally.
+  <2026-08-08 Sat 23:36> It was not a leak. That was just the space reserved inside Rust plugin's
+  global registry. That will be reclaimed when the process dies.
 
-  <2026-08-07 Fri 23:55> Getting ready to merge, trying to get the tests passing on Windows. CMake
-  output path related issues cause the DLLs to be not found by the test binaries. But now that is
-  fixed.
+  <2026-08-09 Sun 00:21> Works well. The helper module will grow as I use it and test it more. This
+  is more than enough for a proof of concept. Ready to merge.
 
-* DONE tjd838 - Improve Function Metadata
-  CLOSED: [2026-08-07 Fri 14:25]
-  :PROPERTIES:
-  :CREATED:  2026-08-02 Sun 19:14
-  :END:
-  :LOGBOOK:
-  - State "DONE"       from "NEXT"       [2026-08-07 Fri 14:25]
-  - State "NEXT"       from "TODO"       [2026-08-07 Fri 09:14]
-  :END:
+** CLOSED Alternative Plan to Generate Python Bindings with syn crate
+   CLOSED: [2026-08-09 Sun 00:17]
+   :PROPERTIES:
+   :CREATED:  2026-08-08 Sat 15:31
+   :END:
+   :LOGBOOK:
+   - State "CLOSED"     from              [2026-08-09 Sun 00:17]
+   :END:
 
-  We want the function metadata to also contain information about how many inputs and outputs the
-  function has, and what types. All of this has to be optional, and functions may choose to be
-  wildly variadic and type agnostic. The metatdata should allow the functions to express that
-  somehow.
-
-  <2026-08-07 Fri 14:24> Was easy enough to do. Not much I can test right now. Just need to make
-  sure this works as expected as more things take shape and I am able to test more things.
-
-* DONE tjbrtc - Implement Container Op Blocks in C
-  CLOSED: [2026-08-06 Thu 16:40]
-  :PROPERTIES:
-  :CREATED:  2026-08-03 Mon 18:22
-  :END:
-  :LOGBOOK:
-  - State "DONE"       from "NEXT"       [2026-08-06 Thu 16:40]
-  - State "NEXT"       from "TODO"       [2026-08-05 Wed 21:51]
-  :END:
-
-  To test all the variations of this across plugin boundaries, I might need to add some custom
-  datatypes in a Rust plugin.
-
-  <2026-08-06 Thu 16:39> This is working for basic primitive types, that don't require deferring the
-  deck construction to the host. I just have one container op function at this time, but I want to
-  wait till the ABI is more stable before I add more functions.
+   1. Add syn to [build-dependencies] in rust/orc_sdk/Cargo.toml — for parsing bindgen's Rust output
+   2. In build.rs, after bindgen generates bindings:
+      - Get the output as a string via bindings.to_string()
+      - Parse it with syn::parse_file()
+      - Walk the AST and emit Python ctypes code for:
+     - pub const NAME: u64 = 0x12 → NAME = 0x12
+     - #[repr(C)] pub struct Foo { ... } → class Foo(ctypes.Structure): _fields_ = [...]
+     - pub type Name = u64 → Name = ctypes.c_uint64
+     - Option<unsafe extern "C" fn(...)> fields → ctypes.CFUNCTYPE(...)
+      - Handle forward declarations (e.g. OrcHandle used in OrcDeckFreeFn before its struct
+        definition) — emit class OrcHandle(ctypes.Structure): pass first, set _fields_ later
+   3. Write output to ../../python/bindings.py
+   4. Add python/bindings.py to .gitignore — it's generated, not checked in

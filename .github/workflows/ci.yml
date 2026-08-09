@@ -21,22 +21,20 @@ jobs:
       - name: Build C (Debug)
         run: cmake -S c/ -B build/debug -DCMAKE_BUILD_TYPE=Debug && cmake --build build/debug
       - name: Run C tests
-        run: ctest --test-dir build/debug --output-on-failure
+        run: build/debug/orc_sdk_tests && build/debug/deck_ops_plugin_tests
       - name: Build Rust
-        working-directory: rust
         run: cargo build --verbose --all-targets --all-features
       - name: Check Rust formatting
-        working-directory: rust
         run: cargo fmt --all -- --check
       - name: Run Rust Clippy
-        working-directory: rust
         run: cargo clippy --all-targets --all-features -- -D warnings
       - name: Run Rust tests
-        working-directory: rust
         run: cargo test --all-features --verbose
       - name: Generate Rust docs
-        working-directory: rust
         run: cargo doc --all-features --no-deps
+      - name: Run Python tests
+        working-directory: python
+        run: python3 test.py
 
   windows:
     runs-on: windows-latest
@@ -47,22 +45,20 @@ jobs:
       - name: Build C (Debug)
         run: cmake -S c/ -B build/debug -DCMAKE_BUILD_TYPE=Debug && cmake --build build/debug --config Debug
       - name: Run C tests
-        run: ctest --test-dir build/debug -C Debug --output-on-failure
+        run: build/debug/orc_sdk_tests.exe && build/debug/deck_ops_plugin_tests.exe
       - name: Build Rust
-        working-directory: rust
         run: cargo build --verbose --all-targets --all-features
       - name: Check Rust formatting
-        working-directory: rust
         run: cargo fmt --all -- --check
       - name: Run Rust Clippy
-        working-directory: rust
         run: cargo clippy --all-targets --all-features -- -D warnings
       - name: Run Rust tests
-        working-directory: rust
         run: cargo test --all-features --verbose
       - name: Generate Rust docs
-        working-directory: rust
         run: cargo doc --all-features --no-deps
+      - name: Run Python tests
+        working-directory: python
+        run: python3 test.py
 
   macos:
     runs-on: macos-latest
@@ -73,19 +69,17 @@ jobs:
       - name: Build C (Debug)
         run: cmake -B build/debug -S c -DCMAKE_BUILD_TYPE=Debug && cmake --build build/debug
       - name: Run C tests
-        run: ctest --test-dir build/debug --output-on-failure
+        run: build/debug/orc_sdk_tests && build/debug/deck_ops_plugin_tests
       - name: Build Rust
-        working-directory: rust
         run: cargo build --verbose --all-targets --all-features
       - name: Check Rust formatting
-        working-directory: rust
         run: cargo fmt --all -- --check
       - name: Run Rust Clippy
-        working-directory: rust
         run: cargo clippy --all-targets --all-features -- -D warnings
       - name: Run Rust tests
-        working-directory: rust
         run: cargo test --all-features --verbose
       - name: Generate Rust docs
-        working-directory: rust
         run: cargo doc --all-features --no-deps
+      - name: Run Python tests
+        working-directory: python
+        run: python3 test.py
