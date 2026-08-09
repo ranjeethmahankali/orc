@@ -52,25 +52,146 @@ def next_handle_id():
     return hid
 
 
-def make_f64_handle(values):
-    """Create an OrcHandle backed by a flat f64 array."""
-    n = len(values)
-    arr = (ctypes.c_double * n)(*values)
+ORC_CTYPE_MAP = {
+    ORC_TYPE_U8: ctypes.c_uint8,
+    ORC_TYPE_U16: ctypes.c_uint16,
+    ORC_TYPE_U32: ctypes.c_uint32,
+    ORC_TYPE_U64: ctypes.c_uint64,
+    ORC_TYPE_I8: ctypes.c_int8,
+    ORC_TYPE_I16: ctypes.c_int16,
+    ORC_TYPE_I32: ctypes.c_int32,
+    ORC_TYPE_I64: ctypes.c_int64,
+    ORC_TYPE_F32: ctypes.c_float,
+    ORC_TYPE_F64: ctypes.c_double,
+}
+
+
+def _detect_type(values):
+    """Detect the narrowest ORC type that fits all values."""
+    has_float = any(isinstance(v, float) for v in values)
+    if has_float:
+        return ORC_TYPE_F64
+    # All ints. Check sign and range.
+    lo = min(values)
+    hi = max(values)
+    if lo >= 0:
+        if hi <= 0xFF:
+            return ORC_TYPE_U8
+        if hi <= 0xFFFF:
+            return ORC_TYPE_U16
+        if hi <= 0xFFFFFFFF:
+            return ORC_TYPE_U32
+        return ORC_TYPE_U64
+    else:
+        if lo >= -0x80 and hi <= 0x7F:
+            return ORC_TYPE_I8
+        if lo >= -0x8000 and hi <= 0x7FFF:
+            return ORC_TYPE_I16
+        if lo >= -0x80000000 and hi <= 0x7FFFFFFF:
+            return ORC_TYPE_I32
+        return ORC_TYPE_I64
+
+
+def _intrinsic_depth(data):
+    """Count nesting depth along the first element's path."""
+    if isinstance(data, list) and data and isinstance(data[0], list):
+        return 1 + _intrinsic_depth(data[0])
+    return 1
+
+
+def _push(items, marks, data, depth):
+    """Recursively flatten nested lists into items, emitting marks."""
+    if isinstance(data, list) and data and isinstance(data[0], list):
+        # List of lists: first sublist inherits depth, rest get intrinsic.
+        _push(items, marks, data[0], depth)
+        for sub in data[1:]:
+            _push(items, marks, sub, _intrinsic_depth(sub))
+    elif isinstance(data, list):
+        # Flat list of leaf values.
+        for i, val in enumerate(data):
+            d = depth if i == 0 else 0
+            if d > 0:
+                marks.append(OrcMark(depth=d - 1, pos=len(items)))
+            items.append(val)
+    else:
+        if depth > 0:
+            marks.append(OrcMark(depth=depth - 1, pos=len(items)))
+        items.append(data)
+
+
+def _calc_strides(marks):
+    """Compute stride_offset and strides arrays from marks."""
+    stride_offset = []
+    acc = 0
+    for m in marks:
+        stride_offset.append(acc)
+        acc += m.depth
+    total = (stride_offset[-1] + marks[-1].depth) if marks else 0
+    strides = [0xFFFFFFFFFFFFFFFF] * total
+    pegs = []
+    for i, m in enumerate(marks):
+        d = m.depth
+        while len(pegs) < d:
+            pegs.append(0)
+        for j in range(d):
+            peg = pegs[j]
+            if peg < i:
+                idx = stride_offset[peg] + j
+                strides[idx] = min(strides[idx], i - peg)
+            pegs[j] = i
+    return stride_offset, strides
+
+
+def make_handle(data):
+    """Create an OrcHandle from (possibly nested) lists, like deck![...].
+
+    Detects the element type automatically from the leaf values.
+    Supports flat lists, lists of lists, and deeper nesting.
+    """
+    items = []
+    marks = []
+    _push(items, marks, data, _intrinsic_depth(data))
+
+    type_id = _detect_type(items)
+    ctype = ORC_CTYPE_MAP[type_id]
+
+    arr = (ctype * len(items))(*items)
     h = OrcHandle()
     ctypes.memset(ctypes.addressof(h), 0, ctypes.sizeof(h))
     h.handle = next_handle_id()
     h.items = ctypes.cast(arr, ctypes.c_void_p)
-    h.n_items = n
-    h.item_size = ctypes.sizeof(ctypes.c_double)
-    h.type_id = ORC_TYPE_F64
-    # prevent GC
-    h._arr = arr
+    h.n_items = len(items)
+    h.item_size = ctypes.sizeof(ctype)
+    h.type_id = type_id
+    h._arr = arr  # prevent GC
+    if marks:
+        marks_arr = (OrcMark * len(marks))(*marks)
+        stride_offset, strides = _calc_strides(marks)
+        stride_offset_arr = (ctypes.c_uint64 *
+                             len(stride_offset))(*stride_offset)
+        stride_arr = (ctypes.c_uint64 *
+                      len(strides))(*strides) if strides else None
+        h.marks = ctypes.cast(marks_arr, ctypes.POINTER(OrcMark))
+        h.stride_offset = ctypes.cast(stride_offset_arr,
+                                      ctypes.POINTER(ctypes.c_uint64))
+        h.n_marks = len(marks)
+        if stride_arr:
+            h.strides = ctypes.cast(stride_arr,
+                                    ctypes.POINTER(ctypes.c_uint64))
+        # prevent GC
+        h._marks_arr = marks_arr
+        h._stride_offset_arr = stride_offset_arr
+        h._stride_arr = stride_arr
+
     return h
 
 
-def read_f64_handle(h):
-    """Read f64 values out of an OrcHandle."""
-    ptr = ctypes.cast(h.items, ctypes.POINTER(ctypes.c_double))
+def read_handle(h):
+    """Read values out of an OrcHandle."""
+    ctype = ORC_CTYPE_MAP.get(h.type_id)
+    if ctype is None:
+        raise ValueError(f"Unknown type_id: {h.type_id:#x}")
+    ptr = ctypes.cast(h.items, ctypes.POINTER(ctype))
     return [ptr[i] for i in range(h.n_items)]
 
 
@@ -181,8 +302,8 @@ def main():
     # Call 'add' on two f64 arrays
     add_fn = get_function(plugins, "add")
 
-    a = make_f64_handle([1.0, 2.0, 3.0])
-    b = make_f64_handle([10.0, 20.0, 30.0])
+    a = make_handle([1.0, 2.0, 3.0])
+    b = make_handle([10.0, 20.0, 30.0])
     inputs = (OrcHandle * 2)(a, b)
 
     out = OrcHandle()
@@ -191,7 +312,7 @@ def main():
 
     add_fn.func(0, inputs, 2, ctypes.byref(out), 1)
 
-    result = read_f64_handle(out)
+    result = read_handle(out)
     print(f"add([1, 2, 3], [10, 20, 30]) = {result}")
     assert result == [11.0, 22.0, 33.0], f"Unexpected: {result}"
     print("PASS")
