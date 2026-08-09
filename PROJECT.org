@@ -153,6 +153,20 @@
   <2026-07-31 Fri 20:45> Trying to temporarily stop on this task, and finish a few other smaller
   tasks before continuing.
 
+* TODO Demo with a simple optimization workflow with UI app
+  :PROPERTIES:
+  :CREATED:  2026-08-09 Sun 00:04
+  :END:
+
+  Just recording an idea for the demo. A UI app, where I can create a parametric curve such as a
+  quad with it's vertices on a circle. I then select a menu option in the UI app that copies the DAG
+  as Python code into my clipboard. I paste that into a Python file, that already contains a pure
+  Python black box optimizer. From that point on, I use pure Python to run the optimizer, generate
+  plots using matplotlib etc.
+
+  Maybe I can write a rasterizer for my curve types, and somehow get the optimizer to export images
+  of the sample points in the design space, so that I can visualize them when viewing the DOE.
+
 * TODO Test with custom types
   :PROPERTIES:
   :CREATED:  2026-08-08 Sat 08:50
