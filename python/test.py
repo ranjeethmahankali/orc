@@ -41,9 +41,9 @@ def _tracking_del(self):
 OrcHandle.__del__ = _tracking_del
 
 
-def make_handle(data):
+def make_handle(data, type_id=None):
     """Create a handle and register it for leak tracking."""
-    h = _make_handle(data)
+    h = _make_handle(data, type_id=type_id)
     _live_handles.add(h.handle)
     return h
 
@@ -283,6 +283,80 @@ def t_div_unsupported_type():
     [out] = call_fn("div", [a, b])
     assert not out.items
     assert not out.free_fn
+
+
+# ============================================================
+# repeat_list — Correctness
+# ============================================================
+
+
+def t_repeat_list_f64():
+    """Repeat a flat f64 list 3 times."""
+    a = make_handle([1.0, 2.0, 3.0])
+    count = make_handle([3], type_id=ORC_TYPE_U64)
+    [out] = call_fn("repeat_list", [a, count])
+    result = read_handle(out)
+    assert result == [1.0, 2.0, 3.0, 1.0, 2.0, 3.0, 1.0, 2.0, 3.0]
+
+
+def t_repeat_list_u8():
+    """Repeat a U8 list 2 times."""
+    a = make_handle([10, 20])
+    count = make_handle([2], type_id=ORC_TYPE_U64)
+    [out] = call_fn("repeat_list", [a, count])
+    assert read_handle(out) == [10, 20, 10, 20]
+
+
+def t_repeat_list_single_element():
+    """Repeat a single-element list 4 times."""
+    a = make_handle([42.0])
+    count = make_handle([4], type_id=ORC_TYPE_U64)
+    [out] = call_fn("repeat_list", [a, count])
+    assert read_handle(out) == [42.0, 42.0, 42.0, 42.0]
+
+
+def t_repeat_list_one_repeat():
+    """Repeating once returns the same items."""
+    a = make_handle([5.0, 6.0])
+    count = make_handle([1], type_id=ORC_TYPE_U64)
+    [out] = call_fn("repeat_list", [a, count])
+    assert read_handle(out) == [5.0, 6.0]
+
+
+def t_repeat_list_zero_repeats():
+    """Repeating zero times produces an empty output."""
+    a = make_handle([1.0, 2.0])
+    count = make_handle([0], type_id=ORC_TYPE_U64)
+    [out] = call_fn("repeat_list", [a, count])
+    assert read_handle(out) == []
+
+
+def t_repeat_list_output_type_matches_input():
+    """Output type matches the list input type."""
+    a = make_handle([100000, 200000])  # U32
+    assert a.type_id == ORC_TYPE_U32
+    count = make_handle([2], type_id=ORC_TYPE_U64)
+    [out] = call_fn("repeat_list", [a, count])
+    assert out.type_id == ORC_TYPE_U32
+    assert read_handle(out) == [100000, 200000, 100000, 200000]
+
+
+def t_repeat_list_output_free_fn_set():
+    """Plugin output has free_fn set."""
+    a = make_handle([1.0])
+    count = make_handle([1], type_id=ORC_TYPE_U64)
+    [out] = call_fn("repeat_list", [a, count])
+    assert out.free_fn
+
+
+def t_repeat_list_nested_input():
+    """Repeat each sublist of a nested input."""
+    a = make_handle([[1.0, 2.0], [3.0]])
+    count = make_handle([2], type_id=ORC_TYPE_U64)
+    [out] = call_fn("repeat_list", [a, count])
+    result = read_handle(out)
+    # Each sublist repeated: [1,2,1,2] and [3,3]
+    assert result == [[1.0, 2.0, 1.0, 2.0], [3.0, 3.0]]
 
 
 # ============================================================

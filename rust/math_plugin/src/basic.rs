@@ -574,4 +574,141 @@ mod tests {
         assert!(inputs[0].free_fn.is_none());
         assert!(inputs[1].free_fn.is_none());
     }
+
+    // ==================== repeat_list ====================
+
+    #[test]
+    fn t_repeat_list_f64_basic() {
+        let list: Deck<f64> = orc_sdk::deck![1.0, 2.0, 3.0];
+        let count: Deck<u64> = orc_sdk::deck![3u64];
+        let mut out = out_handle();
+        let inputs = [view(&list), view(&count)];
+        unsafe { repeat_list(0, inputs.as_ptr(), 2, &mut out, 1) };
+        let dv = DeckView::<f64>::from_handle(&out).unwrap();
+        assert_eq!(dv.items(), &[1.0, 2.0, 3.0, 1.0, 2.0, 3.0, 1.0, 2.0, 3.0]);
+    }
+
+    #[test]
+    fn t_repeat_list_u8() {
+        let list: Deck<u8> = orc_sdk::deck![10u8, 20];
+        let count: Deck<u64> = orc_sdk::deck![2u64];
+        let mut out = out_handle();
+        let inputs = [view(&list), view(&count)];
+        unsafe { repeat_list(0, inputs.as_ptr(), 2, &mut out, 1) };
+        let dv = DeckView::<u8>::from_handle(&out).unwrap();
+        assert_eq!(dv.items(), &[10u8, 20, 10, 20]);
+    }
+
+    #[test]
+    fn t_repeat_list_i32() {
+        let list: Deck<i32> = orc_sdk::deck![-1i32, 0, 1];
+        let count: Deck<u64> = orc_sdk::deck![2u64];
+        let mut out = out_handle();
+        let inputs = [view(&list), view(&count)];
+        unsafe { repeat_list(0, inputs.as_ptr(), 2, &mut out, 1) };
+        let dv = DeckView::<i32>::from_handle(&out).unwrap();
+        assert_eq!(dv.items(), &[-1i32, 0, 1, -1, 0, 1]);
+    }
+
+    #[test]
+    fn t_repeat_list_single_element() {
+        let list: Deck<f64> = orc_sdk::deck![42.0];
+        let count: Deck<u64> = orc_sdk::deck![4u64];
+        let mut out = out_handle();
+        let inputs = [view(&list), view(&count)];
+        unsafe { repeat_list(0, inputs.as_ptr(), 2, &mut out, 1) };
+        let dv = DeckView::<f64>::from_handle(&out).unwrap();
+        assert_eq!(dv.items(), &[42.0, 42.0, 42.0, 42.0]);
+    }
+
+    #[test]
+    fn t_repeat_list_zero_repeats() {
+        let list: Deck<f64> = orc_sdk::deck![1.0, 2.0];
+        let count: Deck<u64> = orc_sdk::deck![0u64];
+        let mut out = out_handle();
+        let inputs = [view(&list), view(&count)];
+        unsafe { repeat_list(0, inputs.as_ptr(), 2, &mut out, 1) };
+        let dv = DeckView::<f64>::from_handle(&out).unwrap();
+        assert_eq!(dv.items(), &[] as &[f64]);
+    }
+
+    #[test]
+    fn t_repeat_list_one_repeat() {
+        let list: Deck<f64> = orc_sdk::deck![5.0, 6.0];
+        let count: Deck<u64> = orc_sdk::deck![1u64];
+        let mut out = out_handle();
+        let inputs = [view(&list), view(&count)];
+        unsafe { repeat_list(0, inputs.as_ptr(), 2, &mut out, 1) };
+        let dv = DeckView::<f64>::from_handle(&out).unwrap();
+        assert_eq!(dv.items(), &[5.0, 6.0]);
+    }
+
+    #[test]
+    fn t_repeat_list_output_has_marks() {
+        // OUTPUT_DEPTHS = [1], so the output should be a list (depth 1).
+        let list: Deck<f64> = orc_sdk::deck![1.0, 2.0];
+        let count: Deck<u64> = orc_sdk::deck![2u64];
+        let mut out = out_handle();
+        let inputs = [view(&list), view(&count)];
+        unsafe { repeat_list(0, inputs.as_ptr(), 2, &mut out, 1) };
+        assert!(out.n_marks > 0);
+        assert!(!out.marks.is_null());
+    }
+
+    #[test]
+    fn t_repeat_list_output_free_fn_set() {
+        let list: Deck<f64> = orc_sdk::deck![1.0];
+        let count: Deck<u64> = orc_sdk::deck![1u64];
+        let mut out = out_handle();
+        let inputs = [view(&list), view(&count)];
+        unsafe { repeat_list(0, inputs.as_ptr(), 2, &mut out, 1) };
+        assert!(out.free_fn.is_some());
+    }
+
+    #[test]
+    fn t_repeat_list_output_handle_id_preserved() {
+        let list: Deck<f64> = orc_sdk::deck![1.0];
+        let count: Deck<u64> = orc_sdk::deck![1u64];
+        let mut out = out_handle();
+        let expected_id = out.handle;
+        let inputs = [view(&list), view(&count)];
+        unsafe { repeat_list(0, inputs.as_ptr(), 2, &mut out, 1) };
+        assert_eq!(out.handle, expected_id);
+    }
+
+    #[test]
+    fn t_repeat_list_output_type_matches_input() {
+        let list: Deck<u32> = orc_sdk::deck![7u32];
+        let count: Deck<u64> = orc_sdk::deck![2u64];
+        let mut out = out_handle();
+        let inputs = [view(&list), view(&count)];
+        unsafe { repeat_list(0, inputs.as_ptr(), 2, &mut out, 1) };
+        assert_eq!(out.type_id, u32::TYPE_INFO.type_id);
+        let dv = DeckView::<u32>::from_handle(&out).unwrap();
+        assert_eq!(dv.items(), &[7u32, 7]);
+    }
+
+    #[test]
+    fn t_repeat_list_wrong_n_inputs() {
+        let list: Deck<f64> = orc_sdk::deck![1.0];
+        let mut out = out_handle();
+        let inputs = [view(&list)]; // 1 instead of 2
+        unsafe { repeat_list(0, inputs.as_ptr(), 1, &mut out, 1) };
+        assert!(out.free_fn.is_none());
+        assert!(out.items.is_null());
+    }
+
+    #[test]
+    fn t_repeat_list_nested_input() {
+        // Input is [[1.0, 2.0], [3.0]] with repeat count 2.
+        // The combinations iterate over each sublist, repeating each.
+        let list: Deck<f64> = orc_sdk::deck![[1.0, 2.0], [3.0]];
+        let count: Deck<u64> = orc_sdk::deck![2u64];
+        let mut out = out_handle();
+        let inputs = [view(&list), view(&count)];
+        unsafe { repeat_list(0, inputs.as_ptr(), 2, &mut out, 1) };
+        let dv = DeckView::<f64>::from_handle(&out).unwrap();
+        // Each sublist repeated: [1,2,1,2] and [3,3]
+        assert_eq!(dv.items(), &[1.0, 2.0, 1.0, 2.0, 3.0, 3.0]);
+    }
 }
