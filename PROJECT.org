@@ -153,6 +153,21 @@
   <2026-07-31 Fri 20:45> Trying to temporarily stop on this task, and finish a few other smaller
   tasks before continuing.
 
+* TODO Demo with a server host application
+  :PROPERTIES:
+  :CREATED:  2026-08-09 Sun 00:49
+  :END:
+
+  I could have a running server that is running in the background with all the plugins
+  loaded. Sending requests to that server can be a way to run plugin functions, and run workflows.
+
+  - [ ] Send requests via shell to run a workflow.
+  - [ ] Put said workflow in a shell script.
+  - [ ] Choose a workflow that is expensive enough, and has enough parallelism, and demonstrate
+    running a parallelized workflow via a Makefile, with the ~-j N~ option.
+  - [ ] Send requests from a browser application to run a workflow. Maybe reuse the old
+    'HopperOfGrass' UI prototype?
+
 * TODO Demo with a simple optimization workflow with UI app
   :PROPERTIES:
   :CREATED:  2026-08-09 Sun 00:04
@@ -190,6 +205,16 @@
   :PROPERTIES:
   :CREATED:  2026-08-08 Sat 08:50
   :END:
+
+* TODO Numpy integration with zero overhead
+  :PROPERTIES:
+  :CREATED:  2026-08-09 Sun 00:47
+  :END:
+
+  Just a curiosity that came up when speaking to Jonathan. He was using some complicated library
+  setup with a complicated CMake setup with a weird build target to get it working. I reckon I can
+  do this in a much simpler way with no additional dependencies and no additional moving parts,
+  build system etc.
 
 * DONE tjgdan - Python bindings
   CLOSED: [2026-08-09 Sun 00:22]
