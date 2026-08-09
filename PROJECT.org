@@ -167,6 +167,20 @@
   Maybe I can write a rasterizer for my curve types, and somehow get the optimizer to export images
   of the sample points in the design space, so that I can visualize them when viewing the DOE.
 
+* TODO Don't use build.rs
+  :PROPERTIES:
+  :CREATED:  2026-08-09 Sun 00:18
+  :END:
+
+  - Pull the bindings generation into a separate crate somewhere in the repo, that is not built by
+    default. It should be built only if directly asked to build that crate.
+  - Generate the bindings using that binary crate once, for both Python and Rust, and commit them
+    into the repo. Rust bindings go directly into the src/bindings.rs instead of the OUT_DIR as they
+    do now.
+  - Add a test to the CI, that runs the bindings generator binary, and asserts the diff is empty.
+  - Might be a good idea to include a timestamp in the generated code. If I end up doing that, I
+    should account for that when checking the diff in CI.
+
 * TODO Test with custom types
   :PROPERTIES:
   :CREATED:  2026-08-08 Sat 08:50
@@ -203,9 +217,13 @@
   <2026-08-08 Sat 23:36> It was not a leak. That was just the space reserved inside Rust plugin's
   global registry. That will be reclaimed when the process dies.
 
-** Alternative Plan to Generate Python Bindings with syn crate
+** CLOSED Alternative Plan to Generate Python Bindings with syn crate
+   CLOSED: [2026-08-09 Sun 00:17]
    :PROPERTIES:
    :CREATED:  2026-08-08 Sat 15:31
+   :END:
+   :LOGBOOK:
+   - State "CLOSED"     from              [2026-08-09 Sun 00:17]
    :END:
 
    1. Add syn to [build-dependencies] in rust/orc_sdk/Cargo.toml — for parsing bindgen's Rust output
