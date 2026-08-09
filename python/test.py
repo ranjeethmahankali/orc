@@ -16,17 +16,12 @@ from orc import (
     ORC_TYPE_U32,
     ORC_TYPE_U64,
     OrcHandle,
-    OrcHost,
-    ORC_ABI_VERSION,
-    ORC_ERROR_NONE,
+    default_host,
     get_function,
-    host_alloc,
-    host_dealloc,
     load_plugins,
     make_handle,
     next_handle_id,
     read_handle,
-    report_message,
 )
 
 # ---------------------------------------------------------------------------
@@ -37,11 +32,7 @@ script_dir = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.dirname(script_dir)
 search_dir = os.path.join(project_root, "build", "debug")
 
-host = OrcHost()
-host.abi_version = ORC_ABI_VERSION
-host.memory_api.alloc = host_alloc
-host.memory_api.dealloc = host_dealloc
-host.callbacks.report_message = report_message
+host = default_host()
 
 plugins = load_plugins(search_dir, host)
 if not plugins:

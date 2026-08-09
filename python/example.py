@@ -5,7 +5,11 @@ Minimal Python host that loads a plugin shared library via ctypes
 and calls a function (e.g. 'add') on two f64 decks.
 """
 
-from orc import *
+import os
+import sys
+import ctypes
+from orc import (default_host, load_plugins, get_function, make_handle,
+                 next_handle_id, OrcHandle, read_handle)
 
 # ---------------------------------------------------------------------------
 # Main
@@ -13,17 +17,11 @@ from orc import *
 
 
 def main():
+    """Run example script that uses orc plugins."""
     script_dir = os.path.dirname(os.path.abspath(__file__))
     project_root = os.path.dirname(script_dir)
     search_dir = os.path.join(project_root, "build", "debug")
-
-    # Build the host
-    host = OrcHost()
-    host.abi_version = ORC_ABI_VERSION
-    host.memory_api.alloc = host_alloc
-    host.memory_api.dealloc = host_dealloc
-    host.callbacks.report_message = report_message
-
+    host = default_host()
     # Load all plugins from the search directory
     print(f"Searching for plugins in: {search_dir}")
     plugins = load_plugins(search_dir, host)

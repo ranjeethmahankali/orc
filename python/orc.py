@@ -7,7 +7,8 @@ from bindings import (OrcDeckFreeFn, OrcHandle, OrcAllocFn, OrcDeallocFn,
                       OrcReportMessageFn, ORC_TYPE_U8, ORC_TYPE_U16,
                       ORC_TYPE_U32, ORC_TYPE_U64, ORC_TYPE_I8, ORC_TYPE_I16,
                       ORC_TYPE_I32, ORC_TYPE_I64, ORC_TYPE_F32, ORC_TYPE_F64,
-                      OrcMark, OrcHost, OrcPlugin, OrcError, ORC_ERROR_NONE)
+                      OrcMark, OrcHost, OrcPlugin, OrcError, ORC_ERROR_NONE,
+                      ORC_ABI_VERSION)
 
 
 def _handle_del(self):
@@ -46,6 +47,16 @@ def report_message(ctx, level, msg):
     level_names = {1: "DEBUG", 2: "INFO", 3: "WARN", 4: "ERROR", 5: "FATAL"}
     text = msg.decode("utf-8", errors="replace") if msg else ""
     print(f"[{level_names.get(level, 'UNKNOWN')}][{ctx}] {text}")
+
+
+def default_host():
+    """Create an OrcHost with default memory and message callbacks."""
+    host = OrcHost()
+    host.abi_version = ORC_ABI_VERSION
+    host.memory_api.alloc = host_alloc
+    host.memory_api.dealloc = host_dealloc
+    host.callbacks.report_message = report_message
+    return host
 
 
 # ---------------------------------------------------------------------------
