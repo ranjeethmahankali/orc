@@ -1,8 +1,22 @@
+"""Helpers for working with orc plugins."""
+
 import ctypes
 import os
 import platform
-import sys
-from bindings import *
+from bindings import (OrcDeckFreeFn, OrcHandle, OrcAllocFn, OrcDeallocFn,
+                      OrcReportMessageFn, ORC_TYPE_U8, ORC_TYPE_U16,
+                      ORC_TYPE_U32, ORC_TYPE_U64, ORC_TYPE_I8, ORC_TYPE_I16,
+                      ORC_TYPE_I32, ORC_TYPE_I64, ORC_TYPE_F32, ORC_TYPE_F64,
+                      OrcMark, OrcHost, OrcPlugin, OrcError, ORC_ERROR_NONE)
+
+
+def _handle_del(self):
+    if self.free_fn:
+        self.free_fn(ctypes.byref(self))
+        self.free_fn = OrcDeckFreeFn(0)  # Set the destructor to null pointer.
+
+
+OrcHandle.__del__ = _handle_del
 
 # ---------------------------------------------------------------------------
 # Host callback implementations
@@ -233,7 +247,7 @@ def _shared_lib_ext():
 
 
 def _is_plugin(path):
-    """Return True if the shared library exports all required plugin symbols."""
+    """Return True if the plugin exports all required symbols."""
     try:
         lib = ctypes.CDLL(path)
     except OSError:

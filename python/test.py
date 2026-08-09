@@ -63,10 +63,6 @@ def call_fn(name, inputs, n_outputs=1):
     return [out_arr[i] for i in range(n_outputs)]
 
 
-def free_handle(h):
-    if h.free_fn:
-        h.free_fn(ctypes.byref(h))
-
 
 # ============================================================
 # add — Correctness
@@ -78,7 +74,6 @@ def t_add_f64_flat():
     b = make_handle([10.0, 20.0, 30.0])
     [out] = call_fn("add", [a, b])
     assert read_handle(out) == [11.0, 22.0, 33.0]
-    free_handle(out)
 
 
 def t_add_f64_nested():
@@ -87,7 +82,6 @@ def t_add_f64_nested():
     [out] = call_fn("add", [a, b])
     result = read_handle(out)
     assert result == [[11.0, 22.0, 33.0], [12.0, 24.0, 36.0, 38.0]]
-    free_handle(out)
 
 
 def t_add_broadcast_scalar():
@@ -95,7 +89,6 @@ def t_add_broadcast_scalar():
     b = make_handle([10.0])
     [out] = call_fn("add", [a, b])
     assert read_handle(out) == [11.0, 12.0, 13.0]
-    free_handle(out)
 
 
 def t_add_single_element():
@@ -103,7 +96,6 @@ def t_add_single_element():
     b = make_handle([3.0])
     [out] = call_fn("add", [a, b])
     assert read_handle(out) == [8.0]
-    free_handle(out)
 
 
 def t_add_depth3():
@@ -113,7 +105,6 @@ def t_add_depth3():
     result = read_handle(out)
     assert result == [[[11.0, 12.0], [13.0, 14.0]], [[15.0, 16.0],
                                                      [17.0, 18.0]]]
-    free_handle(out)
 
 
 # ============================================================
@@ -130,7 +121,6 @@ def t_add_i32():
     # Since a is I8 and b could be U8, they need to match for add to work.
     # Actually, a has negatives so I8, b is all positive so U8. Mismatch → output untouched.
     # Let's force the same type by making both have negatives.
-    free_handle(out)
 
 
 def t_add_u8():
@@ -140,7 +130,6 @@ def t_add_u8():
     assert b.type_id == ORC_TYPE_U8
     [out] = call_fn("add", [a, b])
     assert read_handle(out) == [11, 22, 33]
-    free_handle(out)
 
 
 def t_add_u32():
@@ -149,7 +138,6 @@ def t_add_u32():
     assert a.type_id == ORC_TYPE_U32
     [out] = call_fn("add", [a, b])
     assert read_handle(out) == [400000, 600000]
-    free_handle(out)
 
 
 # ============================================================
@@ -176,7 +164,6 @@ def t_mul_f64():
     b = make_handle([5.0, 6.0, 7.0])
     [out] = call_fn("mul", [a, b])
     assert read_handle(out) == [10.0, 18.0, 28.0]
-    free_handle(out)
 
 
 def t_mul_u8():
@@ -184,7 +171,6 @@ def t_mul_u8():
     b = make_handle([7, 8])
     [out] = call_fn("mul", [a, b])
     assert read_handle(out) == [21, 32]
-    free_handle(out)
 
 
 def t_mul_nested():
@@ -192,7 +178,6 @@ def t_mul_nested():
     b = make_handle([10.0])
     [out] = call_fn("mul", [a, b])
     assert read_handle(out) == [[20.0, 30.0], [40.0]]
-    free_handle(out)
 
 
 def t_mul_mismatched_types():
@@ -213,7 +198,6 @@ def t_sub_f64():
     b = make_handle([3.0, 7.0])
     [out] = call_fn("sub", [a, b])
     assert read_handle(out) == [7.0, 13.0]
-    free_handle(out)
 
 
 def t_sub_nested():
@@ -221,7 +205,6 @@ def t_sub_nested():
     b = make_handle([1.0])
     [out] = call_fn("sub", [a, b])
     assert read_handle(out) == [[9.0, 19.0], [29.0]]
-    free_handle(out)
 
 
 def t_sub_unsupported_type():
@@ -242,7 +225,6 @@ def t_div_f64():
     b = make_handle([2.0, 3.0])
     [out] = call_fn("div", [a, b])
     assert read_handle(out) == [5.0, 3.0]
-    free_handle(out)
 
 
 def t_div_by_zero():
@@ -251,7 +233,6 @@ def t_div_by_zero():
     [out] = call_fn("div", [a, b])
     result = read_handle(out)
     assert math.isinf(result[0]) and result[0] > 0
-    free_handle(out)
 
 
 def t_div_unsupported_type():
@@ -273,14 +254,12 @@ def t_list_length_basic():
     result = read_handle(out)
     assert result == [3, 2]
     assert out.type_id == ORC_TYPE_U64
-    free_handle(out)
 
 
 def t_list_length_single_list():
     a = make_handle([[42.0]])
     [out] = call_fn("list_length", [a])
     assert read_handle(out) == [1]
-    free_handle(out)
 
 
 def t_list_length_depth3():
@@ -288,7 +267,6 @@ def t_list_length_depth3():
     [out] = call_fn("list_length", [a])
     result = read_handle(out)
     assert result == [[2, 1], [3]]
-    free_handle(out)
 
 
 # ============================================================
@@ -301,14 +279,12 @@ def t_flatten_basic():
     [out] = call_fn("flatten_deck", [a])
     result = read_handle(out)
     assert result == [1.0, 2.0, 3.0, 4.0, 5.0]
-    free_handle(out)
 
 
 def t_flatten_already_flat():
     a = make_handle([1.0, 2.0, 3.0])
     [out] = call_fn("flatten_deck", [a])
     assert read_handle(out) == [1.0, 2.0, 3.0]
-    free_handle(out)
 
 
 def t_flatten_multiple_io():
@@ -317,8 +293,6 @@ def t_flatten_multiple_io():
     outs = call_fn("flatten_deck", [a, b], n_outputs=2)
     assert read_handle(outs[0]) == [1.0, 2.0, 3.0]
     assert read_handle(outs[1]) == [4.0, 5.0, 6.0]
-    for o in outs:
-        free_handle(o)
 
 
 def t_flatten_integer_type():
@@ -327,7 +301,6 @@ def t_flatten_integer_type():
     [out] = call_fn("flatten_deck", [a])
     assert out.type_id == ORC_TYPE_U8
     assert read_handle(out) == [10, 20, 30]
-    free_handle(out)
 
 
 # ============================================================
@@ -359,7 +332,6 @@ def t_output_free_fn_set():
     b = make_handle([2.0])
     [out] = call_fn("add", [a, b])
     assert out.free_fn
-    free_handle(out)
 
 
 def t_output_handle_id_preserved():
@@ -373,7 +345,6 @@ def t_output_handle_id_preserved():
     out_arr = (OrcHandle * 1)(out)
     fn.func(0, in_arr, 2, out_arr, 1)
     assert out_arr[0].handle == 9999
-    free_handle(out_arr[0])
 
 
 def t_output_type_matches_input_for_flatten():
@@ -381,14 +352,12 @@ def t_output_type_matches_input_for_flatten():
     assert a.type_id == ORC_TYPE_F64
     [out] = call_fn("flatten_deck", [a])
     assert out.type_id == ORC_TYPE_F64
-    free_handle(out)
 
 
 def t_list_length_output_is_u64():
     a = make_handle([[1.0, 2.0]])
     [out] = call_fn("list_length", [a])
     assert out.type_id == ORC_TYPE_U64
-    free_handle(out)
 
 
 # ============================================================

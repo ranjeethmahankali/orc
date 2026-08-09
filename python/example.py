@@ -57,10 +57,6 @@ def main():
     assert result == [[11, 22, 33], [12, 24, 36, 38]], f"Unexpected: {result}"
     print("PASS")
 
-    # Free output via its free_fn if set
-    if out.free_fn:
-        out.free_fn(ctypes.byref(out))
-
 
 if __name__ == "__main__":
     main()
