@@ -566,3 +566,83 @@ Archived entries from file /home/rnjth94/dev/orc/PROJECT.org
     - ~add_clears_previous_data~ — calling ~add~ twice on the same output slot produces only the
       results of the second call; the deck is cleared and rewritten, not appended to
 
+
+* DONE tjbrtc - Implement Container Op Blocks in C
+  CLOSED: [2026-08-06 Thu 16:40]
+  :PROPERTIES:
+  :CREATED:  2026-08-03 Mon 18:22
+  :ARCHIVE_TIME: 2026-08-09 Sun 00:20
+  :ARCHIVE_FILE: ~/dev/orc/PROJECT.org
+  :ARCHIVE_CATEGORY: PROJECT
+  :ARCHIVE_TODO: DONE
+  :END:
+  :LOGBOOK:
+  - State "DONE"       from "NEXT"       [2026-08-06 Thu 16:40]
+  - State "NEXT"       from "TODO"       [2026-08-05 Wed 21:51]
+  :END:
+
+  To test all the variations of this across plugin boundaries, I might need to add some custom
+  datatypes in a Rust plugin.
+
+  <2026-08-06 Thu 16:39> This is working for basic primitive types, that don't require deferring the
+  deck construction to the host. I just have one container op function at this time, but I want to
+  wait till the ABI is more stable before I add more functions.
+
+* DONE tjd838 - Improve Function Metadata
+  CLOSED: [2026-08-07 Fri 14:25]
+  :PROPERTIES:
+  :CREATED:  2026-08-02 Sun 19:14
+  :ARCHIVE_TIME: 2026-08-09 Sun 00:20
+  :ARCHIVE_FILE: ~/dev/orc/PROJECT.org
+  :ARCHIVE_CATEGORY: PROJECT
+  :ARCHIVE_TODO: DONE
+  :END:
+  :LOGBOOK:
+  - State "DONE"       from "NEXT"       [2026-08-07 Fri 14:25]
+  - State "NEXT"       from "TODO"       [2026-08-07 Fri 09:14]
+  :END:
+
+  We want the function metadata to also contain information about how many inputs and outputs the
+  function has, and what types. All of this has to be optional, and functions may choose to be
+  wildly variadic and type agnostic. The metatdata should allow the functions to express that
+  somehow.
+
+  <2026-08-07 Fri 14:24> Was easy enough to do. Not much I can test right now. Just need to make
+  sure this works as expected as more things take shape and I am able to test more things.
+
+* DONE tjewz9 - A LISP like syntax with multiple outputs?
+  CLOSED: [2026-08-07 Fri 23:56]
+  :PROPERTIES:
+  :CREATED:  2026-08-04 Tue 08:37
+  :ARCHIVE_TIME: 2026-08-09 Sun 00:20
+  :ARCHIVE_FILE: ~/dev/orc/PROJECT.org
+  :ARCHIVE_CATEGORY: PROJECT
+  :ARCHIVE_TODO: DONE
+  :END:
+  :LOGBOOK:
+  - State "DONE"       from "DONE"       [2026-08-07 Fri 23:56]
+  - State "DONE"       from "NEXT"       [2026-08-07 Fri 23:56]
+  - State "NEXT"       from "TODO"       [2026-08-07 Fri 14:34]
+  :END:
+
+  Something that allows for multiple named inputs and outputs. When a block has just one output,
+  they can be nested as you normally do in LISP.
+
+  <2026-08-07 Fri 14:33> Having this will make it easy to really test functions in various
+  combinations, type system edge cases etc. So doing this task before making more progress with the
+  SDK, functions, and types.
+
+  <2026-08-07 Fri 22:46> In the long run this might end up as a plaint text format to save DAGs. For
+  now, I just need something that lets me easily compose, run and test DAGs. So I went with a
+  ~eiche~ style declarative macro in Rust.
+
+  - [ ] Get rid of the vec allocations in the kbb_dag macro.
+
+  <2026-08-07 Fri 23:27> Added tests for the macro, and got all the tests passing by using a global
+  atomic to assign the handle ids.
+
+  - [X] The macro should return an error instead of doing unwrap / expect internally.
+
+  <2026-08-07 Fri 23:55> Getting ready to merge, trying to get the tests passing on Windows. CMake
+  output path related issues cause the DLLs to be not found by the test binaries. But now that is
+  fixed.
