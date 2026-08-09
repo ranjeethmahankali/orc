@@ -175,9 +175,12 @@
   are built in to Python, and works with shared libraries that are built by third parties, as long
   as they conform to the ABI.
 
-  - [ ] Figure out the basics of calling a DLL function from Python.
-  - [ ] Load a plugin into Python, convert strings, and metadata.
-  - [ ] Call plugin functions from Python and display the results.
+  - [X] Figure out the basics of calling a DLL function from Python.
+  - [X] Load a plugin into Python, convert strings, and metadata.
+  - [X] Call plugin functions from Python and display the results.
+
+  <2026-08-08 Sat 22:40> Got this all to work. Also implemented conversion between decks and Python
+  nested lists. Also added tests for all the loaded plugin functions.
 
 ** Alternative Plan to Generate Python Bindings with syn crate
    :PROPERTIES:
