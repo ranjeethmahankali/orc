@@ -182,6 +182,13 @@
   <2026-08-08 Sat 22:40> Got this all to work. Also implemented conversion between decks and Python
   nested lists. Also added tests for all the loaded plugin functions.
 
+  <2026-08-08 Sat 23:27> Found a memory leak when running the example. Debugging it now.
+
+  - [ ] All unit tests should assert that none of the memory is leaked.
+
+  <2026-08-08 Sat 23:36> It was not a leak. That was just the space reserved inside Rust plugin's
+  global registry. That will be reclaimed when the process dies.
+
 ** Alternative Plan to Generate Python Bindings with syn crate
    :PROPERTIES:
    :CREATED:  2026-08-08 Sat 15:31
