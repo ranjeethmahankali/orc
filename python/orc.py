@@ -27,6 +27,7 @@ _alloc_registry = {}
 
 @OrcAllocFn
 def host_alloc(size, alignment):
+    """Allocate a buffer and keep it alive until host_dealloc is called."""
     buf = (ctypes.c_uint8 * size)()
     ptr = ctypes.addressof(buf)
     _alloc_registry[ptr] = buf
@@ -35,11 +36,13 @@ def host_alloc(size, alignment):
 
 @OrcDeallocFn
 def host_dealloc(ptr, size, alignment):
+    """Release a previously allocated buffer."""
     _alloc_registry.pop(ptr, None)
 
 
 @OrcReportMessageFn
 def report_message(ctx, level, msg):
+    """Print a plugin message to stdout with its severity level."""
     level_names = {1: "DEBUG", 2: "INFO", 3: "WARN", 4: "ERROR", 5: "FATAL"}
     text = msg.decode("utf-8", errors="replace") if msg else ""
     print(f"[{level_names.get(level, 'UNKNOWN')}][{ctx}] {text}")
@@ -53,6 +56,7 @@ _handle_counter = 0
 
 
 def next_handle_id():
+    """Return a monotonically increasing handle identifier."""
     global _handle_counter
     hid = _handle_counter
     _handle_counter += 1
