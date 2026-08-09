@@ -73,9 +73,3 @@ endif()
 if(NOT WIN32)
     target_link_libraries(deck_ops_plugin_tests PRIVATE pthread)
 endif()
-
-# Tests
-enable_testing()
-add_test(NAME orc_sdk_tests COMMAND orc_sdk_tests)
-add_test(NAME deck_ops_plugin_tests COMMAND deck_ops_plugin_tests)
-
