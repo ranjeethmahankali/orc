@@ -42,7 +42,7 @@ def main():
     # Call 'add' on two f64 arrays
     add_fn = get_function(plugins, "add")
 
-    a = make_handle([1.0, 2.0, 3.0])
+    a = make_handle([[1.0, 2.0, 3.0], [2.0, 4.0, 6.0, 8.0]])
     b = make_handle([10.0, 20.0, 30.0])
     inputs = (OrcHandle * 2)(a, b)
 
