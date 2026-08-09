@@ -53,8 +53,8 @@ def main():
     add_fn.func(0, inputs, 2, ctypes.byref(out), 1)
 
     result = read_handle(out)
-    print(f"add([1, 2, 3], [10, 20, 30]) = {result}")
-    assert result == [11.0, 22.0, 33.0], f"Unexpected: {result}"
+    print(f"add([[1.0, 2.0, 3.0], [2.0, 4.0, 6.0, 8.0]]) = {result}")
+    assert result == [[11, 22, 33], [12, 24, 36, 38]], f"Unexpected: {result}"
     print("PASS")
 
     # Free output via its free_fn if set
