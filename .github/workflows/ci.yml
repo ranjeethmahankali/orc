@@ -23,19 +23,14 @@ jobs:
       - name: Run C tests
         run: ctest --test-dir build/debug --output-on-failure
       - name: Build Rust
-        working-directory: rust
         run: cargo build --verbose --all-targets --all-features
       - name: Check Rust formatting
-        working-directory: rust
         run: cargo fmt --all -- --check
       - name: Run Rust Clippy
-        working-directory: rust
         run: cargo clippy --all-targets --all-features -- -D warnings
       - name: Run Rust tests
-        working-directory: rust
         run: cargo test --all-features --verbose
       - name: Generate Rust docs
-        working-directory: rust
         run: cargo doc --all-features --no-deps
 
   windows:
@@ -49,19 +44,14 @@ jobs:
       - name: Run C tests
         run: ctest --test-dir build/debug -C Debug --output-on-failure
       - name: Build Rust
-        working-directory: rust
         run: cargo build --verbose --all-targets --all-features
       - name: Check Rust formatting
-        working-directory: rust
         run: cargo fmt --all -- --check
       - name: Run Rust Clippy
-        working-directory: rust
         run: cargo clippy --all-targets --all-features -- -D warnings
       - name: Run Rust tests
-        working-directory: rust
         run: cargo test --all-features --verbose
       - name: Generate Rust docs
-        working-directory: rust
         run: cargo doc --all-features --no-deps
 
   macos:
@@ -75,17 +65,12 @@ jobs:
       - name: Run C tests
         run: ctest --test-dir build/debug --output-on-failure
       - name: Build Rust
-        working-directory: rust
         run: cargo build --verbose --all-targets --all-features
       - name: Check Rust formatting
-        working-directory: rust
         run: cargo fmt --all -- --check
       - name: Run Rust Clippy
-        working-directory: rust
         run: cargo clippy --all-targets --all-features -- -D warnings
       - name: Run Rust tests
-        working-directory: rust
         run: cargo test --all-features --verbose
       - name: Generate Rust docs
-        working-directory: rust
         run: cargo doc --all-features --no-deps
