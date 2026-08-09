@@ -173,7 +173,10 @@ def make_handle(data, type_id=None):
     """
     items = []
     marks = []
-    _push(items, marks, data, _intrinsic_depth(data))
+    if not isinstance(data, list):
+        items.append(data)
+    else:
+        _push(items, marks, data, _intrinsic_depth(data))
 
     if type_id is None:
         type_id = _detect_type(items)

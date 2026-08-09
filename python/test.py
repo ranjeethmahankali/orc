@@ -293,7 +293,7 @@ def t_div_unsupported_type():
 def t_repeat_list_f64():
     """Repeat a flat f64 list 3 times."""
     a = make_handle([1.0, 2.0, 3.0])
-    count = make_handle([3], type_id=ORC_TYPE_U64)
+    count = make_handle(3, type_id=ORC_TYPE_U64)
     [out] = call_fn("repeat_list", [a, count])
     result = read_handle(out)
     assert result == [1.0, 2.0, 3.0, 1.0, 2.0, 3.0, 1.0, 2.0, 3.0]
@@ -304,7 +304,8 @@ def t_repeat_list_u8():
     a = make_handle([10, 20])
     count = make_handle([2], type_id=ORC_TYPE_U64)
     [out] = call_fn("repeat_list", [a, count])
-    assert read_handle(out) == [10, 20, 10, 20]
+    # We expect a nested list because the second input is a list.
+    assert read_handle(out) == [[10, 20, 10, 20]]
 
 
 def t_repeat_list_single_element():
@@ -312,13 +313,13 @@ def t_repeat_list_single_element():
     a = make_handle([42.0])
     count = make_handle([4], type_id=ORC_TYPE_U64)
     [out] = call_fn("repeat_list", [a, count])
-    assert read_handle(out) == [42.0, 42.0, 42.0, 42.0]
+    assert read_handle(out) == [[42.0, 42.0, 42.0, 42.0]]
 
 
 def t_repeat_list_one_repeat():
     """Repeating once returns the same items."""
     a = make_handle([5.0, 6.0])
-    count = make_handle([1], type_id=ORC_TYPE_U64)
+    count = make_handle(1, type_id=ORC_TYPE_U64)
     [out] = call_fn("repeat_list", [a, count])
     assert read_handle(out) == [5.0, 6.0]
 
@@ -326,7 +327,7 @@ def t_repeat_list_one_repeat():
 def t_repeat_list_zero_repeats():
     """Repeating zero times produces an empty output."""
     a = make_handle([1.0, 2.0])
-    count = make_handle([0], type_id=ORC_TYPE_U64)
+    count = make_handle(0, type_id=ORC_TYPE_U64)
     [out] = call_fn("repeat_list", [a, count])
     assert read_handle(out) == []
 
@@ -335,7 +336,7 @@ def t_repeat_list_output_type_matches_input():
     """Output type matches the list input type."""
     a = make_handle([100000, 200000])  # U32
     assert a.type_id == ORC_TYPE_U32
-    count = make_handle([2], type_id=ORC_TYPE_U64)
+    count = make_handle(2, type_id=ORC_TYPE_U64)
     [out] = call_fn("repeat_list", [a, count])
     assert out.type_id == ORC_TYPE_U32
     assert read_handle(out) == [100000, 200000, 100000, 200000]
@@ -344,7 +345,7 @@ def t_repeat_list_output_type_matches_input():
 def t_repeat_list_output_free_fn_set():
     """Plugin output has free_fn set."""
     a = make_handle([1.0])
-    count = make_handle([1], type_id=ORC_TYPE_U64)
+    count = make_handle(1, type_id=ORC_TYPE_U64)
     [out] = call_fn("repeat_list", [a, count])
     assert out.free_fn
 
@@ -597,9 +598,11 @@ if __name__ == "__main__":
             assert_no_leaks()
             passed += 1
             print(f"  PASS  {name}")
-        except Exception as e:
+        except Exception:
+            import traceback
             _live_handles.clear()
             failed += 1
-            print(f"  FAIL  {name}: {e}")
+            print(f"  FAIL  {name}")
+            traceback.print_exc()
     print(f"\n{passed} passed, {failed} failed, {passed + failed} total")
     sys.exit(1 if failed else 0)
