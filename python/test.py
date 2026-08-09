@@ -42,12 +42,14 @@ OrcHandle.__del__ = _tracking_del
 
 
 def make_handle(data):
+    """Create a handle and register it for leak tracking."""
     h = _make_handle(data)
     _live_handles.add(h.handle)
     return h
 
 
 def assert_no_leaks():
+    """Assert all tracked handles have been freed."""
     gc.collect()
     assert not _live_handles, f"Leaked handle IDs: {_live_handles}"
 
@@ -69,6 +71,7 @@ if not plugins:
 
 
 def call_fn(name, inputs, n_outputs=1):
+    """Call a plugin function by name and return output handles."""
     fn = get_function(plugins, name)
     in_arr = (OrcHandle * len(inputs))(*inputs)
     outs = []
