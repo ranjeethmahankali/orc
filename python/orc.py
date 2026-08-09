@@ -164,17 +164,19 @@ def _calc_strides(marks):
     return stride_offset, strides
 
 
-def make_handle(data):
+def make_handle(data, type_id=None):
     """Create an OrcHandle from (possibly nested) lists, like deck![...].
 
     Detects the element type automatically from the leaf values.
     Supports flat lists, lists of lists, and deeper nesting.
+    Optionally pass type_id to force a specific type.
     """
     items = []
     marks = []
     _push(items, marks, data, _intrinsic_depth(data))
 
-    type_id = _detect_type(items)
+    if type_id is None:
+        type_id = _detect_type(items)
     ctype = ORC_CTYPE_MAP[type_id]
 
     arr = (ctype * len(items))(*items)
