@@ -1,4 +1,5 @@
 import ctypes
+import gc
 import math
 import os
 import sys
@@ -19,10 +20,37 @@ from orc import (
     default_host,
     get_function,
     load_plugins,
-    make_handle,
+    make_handle as _make_handle,
     next_handle_id,
     read_handle,
 )
+
+# ---------------------------------------------------------------------------
+# Handle leak tracking (test-only)
+# ---------------------------------------------------------------------------
+
+_live_handles = set()
+_orig_del = OrcHandle.__del__
+
+
+def _tracking_del(self):
+    _live_handles.discard(self.handle)
+    _orig_del(self)
+
+
+OrcHandle.__del__ = _tracking_del
+
+
+def make_handle(data):
+    h = _make_handle(data)
+    _live_handles.add(h.handle)
+    return h
+
+
+def assert_no_leaks():
+    gc.collect()
+    assert not _live_handles, f"Leaked handle IDs: {_live_handles}"
+
 
 # ---------------------------------------------------------------------------
 # Setup
@@ -48,11 +76,11 @@ def call_fn(name, inputs, n_outputs=1):
         out = OrcHandle()
         ctypes.memset(ctypes.addressof(out), 0, ctypes.sizeof(out))
         out.handle = next_handle_id()
+        _live_handles.add(out.handle)
         outs.append(out)
     out_arr = (OrcHandle * n_outputs)(*outs)
     fn.func(0, in_arr, len(inputs), out_arr, n_outputs)
     return [out_arr[i] for i in range(n_outputs)]
-
 
 
 # ============================================================
@@ -444,9 +472,11 @@ if __name__ == "__main__":
     for name, fn in tests:
         try:
             fn()
+            assert_no_leaks()
             passed += 1
             print(f"  PASS  {name}")
         except Exception as e:
+            _live_handles.clear()
             failed += 1
             print(f"  FAIL  {name}: {e}")
     print(f"\n{passed} passed, {failed} failed, {passed + failed} total")
