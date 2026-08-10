@@ -103,13 +103,22 @@ ORC_NUMPY_DTYPE_MAP = {
 
 
 def as_numpy(h):
-    """Return a numpy array viewing the handle's items buffer. Zero copy."""
+    """Return a numpy array viewing the handle's items buffer. Zero copy.
+
+    The returned array holds a reference to the handle, preventing
+    use-after-free if the handle goes out of scope.
+    """
     dtype = ORC_NUMPY_DTYPE_MAP.get(h.type_id)
     if dtype is None:
         raise ValueError(f"Unknown type_id: {h.type_id:#x}")
     ctype = ORC_CTYPE_MAP[h.type_id]
     ptr = ctypes.cast(h.items, ctypes.POINTER(ctype * h.n_items))
-    return np.frombuffer(ptr.contents, dtype=dtype)
+    arr = np.frombuffer(ptr.contents, dtype=dtype)
+    # We need to stash a reference to the OrcHandle in the numpy array itself,
+    # to prevent it from getting garbage collected while this numpy array is
+    # alive.
+    arr._orc_handle = h
+    return arr
 
 
 def _detect_type(values):
