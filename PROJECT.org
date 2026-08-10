@@ -196,14 +196,17 @@
   - Might be a good idea to include a timestamp in the generated code. If I end up doing that, I
     should account for that when checking the diff in CI.
 
-* TODO Test with custom types
+* TODO Test proxy functions with custom types across plugins
   :PROPERTIES:
   :CREATED:  2026-08-08 Sat 08:50
   :END:
 
-* TODO Test proxy functions with custom types across plugins
+* NEXT tjkesx - Test with custom types
   :PROPERTIES:
   :CREATED:  2026-08-08 Sat 08:50
+  :END:
+  :LOGBOOK:
+  - State "NEXT"       from "TODO"       [2026-08-10 Mon 13:48]
   :END:
 
 * DONE tjj8pq - Numpy integration with zero overhead
