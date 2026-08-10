@@ -746,6 +746,119 @@ def t_numpy_and_handle_both_freed():
 
 
 # ============================================================
+# complex numbers — create_complex / add_complex / mul_complex
+# ============================================================
+
+
+def make_complex(real_data, imag_data):
+    """Create a Complex deck from real and imaginary f64 lists."""
+    real = make_handle(real_data)
+    imag = make_handle(imag_data)
+    [out] = call_fn("create_complex", [real, imag])
+    return out
+
+
+def get_parts(complex_handle):
+    """Extract real and imaginary parts from a Complex deck as f64 lists."""
+    [real_out, imag_out] = call_fn("complex_get_parts", [complex_handle], n_outputs=2)
+    return read_deck(real_out), read_deck(imag_out)
+
+
+# ==================== add_complex ====================
+
+
+def t_complex_add_flat():
+    """[1+2i, 3+4i] + [10+20i, 30+40i] = [11+22i, 33+44i]"""
+    lhs = make_complex([1.0, 3.0], [2.0, 4.0])
+    rhs = make_complex([10.0, 30.0], [20.0, 40.0])
+    [out] = call_fn("add_complex", [lhs, rhs])
+    real, imag = get_parts(out)
+    assert real == [11.0, 33.0]
+    assert imag == [22.0, 44.0]
+
+
+def t_complex_add_nested():
+    """[[1+i, 2+i], [3+i]] + [[4+i, 5+i], [6+i]] = [[5+2i, 7+2i], [9+2i]]"""
+    lhs = make_complex([[1.0, 2.0], [3.0]], [[1.0, 1.0], [1.0]])
+    rhs = make_complex([[4.0, 5.0], [6.0]], [[1.0, 1.0], [1.0]])
+    [out] = call_fn("add_complex", [lhs, rhs])
+    real, imag = get_parts(out)
+    assert real == [[5.0, 7.0], [9.0]]
+    assert imag == [[2.0, 2.0], [2.0]]
+    assert out.n_marks > 0
+
+
+def t_complex_add_negative_components():
+    """[1-2i, -3+4i] + [0+3i, 3-4i] = [1+1i, 0+0i]"""
+    lhs = make_complex([1.0, -3.0], [-2.0, 4.0])
+    rhs = make_complex([0.0, 3.0], [3.0, -4.0])
+    [out] = call_fn("add_complex", [lhs, rhs])
+    real, imag = get_parts(out)
+    assert real == [1.0, 0.0]
+    assert imag == [1.0, 0.0]
+
+
+def t_complex_add_wrong_n_inputs():
+    """add_complex with one input produces no output."""
+    lhs = make_complex([1.0, 3.0], [2.0, 4.0])
+    [out] = call_fn("add_complex", [lhs])
+    assert not out.items
+    assert not out.free_fn
+
+
+# ==================== mul_complex ====================
+
+
+def t_complex_mul_flat():
+    """[1+2i, 2+3i] * [3+4i, 1+0i] = [-5+10i, 2+3i]"""
+    lhs = make_complex([1.0, 2.0], [2.0, 3.0])
+    rhs = make_complex([3.0, 1.0], [4.0, 0.0])
+    [out] = call_fn("mul_complex", [lhs, rhs])
+    real, imag = get_parts(out)
+    assert real == [-5.0, 2.0]
+    assert imag == [10.0, 3.0]
+
+
+def t_complex_mul_nested():
+    """[[1+0i, 0+1i], [2+0i]] * [[5+0i, 0+1i], [3+0i]] = [[5+0i, -1+0i], [6+0i]]"""
+    lhs = make_complex([[1.0, 0.0], [2.0]], [[0.0, 1.0], [0.0]])
+    rhs = make_complex([[5.0, 0.0], [3.0]], [[0.0, 1.0], [0.0]])
+    [out] = call_fn("mul_complex", [lhs, rhs])
+    real, imag = get_parts(out)
+    assert real == [[5.0, -1.0], [6.0]]
+    assert imag == [[0.0, 0.0], [0.0]]
+    assert out.n_marks > 0
+
+
+def t_complex_mul_i_squared():
+    """[0+1i, 0+1i, 0+1i] * [0+1i, 0+1i, 0+1i] = [-1+0i, -1+0i, -1+0i]"""
+    lhs = make_complex([0.0, 0.0, 0.0], [1.0, 1.0, 1.0])
+    rhs = make_complex([0.0, 0.0, 0.0], [1.0, 1.0, 1.0])
+    [out] = call_fn("mul_complex", [lhs, rhs])
+    real, imag = get_parts(out)
+    assert real == [-1.0, -1.0, -1.0]
+    assert imag == [0.0, 0.0, 0.0]
+
+
+def t_complex_mul_by_zero():
+    """[3+4i, 1+1i] * [0+0i, 0+0i] = [0+0i, 0+0i]"""
+    lhs = make_complex([3.0, 1.0], [4.0, 1.0])
+    rhs = make_complex([0.0, 0.0], [0.0, 0.0])
+    [out] = call_fn("mul_complex", [lhs, rhs])
+    real, imag = get_parts(out)
+    assert real == [0.0, 0.0]
+    assert imag == [0.0, 0.0]
+
+
+def t_complex_mul_wrong_n_inputs():
+    """mul_complex with one input produces no output."""
+    lhs = make_complex([1.0, 3.0], [2.0, 4.0])
+    [out] = call_fn("mul_complex", [lhs])
+    assert not out.items
+    assert not out.free_fn
+
+
+# ============================================================
 # Runner
 # ============================================================
 
