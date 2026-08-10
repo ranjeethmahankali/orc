@@ -15,6 +15,19 @@ impl TOrcData for Complex {
     };
 }
 
+orc_fn!(create_complex, {
+    let host_callbacks = host_callbacks();
+    let registry: &ObjectRegistry = registry();
+
+    fn run(_host: &HostCallbacks, real: &f64, imag: &f64, out: &mut Complex) -> Result<(), Error> {
+        *out = Complex {
+            real: *real,
+            imag: *imag,
+        };
+        Ok(())
+    }
+});
+
 orc_fn!(add_complex, {
     let host_callbacks = host_callbacks();
     let registry: &ObjectRegistry = registry();

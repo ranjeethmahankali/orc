@@ -178,6 +178,7 @@ const ORC_EXPORTED_FUNCTIONS: &[OrcFuncInfo] = &[
     orc_fn_info!(basic::div),
     orc_fn_info!(basic::repeat_list),
     // Complex numbers.
+    orc_fn_info!(complex::create_complex),
     orc_fn_info!(complex::add_complex),
     orc_fn_info!(complex::mul_complex),
 ];
