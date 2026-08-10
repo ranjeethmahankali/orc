@@ -206,11 +206,13 @@
   :CREATED:  2026-08-08 Sat 08:50
   :END:
 
-* NEXT tjj8pq - Numpy integration with zero overhead
+* DONE tjj8pq - Numpy integration with zero overhead
+  CLOSED: [2026-08-10 Mon 00:02]
   :PROPERTIES:
   :CREATED:  2026-08-09 Sun 00:47
   :END:
   :LOGBOOK:
+  - State "DONE"       from "NEXT"       [2026-08-10 Mon 00:02]
   - State "NEXT"       from "TODO"       [2026-08-09 Sun 22:39]
   :END:
 
@@ -226,6 +228,13 @@
 
   <2026-08-09 Sun 23:23> Handled the various garbage collection scenarios, and made sure this is
   memory safe. Added tests to cover all these scenarios.
+
+  <2026-08-10 Mon 00:00> Made several improvements to the API, hid the internal details of handles,
+  allocation, lifetimes etc. and made it look like clean Python code from the outside. Orc workflows
+  written in Python should now look like natural Python code, closely resembling numpy.
+
+  <2026-08-10 Mon 00:01> Making sure the CI works, and all the tests pass now, with numpy properly
+  installed on the CI machines. Ready to merge after that.
 
 * DONE tjgdan - Python bindings
   CLOSED: [2026-08-09 Sun 00:22]
