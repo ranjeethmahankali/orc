@@ -113,12 +113,12 @@ def as_numpy(h):
         raise ValueError(f"Unknown type_id: {h.type_id:#x}")
     ctype = ORC_CTYPE_MAP[h.type_id]
     ptr = ctypes.cast(h.items, ctypes.POINTER(ctype * h.n_items))
-    arr = np.frombuffer(ptr.contents, dtype=dtype)
-    # We need to stash a reference to the OrcHandle in the numpy array itself,
-    # to prevent it from getting garbage collected while this numpy array is
-    # alive.
-    arr._orc_handle = h
-    return arr
+    buf = ptr.contents
+    # Stash the handle reference on the ctypes buffer. The numpy array
+    # holds buf as its base, so the handle stays alive as long as the
+    # array does.
+    buf._orc_handle = h
+    return np.frombuffer(buf, dtype=dtype)
 
 
 def _detect_type(values):

@@ -6,7 +6,10 @@ import math
 import os
 import sys
 
+import numpy as np
+
 from orc import (
+    ORC_TYPE_F32,
     ORC_TYPE_F64,
     ORC_TYPE_I8,
     ORC_TYPE_I16,
@@ -17,6 +20,7 @@ from orc import (
     ORC_TYPE_U32,
     ORC_TYPE_U64,
     OrcHandle,
+    as_numpy,
     default_host,
     get_function,
     load_plugins,
@@ -580,6 +584,142 @@ def t_type_detection_f64():
     """Any float value triggers F64 detection."""
     h = make_handle([1.0, 2, 3])
     assert h.type_id == ORC_TYPE_F64
+
+
+# ============================================================
+# as_numpy — Zero-copy numpy integration
+# ============================================================
+
+
+def t_numpy_f64():
+    """Convert f64 handle to numpy, verify pointer and arithmetic."""
+    a = make_handle([1.0, 2.0, 3.0])
+    b = make_handle([10.0, 20.0, 30.0])
+    [out] = call_fn("add", [a, b])
+    arr = as_numpy(out)
+    assert arr.dtype == np.float64
+    assert arr.ctypes.data == out.items
+    assert list(arr * 2.0) == [22.0, 44.0, 66.0]
+
+
+def t_numpy_f32():
+    """Convert f32 handle to numpy, verify pointer and arithmetic."""
+    h = make_handle([1.5, 2.5, 3.5], type_id=ORC_TYPE_F32)
+    arr = as_numpy(h)
+    assert arr.dtype == np.float32
+    assert arr.ctypes.data == h.items
+    result = arr + np.float32(0.5)
+    assert list(result) == [2.0, 3.0, 4.0]
+
+
+def t_numpy_u8():
+    """Convert u8 handle to numpy, verify pointer and arithmetic."""
+    a = make_handle([10, 20, 30])
+    b = make_handle([1, 2, 3])
+    [out] = call_fn("add", [a, b])
+    arr = as_numpy(out)
+    assert arr.dtype == np.uint8
+    assert arr.ctypes.data == out.items
+    assert list(arr + np.uint8(100)) == [111, 122, 133]
+
+
+def t_numpy_u16():
+    """Convert u16 handle to numpy, verify pointer and arithmetic."""
+    h = make_handle([300, 400, 500], type_id=ORC_TYPE_U16)
+    arr = as_numpy(h)
+    assert arr.dtype == np.uint16
+    assert arr.ctypes.data == h.items
+    assert list(arr - np.uint16(100)) == [200, 300, 400]
+
+
+def t_numpy_u32():
+    """Convert u32 handle to numpy, verify pointer and arithmetic."""
+    a = make_handle([100000, 200000])
+    b = make_handle([300000, 400000])
+    [out] = call_fn("add", [a, b])
+    arr = as_numpy(out)
+    assert arr.dtype == np.uint32
+    assert arr.ctypes.data == out.items
+    assert list(arr // np.uint32(100000)) == [4, 6]
+
+
+def t_numpy_u64():
+    """Convert u64 handle to numpy, verify pointer and arithmetic."""
+    h = make_handle([2**40, 2**41], type_id=ORC_TYPE_U64)
+    arr = as_numpy(h)
+    assert arr.dtype == np.uint64
+    assert arr.ctypes.data == h.items
+    assert list(arr * np.uint64(2)) == [2**41, 2**42]
+
+
+def t_numpy_i8():
+    """Convert i8 handle to numpy, verify pointer and arithmetic."""
+    h = make_handle([-10, 0, 10], type_id=ORC_TYPE_I8)
+    arr = as_numpy(h)
+    assert arr.dtype == np.int8
+    assert arr.ctypes.data == h.items
+    assert list(arr + np.int8(5)) == [-5, 5, 15]
+
+
+def t_numpy_i16():
+    """Convert i16 handle to numpy, verify pointer and arithmetic."""
+    h = make_handle([-1000, 0, 1000], type_id=ORC_TYPE_I16)
+    arr = as_numpy(h)
+    assert arr.dtype == np.int16
+    assert arr.ctypes.data == h.items
+    assert list(arr * np.int16(-1)) == [1000, 0, -1000]
+
+
+def t_numpy_i32():
+    """Convert i32 handle to numpy, verify pointer and arithmetic."""
+    h = make_handle([-100000, 0, 100000], type_id=ORC_TYPE_I32)
+    arr = as_numpy(h)
+    assert arr.dtype == np.int32
+    assert arr.ctypes.data == h.items
+    assert list(arr + np.int32(1)) == [-99999, 1, 100001]
+
+
+def t_numpy_i64():
+    """Convert i64 handle to numpy, verify pointer and arithmetic."""
+    h = make_handle([-2**40, 0, 2**40], type_id=ORC_TYPE_I64)
+    arr = as_numpy(h)
+    assert arr.dtype == np.int64
+    assert arr.ctypes.data == h.items
+    assert list(arr + np.int64(1)) == [-(2**40) + 1, 1, 2**40 + 1]
+
+
+def t_numpy_3x3_matrix():
+    """Convert a 3x3 nested handle to a numpy matrix, verify arithmetic."""
+    data = [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]]
+    h = make_handle(data)
+    arr = as_numpy(h)
+    assert arr.ctypes.data == h.items
+    # Flat view of 9 items
+    assert len(arr) == 9
+    mat = arr.reshape(3, 3)
+    # Matrix multiply with identity should return the same matrix
+    identity = np.eye(3)
+    result = mat @ identity
+    assert np.array_equal(result, mat)
+    # Sum of each row
+    row_sums = mat.sum(axis=1)
+    assert list(row_sums) == [6.0, 15.0, 24.0]
+
+
+def t_numpy_3x3_from_plugin():
+    """Plugin output of nested 3x3, converted to numpy matrix."""
+    a = make_handle([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]])
+    b = make_handle([1.0])
+    [out] = call_fn("add", [a, b])
+    arr = as_numpy(out)
+    assert arr.ctypes.data == out.items
+    mat = arr.reshape(3, 3)
+    # Each element should be original + 1
+    expected = np.array([[2, 3, 4], [5, 6, 7], [8, 9, 10]], dtype=np.float64)
+    assert np.array_equal(mat, expected)
+    # Column means
+    col_means = mat.mean(axis=0)
+    assert list(col_means) == [5.0, 6.0, 7.0]
 
 
 # ============================================================
