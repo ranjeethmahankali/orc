@@ -1,6 +1,6 @@
 use std::sync::LazyLock;
 
-use crate::{HANDLE_COUNTER, host_alloc, host_dealloc, report_message};
+use crate::{HANDLE_COUNTER, host_alloc, host_create_proxy_deck, host_dealloc, report_message};
 use orc_sdk::{
     Deck, DeckView, ORC_ABI_VERSION, OrcHandle, OrcHost, OrcHostCallbackAPI, OrcHostMemoryAPI,
     PluginSet, deck, update_handle_from_deck,
@@ -18,7 +18,7 @@ const HOST: OrcHost = OrcHost {
         check_cancellation: None,
         report_intermediate_output: None,
     },
-    create_deck_from_proxy: None, // TODO: Implement this later.
+    create_deck_from_proxy: Some(host_create_proxy_deck),
 };
 
 pub(crate) static PLUGIN_SET: LazyLock<PluginSet> = LazyLock::new(|| {
@@ -119,4 +119,100 @@ fn t_flatten_deck_fn() {
     }
     let view = DeckView::<f64>::from_handle(&out_handle).unwrap();
     assert_eq!(view.items(), &[1.0, 2.0, 3.0, 4.0, 5.0]);
+}
+
+#[test]
+fn t_flatten_complex() {
+    // [[1+0i, 0+1i], [2+0i]] * [[5+0i, 0+1i], [3+0i]] = [[5+0i, -1+0i], [6+0i]]
+    // flatten_deck (via proxy) → [5+0i, -1+0i, 6+0i]
+    // complex_get_parts → real=[5,-1,6], imag=[0,0,0]
+    let create_complex = PLUGIN_SET
+        .get_function("create_complex")
+        .expect("create_complex not found");
+    let mul_complex = PLUGIN_SET
+        .get_function("mul_complex")
+        .expect("mul_complex not found");
+    let flatten_fn = PLUGIN_SET
+        .get_function("flatten_deck")
+        .expect("flatten_deck not found");
+    let get_parts = PLUGIN_SET
+        .get_function("complex_get_parts")
+        .expect("complex_get_parts not found");
+
+    let lhs_real: Deck<f64> = deck![[1.0, 0.0], [2.0]];
+    let lhs_imag: Deck<f64> = deck![[0.0, 1.0], [0.0]];
+    let rhs_real: Deck<f64> = deck![[5.0, 0.0], [3.0]];
+    let rhs_imag: Deck<f64> = deck![[0.0, 1.0], [0.0]];
+
+    let (mut lhs_real_h, mut lhs_imag_h, mut rhs_real_h, mut rhs_imag_h) = (
+        OrcHandle {
+            handle: next_id(),
+            ..Default::default()
+        },
+        OrcHandle {
+            handle: next_id(),
+            ..Default::default()
+        },
+        OrcHandle {
+            handle: next_id(),
+            ..Default::default()
+        },
+        OrcHandle {
+            handle: next_id(),
+            ..Default::default()
+        },
+    );
+    unsafe {
+        update_handle_from_deck(&lhs_real, &mut lhs_real_h);
+        update_handle_from_deck(&lhs_imag, &mut lhs_imag_h);
+        update_handle_from_deck(&rhs_real, &mut rhs_real_h);
+        update_handle_from_deck(&rhs_imag, &mut rhs_imag_h);
+    }
+
+    let mut lhs_complex = OrcHandle {
+        handle: next_id(),
+        ..Default::default()
+    };
+    let inputs = [lhs_real_h, lhs_imag_h];
+    unsafe { (create_complex.func)(0, inputs.as_ptr(), 2, &mut lhs_complex, 1) };
+
+    let mut rhs_complex = OrcHandle {
+        handle: next_id(),
+        ..Default::default()
+    };
+    let inputs = [rhs_real_h, rhs_imag_h];
+    unsafe { (create_complex.func)(0, inputs.as_ptr(), 2, &mut rhs_complex, 1) };
+
+    let mut mul_out = OrcHandle {
+        handle: next_id(),
+        ..Default::default()
+    };
+    let inputs = [lhs_complex, rhs_complex];
+    unsafe { (mul_complex.func)(0, inputs.as_ptr(), 2, &mut mul_out, 1) };
+    assert!(mul_out.n_marks > 0); // nested: [[5+0i, -1+0i], [6+0i]]
+
+    let mut flat = OrcHandle {
+        handle: next_id(),
+        ..Default::default()
+    };
+    unsafe { (flatten_fn.func)(0, &mul_out, 1, &mut flat, 1) };
+
+    assert_eq!(flat.n_items, 3);
+
+    let mut parts = [
+        OrcHandle {
+            handle: next_id(),
+            ..Default::default()
+        },
+        OrcHandle {
+            handle: next_id(),
+            ..Default::default()
+        },
+    ];
+    unsafe { (get_parts.func)(0, &flat, 1, parts.as_mut_ptr(), 2) };
+
+    let real = DeckView::<f64>::from_handle(&parts[0]).unwrap();
+    let imag = DeckView::<f64>::from_handle(&parts[1]).unwrap();
+    assert_eq!(real.items(), &[5.0, -1.0, 6.0]);
+    assert_eq!(imag.items(), &[0.0, 0.0, 0.0]);
 }
