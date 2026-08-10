@@ -865,7 +865,9 @@ def t_complex_flatten():
     real, imag = get_parts(flat)
     assert real == [1.0, 3.0, 5.0]
     assert imag == [2.0, 4.0, 6.0]
-    assert flat.n_marks == 0
+    assert flat.n_marks == 1
+    assert flat.marks[0].depth == 0
+    assert flat.marks[0].pos == 0
 
 
 # ============================================================
