@@ -1,6 +1,6 @@
 use std::sync::LazyLock;
 
-use crate::{host_alloc, host_dealloc, report_message};
+use crate::{HANDLE_COUNTER, host_alloc, host_dealloc, report_message};
 use orc_sdk::{
     Deck, DeckView, ORC_ABI_VERSION, OrcHandle, OrcHost, OrcHostCallbackAPI, OrcHostMemoryAPI,
     PluginSet, deck, update_handle_from_deck,
@@ -32,9 +32,7 @@ pub(crate) static PLUGIN_SET: LazyLock<PluginSet> = LazyLock::new(|| {
     orc_sdk::load_plugins(dir, &HOST).unwrap()
 });
 
-use std::sync::atomic::{AtomicU64, Ordering};
-
-pub(crate) static HANDLE_COUNTER: AtomicU64 = AtomicU64::new(0);
+use std::sync::atomic::Ordering;
 
 fn next_id() -> u64 {
     HANDLE_COUNTER.fetch_add(1, Ordering::Relaxed)

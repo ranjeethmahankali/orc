@@ -1,15 +1,17 @@
 use crate::{host_callbacks, registry};
-use orc_sdk::{Error, HostCallbacks, TOrcData, orc_fn};
+use orc_sdk::{Error, HostCallbacks, OrcTypeId, TOrcData, orc_fn};
 
 #[derive(Default, Clone, Debug, PartialEq)]
-struct Complex {
+pub struct Complex {
     real: f64,
     imag: f64,
 }
 
+pub const COMPLEX_NUM_TYPE_ID: OrcTypeId = 0xd17d7399a9b11a54;
+
 impl TOrcData for Complex {
     const TYPE_INFO: orc_sdk::OrcTypeInfo = orc_sdk::OrcTypeInfo {
-        type_id: 0xd17d7399a9b11a54,
+        type_id: COMPLEX_NUM_TYPE_ID,
         name: c"complex number".as_ptr(),
         desc: c"3 + 2i type of stuff.".as_ptr(),
     };
