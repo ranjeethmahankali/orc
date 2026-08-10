@@ -858,6 +858,16 @@ def t_complex_mul_wrong_n_inputs():
     assert not out.free_fn
 
 
+def t_complex_flatten():
+    """Flatten a nested complex deck into a flat list."""
+    nested = make_complex([[1.0, 3.0], [5.0]], [[2.0, 4.0], [6.0]])
+    [flat] = call_fn("flatten_deck", [nested])
+    real, imag = get_parts(flat)
+    assert real == [1.0, 3.0, 5.0]
+    assert imag == [2.0, 4.0, 6.0]
+    assert flat.n_marks == 0
+
+
 # ============================================================
 # Runner
 # ============================================================
