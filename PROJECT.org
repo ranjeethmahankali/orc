@@ -219,6 +219,11 @@
   do this in a much simpler way with no additional dependencies and no additional moving parts,
   build system etc.
 
+  <2026-08-09 Sun 22:52> Numpy has a convenient API that let's you pass a C pointer and create a
+  "view" numpy array, or matrix. This is similar to the ~Eigen::Map~ api. It was fairly easy to use
+  that API, create a numpy array, and confirm that the numpy array uses the same pointer address as
+  the OrcHandle.items. That makes this a "zero copy", solution.
+
 * DONE tjgdan - Python bindings
   CLOSED: [2026-08-09 Sun 00:22]
   :PROPERTIES:
