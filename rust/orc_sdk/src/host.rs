@@ -242,6 +242,10 @@ impl PluginSet {
     pub fn plugins(&self) -> &[Plugin] {
         &self.plugins
     }
+
+    pub fn get_type_owner(&self, type_id: OrcTypeId) -> Option<&TypeOwner> {
+        self.type_map.get(&type_id)
+    }
 }
 
 #[cfg(test)]
