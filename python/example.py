@@ -8,7 +8,6 @@ and calls a function (e.g. 'add') on two f64 decks.
 import os
 import sys
 import ctypes
-import numpy as np
 from orc import (default_host, load_plugins, get_function, make_handle,
                  next_handle_id, OrcHandle, read_handle, as_numpy)
 
