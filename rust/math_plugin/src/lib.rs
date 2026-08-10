@@ -181,4 +181,5 @@ const ORC_EXPORTED_FUNCTIONS: &[OrcFuncInfo] = &[
     orc_fn_info!(complex::create_complex),
     orc_fn_info!(complex::add_complex),
     orc_fn_info!(complex::mul_complex),
+    orc_fn_info!(complex::complex_get_parts),
 ];

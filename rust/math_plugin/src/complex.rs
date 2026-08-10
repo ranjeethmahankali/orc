@@ -64,6 +64,22 @@ orc_fn!(mul_complex, {
     }
 });
 
+orc_fn!(complex_get_parts, {
+    let host_callbacks = host_callbacks();
+    let registry: &ObjectRegistry = registry();
+
+    fn run(
+        _host: &HostCallbacks,
+        c: &Complex,
+        real_out: &mut f64,
+        imag_out: &mut f64,
+    ) -> Result<(), Error> {
+        *real_out = c.real;
+        *imag_out = c.imag;
+        Ok(())
+    }
+});
+
 #[cfg(test)]
 mod tests {
     use super::*;
