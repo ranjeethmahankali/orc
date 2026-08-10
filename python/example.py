@@ -9,7 +9,7 @@ import os
 import sys
 import ctypes
 from orc import (default_host, load_plugins, get_function, make_handle,
-                 next_handle_id, OrcHandle, read_handle, as_numpy)
+                 empty_handle, OrcHandle, read_handle, as_numpy)
 
 # ---------------------------------------------------------------------------
 # Main
@@ -45,14 +45,10 @@ def main():
     b = make_handle([10.0, 20.0, 30.0])
     inputs = (OrcHandle * 2)(a, b)
 
-    out = OrcHandle()
-    ctypes.memset(ctypes.addressof(out), 0, ctypes.sizeof(out))
-    out.handle = next_handle_id()
+    out = empty_handle()
 
     add_fn.func(0, inputs, 2, ctypes.byref(out), 1)
-    flat_out = OrcHandle()
-    ctypes.memset(ctypes.addressof(flat_out), 0, ctypes.sizeof(flat_out))
-    flat_out.handle = next_handle_id()
+    flat_out = empty_handle()
     flatten_fn.func(0, ctypes.byref(out), 1, ctypes.byref(flat_out), 1)
 
     result = read_handle(flat_out)

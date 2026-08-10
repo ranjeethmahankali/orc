@@ -22,10 +22,10 @@ from orc import (
     OrcHandle,
     as_numpy,
     default_host,
+    empty_handle,
     get_function,
     load_plugins,
     make_handle as _make_handle,
-    next_handle_id,
     read_handle,
 )
 
@@ -80,9 +80,7 @@ def call_fn(name, inputs, n_outputs=1):
     in_arr = (OrcHandle * len(inputs))(*inputs)
     outs = []
     for _ in range(n_outputs):
-        out = OrcHandle()
-        ctypes.memset(ctypes.addressof(out), 0, ctypes.sizeof(out))
-        out.handle = next_handle_id()
+        out = empty_handle()
         _live_handles.add(out.handle)
         outs.append(out)
     out_arr = (OrcHandle * n_outputs)(*outs)
@@ -441,9 +439,7 @@ def t_flatten_mismatched_counts():
     a = make_handle([[1.0]])
     fn = get_function(plugins, "flatten_deck")
     in_arr = (OrcHandle * 1)(a)
-    out1 = OrcHandle()
-    ctypes.memset(ctypes.addressof(out1), 0, ctypes.sizeof(out1))
-    out1.handle = next_handle_id()
+    out1 = empty_handle()
     out_arr = (OrcHandle * 1)(out1)
     fn.func(0, in_arr, 2, out_arr, 1)
     assert not out_arr[0].items

@@ -75,6 +75,14 @@ def next_handle_id():
     return hid
 
 
+def empty_handle():
+    """Create a zeroed OrcHandle with a fresh handle ID."""
+    h = OrcHandle()
+    ctypes.memset(ctypes.addressof(h), 0, ctypes.sizeof(h))
+    h.handle = next_handle_id()
+    return h
+
+
 ORC_CTYPE_MAP = {
     ORC_TYPE_U8: ctypes.c_uint8,
     ORC_TYPE_U16: ctypes.c_uint16,
