@@ -61,9 +61,11 @@ def main():
     assert result == [11, 22, 33, 12, 24, 36, 38], f"Unexpected: {result}"
 
     # Zero-copy numpy view of the same data
-    arr = as_numpy(flat_out)
-    print(f"numpy (zero copy): {arr}")
-    assert list(arr) == [11, 22, 33, 12, 24, 36, 38]
+    np_arr = as_numpy(flat_out)
+    print(f"numpy (zero copy): {np_arr}")
+    assert list(np_arr) == [11, 22, 33, 12, 24, 36, 38]
+    assert (np_arr.ctypes.data == flat_out.items
+            ), "Confirm that numpy is using the same pointer."
     print("PASS")
 
 
