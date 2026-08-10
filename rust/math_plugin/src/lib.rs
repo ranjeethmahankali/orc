@@ -169,6 +169,7 @@ fn deck_from_proxy_impl<T: TOrcData>(
 orc_plugin!(Adaptor);
 
 mod basic;
+mod complex;
 
 const ORC_EXPORTED_FUNCTIONS: &[OrcFuncInfo] = &[
     orc_fn_info!(basic::add),
@@ -176,4 +177,7 @@ const ORC_EXPORTED_FUNCTIONS: &[OrcFuncInfo] = &[
     orc_fn_info!(basic::sub),
     orc_fn_info!(basic::div),
     orc_fn_info!(basic::repeat_list),
+    // Complex numbers.
+    orc_fn_info!(complex::add_complex),
+    orc_fn_info!(complex::mul_complex),
 ];
