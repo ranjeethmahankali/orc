@@ -196,11 +196,6 @@
   - Might be a good idea to include a timestamp in the generated code. If I end up doing that, I
     should account for that when checking the diff in CI.
 
-* TODO Test proxy functions with custom types across plugins
-  :PROPERTIES:
-  :CREATED:  2026-08-08 Sat 08:50
-  :END:
-
 * NEXT tjkesx - Test with custom types
   :PROPERTIES:
   :CREATED:  2026-08-08 Sat 08:50
@@ -210,6 +205,16 @@
   :END:
 
   <2026-08-10 Mon 15:37> Wrote some complex number functions and tested them in both Rust and Python.
+
+** NEXT Test proxy functions with custom types across plugins
+   :PROPERTIES:
+   :CREATED:  2026-08-08 Sat 08:50
+   :END:
+   :LOGBOOK:
+   - State "NEXT"       from "TODO"       [2026-08-10 Mon 19:17]
+   :END:
+
+   <2026-08-10 Mon 19:17> Got this working for the first time. Works fine.
 
 * DONE tjj8pq - Numpy integration with zero overhead
   CLOSED: [2026-08-10 Mon 00:02]
