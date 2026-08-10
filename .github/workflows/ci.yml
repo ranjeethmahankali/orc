@@ -32,6 +32,8 @@ jobs:
         run: cargo test --all-features --verbose
       - name: Generate Rust docs
         run: cargo doc --all-features --no-deps
+      - name: Install Python dependencies
+        run: pip install numpy
       - name: Run Python tests
         working-directory: python
         run: python3 test.py
@@ -56,6 +58,8 @@ jobs:
         run: cargo test --all-features --verbose
       - name: Generate Rust docs
         run: cargo doc --all-features --no-deps
+      - name: Install Python dependencies
+        run: pip install numpy
       - name: Run Python tests
         working-directory: python
         run: python3 test.py
@@ -80,6 +84,8 @@ jobs:
         run: cargo test --all-features --verbose
       - name: Generate Rust docs
         run: cargo doc --all-features --no-deps
+      - name: Install Python dependencies
+        run: pip install numpy
       - name: Run Python tests
         working-directory: python
         run: python3 test.py
