@@ -33,10 +33,12 @@ jobs:
       - name: Generate Rust docs
         run: cargo doc --all-features --no-deps
       - name: Install Python dependencies
-        run: python3 -m pip install numpy
+        run: |
+          python3 -m venv .venv
+          .venv/bin/pip install numpy
       - name: Run Python tests
         working-directory: python
-        run: python3 test.py
+        run: ../.venv/bin/python3 test.py
 
   windows:
     runs-on: windows-latest
@@ -59,10 +61,12 @@ jobs:
       - name: Generate Rust docs
         run: cargo doc --all-features --no-deps
       - name: Install Python dependencies
-        run: python3 -m pip install numpy
+        run: |
+          python3 -m venv .venv
+          .venv/Scripts/pip install numpy
       - name: Run Python tests
         working-directory: python
-        run: python3 test.py
+        run: ../.venv/Scripts/python3 test.py
 
   macos:
     runs-on: macos-latest
@@ -85,7 +89,9 @@ jobs:
       - name: Generate Rust docs
         run: cargo doc --all-features --no-deps
       - name: Install Python dependencies
-        run: python3 -m pip install numpy
+        run: |
+          python3 -m venv .venv
+          .venv/bin/pip install numpy
       - name: Run Python tests
         working-directory: python
-        run: python3 test.py
+        run: ../.venv/bin/python3 test.py
