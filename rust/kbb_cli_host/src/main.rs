@@ -124,5 +124,12 @@ fn main() -> Result<(), Error> {
         (add m c)
     });
     println!("mul_add_a_b_c:\n{}", fmad_abc.display::<f64>());
+    let complex_result = kbb_dag!(plugin_set, &handle_counter, {
+        (let c (create_complex a b))
+            (let c2 (create_complex b a))
+            (let (real imag) (complex_get_parts (mul_complex c c2)))
+            (add real imag)
+    });
+    println!("complex_resunt:\n{}", complex_result.display::<f64>());
     Ok(())
 }
