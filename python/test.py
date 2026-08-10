@@ -722,6 +722,20 @@ def t_numpy_3x3_from_plugin():
     assert list(col_means) == [5.0, 6.0, 7.0]
 
 
+def t_numpy_survives_handle_gc():
+    """Numpy array must remain valid after the handle is GC'd."""
+
+    def get_arr():
+        h = make_handle([1.0, 2.0, 3.0])
+        return as_numpy(h)
+
+    arr = get_arr()
+    gc.collect()  # Force GC of the handle
+    # If the handle was freed, this reads freed memory.
+    assert list(arr) == [1.0, 2.0, 3.0]
+    assert list(arr + 1.0) == [2.0, 3.0, 4.0]
+
+
 # ============================================================
 # Runner
 # ============================================================
