@@ -3,6 +3,7 @@
 import ctypes
 import os
 import platform
+import numpy as np
 from bindings import (OrcDeckFreeFn, OrcHandle, OrcAllocFn, OrcDeallocFn,
                       OrcReportMessageFn, ORC_TYPE_U8, ORC_TYPE_U16,
                       ORC_TYPE_U32, ORC_TYPE_U64, ORC_TYPE_I8, ORC_TYPE_I16,
@@ -74,6 +75,14 @@ def next_handle_id():
     return hid
 
 
+def empty_handle():
+    """Create a zeroed OrcHandle with a fresh handle ID."""
+    h = OrcHandle()
+    ctypes.memset(ctypes.addressof(h), 0, ctypes.sizeof(h))
+    h.handle = next_handle_id()
+    return h
+
+
 ORC_CTYPE_MAP = {
     ORC_TYPE_U8: ctypes.c_uint8,
     ORC_TYPE_U16: ctypes.c_uint16,
@@ -86,6 +95,38 @@ ORC_CTYPE_MAP = {
     ORC_TYPE_F32: ctypes.c_float,
     ORC_TYPE_F64: ctypes.c_double,
 }
+
+ORC_NUMPY_DTYPE_MAP = {
+    ORC_TYPE_U8: np.uint8,
+    ORC_TYPE_U16: np.uint16,
+    ORC_TYPE_U32: np.uint32,
+    ORC_TYPE_U64: np.uint64,
+    ORC_TYPE_I8: np.int8,
+    ORC_TYPE_I16: np.int16,
+    ORC_TYPE_I32: np.int32,
+    ORC_TYPE_I64: np.int64,
+    ORC_TYPE_F32: np.float32,
+    ORC_TYPE_F64: np.float64,
+}
+
+
+def as_numpy(h):
+    """Return a numpy array viewing the handle's items buffer. Zero copy.
+
+    The returned array holds a reference to the handle, preventing
+    use-after-free if the handle goes out of scope.
+    """
+    dtype = ORC_NUMPY_DTYPE_MAP.get(h.type_id)
+    if dtype is None:
+        raise ValueError(f"Unknown type_id: {h.type_id:#x}")
+    ctype = ORC_CTYPE_MAP[h.type_id]
+    ptr = ctypes.cast(h.items, ctypes.POINTER(ctype * h.n_items))
+    buf = ptr.contents
+    # Stash the handle reference on the ctypes buffer. The numpy array
+    # holds buf as its base, so the handle stays alive as long as the
+    # array does.
+    buf._orc_handle = h
+    return np.frombuffer(buf, dtype=dtype)
 
 
 def _detect_type(values):
@@ -164,7 +205,7 @@ def _calc_strides(marks):
     return stride_offset, strides
 
 
-def make_handle(data, type_id=None):
+def make_deck(data, type_id=None):
     """Create an OrcHandle from (possibly nested) lists, like deck![...].
 
     Detects the element type automatically from the leaf values.
@@ -212,7 +253,7 @@ def make_handle(data, type_id=None):
     return h
 
 
-def read_handle(h):
+def read_deck(h):
     """Read values out of an OrcHandle, reconstructing nested structure."""
     ctype = ORC_CTYPE_MAP.get(h.type_id)
     if ctype is None:
@@ -309,11 +350,34 @@ def load_plugins(search_dir, host):
     return plugins
 
 
+class OrcFuncWrapper:
+    """Callable wrapper around a plugin function."""
+
+    def __init__(self, fi):
+        """Wrap an OrcFuncInfo as a callable."""
+        self._fi = fi
+        self.name = fi.name.decode("utf-8")
+
+    def __call__(self, *inputs, n_out=1):
+        """Call the plugin function with the given input handles."""
+        in_arr = (OrcHandle * len(inputs))(*inputs)
+        outs = [empty_handle() for _ in range(n_out)]
+        out_arr = (OrcHandle * n_out)(*outs)
+        self._fi.func(0, in_arr, len(inputs), out_arr, n_out)
+        if n_out == 1:
+            return out_arr[0]
+        return tuple(out_arr[i] for i in range(n_out))
+
+    def __repr__(self):
+        """Return a string representation of the function."""
+        return f"OrcFunc({self.name!r})"
+
+
 def get_function(plugins, name):
-    """Find a function by name across all loaded plugins."""
+    """Find a plugin function by name and return a callable OrcFunc."""
     for _lib, plugin in plugins:
         for i in range(plugin.n_functions):
             fi = plugin.functions[i]
             if fi.name.decode("utf-8") == name:
-                return fi
+                return OrcFuncWrapper(fi)
     raise KeyError(f"Function '{name}' not found in any plugin")

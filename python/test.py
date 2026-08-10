@@ -6,7 +6,10 @@ import math
 import os
 import sys
 
+import numpy as np
+
 from orc import (
+    ORC_TYPE_F32,
     ORC_TYPE_F64,
     ORC_TYPE_I8,
     ORC_TYPE_I16,
@@ -17,12 +20,13 @@ from orc import (
     ORC_TYPE_U32,
     ORC_TYPE_U64,
     OrcHandle,
+    as_numpy,
     default_host,
+    empty_handle,
     get_function,
     load_plugins,
-    make_handle as _make_handle,
-    next_handle_id,
-    read_handle,
+    make_deck as _make_handle,
+    read_deck,
 )
 
 # ---------------------------------------------------------------------------
@@ -73,17 +77,13 @@ if not plugins:
 def call_fn(name, inputs, n_outputs=1):
     """Call a plugin function by name and return output handles."""
     fn = get_function(plugins, name)
-    in_arr = (OrcHandle * len(inputs))(*inputs)
-    outs = []
-    for _ in range(n_outputs):
-        out = OrcHandle()
-        ctypes.memset(ctypes.addressof(out), 0, ctypes.sizeof(out))
-        out.handle = next_handle_id()
-        _live_handles.add(out.handle)
-        outs.append(out)
-    out_arr = (OrcHandle * n_outputs)(*outs)
-    fn.func(0, in_arr, len(inputs), out_arr, n_outputs)
-    return [out_arr[i] for i in range(n_outputs)]
+    result = fn(*inputs, n_out=n_outputs)
+    if n_outputs == 1:
+        _live_handles.add(result.handle)
+        return [result]
+    for h in result:
+        _live_handles.add(h.handle)
+    return list(result)
 
 
 # ============================================================
@@ -96,7 +96,7 @@ def t_add_f64_flat():
     a = make_handle([1.0, 2.0, 3.0])
     b = make_handle([10.0, 20.0, 30.0])
     [out] = call_fn("add", [a, b])
-    assert read_handle(out) == [11.0, 22.0, 33.0]
+    assert read_deck(out) == [11.0, 22.0, 33.0]
 
 
 def t_add_f64_nested():
@@ -104,7 +104,7 @@ def t_add_f64_nested():
     a = make_handle([[1.0, 2.0, 3.0], [2.0, 4.0, 6.0, 8.0]])
     b = make_handle([10.0, 20.0, 30.0])
     [out] = call_fn("add", [a, b])
-    result = read_handle(out)
+    result = read_deck(out)
     assert result == [[11.0, 22.0, 33.0], [12.0, 24.0, 36.0, 38.0]]
 
 
@@ -113,7 +113,7 @@ def t_add_broadcast_scalar():
     a = make_handle([1.0, 2.0, 3.0])
     b = make_handle([10.0])
     [out] = call_fn("add", [a, b])
-    assert read_handle(out) == [11.0, 12.0, 13.0]
+    assert read_deck(out) == [11.0, 12.0, 13.0]
 
 
 def t_add_single_element():
@@ -121,7 +121,7 @@ def t_add_single_element():
     a = make_handle([5.0])
     b = make_handle([3.0])
     [out] = call_fn("add", [a, b])
-    assert read_handle(out) == [8.0]
+    assert read_deck(out) == [8.0]
 
 
 def t_add_depth3():
@@ -129,7 +129,7 @@ def t_add_depth3():
     a = make_handle([[[1.0, 2.0], [3.0, 4.0]], [[5.0, 6.0], [7.0, 8.0]]])
     b = make_handle([10.0])
     [out] = call_fn("add", [a, b])
-    result = read_handle(out)
+    result = read_deck(out)
     expected = [
         [[11.0, 12.0], [13.0, 14.0]],
         [[15.0, 16.0], [17.0, 18.0]],
@@ -159,7 +159,7 @@ def t_add_u8():
     assert a.type_id == ORC_TYPE_U8
     assert b.type_id == ORC_TYPE_U8
     [out] = call_fn("add", [a, b])
-    assert read_handle(out) == [11, 22, 33]
+    assert read_deck(out) == [11, 22, 33]
 
 
 def t_add_u32():
@@ -168,7 +168,7 @@ def t_add_u32():
     b = make_handle([300000, 400000])
     assert a.type_id == ORC_TYPE_U32
     [out] = call_fn("add", [a, b])
-    assert read_handle(out) == [400000, 600000]
+    assert read_deck(out) == [400000, 600000]
 
 
 # ============================================================
@@ -196,7 +196,7 @@ def t_mul_f64():
     a = make_handle([2.0, 3.0, 4.0])
     b = make_handle([5.0, 6.0, 7.0])
     [out] = call_fn("mul", [a, b])
-    assert read_handle(out) == [10.0, 18.0, 28.0]
+    assert read_deck(out) == [10.0, 18.0, 28.0]
 
 
 def t_mul_u8():
@@ -204,7 +204,7 @@ def t_mul_u8():
     a = make_handle([3, 4])
     b = make_handle([7, 8])
     [out] = call_fn("mul", [a, b])
-    assert read_handle(out) == [21, 32]
+    assert read_deck(out) == [21, 32]
 
 
 def t_mul_nested():
@@ -212,7 +212,7 @@ def t_mul_nested():
     a = make_handle([[2.0, 3.0], [4.0]])
     b = make_handle([10.0])
     [out] = call_fn("mul", [a, b])
-    assert read_handle(out) == [[20.0, 30.0], [40.0]]
+    assert read_deck(out) == [[20.0, 30.0], [40.0]]
 
 
 def t_mul_mismatched_types():
@@ -234,7 +234,7 @@ def t_sub_f64():
     a = make_handle([10.0, 20.0])
     b = make_handle([3.0, 7.0])
     [out] = call_fn("sub", [a, b])
-    assert read_handle(out) == [7.0, 13.0]
+    assert read_deck(out) == [7.0, 13.0]
 
 
 def t_sub_nested():
@@ -242,7 +242,7 @@ def t_sub_nested():
     a = make_handle([[10.0, 20.0], [30.0]])
     b = make_handle([1.0])
     [out] = call_fn("sub", [a, b])
-    assert read_handle(out) == [[9.0, 19.0], [29.0]]
+    assert read_deck(out) == [[9.0, 19.0], [29.0]]
 
 
 def t_sub_unsupported_type():
@@ -264,7 +264,7 @@ def t_div_f64():
     a = make_handle([10.0, 9.0])
     b = make_handle([2.0, 3.0])
     [out] = call_fn("div", [a, b])
-    assert read_handle(out) == [5.0, 3.0]
+    assert read_deck(out) == [5.0, 3.0]
 
 
 def t_div_by_zero():
@@ -272,7 +272,7 @@ def t_div_by_zero():
     a = make_handle([1.0])
     b = make_handle([0.0])
     [out] = call_fn("div", [a, b])
-    result = read_handle(out)
+    result = read_deck(out)
     assert math.isinf(result[0]) and result[0] > 0
 
 
@@ -295,7 +295,7 @@ def t_repeat_list_f64():
     a = make_handle([1.0, 2.0, 3.0])
     count = make_handle(3, type_id=ORC_TYPE_U64)
     [out] = call_fn("repeat_list", [a, count])
-    result = read_handle(out)
+    result = read_deck(out)
     assert result == [1.0, 2.0, 3.0, 1.0, 2.0, 3.0, 1.0, 2.0, 3.0]
 
 
@@ -305,7 +305,7 @@ def t_repeat_list_u8():
     count = make_handle([2], type_id=ORC_TYPE_U64)
     [out] = call_fn("repeat_list", [a, count])
     # We expect a nested list because the second input is a list.
-    assert read_handle(out) == [[10, 20, 10, 20]]
+    assert read_deck(out) == [[10, 20, 10, 20]]
 
 
 def t_repeat_list_single_element():
@@ -313,7 +313,7 @@ def t_repeat_list_single_element():
     a = make_handle([42.0])
     count = make_handle([4], type_id=ORC_TYPE_U64)
     [out] = call_fn("repeat_list", [a, count])
-    assert read_handle(out) == [[42.0, 42.0, 42.0, 42.0]]
+    assert read_deck(out) == [[42.0, 42.0, 42.0, 42.0]]
 
 
 def t_repeat_list_one_repeat():
@@ -321,7 +321,7 @@ def t_repeat_list_one_repeat():
     a = make_handle([5.0, 6.0])
     count = make_handle(1, type_id=ORC_TYPE_U64)
     [out] = call_fn("repeat_list", [a, count])
-    assert read_handle(out) == [5.0, 6.0]
+    assert read_deck(out) == [5.0, 6.0]
 
 
 def t_repeat_list_zero_repeats():
@@ -329,7 +329,7 @@ def t_repeat_list_zero_repeats():
     a = make_handle([1.0, 2.0])
     count = make_handle(0, type_id=ORC_TYPE_U64)
     [out] = call_fn("repeat_list", [a, count])
-    assert read_handle(out) == []
+    assert read_deck(out) == []
 
 
 def t_repeat_list_output_type_matches_input():
@@ -339,7 +339,7 @@ def t_repeat_list_output_type_matches_input():
     count = make_handle(2, type_id=ORC_TYPE_U64)
     [out] = call_fn("repeat_list", [a, count])
     assert out.type_id == ORC_TYPE_U32
-    assert read_handle(out) == [100000, 200000, 100000, 200000]
+    assert read_deck(out) == [100000, 200000, 100000, 200000]
 
 
 def t_repeat_list_output_free_fn_set():
@@ -355,7 +355,7 @@ def t_repeat_list_nested_input():
     a = make_handle([[1.0, 2.0], [3.0]])
     count = make_handle([2], type_id=ORC_TYPE_U64)
     [out] = call_fn("repeat_list", [a, count])
-    result = read_handle(out)
+    result = read_deck(out)
     # Each sublist repeated: [1,2,1,2] and [3,3]
     assert result == [[1.0, 2.0, 1.0, 2.0], [3.0, 3.0]]
 
@@ -369,7 +369,7 @@ def t_list_length_basic():
     """List length of two sublists returns their sizes."""
     a = make_handle([[1.0, 2.0, 3.0], [4.0, 5.0]])
     [out] = call_fn("list_length", [a])
-    result = read_handle(out)
+    result = read_deck(out)
     assert result == [3, 2]
     assert out.type_id == ORC_TYPE_U64
 
@@ -378,14 +378,14 @@ def t_list_length_single_list():
     """List length of one single-element sublist."""
     a = make_handle([[42.0]])
     [out] = call_fn("list_length", [a])
-    assert read_handle(out) == [1]
+    assert read_deck(out) == [1]
 
 
 def t_list_length_depth3():
     """List length at depth-3 returns nested lengths."""
     a = make_handle([[[1.0, 2.0], [3.0]], [[4.0, 5.0, 6.0]]])
     [out] = call_fn("list_length", [a])
-    result = read_handle(out)
+    result = read_deck(out)
     assert result == [[2, 1], [3]]
 
 
@@ -398,7 +398,7 @@ def t_flatten_basic():
     """Flatten a nested list into a flat list."""
     a = make_handle([[1.0, 2.0, 3.0], [4.0, 5.0]])
     [out] = call_fn("flatten_deck", [a])
-    result = read_handle(out)
+    result = read_deck(out)
     assert result == [1.0, 2.0, 3.0, 4.0, 5.0]
 
 
@@ -406,7 +406,7 @@ def t_flatten_already_flat():
     """Flatten an already-flat list is a no-op."""
     a = make_handle([1.0, 2.0, 3.0])
     [out] = call_fn("flatten_deck", [a])
-    assert read_handle(out) == [1.0, 2.0, 3.0]
+    assert read_deck(out) == [1.0, 2.0, 3.0]
 
 
 def t_flatten_multiple_io():
@@ -414,8 +414,8 @@ def t_flatten_multiple_io():
     a = make_handle([[1.0, 2.0], [3.0]])
     b = make_handle([[4.0, 5.0, 6.0]])
     outs = call_fn("flatten_deck", [a, b], n_outputs=2)
-    assert read_handle(outs[0]) == [1.0, 2.0, 3.0]
-    assert read_handle(outs[1]) == [4.0, 5.0, 6.0]
+    assert read_deck(outs[0]) == [1.0, 2.0, 3.0]
+    assert read_deck(outs[1]) == [4.0, 5.0, 6.0]
 
 
 def t_flatten_integer_type():
@@ -424,7 +424,7 @@ def t_flatten_integer_type():
     assert a.type_id == ORC_TYPE_U8
     [out] = call_fn("flatten_deck", [a])
     assert out.type_id == ORC_TYPE_U8
-    assert read_handle(out) == [10, 20, 30]
+    assert read_deck(out) == [10, 20, 30]
 
 
 # ============================================================
@@ -437,11 +437,9 @@ def t_flatten_mismatched_counts():
     a = make_handle([[1.0]])
     fn = get_function(plugins, "flatten_deck")
     in_arr = (OrcHandle * 1)(a)
-    out1 = OrcHandle()
-    ctypes.memset(ctypes.addressof(out1), 0, ctypes.sizeof(out1))
-    out1.handle = next_handle_id()
+    out1 = empty_handle()
     out_arr = (OrcHandle * 1)(out1)
-    fn.func(0, in_arr, 2, out_arr, 1)
+    fn._fi.func(0, in_arr, 2, out_arr, 1)
     assert not out_arr[0].items
     assert not out_arr[0].free_fn
 
@@ -469,7 +467,7 @@ def t_output_handle_id_preserved():
     fn = get_function(plugins, "add")
     in_arr = (OrcHandle * 2)(a, b)
     out_arr = (OrcHandle * 1)(out)
-    fn.func(0, in_arr, 2, out_arr, 1)
+    fn._fi.func(0, in_arr, 2, out_arr, 1)
     assert out_arr[0].handle == 9999
 
 
@@ -497,35 +495,35 @@ def t_roundtrip_flat():
     """Roundtrip a flat list through make/read."""
     data = [1.0, 2.0, 3.0]
     h = make_handle(data)
-    assert read_handle(h) == data
+    assert read_deck(h) == data
 
 
 def t_roundtrip_nested():
     """Roundtrip a nested list through make/read."""
     data = [[1.0, 2.0], [3.0, 4.0]]
     h = make_handle(data)
-    assert read_handle(h) == data
+    assert read_deck(h) == data
 
 
 def t_roundtrip_depth3():
     """Roundtrip a depth-3 nested list through make/read."""
     data = [[[1.0, 2.0], [3.0, 4.0]], [[5.0, 6.0], [7.0, 8.0]]]
     h = make_handle(data)
-    assert read_handle(h) == data
+    assert read_deck(h) == data
 
 
 def t_roundtrip_ragged():
     """Roundtrip a ragged nested list through make/read."""
     data = [[1.0, 2.0, 3.0], [4.0, 5.0]]
     h = make_handle(data)
-    assert read_handle(h) == data
+    assert read_deck(h) == data
 
 
 def t_roundtrip_single_element():
     """Roundtrip a single-element list through make/read."""
     data = [42.0]
     h = make_handle(data)
-    assert read_handle(h) == data
+    assert read_deck(h) == data
 
 
 def t_type_detection_u8():
@@ -580,6 +578,171 @@ def t_type_detection_f64():
     """Any float value triggers F64 detection."""
     h = make_handle([1.0, 2, 3])
     assert h.type_id == ORC_TYPE_F64
+
+
+# ============================================================
+# as_numpy — Zero-copy numpy integration
+# ============================================================
+
+
+def t_numpy_f64():
+    """Convert f64 handle to numpy, verify pointer and arithmetic."""
+    a = make_handle([1.0, 2.0, 3.0])
+    b = make_handle([10.0, 20.0, 30.0])
+    [out] = call_fn("add", [a, b])
+    arr = as_numpy(out)
+    assert arr.dtype == np.float64
+    assert arr.ctypes.data == out.items
+    assert list(arr * 2.0) == [22.0, 44.0, 66.0]
+
+
+def t_numpy_f32():
+    """Convert f32 handle to numpy, verify pointer and arithmetic."""
+    h = make_handle([1.5, 2.5, 3.5], type_id=ORC_TYPE_F32)
+    arr = as_numpy(h)
+    assert arr.dtype == np.float32
+    assert arr.ctypes.data == h.items
+    result = arr + np.float32(0.5)
+    assert list(result) == [2.0, 3.0, 4.0]
+
+
+def t_numpy_u8():
+    """Convert u8 handle to numpy, verify pointer and arithmetic."""
+    a = make_handle([10, 20, 30])
+    b = make_handle([1, 2, 3])
+    [out] = call_fn("add", [a, b])
+    arr = as_numpy(out)
+    assert arr.dtype == np.uint8
+    assert arr.ctypes.data == out.items
+    assert list(arr + np.uint8(100)) == [111, 122, 133]
+
+
+def t_numpy_u16():
+    """Convert u16 handle to numpy, verify pointer and arithmetic."""
+    h = make_handle([300, 400, 500], type_id=ORC_TYPE_U16)
+    arr = as_numpy(h)
+    assert arr.dtype == np.uint16
+    assert arr.ctypes.data == h.items
+    assert list(arr - np.uint16(100)) == [200, 300, 400]
+
+
+def t_numpy_u32():
+    """Convert u32 handle to numpy, verify pointer and arithmetic."""
+    a = make_handle([100000, 200000])
+    b = make_handle([300000, 400000])
+    [out] = call_fn("add", [a, b])
+    arr = as_numpy(out)
+    assert arr.dtype == np.uint32
+    assert arr.ctypes.data == out.items
+    assert list(arr // np.uint32(100000)) == [4, 6]
+
+
+def t_numpy_u64():
+    """Convert u64 handle to numpy, verify pointer and arithmetic."""
+    h = make_handle([2**40, 2**41], type_id=ORC_TYPE_U64)
+    arr = as_numpy(h)
+    assert arr.dtype == np.uint64
+    assert arr.ctypes.data == h.items
+    assert list(arr * np.uint64(2)) == [2**41, 2**42]
+
+
+def t_numpy_i8():
+    """Convert i8 handle to numpy, verify pointer and arithmetic."""
+    h = make_handle([-10, 0, 10], type_id=ORC_TYPE_I8)
+    arr = as_numpy(h)
+    assert arr.dtype == np.int8
+    assert arr.ctypes.data == h.items
+    assert list(arr + np.int8(5)) == [-5, 5, 15]
+
+
+def t_numpy_i16():
+    """Convert i16 handle to numpy, verify pointer and arithmetic."""
+    h = make_handle([-1000, 0, 1000], type_id=ORC_TYPE_I16)
+    arr = as_numpy(h)
+    assert arr.dtype == np.int16
+    assert arr.ctypes.data == h.items
+    assert list(arr * np.int16(-1)) == [1000, 0, -1000]
+
+
+def t_numpy_i32():
+    """Convert i32 handle to numpy, verify pointer and arithmetic."""
+    h = make_handle([-100000, 0, 100000], type_id=ORC_TYPE_I32)
+    arr = as_numpy(h)
+    assert arr.dtype == np.int32
+    assert arr.ctypes.data == h.items
+    assert list(arr + np.int32(1)) == [-99999, 1, 100001]
+
+
+def t_numpy_i64():
+    """Convert i64 handle to numpy, verify pointer and arithmetic."""
+    h = make_handle([-2**40, 0, 2**40], type_id=ORC_TYPE_I64)
+    arr = as_numpy(h)
+    assert arr.dtype == np.int64
+    assert arr.ctypes.data == h.items
+    assert list(arr + np.int64(1)) == [-(2**40) + 1, 1, 2**40 + 1]
+
+
+def t_numpy_3x3_matrix():
+    """Convert a 3x3 nested handle to a numpy matrix, verify arithmetic."""
+    data = [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]]
+    h = make_handle(data)
+    arr = as_numpy(h)
+    assert arr.ctypes.data == h.items
+    # Flat view of 9 items
+    assert len(arr) == 9
+    mat = arr.reshape(3, 3)
+    # Matrix multiply with identity should return the same matrix
+    identity = np.eye(3)
+    result = mat @ identity
+    assert np.array_equal(result, mat)
+    # Sum of each row
+    row_sums = mat.sum(axis=1)
+    assert list(row_sums) == [6.0, 15.0, 24.0]
+
+
+def t_numpy_3x3_from_plugin():
+    """Plugin output of nested 3x3, converted to numpy matrix."""
+    a = make_handle([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]])
+    b = make_handle([1.0])
+    [out] = call_fn("add", [a, b])
+    arr = as_numpy(out)
+    assert arr.ctypes.data == out.items
+    mat = arr.reshape(3, 3)
+    # Each element should be original + 1
+    expected = np.array([[2, 3, 4], [5, 6, 7], [8, 9, 10]], dtype=np.float64)
+    assert np.array_equal(mat, expected)
+    # Column means
+    col_means = mat.mean(axis=0)
+    assert list(col_means) == [5.0, 6.0, 7.0]
+
+
+def t_numpy_survives_handle_gc():
+    """Numpy array must remain valid after the handle is GC'd."""
+
+    def get_arr():
+        h = make_handle([1.0, 2.0, 3.0])
+        return as_numpy(h)
+
+    arr = get_arr()
+    gc.collect()  # Force GC of the handle
+    # If the handle was freed, this reads freed memory.
+    assert list(arr) == [1.0, 2.0, 3.0]
+    assert list(arr + 1.0) == [2.0, 3.0, 4.0]
+
+
+def t_numpy_and_handle_both_freed():
+    """Handle is freed when both numpy array and handle go out of scope."""
+
+    def create_and_drop():
+        h = make_handle([1.0, 2.0, 3.0])
+        arr = as_numpy(h)
+        assert list(arr) == [1.0, 2.0, 3.0]
+        # Both h and arr go out of scope here.
+
+    create_and_drop()
+    gc.collect()
+    # assert_no_leaks runs after this test returns, verifying the handle
+    # was freed even though the numpy array extended its lifetime.
 
 
 # ============================================================

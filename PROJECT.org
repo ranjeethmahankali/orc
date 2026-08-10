@@ -206,15 +206,35 @@
   :CREATED:  2026-08-08 Sat 08:50
   :END:
 
-* TODO Numpy integration with zero overhead
+* DONE tjj8pq - Numpy integration with zero overhead
+  CLOSED: [2026-08-10 Mon 00:02]
   :PROPERTIES:
   :CREATED:  2026-08-09 Sun 00:47
+  :END:
+  :LOGBOOK:
+  - State "DONE"       from "NEXT"       [2026-08-10 Mon 00:02]
+  - State "NEXT"       from "TODO"       [2026-08-09 Sun 22:39]
   :END:
 
   Just a curiosity that came up when speaking to Jonathan. He was using some complicated library
   setup with a complicated CMake setup with a weird build target to get it working. I reckon I can
   do this in a much simpler way with no additional dependencies and no additional moving parts,
   build system etc.
+
+  <2026-08-09 Sun 22:52> Numpy has a convenient API that let's you pass a C pointer and create a
+  "view" numpy array, or matrix. This is similar to the ~Eigen::Map~ api. It was fairly easy to use
+  that API, create a numpy array, and confirm that the numpy array uses the same pointer address as
+  the OrcHandle.items. That makes this a "zero copy", solution.
+
+  <2026-08-09 Sun 23:23> Handled the various garbage collection scenarios, and made sure this is
+  memory safe. Added tests to cover all these scenarios.
+
+  <2026-08-10 Mon 00:00> Made several improvements to the API, hid the internal details of handles,
+  allocation, lifetimes etc. and made it look like clean Python code from the outside. Orc workflows
+  written in Python should now look like natural Python code, closely resembling numpy.
+
+  <2026-08-10 Mon 00:01> Making sure the CI works, and all the tests pass now, with numpy properly
+  installed on the CI machines. Ready to merge after that.
 
 * DONE tjgdan - Python bindings
   CLOSED: [2026-08-09 Sun 00:22]

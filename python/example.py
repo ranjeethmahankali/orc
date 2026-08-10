@@ -7,9 +7,8 @@ and calls a function (e.g. 'add') on two f64 decks.
 
 import os
 import sys
-import ctypes
-from orc import (default_host, load_plugins, get_function, make_handle,
-                 next_handle_id, OrcHandle, read_handle)
+from orc import (default_host, load_plugins, get_function, make_deck,
+                 read_deck, as_numpy)
 
 # ---------------------------------------------------------------------------
 # Main
@@ -38,21 +37,27 @@ def main():
     print()
 
     # Call 'add' on two f64 arrays
-    add_fn = get_function(plugins, "add")
+    add = get_function(plugins, "add")
+    flatten = get_function(plugins, "flatten_deck")
 
-    a = make_handle([[1.0, 2.0, 3.0], [2.0, 4.0, 6.0, 8.0]])
-    b = make_handle([10.0, 20.0, 30.0])
-    inputs = (OrcHandle * 2)(a, b)
+    a = make_deck([[1.0, 2.0, 3.0], [2.0, 4.0, 6.0, 8.0]])
+    b = make_deck([10.0, 20.0, 30.0])
 
-    out = OrcHandle()
-    ctypes.memset(ctypes.addressof(out), 0, ctypes.sizeof(out))
-    out.handle = next_handle_id()
+    out = add(a, b)
+    flat_out = flatten(out)
 
-    add_fn.func(0, inputs, 2, ctypes.byref(out), 1)
+    result = read_deck(flat_out)
+    print(f"flatten(add([[1.0, 2.0, 3.0], [2.0, 4.0, 6.0, 8.0]])) = {result}")
+    assert result == [11, 22, 33, 12, 24, 36, 38], f"Unexpected: {result}"
 
-    result = read_handle(out)
-    print(f"add([[1.0, 2.0, 3.0], [2.0, 4.0, 6.0, 8.0]]) = {result}")
-    assert result == [[11, 22, 33], [12, 24, 36, 38]], f"Unexpected: {result}"
+    # Zero-copy numpy view of the same data
+    np_arr = as_numpy(flat_out)
+    print(f"numpy (zero copy): {np_arr}")
+    assert list(np_arr) == [11, 22, 33, 12, 24, 36, 38]
+    assert (np_arr.ctypes.data == flat_out.items
+            ), "Confirm that numpy is using the same pointer."
+    doubled_np_arr = np_arr * 2.0
+    print(f"Output after doubling: {doubled_np_arr}")
     print("PASS")
 
 
