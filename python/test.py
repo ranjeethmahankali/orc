@@ -736,6 +736,21 @@ def t_numpy_survives_handle_gc():
     assert list(arr + 1.0) == [2.0, 3.0, 4.0]
 
 
+def t_numpy_and_handle_both_freed():
+    """Handle is freed when both numpy array and handle go out of scope."""
+
+    def create_and_drop():
+        h = make_handle([1.0, 2.0, 3.0])
+        arr = as_numpy(h)
+        assert list(arr) == [1.0, 2.0, 3.0]
+        # Both h and arr go out of scope here.
+
+    create_and_drop()
+    gc.collect()
+    # assert_no_leaks runs after this test returns, verifying the handle
+    # was freed even though the numpy array extended its lifetime.
+
+
 # ============================================================
 # Runner
 # ============================================================
