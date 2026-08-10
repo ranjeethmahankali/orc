@@ -7,8 +7,8 @@ and calls a function (e.g. 'add') on two f64 decks.
 
 import os
 import sys
-from orc import (default_host, load_plugins, get_function, make_handle,
-                 read_handle, as_numpy)
+from orc import (default_host, load_plugins, get_function, make_deck,
+                 read_deck, as_numpy)
 
 # ---------------------------------------------------------------------------
 # Main
@@ -40,13 +40,13 @@ def main():
     add = get_function(plugins, "add")
     flatten = get_function(plugins, "flatten_deck")
 
-    a = make_handle([[1.0, 2.0, 3.0], [2.0, 4.0, 6.0, 8.0]])
-    b = make_handle([10.0, 20.0, 30.0])
+    a = make_deck([[1.0, 2.0, 3.0], [2.0, 4.0, 6.0, 8.0]])
+    b = make_deck([10.0, 20.0, 30.0])
 
     out = add(a, b)
     flat_out = flatten(out)
 
-    result = read_handle(flat_out)
+    result = read_deck(flat_out)
     print(f"flatten(add([[1.0, 2.0, 3.0], [2.0, 4.0, 6.0, 8.0]])) = {result}")
     assert result == [11, 22, 33, 12, 24, 36, 38], f"Unexpected: {result}"
 

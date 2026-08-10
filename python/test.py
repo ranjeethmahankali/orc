@@ -25,8 +25,8 @@ from orc import (
     empty_handle,
     get_function,
     load_plugins,
-    make_handle as _make_handle,
-    read_handle,
+    make_deck as _make_handle,
+    read_deck,
 )
 
 # ---------------------------------------------------------------------------
@@ -96,7 +96,7 @@ def t_add_f64_flat():
     a = make_handle([1.0, 2.0, 3.0])
     b = make_handle([10.0, 20.0, 30.0])
     [out] = call_fn("add", [a, b])
-    assert read_handle(out) == [11.0, 22.0, 33.0]
+    assert read_deck(out) == [11.0, 22.0, 33.0]
 
 
 def t_add_f64_nested():
@@ -104,7 +104,7 @@ def t_add_f64_nested():
     a = make_handle([[1.0, 2.0, 3.0], [2.0, 4.0, 6.0, 8.0]])
     b = make_handle([10.0, 20.0, 30.0])
     [out] = call_fn("add", [a, b])
-    result = read_handle(out)
+    result = read_deck(out)
     assert result == [[11.0, 22.0, 33.0], [12.0, 24.0, 36.0, 38.0]]
 
 
@@ -113,7 +113,7 @@ def t_add_broadcast_scalar():
     a = make_handle([1.0, 2.0, 3.0])
     b = make_handle([10.0])
     [out] = call_fn("add", [a, b])
-    assert read_handle(out) == [11.0, 12.0, 13.0]
+    assert read_deck(out) == [11.0, 12.0, 13.0]
 
 
 def t_add_single_element():
@@ -121,7 +121,7 @@ def t_add_single_element():
     a = make_handle([5.0])
     b = make_handle([3.0])
     [out] = call_fn("add", [a, b])
-    assert read_handle(out) == [8.0]
+    assert read_deck(out) == [8.0]
 
 
 def t_add_depth3():
@@ -129,7 +129,7 @@ def t_add_depth3():
     a = make_handle([[[1.0, 2.0], [3.0, 4.0]], [[5.0, 6.0], [7.0, 8.0]]])
     b = make_handle([10.0])
     [out] = call_fn("add", [a, b])
-    result = read_handle(out)
+    result = read_deck(out)
     expected = [
         [[11.0, 12.0], [13.0, 14.0]],
         [[15.0, 16.0], [17.0, 18.0]],
@@ -159,7 +159,7 @@ def t_add_u8():
     assert a.type_id == ORC_TYPE_U8
     assert b.type_id == ORC_TYPE_U8
     [out] = call_fn("add", [a, b])
-    assert read_handle(out) == [11, 22, 33]
+    assert read_deck(out) == [11, 22, 33]
 
 
 def t_add_u32():
@@ -168,7 +168,7 @@ def t_add_u32():
     b = make_handle([300000, 400000])
     assert a.type_id == ORC_TYPE_U32
     [out] = call_fn("add", [a, b])
-    assert read_handle(out) == [400000, 600000]
+    assert read_deck(out) == [400000, 600000]
 
 
 # ============================================================
@@ -196,7 +196,7 @@ def t_mul_f64():
     a = make_handle([2.0, 3.0, 4.0])
     b = make_handle([5.0, 6.0, 7.0])
     [out] = call_fn("mul", [a, b])
-    assert read_handle(out) == [10.0, 18.0, 28.0]
+    assert read_deck(out) == [10.0, 18.0, 28.0]
 
 
 def t_mul_u8():
@@ -204,7 +204,7 @@ def t_mul_u8():
     a = make_handle([3, 4])
     b = make_handle([7, 8])
     [out] = call_fn("mul", [a, b])
-    assert read_handle(out) == [21, 32]
+    assert read_deck(out) == [21, 32]
 
 
 def t_mul_nested():
@@ -212,7 +212,7 @@ def t_mul_nested():
     a = make_handle([[2.0, 3.0], [4.0]])
     b = make_handle([10.0])
     [out] = call_fn("mul", [a, b])
-    assert read_handle(out) == [[20.0, 30.0], [40.0]]
+    assert read_deck(out) == [[20.0, 30.0], [40.0]]
 
 
 def t_mul_mismatched_types():
@@ -234,7 +234,7 @@ def t_sub_f64():
     a = make_handle([10.0, 20.0])
     b = make_handle([3.0, 7.0])
     [out] = call_fn("sub", [a, b])
-    assert read_handle(out) == [7.0, 13.0]
+    assert read_deck(out) == [7.0, 13.0]
 
 
 def t_sub_nested():
@@ -242,7 +242,7 @@ def t_sub_nested():
     a = make_handle([[10.0, 20.0], [30.0]])
     b = make_handle([1.0])
     [out] = call_fn("sub", [a, b])
-    assert read_handle(out) == [[9.0, 19.0], [29.0]]
+    assert read_deck(out) == [[9.0, 19.0], [29.0]]
 
 
 def t_sub_unsupported_type():
@@ -264,7 +264,7 @@ def t_div_f64():
     a = make_handle([10.0, 9.0])
     b = make_handle([2.0, 3.0])
     [out] = call_fn("div", [a, b])
-    assert read_handle(out) == [5.0, 3.0]
+    assert read_deck(out) == [5.0, 3.0]
 
 
 def t_div_by_zero():
@@ -272,7 +272,7 @@ def t_div_by_zero():
     a = make_handle([1.0])
     b = make_handle([0.0])
     [out] = call_fn("div", [a, b])
-    result = read_handle(out)
+    result = read_deck(out)
     assert math.isinf(result[0]) and result[0] > 0
 
 
@@ -295,7 +295,7 @@ def t_repeat_list_f64():
     a = make_handle([1.0, 2.0, 3.0])
     count = make_handle(3, type_id=ORC_TYPE_U64)
     [out] = call_fn("repeat_list", [a, count])
-    result = read_handle(out)
+    result = read_deck(out)
     assert result == [1.0, 2.0, 3.0, 1.0, 2.0, 3.0, 1.0, 2.0, 3.0]
 
 
@@ -305,7 +305,7 @@ def t_repeat_list_u8():
     count = make_handle([2], type_id=ORC_TYPE_U64)
     [out] = call_fn("repeat_list", [a, count])
     # We expect a nested list because the second input is a list.
-    assert read_handle(out) == [[10, 20, 10, 20]]
+    assert read_deck(out) == [[10, 20, 10, 20]]
 
 
 def t_repeat_list_single_element():
@@ -313,7 +313,7 @@ def t_repeat_list_single_element():
     a = make_handle([42.0])
     count = make_handle([4], type_id=ORC_TYPE_U64)
     [out] = call_fn("repeat_list", [a, count])
-    assert read_handle(out) == [[42.0, 42.0, 42.0, 42.0]]
+    assert read_deck(out) == [[42.0, 42.0, 42.0, 42.0]]
 
 
 def t_repeat_list_one_repeat():
@@ -321,7 +321,7 @@ def t_repeat_list_one_repeat():
     a = make_handle([5.0, 6.0])
     count = make_handle(1, type_id=ORC_TYPE_U64)
     [out] = call_fn("repeat_list", [a, count])
-    assert read_handle(out) == [5.0, 6.0]
+    assert read_deck(out) == [5.0, 6.0]
 
 
 def t_repeat_list_zero_repeats():
@@ -329,7 +329,7 @@ def t_repeat_list_zero_repeats():
     a = make_handle([1.0, 2.0])
     count = make_handle(0, type_id=ORC_TYPE_U64)
     [out] = call_fn("repeat_list", [a, count])
-    assert read_handle(out) == []
+    assert read_deck(out) == []
 
 
 def t_repeat_list_output_type_matches_input():
@@ -339,7 +339,7 @@ def t_repeat_list_output_type_matches_input():
     count = make_handle(2, type_id=ORC_TYPE_U64)
     [out] = call_fn("repeat_list", [a, count])
     assert out.type_id == ORC_TYPE_U32
-    assert read_handle(out) == [100000, 200000, 100000, 200000]
+    assert read_deck(out) == [100000, 200000, 100000, 200000]
 
 
 def t_repeat_list_output_free_fn_set():
@@ -355,7 +355,7 @@ def t_repeat_list_nested_input():
     a = make_handle([[1.0, 2.0], [3.0]])
     count = make_handle([2], type_id=ORC_TYPE_U64)
     [out] = call_fn("repeat_list", [a, count])
-    result = read_handle(out)
+    result = read_deck(out)
     # Each sublist repeated: [1,2,1,2] and [3,3]
     assert result == [[1.0, 2.0, 1.0, 2.0], [3.0, 3.0]]
 
@@ -369,7 +369,7 @@ def t_list_length_basic():
     """List length of two sublists returns their sizes."""
     a = make_handle([[1.0, 2.0, 3.0], [4.0, 5.0]])
     [out] = call_fn("list_length", [a])
-    result = read_handle(out)
+    result = read_deck(out)
     assert result == [3, 2]
     assert out.type_id == ORC_TYPE_U64
 
@@ -378,14 +378,14 @@ def t_list_length_single_list():
     """List length of one single-element sublist."""
     a = make_handle([[42.0]])
     [out] = call_fn("list_length", [a])
-    assert read_handle(out) == [1]
+    assert read_deck(out) == [1]
 
 
 def t_list_length_depth3():
     """List length at depth-3 returns nested lengths."""
     a = make_handle([[[1.0, 2.0], [3.0]], [[4.0, 5.0, 6.0]]])
     [out] = call_fn("list_length", [a])
-    result = read_handle(out)
+    result = read_deck(out)
     assert result == [[2, 1], [3]]
 
 
@@ -398,7 +398,7 @@ def t_flatten_basic():
     """Flatten a nested list into a flat list."""
     a = make_handle([[1.0, 2.0, 3.0], [4.0, 5.0]])
     [out] = call_fn("flatten_deck", [a])
-    result = read_handle(out)
+    result = read_deck(out)
     assert result == [1.0, 2.0, 3.0, 4.0, 5.0]
 
 
@@ -406,7 +406,7 @@ def t_flatten_already_flat():
     """Flatten an already-flat list is a no-op."""
     a = make_handle([1.0, 2.0, 3.0])
     [out] = call_fn("flatten_deck", [a])
-    assert read_handle(out) == [1.0, 2.0, 3.0]
+    assert read_deck(out) == [1.0, 2.0, 3.0]
 
 
 def t_flatten_multiple_io():
@@ -414,8 +414,8 @@ def t_flatten_multiple_io():
     a = make_handle([[1.0, 2.0], [3.0]])
     b = make_handle([[4.0, 5.0, 6.0]])
     outs = call_fn("flatten_deck", [a, b], n_outputs=2)
-    assert read_handle(outs[0]) == [1.0, 2.0, 3.0]
-    assert read_handle(outs[1]) == [4.0, 5.0, 6.0]
+    assert read_deck(outs[0]) == [1.0, 2.0, 3.0]
+    assert read_deck(outs[1]) == [4.0, 5.0, 6.0]
 
 
 def t_flatten_integer_type():
@@ -424,7 +424,7 @@ def t_flatten_integer_type():
     assert a.type_id == ORC_TYPE_U8
     [out] = call_fn("flatten_deck", [a])
     assert out.type_id == ORC_TYPE_U8
-    assert read_handle(out) == [10, 20, 30]
+    assert read_deck(out) == [10, 20, 30]
 
 
 # ============================================================
@@ -495,35 +495,35 @@ def t_roundtrip_flat():
     """Roundtrip a flat list through make/read."""
     data = [1.0, 2.0, 3.0]
     h = make_handle(data)
-    assert read_handle(h) == data
+    assert read_deck(h) == data
 
 
 def t_roundtrip_nested():
     """Roundtrip a nested list through make/read."""
     data = [[1.0, 2.0], [3.0, 4.0]]
     h = make_handle(data)
-    assert read_handle(h) == data
+    assert read_deck(h) == data
 
 
 def t_roundtrip_depth3():
     """Roundtrip a depth-3 nested list through make/read."""
     data = [[[1.0, 2.0], [3.0, 4.0]], [[5.0, 6.0], [7.0, 8.0]]]
     h = make_handle(data)
-    assert read_handle(h) == data
+    assert read_deck(h) == data
 
 
 def t_roundtrip_ragged():
     """Roundtrip a ragged nested list through make/read."""
     data = [[1.0, 2.0, 3.0], [4.0, 5.0]]
     h = make_handle(data)
-    assert read_handle(h) == data
+    assert read_deck(h) == data
 
 
 def t_roundtrip_single_element():
     """Roundtrip a single-element list through make/read."""
     data = [42.0]
     h = make_handle(data)
-    assert read_handle(h) == data
+    assert read_deck(h) == data
 
 
 def t_type_detection_u8():

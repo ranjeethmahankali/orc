@@ -205,7 +205,7 @@ def _calc_strides(marks):
     return stride_offset, strides
 
 
-def make_handle(data, type_id=None):
+def make_deck(data, type_id=None):
     """Create an OrcHandle from (possibly nested) lists, like deck![...].
 
     Detects the element type automatically from the leaf values.
@@ -253,7 +253,7 @@ def make_handle(data, type_id=None):
     return h
 
 
-def read_handle(h):
+def read_deck(h):
     """Read values out of an OrcHandle, reconstructing nested structure."""
     ctype = ORC_CTYPE_MAP.get(h.type_id)
     if ctype is None:
