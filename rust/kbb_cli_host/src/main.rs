@@ -40,12 +40,15 @@ pub const HOST: OrcHost = OrcHost {
 };
 
 pub static PLUGIN_SET: LazyLock<PluginSet> = LazyLock::new(|| {
-    let exe_dir = std::env::current_exe()
-        .expect("Cannot determine executable path")
-        .parent()
-        .expect("Executable has no parent directory")
-        .to_path_buf();
-    orc_sdk::load_plugins(&exe_dir, &HOST).expect("Failed to load plugins")
+    let exe = std::env::current_exe().expect("Cannot determine executable path");
+    let exe_dir = exe.parent().expect("Executable has no parent directory");
+    let plugin_dir = if exe_dir.ends_with("deps") {
+        // This is necessary to find the plugins from a test binary.
+        exe_dir.parent().unwrap()
+    } else {
+        exe_dir
+    };
+    orc_sdk::load_plugins(plugin_dir, &HOST).expect("Failed to load plugins")
 });
 
 // The host can allocate it's own decks, this registry is for that.
