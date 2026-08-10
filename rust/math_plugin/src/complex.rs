@@ -78,58 +78,60 @@ mod tests {
         }
     }
 
-    fn complex(real: f64, imag: f64) -> Deck<Complex> {
-        orc_sdk::deck![Complex { real, imag }]
+    fn complex(real: f64, imag: f64) -> Complex {
+        Complex { real, imag }
     }
 
-    fn result(out: &OrcHandle) -> Complex {
-        DeckView::<Complex>::from_handle(out).unwrap().items()[0].clone()
+    fn items(out: &OrcHandle) -> Vec<(f64, f64)> {
+        DeckView::<Complex>::from_handle(out)
+            .unwrap()
+            .items()
+            .iter()
+            .map(|c| (c.real, c.imag))
+            .collect()
     }
 
     // ==================== add_complex ====================
 
     #[test]
-    fn t_add_complex_basic() {
-        // (1+2i) + (3+4i) = (4+6i)
-        let lhs = complex(1.0, 2.0);
-        let rhs = complex(3.0, 4.0);
+    fn t_add_complex_flat_list() {
+        // [1+2i, 3+4i] + [10+20i, 30+40i] = [11+22i, 33+44i]
+        let lhs: Deck<Complex> = orc_sdk::deck![complex(1.0, 2.0), complex(3.0, 4.0)];
+        let rhs: Deck<Complex> = orc_sdk::deck![complex(10.0, 20.0), complex(30.0, 40.0)];
         let mut out = out_handle();
         let inputs = [view(&lhs), view(&rhs)];
         unsafe { add_complex(0, inputs.as_ptr(), 2, &mut out, 1) };
-        let r = result(&out);
-        assert_eq!(r.real, 4.0);
-        assert_eq!(r.imag, 6.0);
+        assert_eq!(items(&out), vec![(11.0, 22.0), (33.0, 44.0)]);
     }
 
     #[test]
-    fn t_add_complex_negative_imag() {
-        // (1-2i) + (0+3i) = (1+1i)
-        let lhs = complex(1.0, -2.0);
-        let rhs = complex(0.0, 3.0);
+    fn t_add_complex_nested_lists() {
+        // [[1+i, 2+i], [3+i]] + [[4+i, 5+i], [6+i]] = [[5+2i, 7+2i], [9+2i]]
+        let lhs: Deck<Complex> =
+            orc_sdk::deck![[complex(1.0, 1.0), complex(2.0, 1.0)], [complex(3.0, 1.0)]];
+        let rhs: Deck<Complex> =
+            orc_sdk::deck![[complex(4.0, 1.0), complex(5.0, 1.0)], [complex(6.0, 1.0)]];
         let mut out = out_handle();
         let inputs = [view(&lhs), view(&rhs)];
         unsafe { add_complex(0, inputs.as_ptr(), 2, &mut out, 1) };
-        let r = result(&out);
-        assert_eq!(r.real, 1.0);
-        assert_eq!(r.imag, 1.0);
+        assert_eq!(items(&out), vec![(5.0, 2.0), (7.0, 2.0), (9.0, 2.0)]);
+        assert!(out.n_marks > 0);
     }
 
     #[test]
-    fn t_add_complex_zero() {
-        // (0+0i) + (5+5i) = (5+5i)
-        let lhs = complex(0.0, 0.0);
-        let rhs = complex(5.0, 5.0);
+    fn t_add_complex_negative_components() {
+        // [1-2i, -3+4i] + [0+3i, 3-4i] = [1+1i, 0+0i]
+        let lhs: Deck<Complex> = orc_sdk::deck![complex(1.0, -2.0), complex(-3.0, 4.0)];
+        let rhs: Deck<Complex> = orc_sdk::deck![complex(0.0, 3.0), complex(3.0, -4.0)];
         let mut out = out_handle();
         let inputs = [view(&lhs), view(&rhs)];
         unsafe { add_complex(0, inputs.as_ptr(), 2, &mut out, 1) };
-        let r = result(&out);
-        assert_eq!(r.real, 5.0);
-        assert_eq!(r.imag, 5.0);
+        assert_eq!(items(&out), vec![(1.0, 1.0), (0.0, 0.0)]);
     }
 
     #[test]
     fn t_add_complex_wrong_n_inputs() {
-        let lhs = complex(1.0, 2.0);
+        let lhs: Deck<Complex> = orc_sdk::deck![complex(1.0, 2.0), complex(3.0, 4.0)];
         let mut out = out_handle();
         let inputs = [view(&lhs)];
         unsafe { add_complex(0, inputs.as_ptr(), 1, &mut out, 1) };
@@ -139,8 +141,8 @@ mod tests {
 
     #[test]
     fn t_add_complex_output_handle_id_preserved() {
-        let lhs = complex(1.0, 0.0);
-        let rhs = complex(0.0, 1.0);
+        let lhs: Deck<Complex> = orc_sdk::deck![complex(1.0, 0.0), complex(0.0, 1.0)];
+        let rhs: Deck<Complex> = orc_sdk::deck![complex(0.0, 1.0), complex(1.0, 0.0)];
         let mut out = out_handle();
         let expected_id = out.handle;
         let inputs = [view(&lhs), view(&rhs)];
@@ -150,8 +152,8 @@ mod tests {
 
     #[test]
     fn t_add_complex_output_free_fn_set() {
-        let lhs = complex(1.0, 2.0);
-        let rhs = complex(3.0, 4.0);
+        let lhs: Deck<Complex> = orc_sdk::deck![complex(1.0, 2.0), complex(3.0, 4.0)];
+        let rhs: Deck<Complex> = orc_sdk::deck![complex(5.0, 6.0), complex(7.0, 8.0)];
         let mut out = out_handle();
         let inputs = [view(&lhs), view(&rhs)];
         unsafe { add_complex(0, inputs.as_ptr(), 2, &mut out, 1) };
@@ -161,60 +163,57 @@ mod tests {
     // ==================== mul_complex ====================
 
     #[test]
-    fn t_mul_complex_basic() {
-        // (1+2i) * (3+4i) = (3-8) + (4+6)i = -5 + 10i
-        let lhs = complex(1.0, 2.0);
-        let rhs = complex(3.0, 4.0);
+    fn t_mul_complex_flat_list() {
+        // [1+2i, 2+3i] * [3+4i, 1+0i] = [-5+10i, 2+3i]
+        let lhs: Deck<Complex> = orc_sdk::deck![complex(1.0, 2.0), complex(2.0, 3.0)];
+        let rhs: Deck<Complex> = orc_sdk::deck![complex(3.0, 4.0), complex(1.0, 0.0)];
         let mut out = out_handle();
         let inputs = [view(&lhs), view(&rhs)];
         unsafe { mul_complex(0, inputs.as_ptr(), 2, &mut out, 1) };
-        let r = result(&out);
-        assert_eq!(r.real, -5.0);
-        assert_eq!(r.imag, 10.0);
+        assert_eq!(items(&out), vec![(-5.0, 10.0), (2.0, 3.0)]);
     }
 
     #[test]
-    fn t_mul_complex_i_squared() {
-        // (0+1i) * (0+1i) = -1 + 0i
-        let lhs = complex(0.0, 1.0);
-        let rhs = complex(0.0, 1.0);
+    fn t_mul_complex_nested_lists() {
+        // [[1+0i, 0+1i], [2+0i]] * [[5+0i, 0+1i], [3+0i]] = [[5+0i, -1+0i], [6+0i]]
+        let lhs: Deck<Complex> =
+            orc_sdk::deck![[complex(1.0, 0.0), complex(0.0, 1.0)], [complex(2.0, 0.0)]];
+        let rhs: Deck<Complex> =
+            orc_sdk::deck![[complex(5.0, 0.0), complex(0.0, 1.0)], [complex(3.0, 0.0)]];
         let mut out = out_handle();
         let inputs = [view(&lhs), view(&rhs)];
         unsafe { mul_complex(0, inputs.as_ptr(), 2, &mut out, 1) };
-        let r = result(&out);
-        assert_eq!(r.real, -1.0);
-        assert_eq!(r.imag, 0.0);
+        assert_eq!(items(&out), vec![(5.0, 0.0), (-1.0, 0.0), (6.0, 0.0)]);
+        assert!(out.n_marks > 0);
     }
 
     #[test]
-    fn t_mul_complex_by_real() {
-        // (2+3i) * (5+0i) = (10+15i)
-        let lhs = complex(2.0, 3.0);
-        let rhs = complex(5.0, 0.0);
+    fn t_mul_complex_i_squared_list() {
+        // [0+1i, 0+1i, 0+1i] * [0+1i, 0+1i, 0+1i] = [-1+0i, -1+0i, -1+0i]
+        let lhs: Deck<Complex> =
+            orc_sdk::deck![complex(0.0, 1.0), complex(0.0, 1.0), complex(0.0, 1.0)];
+        let rhs: Deck<Complex> =
+            orc_sdk::deck![complex(0.0, 1.0), complex(0.0, 1.0), complex(0.0, 1.0)];
         let mut out = out_handle();
         let inputs = [view(&lhs), view(&rhs)];
         unsafe { mul_complex(0, inputs.as_ptr(), 2, &mut out, 1) };
-        let r = result(&out);
-        assert_eq!(r.real, 10.0);
-        assert_eq!(r.imag, 15.0);
+        assert_eq!(items(&out), vec![(-1.0, 0.0), (-1.0, 0.0), (-1.0, 0.0)]);
     }
 
     #[test]
-    fn t_mul_complex_by_zero() {
-        // (3+4i) * (0+0i) = (0+0i)
-        let lhs = complex(3.0, 4.0);
-        let rhs = complex(0.0, 0.0);
+    fn t_mul_complex_by_zero_list() {
+        // [3+4i, 1+1i] * [0+0i, 0+0i] = [0+0i, 0+0i]
+        let lhs: Deck<Complex> = orc_sdk::deck![complex(3.0, 4.0), complex(1.0, 1.0)];
+        let rhs: Deck<Complex> = orc_sdk::deck![complex(0.0, 0.0), complex(0.0, 0.0)];
         let mut out = out_handle();
         let inputs = [view(&lhs), view(&rhs)];
         unsafe { mul_complex(0, inputs.as_ptr(), 2, &mut out, 1) };
-        let r = result(&out);
-        assert_eq!(r.real, 0.0);
-        assert_eq!(r.imag, 0.0);
+        assert_eq!(items(&out), vec![(0.0, 0.0), (0.0, 0.0)]);
     }
 
     #[test]
     fn t_mul_complex_wrong_n_inputs() {
-        let lhs = complex(1.0, 2.0);
+        let lhs: Deck<Complex> = orc_sdk::deck![complex(1.0, 2.0), complex(3.0, 4.0)];
         let mut out = out_handle();
         let inputs = [view(&lhs)];
         unsafe { mul_complex(0, inputs.as_ptr(), 1, &mut out, 1) };
@@ -224,8 +223,8 @@ mod tests {
 
     #[test]
     fn t_mul_complex_output_handle_id_preserved() {
-        let lhs = complex(1.0, 2.0);
-        let rhs = complex(3.0, 4.0);
+        let lhs: Deck<Complex> = orc_sdk::deck![complex(1.0, 2.0), complex(3.0, 4.0)];
+        let rhs: Deck<Complex> = orc_sdk::deck![complex(5.0, 6.0), complex(7.0, 8.0)];
         let mut out = out_handle();
         let expected_id = out.handle;
         let inputs = [view(&lhs), view(&rhs)];
@@ -235,8 +234,8 @@ mod tests {
 
     #[test]
     fn t_mul_complex_output_free_fn_set() {
-        let lhs = complex(1.0, 2.0);
-        let rhs = complex(3.0, 4.0);
+        let lhs: Deck<Complex> = orc_sdk::deck![complex(1.0, 2.0), complex(3.0, 4.0)];
+        let rhs: Deck<Complex> = orc_sdk::deck![complex(5.0, 6.0), complex(7.0, 8.0)];
         let mut out = out_handle();
         let inputs = [view(&lhs), view(&rhs)];
         unsafe { mul_complex(0, inputs.as_ptr(), 2, &mut out, 1) };
