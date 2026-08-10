@@ -1,5 +1,6 @@
 use crate::Error;
 use crate::bindings::*;
+use crate::slice_from_ptr;
 
 // ===========================================================
 // Functions meant to be implemented by the plugin.
@@ -120,6 +121,11 @@ impl OrcHandle {
             dims: self.dims,
             free_fn: None,
         }
+    }
+
+    pub fn items<T: TOrcData>(&self) -> &[T] {
+        // SAFETY; We're using the pointer and the length from the same pointer.
+        unsafe { slice_from_ptr(self.items.cast(), self.n_items as usize) }
     }
 }
 
