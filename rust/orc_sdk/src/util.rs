@@ -278,7 +278,7 @@ unsafe impl GlobalAlloc for PluginAllocator {
 // FFI boundary, types below can help. For example, a host program written in Rust can keep track of
 // various plugins, their types and functions etc. using the Rust types below.
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct TypeInfo {
     pub type_id: OrcTypeId,
     pub name: String,
@@ -295,6 +295,7 @@ impl From<&OrcTypeInfo> for TypeInfo {
     }
 }
 
+#[derive(Debug)]
 pub struct FuncInfo {
     pub name: String,
     pub desc: String,

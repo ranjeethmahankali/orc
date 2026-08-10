@@ -1,36 +1,5 @@
-use std::sync::LazyLock;
-
-use crate::{HANDLE_COUNTER, host_alloc, host_create_proxy_deck, host_dealloc, report_message};
-use orc_sdk::{
-    Deck, DeckView, ORC_ABI_VERSION, OrcHandle, OrcHost, OrcHostCallbackAPI, OrcHostMemoryAPI,
-    PluginSet, deck, update_handle_from_deck,
-};
-
-const HOST: OrcHost = OrcHost {
-    abi_version: ORC_ABI_VERSION,
-    memory_api: OrcHostMemoryAPI {
-        alloc: Some(host_alloc),
-        dealloc: Some(host_dealloc),
-    },
-    callbacks: OrcHostCallbackAPI {
-        report_progress: None,
-        report_message: Some(report_message),
-        check_cancellation: None,
-        report_intermediate_output: None,
-    },
-    create_deck_from_proxy: Some(host_create_proxy_deck),
-};
-
-pub(crate) static PLUGIN_SET: LazyLock<PluginSet> = LazyLock::new(|| {
-    let exe = std::env::current_exe().expect("Cannot determine executable path");
-    let deps = exe.parent().unwrap();
-    let dir = if deps.ends_with("deps") {
-        deps.parent().unwrap()
-    } else {
-        deps
-    };
-    orc_sdk::load_plugins(dir, &HOST).unwrap()
-});
+use crate::{HANDLE_COUNTER, PLUGIN_SET};
+use orc_sdk::{Deck, DeckView, OrcHandle, deck, update_handle_from_deck};
 
 use std::sync::atomic::Ordering;
 
@@ -138,7 +107,6 @@ fn t_flatten_complex() {
     let get_parts = PLUGIN_SET
         .get_function("complex_get_parts")
         .expect("complex_get_parts not found");
-
     let lhs_real: Deck<f64> = deck![[1.0, 0.0], [2.0]];
     let lhs_imag: Deck<f64> = deck![[0.0, 1.0], [0.0]];
     let rhs_real: Deck<f64> = deck![[5.0, 0.0], [3.0]];

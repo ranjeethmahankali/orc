@@ -108,7 +108,7 @@ macro_rules! kbb_dag {
 
 #[cfg(test)]
 mod tests {
-    use crate::{HANDLE_COUNTER, test::PLUGIN_SET};
+    use crate::{HANDLE_COUNTER, PLUGIN_SET};
     use orc_sdk::{Deck, DeckView, OrcHandle, deck, update_handle_from_deck};
     use std::sync::atomic::{AtomicU64, Ordering};
 

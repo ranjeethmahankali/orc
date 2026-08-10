@@ -24,7 +24,7 @@ unsafe extern "C" fn host_dealloc(ptr: *mut c_void, size: u64, alignment: u64) {
     unsafe { dealloc(ptr as *mut u8, layout) }
 }
 
-const HOST: OrcHost = OrcHost {
+pub const HOST: OrcHost = OrcHost {
     abi_version: ORC_ABI_VERSION,
     memory_api: OrcHostMemoryAPI {
         alloc: Some(host_alloc),
@@ -39,7 +39,7 @@ const HOST: OrcHost = OrcHost {
     create_deck_from_proxy: Some(host_create_proxy_deck),
 };
 
-static PLUGIN_SET: LazyLock<PluginSet> = LazyLock::new(|| {
+pub static PLUGIN_SET: LazyLock<PluginSet> = LazyLock::new(|| {
     let exe_dir = std::env::current_exe()
         .expect("Cannot determine executable path")
         .parent()
@@ -87,6 +87,7 @@ unsafe extern "C" fn host_create_proxy_deck(
         orc_sdk::ORC_DECK_PROXY_SHUFFLE => ProxyType::Shuffle,
         _ => return orc_sdk::ORC_ERROR_INVALID_PROXY,
     };
+
     let result = match plugin_set.get_type_owner(type_id) {
         Some(type_owner) => match type_owner {
             TypeOwner::BuiltIn(_) => match type_id {

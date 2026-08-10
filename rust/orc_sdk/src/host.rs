@@ -9,6 +9,7 @@ use crate::{
 };
 
 /// This is to store the info, handles etc. for a loaded plugin.
+#[derive(Debug)]
 pub struct Plugin {
     _lib: Library,
     name: String,
@@ -126,11 +127,13 @@ impl Plugin {
     }
 }
 
+#[derive(Debug)]
 pub enum TypeOwner {
     BuiltIn(TypeInfo),
     Plugin(usize, usize),
 }
 
+#[derive(Debug)]
 pub struct PluginSet {
     plugins: Box<[Plugin]>,
     type_map: HashMap<OrcTypeId, TypeOwner>,
