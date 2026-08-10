@@ -39,6 +39,7 @@ def main():
 
     # Call 'add' on two f64 arrays
     add_fn = get_function(plugins, "add")
+    flatten_fn = get_function(plugins, "flatten_deck")
 
     a = make_handle([[1.0, 2.0, 3.0], [2.0, 4.0, 6.0, 8.0]])
     b = make_handle([10.0, 20.0, 30.0])
@@ -49,10 +50,14 @@ def main():
     out.handle = next_handle_id()
 
     add_fn.func(0, inputs, 2, ctypes.byref(out), 1)
+    flat_out = OrcHandle()
+    ctypes.memset(ctypes.addressof(flat_out), 0, ctypes.sizeof(flat_out))
+    flat_out.handle = next_handle_id()
+    flatten_fn.func(0, ctypes.byref(out), 1, ctypes.byref(flat_out), 1)
 
-    result = read_handle(out)
-    print(f"add([[1.0, 2.0, 3.0], [2.0, 4.0, 6.0, 8.0]]) = {result}")
-    assert result == [[11, 22, 33], [12, 24, 36, 38]], f"Unexpected: {result}"
+    result = read_handle(flat_out)
+    print(f"flatten(add([[1.0, 2.0, 3.0], [2.0, 4.0, 6.0, 8.0]])) = {result}")
+    assert result == [11, 22, 33, 12, 24, 36, 38], f"Unexpected: {result}"
     print("PASS")
 
 
