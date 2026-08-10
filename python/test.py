@@ -750,6 +750,7 @@ def t_numpy_and_handle_both_freed():
 # ============================================================
 
 if __name__ == "__main__":
+    # by convention all tests start with _t
     tests = [(name, fn) for name, fn in globals().items()
              if name.startswith("t_") and callable(fn)]
     tests.sort(key=lambda x: x[0])
