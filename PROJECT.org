@@ -196,21 +196,29 @@
   - Might be a good idea to include a timestamp in the generated code. If I end up doing that, I
     should account for that when checking the diff in CI.
 
-* NEXT tjkesx - Test with custom types
+* DONE tjkesx - Test with custom types
+  CLOSED: [2026-08-10 Mon 19:32]
   :PROPERTIES:
   :CREATED:  2026-08-08 Sat 08:50
   :END:
   :LOGBOOK:
+  - State "DONE"       from "NEXT"       [2026-08-10 Mon 19:32]
   - State "NEXT"       from "TODO"       [2026-08-10 Mon 13:48]
   :END:
 
-  <2026-08-10 Mon 15:37> Wrote some complex number functions and tested them in both Rust and Python.
+  <2026-08-10 Mon 15:37> Wrote some complex number functions and tested them in both Rust and
+  Python.
 
-** NEXT Test proxy functions with custom types across plugins
+  <2026-08-10 Mon 19:31> Seems to be working well. Also tested it in Python. Just need to add a
+  couple more tests, then ready to merge.
+
+** DONE Test proxy functions with custom types across plugins
+   CLOSED: [2026-08-10 Mon 19:32]
    :PROPERTIES:
    :CREATED:  2026-08-08 Sat 08:50
    :END:
    :LOGBOOK:
+   - State "DONE"       from "NEXT"       [2026-08-10 Mon 19:32]
    - State "NEXT"       from "TODO"       [2026-08-10 Mon 19:17]
    :END:
 
