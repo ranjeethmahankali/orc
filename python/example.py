@@ -66,6 +66,8 @@ def main():
     assert list(np_arr) == [11, 22, 33, 12, 24, 36, 38]
     assert (np_arr.ctypes.data == flat_out.items
             ), "Confirm that numpy is using the same pointer."
+    doubled_np_arr = np_arr * 2.0
+    print(f"Output after doubling: {doubled_np_arr}")
     print("PASS")
 
 
