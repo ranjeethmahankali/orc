@@ -7,9 +7,8 @@ and calls a function (e.g. 'add') on two f64 decks.
 
 import os
 import sys
-import ctypes
 from orc import (default_host, load_plugins, get_function, make_handle,
-                 empty_handle, OrcHandle, read_handle, as_numpy)
+                 read_handle, as_numpy)
 
 # ---------------------------------------------------------------------------
 # Main
@@ -38,18 +37,14 @@ def main():
     print()
 
     # Call 'add' on two f64 arrays
-    add_fn = get_function(plugins, "add")
-    flatten_fn = get_function(plugins, "flatten_deck")
+    add = get_function(plugins, "add")
+    flatten = get_function(plugins, "flatten_deck")
 
     a = make_handle([[1.0, 2.0, 3.0], [2.0, 4.0, 6.0, 8.0]])
     b = make_handle([10.0, 20.0, 30.0])
-    inputs = (OrcHandle * 2)(a, b)
 
-    out = empty_handle()
-
-    add_fn.func(0, inputs, 2, ctypes.byref(out), 1)
-    flat_out = empty_handle()
-    flatten_fn.func(0, ctypes.byref(out), 1, ctypes.byref(flat_out), 1)
+    out = add(a, b)
+    flat_out = flatten(out)
 
     result = read_handle(flat_out)
     print(f"flatten(add([[1.0, 2.0, 3.0], [2.0, 4.0, 6.0, 8.0]])) = {result}")

@@ -350,11 +350,32 @@ def load_plugins(search_dir, host):
     return plugins
 
 
+class OrcFunc:
+    """Callable wrapper around a plugin function."""
+
+    def __init__(self, fi):
+        self._fi = fi
+        self.name = fi.name.decode("utf-8")
+
+    def __call__(self, *inputs, n_out=1):
+        """Call the plugin function with the given input handles."""
+        in_arr = (OrcHandle * len(inputs))(*inputs)
+        outs = [empty_handle() for _ in range(n_out)]
+        out_arr = (OrcHandle * n_out)(*outs)
+        self._fi.func(0, in_arr, len(inputs), out_arr, n_out)
+        if n_out == 1:
+            return out_arr[0]
+        return tuple(out_arr[i] for i in range(n_out))
+
+    def __repr__(self):
+        return f"OrcFunc({self.name!r})"
+
+
 def get_function(plugins, name):
-    """Find a function by name across all loaded plugins."""
+    """Find a plugin function by name and return a callable OrcFunc."""
     for _lib, plugin in plugins:
         for i in range(plugin.n_functions):
             fi = plugin.functions[i]
             if fi.name.decode("utf-8") == name:
-                return fi
+                return OrcFunc(fi)
     raise KeyError(f"Function '{name}' not found in any plugin")

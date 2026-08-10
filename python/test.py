@@ -77,15 +77,13 @@ if not plugins:
 def call_fn(name, inputs, n_outputs=1):
     """Call a plugin function by name and return output handles."""
     fn = get_function(plugins, name)
-    in_arr = (OrcHandle * len(inputs))(*inputs)
-    outs = []
-    for _ in range(n_outputs):
-        out = empty_handle()
-        _live_handles.add(out.handle)
-        outs.append(out)
-    out_arr = (OrcHandle * n_outputs)(*outs)
-    fn.func(0, in_arr, len(inputs), out_arr, n_outputs)
-    return [out_arr[i] for i in range(n_outputs)]
+    result = fn(*inputs, n_out=n_outputs)
+    if n_outputs == 1:
+        _live_handles.add(result.handle)
+        return [result]
+    for h in result:
+        _live_handles.add(h.handle)
+    return list(result)
 
 
 # ============================================================
@@ -441,7 +439,7 @@ def t_flatten_mismatched_counts():
     in_arr = (OrcHandle * 1)(a)
     out1 = empty_handle()
     out_arr = (OrcHandle * 1)(out1)
-    fn.func(0, in_arr, 2, out_arr, 1)
+    fn._fi.func(0, in_arr, 2, out_arr, 1)
     assert not out_arr[0].items
     assert not out_arr[0].free_fn
 
@@ -469,7 +467,7 @@ def t_output_handle_id_preserved():
     fn = get_function(plugins, "add")
     in_arr = (OrcHandle * 2)(a, b)
     out_arr = (OrcHandle * 1)(out)
-    fn.func(0, in_arr, 2, out_arr, 1)
+    fn._fi.func(0, in_arr, 2, out_arr, 1)
     assert out_arr[0].handle == 9999
 
 
