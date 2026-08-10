@@ -3,6 +3,7 @@
 import ctypes
 import os
 import platform
+import numpy as np
 from bindings import (OrcDeckFreeFn, OrcHandle, OrcAllocFn, OrcDeallocFn,
                       OrcReportMessageFn, ORC_TYPE_U8, ORC_TYPE_U16,
                       ORC_TYPE_U32, ORC_TYPE_U64, ORC_TYPE_I8, ORC_TYPE_I16,
@@ -86,6 +87,29 @@ ORC_CTYPE_MAP = {
     ORC_TYPE_F32: ctypes.c_float,
     ORC_TYPE_F64: ctypes.c_double,
 }
+
+ORC_NUMPY_DTYPE_MAP = {
+    ORC_TYPE_U8: np.uint8,
+    ORC_TYPE_U16: np.uint16,
+    ORC_TYPE_U32: np.uint32,
+    ORC_TYPE_U64: np.uint64,
+    ORC_TYPE_I8: np.int8,
+    ORC_TYPE_I16: np.int16,
+    ORC_TYPE_I32: np.int32,
+    ORC_TYPE_I64: np.int64,
+    ORC_TYPE_F32: np.float32,
+    ORC_TYPE_F64: np.float64,
+}
+
+
+def as_numpy(h):
+    """Return a numpy array viewing the handle's items buffer. Zero copy."""
+    dtype = ORC_NUMPY_DTYPE_MAP.get(h.type_id)
+    if dtype is None:
+        raise ValueError(f"Unknown type_id: {h.type_id:#x}")
+    ctype = ORC_CTYPE_MAP[h.type_id]
+    ptr = ctypes.cast(h.items, ctypes.POINTER(ctype * h.n_items))
+    return np.frombuffer(ptr.contents, dtype=dtype)
 
 
 def _detect_type(values):

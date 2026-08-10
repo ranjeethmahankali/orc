@@ -8,8 +8,9 @@ and calls a function (e.g. 'add') on two f64 decks.
 import os
 import sys
 import ctypes
+import numpy as np
 from orc import (default_host, load_plugins, get_function, make_handle,
-                 next_handle_id, OrcHandle, read_handle)
+                 next_handle_id, OrcHandle, read_handle, as_numpy)
 
 # ---------------------------------------------------------------------------
 # Main
@@ -58,6 +59,11 @@ def main():
     result = read_handle(flat_out)
     print(f"flatten(add([[1.0, 2.0, 3.0], [2.0, 4.0, 6.0, 8.0]])) = {result}")
     assert result == [11, 22, 33, 12, 24, 36, 38], f"Unexpected: {result}"
+
+    # Zero-copy numpy view of the same data
+    arr = as_numpy(flat_out)
+    print(f"numpy (zero copy): {arr}")
+    assert list(arr) == [11, 22, 33, 12, 24, 36, 38]
     print("PASS")
 
 
