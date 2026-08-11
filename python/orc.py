@@ -482,6 +482,8 @@ class OrcFuncWrapper:
     def __init__(self, fi, n_inputs, n_outputs):
         """Wrap an OrcFuncInfo as a callable."""
         self._fi = fi
+        self._func = fi.func
+        self._func.argtypes = None
         self.name = fi.name.decode("utf-8")
         self.n_inputs = None if n_inputs == ORC_ARGS_VARIADIC else n_inputs
         self.n_outputs = None if n_outputs == ORC_ARGS_VARIADIC else n_outputs
@@ -502,7 +504,7 @@ class OrcFuncWrapper:
                 n_out = self.n_outputs
         outs = [empty_handle() for _ in range(n_out)]
         out_arr = (OrcHandle * n_out)(*outs)
-        self._fi.func(0, in_arr, len(inputs), out_arr, n_out)
+        self._func(0, in_arr, len(inputs), out_arr, n_out)
         if n_out == 1:
             return out_arr[0]
         return [out_arr[i] for i in range(n_out)]
@@ -510,13 +512,3 @@ class OrcFuncWrapper:
     def __repr__(self):
         """Return a string representation of the function."""
         return f"OrcFunc({self.name!r})"
-
-
-def get_function(plugins, name):
-    """Find a plugin function by name and return a callable OrcFunc."""
-    for _lib, plugin in plugins:
-        for i in range(plugin.n_functions):
-            fi = plugin.functions[i]
-            if fi.name.decode("utf-8") == name:
-                return OrcFuncWrapper(fi, fi.n_inputs, fi.n_outputs)
-    raise KeyError(f"Function '{name}' not found in any plugin")
