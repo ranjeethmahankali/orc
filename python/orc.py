@@ -3,6 +3,7 @@
 import ctypes
 import os
 import platform
+import sys
 import numpy as np
 from bindings import (OrcDeckFreeFn, OrcHandle, OrcAllocFn, OrcDeallocFn,
                       OrcReportMessageFn, ORC_TYPE_U8, ORC_TYPE_U16,
@@ -458,6 +459,12 @@ def load_plugins(search_dir, host):
     global _loaded_plugins
     _loaded_plugins.clear()
     _loaded_plugins.extend(plugins)
+    module = sys.modules[__name__]
+    for _lib, plugin in plugins:
+        for i in range(plugin.n_functions):
+            fi = plugin.functions[i]
+            wrapper = OrcFuncWrapper(fi, fi.n_inputs, fi.n_outputs)
+            setattr(module, wrapper.name, wrapper)
     return plugins
 
 

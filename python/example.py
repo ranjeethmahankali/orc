@@ -7,8 +7,7 @@ and calls a function (e.g. 'add') on two f64 decks.
 
 import os
 import sys
-from orc import (default_host, load_plugins, get_function, make_deck,
-                 read_deck, as_numpy)
+import orc
 
 # ---------------------------------------------------------------------------
 # Main
@@ -20,10 +19,10 @@ def main():
     script_dir = os.path.dirname(os.path.abspath(__file__))
     project_root = os.path.dirname(script_dir)
     search_dir = os.path.join(project_root, "build", "debug")
-    host = default_host()
+    host = orc.default_host()
     # Load all plugins from the search directory
     print(f"Searching for plugins in: {search_dir}")
-    plugins = load_plugins(search_dir, host)
+    plugins = orc.load_plugins(search_dir, host)
     if not plugins:
         print("No plugins found.")
         sys.exit(1)
@@ -36,28 +35,21 @@ def main():
             print(f"    - {fi.name.decode()}: {fi.desc.decode()}")
     print()
 
-    # Call 'add' on two f64 arrays
-    add = get_function(plugins, "add")
-    flatten = get_function(plugins, "flatten_deck")
-    create_complex = get_function(plugins, "create_complex")
-    mul_complex = get_function(plugins, "mul_complex")
-    complex_get_parts = get_function(plugins, "complex_get_parts")
+    a = orc.make_deck([[1.0, 2.0, 3.0], [2.0, 4.0, 6.0, 8.0]])
+    b = orc.make_deck([[10.0, 20.0, 30.0], [3.0, 5.0, 7.0, 11.0]])
 
-    a = make_deck([[1.0, 2.0, 3.0], [2.0, 4.0, 6.0, 8.0]])
-    b = make_deck([[10.0, 20.0, 30.0], [3.0, 5.0, 7.0, 11.0]])
+    out = orc.add(a, b)
 
-    out = add(a, b)
+    print(f"Before flattening: {orc.read_deck(out)}")
 
-    print(f"Before flattening: {read_deck(out)}")
+    flat_out = orc.flatten_deck(out)
 
-    flat_out = flatten(out)
-
-    result = read_deck(flat_out)
+    result = orc.read_deck(flat_out)
     print(f"After flattening: {result}")
     assert result == [11, 22, 33, 5, 9, 13, 19], f"Unexpected: {result}"
 
     # Zero-copy numpy view of the same data
-    np_arr = as_numpy(flat_out)
+    np_arr = orc.as_numpy(flat_out)
 
     print(f"numpy (zero copy): {np_arr}")
     assert list(np_arr) == [11, 22, 33, 5, 9, 13, 19]
@@ -67,13 +59,13 @@ def main():
     print(f"Output after doubling: {doubled_np_arr}")
 
     # Complex numbers.
-    comp = create_complex(a, b)
-    comp2 = mul_complex(comp, comp)
-    real, imag = complex_get_parts(comp2)
+    comp = orc.create_complex(a, b)
+    comp2 = orc.mul_complex(comp, comp)
+    real, imag = orc.complex_get_parts(comp2)
 
     print("==========\nComplex Numbers\n==========")
-    print("Real part: ", read_deck(real))
-    print("Imag part: ", read_deck(imag))
+    print("Real part: ", orc.read_deck(real))
+    print("Imag part: ", orc.read_deck(imag))
 
     print("PASS")
 
