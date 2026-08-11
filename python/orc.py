@@ -3,6 +3,7 @@
 import ctypes
 import os
 import platform
+import sys
 import numpy as np
 from bindings import (OrcDeckFreeFn, OrcHandle, OrcAllocFn, OrcDeallocFn,
                       OrcReportMessageFn, ORC_TYPE_U8, ORC_TYPE_U16,
@@ -12,7 +13,7 @@ from bindings import (OrcDeckFreeFn, OrcHandle, OrcAllocFn, OrcDeallocFn,
                       ORC_ABI_VERSION, OrcCreateDeckFromProxyFn, OrcItemProxy,
                       ORC_ERROR_INVALID_HANDLE, ORC_ERROR_INVALID_PROXY,
                       ORC_DECK_PROXY_COPY_ALL, ORC_DECK_PROXY_COPY_ITEMS,
-                      ORC_DECK_PROXY_SHUFFLE)
+                      ORC_DECK_PROXY_SHUFFLE, ORC_ARGS_VARIADIC)
 
 
 def _handle_del(self):
@@ -427,11 +428,12 @@ def _is_plugin(path):
     return True
 
 
-def load_plugins(search_dir, host):
+def load_plugins(search_dir, verbose=False):
     """Load all compatible plugin shared libraries from search_dir.
 
     Returns a list of (lib, OrcPlugin) tuples.
     """
+    host = default_host()
     ext = _shared_lib_ext()
     plugins = []
     if not os.path.isdir(search_dir):
@@ -454,41 +456,59 @@ def load_plugins(search_dir, host):
             print(f"Skipping {f}: orc_plugin_init failed ({err:#x})")
             continue
         plugins.append((lib, plugin))
-        print(f"Loaded plugin: {f}")
+        if verbose:
+            print(f"Loaded plugin: {f}")
     global _loaded_plugins
-    _loaded_plugins.clear()
     _loaded_plugins.extend(plugins)
-    return plugins
+    if verbose:
+        print(f"\nLoaded {len(plugins)} plugin(s):")
+        for _lib, plugin in plugins:
+            print(f"  {plugin.name.decode()}: {plugin.desc.decode()}")
+            for i in range(plugin.n_functions):
+                fi = plugin.functions[i]
+                print(f"    - {fi.name.decode()}: {fi.desc.decode()}")
+        print()
+    module = sys.modules[__name__]
+    for _lib, plugin in plugins:
+        for i in range(plugin.n_functions):
+            fi = plugin.functions[i]
+            wrapper = OrcFuncWrapper(fi, fi.n_inputs, fi.n_outputs)
+            setattr(module, wrapper.name, wrapper)
 
 
 class OrcFuncWrapper:
     """Callable wrapper around a plugin function."""
 
-    def __init__(self, fi):
+    def __init__(self, fi, n_inputs, n_outputs):
         """Wrap an OrcFuncInfo as a callable."""
         self._fi = fi
+        self._func = fi.func
+        self._func.argtypes = None
         self.name = fi.name.decode("utf-8")
+        self.n_inputs = None if n_inputs == ORC_ARGS_VARIADIC else n_inputs
+        self.n_outputs = None if n_outputs == ORC_ARGS_VARIADIC else n_outputs
 
-    def __call__(self, *inputs, n_out=1):
+    def __call__(self, *inputs, n_out=None):
         """Call the plugin function with the given input handles."""
+        if self.n_inputs is not None and len(inputs) != self.n_inputs:
+            raise ValueError(f"The function '{self.name}' expects {self.n_inputs} arguments.")
+        if self.n_outputs is not None and n_out is not None and self.n_outputs != n_out:
+            raise ValueError(f"The function '{self.name}' will produce {self.n_outputs} outputs.")
         in_arr = (OrcHandle * len(inputs))(*inputs)
+        if n_out is None:
+            if self.n_outputs is None:
+                # The user nor the function tell us how many outputs the function has.
+                # So we assume 1 as the default.
+                n_out = 1
+            else:
+                n_out = self.n_outputs
         outs = [empty_handle() for _ in range(n_out)]
         out_arr = (OrcHandle * n_out)(*outs)
-        self._fi.func(0, in_arr, len(inputs), out_arr, n_out)
+        self._func(0, in_arr, len(inputs), out_arr, n_out)
         if n_out == 1:
             return out_arr[0]
-        return tuple(out_arr[i] for i in range(n_out))
+        return [out_arr[i] for i in range(n_out)]
 
     def __repr__(self):
         """Return a string representation of the function."""
         return f"OrcFunc({self.name!r})"
-
-
-def get_function(plugins, name):
-    """Find a plugin function by name and return a callable OrcFunc."""
-    for _lib, plugin in plugins:
-        for i in range(plugin.n_functions):
-            fi = plugin.functions[i]
-            if fi.name.decode("utf-8") == name:
-                return OrcFuncWrapper(fi)
-    raise KeyError(f"Function '{name}' not found in any plugin")
