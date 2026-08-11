@@ -39,25 +39,42 @@ def main():
     # Call 'add' on two f64 arrays
     add = get_function(plugins, "add")
     flatten = get_function(plugins, "flatten_deck")
+    create_complex = get_function(plugins, "create_complex")
+    mul_complex = get_function(plugins, "mul_complex")
+    complex_get_parts = get_function(plugins, "complex_get_parts")
 
     a = make_deck([[1.0, 2.0, 3.0], [2.0, 4.0, 6.0, 8.0]])
-    b = make_deck([10.0, 20.0, 30.0])
+    b = make_deck([[10.0, 20.0, 30.0], [3.0, 5.0, 7.0, 11.0]])
 
     out = add(a, b)
+
+    print(f"Before flattening: {read_deck(out)}")
+
     flat_out = flatten(out)
 
     result = read_deck(flat_out)
-    print(f"flatten(add([[1.0, 2.0, 3.0], [2.0, 4.0, 6.0, 8.0]])) = {result}")
-    assert result == [11, 22, 33, 12, 24, 36, 38], f"Unexpected: {result}"
+    print(f"After flattening: {result}")
+    assert result == [11, 22, 33, 5, 9, 13, 19], f"Unexpected: {result}"
 
     # Zero-copy numpy view of the same data
     np_arr = as_numpy(flat_out)
+
     print(f"numpy (zero copy): {np_arr}")
-    assert list(np_arr) == [11, 22, 33, 12, 24, 36, 38]
+    assert list(np_arr) == [11, 22, 33, 5, 9, 13, 19]
     assert (np_arr.ctypes.data == flat_out.items
             ), "Confirm that numpy is using the same pointer."
     doubled_np_arr = np_arr * 2.0
     print(f"Output after doubling: {doubled_np_arr}")
+
+    # Complex numbers.
+    comp = create_complex(a, b)
+    comp2 = mul_complex(comp, comp)
+    real, imag = complex_get_parts(comp2, n_out=2)
+
+    print("==========\nComplex Numbers\n==========")
+    print("Real part: ", read_deck(real))
+    print("Imag part: ", read_deck(imag))
+
     print("PASS")
 
 
