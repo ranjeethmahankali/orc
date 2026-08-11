@@ -196,6 +196,15 @@
   - Might be a good idea to include a timestamp in the generated code. If I end up doing that, I
     should account for that when checking the diff in CI.
 
+* TODO tjlw5f - Python Improvements
+  :PROPERTIES:
+  :CREATED:  2026-08-11 Tue 09:00
+  :END:
+
+  - ~__all__~: Figure this out.
+  - Figure out ~n_out~ from ~load_plugins~.
+  - Use normal delete for OrcHandle outside tests.
+
 * DONE tjkesx - Test with custom types
   CLOSED: [2026-08-10 Mon 22:51]
   :PROPERTIES:
