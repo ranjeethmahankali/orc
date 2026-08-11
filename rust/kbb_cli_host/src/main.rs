@@ -145,6 +145,9 @@ unsafe extern "C" fn host_create_proxy_deck(
     ORC_ERROR_NONE
 }
 
+/// # SAFETY
+///
+/// This is a C ABI compatible function. Meant to be used by the SDK machiner.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn orc_deck_free(handle: *mut orc_sdk::OrcHandle) -> orc_sdk::OrcError {
     if handle.is_null() {

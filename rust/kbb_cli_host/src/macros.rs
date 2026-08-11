@@ -87,7 +87,7 @@ macro_rules! kbb_dag {
         }
         let mut idx_ = 0usize;
         $(
-            let $name = std::mem::replace(&mut outs_[idx_], OrcHandle::default());
+            let $name = std::mem::take(&mut outs_[idx_]);
             idx_ += 1;
         )+
         let _ = idx_;
