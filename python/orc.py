@@ -473,6 +473,8 @@ class OrcFuncWrapper:
 
     def __call__(self, *inputs, n_out=None):
         """Call the plugin function with the given input handles."""
+        if self.n_inputs is not None and len(inputs) != self.n_inputs:
+            raise ValueError(f"The function '{self.name}' expects {self.n_inputs} arguments.")
         in_arr = (OrcHandle * len(inputs))(*inputs)
         if n_out is None:
             if self.n_outputs is None:
