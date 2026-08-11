@@ -196,11 +196,13 @@
   - Might be a good idea to include a timestamp in the generated code. If I end up doing that, I
     should account for that when checking the diff in CI.
 
-* NEXT tjkesx - Test with custom types
+* DONE tjkesx - Test with custom types
+  CLOSED: [2026-08-10 Mon 22:51]
   :PROPERTIES:
   :CREATED:  2026-08-08 Sat 08:50
   :END:
   :LOGBOOK:
+  - State "DONE"       from "NEXT"       [2026-08-10 Mon 22:51]
   - State "NEXT"       from "DONE"       [2026-08-10 Mon 20:04]
   - State "DONE"       from "NEXT"       [2026-08-10 Mon 19:32]
   - State "NEXT"       from "TODO"       [2026-08-10 Mon 13:48]
