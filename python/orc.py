@@ -9,7 +9,10 @@ from bindings import (OrcDeckFreeFn, OrcHandle, OrcAllocFn, OrcDeallocFn,
                       ORC_TYPE_U32, ORC_TYPE_U64, ORC_TYPE_I8, ORC_TYPE_I16,
                       ORC_TYPE_I32, ORC_TYPE_I64, ORC_TYPE_F32, ORC_TYPE_F64,
                       OrcMark, OrcHost, OrcPlugin, OrcError, ORC_ERROR_NONE,
-                      ORC_ABI_VERSION)
+                      ORC_ABI_VERSION, OrcCreateDeckFromProxyFn, OrcItemProxy,
+                      ORC_ERROR_INVALID_HANDLE, ORC_ERROR_INVALID_PROXY,
+                      ORC_DECK_PROXY_COPY_ALL, ORC_DECK_PROXY_COPY_ITEMS,
+                      ORC_DECK_PROXY_SHUFFLE)
 
 
 def _handle_del(self):
@@ -50,6 +53,110 @@ def report_message(ctx, level, msg):
     print(f"[{level_names.get(level, 'UNKNOWN')}][{ctx}] {text}")
 
 
+_proxy_deck_registry = {}  # handle_id -> tuple of backing ctypes objects
+_loaded_plugins = []  # populated by load_plugins
+
+
+@OrcDeckFreeFn
+def _proxy_deck_free(handle_ptr):
+    if not handle_ptr:
+        return ORC_ERROR_NONE
+    _proxy_deck_registry.pop(handle_ptr[0].handle, None)
+    return ORC_ERROR_NONE
+
+
+def _read_handle_items(h, ctype):
+    ptr = ctypes.cast(h.items, ctypes.POINTER(ctype))
+    return [ptr[i] for i in range(h.n_items)]
+
+
+def _read_handle_marks(h):
+    if not h.marks or h.n_marks == 0:
+        return []
+    return [OrcMark(depth=h.marks[i].depth, pos=h.marks[i].pos)
+            for i in range(h.n_marks)]
+
+
+@OrcCreateDeckFromProxyFn
+def host_create_proxy_deck(inputs_ptr, n_inputs, proxy_type, proxy_ptr, out_ptr):
+    if not inputs_ptr or not proxy_ptr or not out_ptr:
+        return ORC_ERROR_INVALID_HANDLE
+    inputs = [inputs_ptr[i] for i in range(n_inputs)]
+    if not inputs:
+        return ORC_ERROR_INVALID_PROXY
+    type_id = inputs[0].type_id
+    if any(h.type_id != type_id for h in inputs[1:]):
+        return ORC_ERROR_INVALID_PROXY
+
+    proxy = proxy_ptr[0]
+    ctype = ORC_CTYPE_MAP.get(type_id)
+
+    if ctype is None:
+        # Plugin type — find the owning plugin and dispatch to it.
+        for lib, plugin in _loaded_plugins:
+            for j in range(plugin.n_types):
+                if plugin.types[j].type_id == type_id:
+                    lib.orc_deck_from_proxy.argtypes = [
+                        ctypes.POINTER(OrcHandle), ctypes.c_uint64,
+                        ctypes.c_uint8,
+                        ctypes.POINTER(OrcHandle), ctypes.POINTER(OrcHandle),
+                    ]
+                    lib.orc_deck_from_proxy.restype = OrcError
+                    return lib.orc_deck_from_proxy(
+                        inputs_ptr, n_inputs, proxy_type, proxy_ptr, out_ptr)
+        return ORC_ERROR_INVALID_PROXY
+
+    # Primitive type — implement proxy operations in Python.
+    proxy_marks = _read_handle_marks(proxy)
+
+    if proxy_type == ORC_DECK_PROXY_COPY_ALL:
+        if n_inputs != 1:
+            return ORC_ERROR_INVALID_PROXY
+        items = _read_handle_items(inputs[0], ctype)
+        marks = _read_handle_marks(inputs[0])
+    elif proxy_type == ORC_DECK_PROXY_COPY_ITEMS:
+        if n_inputs != 1:
+            return ORC_ERROR_INVALID_PROXY
+        items = _read_handle_items(inputs[0], ctype)
+        marks = proxy_marks
+    elif proxy_type == ORC_DECK_PROXY_SHUFFLE:
+        input_items = [_read_handle_items(h, ctype) for h in inputs]
+        proxy_item_ptr = ctypes.cast(proxy.items, ctypes.POINTER(OrcItemProxy))
+        items = [input_items[proxy_item_ptr[k].tree][proxy_item_ptr[k].item]
+                 for k in range(proxy.n_items)]
+        marks = proxy_marks
+    else:
+        return ORC_ERROR_INVALID_PROXY
+
+    arr = (ctype * len(items))(*items)
+    handle_id = out_ptr[0].handle
+    backing = [arr]
+
+    out_ptr[0].items = ctypes.cast(arr, ctypes.c_void_p)
+    out_ptr[0].n_items = len(items)
+    out_ptr[0].item_size = ctypes.sizeof(ctype)
+    out_ptr[0].type_id = type_id
+    out_ptr[0].dims = proxy.dims
+
+    if marks:
+        marks_arr = (OrcMark * len(marks))(*marks)
+        stride_offset, strides = _calc_strides(list(marks_arr))
+        stride_offset_arr = (ctypes.c_uint64 * len(stride_offset))(*stride_offset)
+        stride_arr = (ctypes.c_uint64 * len(strides))(*strides) if strides else None
+        out_ptr[0].marks = ctypes.cast(marks_arr, ctypes.POINTER(OrcMark))
+        out_ptr[0].stride_offset = ctypes.cast(stride_offset_arr,
+                                               ctypes.POINTER(ctypes.c_uint64))
+        out_ptr[0].n_marks = len(marks)
+        if stride_arr:
+            out_ptr[0].strides = ctypes.cast(stride_arr,
+                                             ctypes.POINTER(ctypes.c_uint64))
+        backing += [marks_arr, stride_offset_arr, stride_arr]
+
+    out_ptr[0].free_fn = _proxy_deck_free
+    _proxy_deck_registry[handle_id] = tuple(b for b in backing if b is not None)
+    return ORC_ERROR_NONE
+
+
 def default_host():
     """Create an OrcHost with default memory and message callbacks."""
     host = OrcHost()
@@ -57,6 +164,7 @@ def default_host():
     host.memory_api.alloc = host_alloc
     host.memory_api.dealloc = host_dealloc
     host.callbacks.report_message = report_message
+    host.create_deck_from_proxy = host_create_proxy_deck
     return host
 
 
@@ -347,6 +455,9 @@ def load_plugins(search_dir, host):
             continue
         plugins.append((lib, plugin))
         print(f"Loaded plugin: {f}")
+    global _loaded_plugins
+    _loaded_plugins.clear()
+    _loaded_plugins.extend(plugins)
     return plugins
 
 

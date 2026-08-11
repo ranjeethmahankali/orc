@@ -1,7 +1,8 @@
 use crate::{
-    Deck, Error, ORC_MSG_LEVEL_DEBUG, ORC_MSG_LEVEL_ERROR, ORC_MSG_LEVEL_FATAL, ORC_MSG_LEVEL_INFO,
-    ORC_MSG_LEVEL_WARN, ORC_NUM_DIMS, OrcFuncInfo, OrcHandle, OrcHost, OrcHostCallbackAPI,
-    OrcTypeId, OrcTypeInfo, deck::fmt_raw_deck, ffi::TOrcData,
+    Deck, DeckView, Error, ORC_MSG_LEVEL_DEBUG, ORC_MSG_LEVEL_ERROR, ORC_MSG_LEVEL_FATAL,
+    ORC_MSG_LEVEL_INFO, ORC_MSG_LEVEL_WARN, ORC_NUM_DIMS, OrcFuncInfo, OrcHandle, OrcHost,
+    OrcHostCallbackAPI, OrcItemProxy, OrcTypeId, OrcTypeInfo, ProxyType, deck::fmt_raw_deck,
+    ffi::TOrcData,
 };
 use std::{
     alloc::{GlobalAlloc, Layout, System},
@@ -277,6 +278,7 @@ unsafe impl GlobalAlloc for PluginAllocator {
 // FFI boundary, types below can help. For example, a host program written in Rust can keep track of
 // various plugins, their types and functions etc. using the Rust types below.
 
+#[derive(Clone, Debug)]
 pub struct TypeInfo {
     pub type_id: OrcTypeId,
     pub name: String,
@@ -293,6 +295,7 @@ impl From<&OrcTypeInfo> for TypeInfo {
     }
 }
 
+#[derive(Debug)]
 pub struct FuncInfo {
     pub name: String,
     pub desc: String,
@@ -464,6 +467,73 @@ pub const PRIMITIVE_TYPES: &[OrcTypeInfo] = &[
     i32::TYPE_INFO,
     i64::TYPE_INFO,
 ];
+
+//==================== Helper to create proxy decks ====================
+
+pub fn deck_from_proxy<T: TOrcData>(
+    inputs: &[OrcHandle],
+    proxy_type: ProxyType,
+    proxy: &OrcHandle,
+    out: &mut OrcHandle,
+    registry: &DeckRegistry,
+) -> Result<(), Error> {
+    let type_id = match inputs.first() {
+        Some(input) => input.type_id,
+        None => return Err(Error::InvalidProxy),
+    };
+    if inputs.iter().skip(1).any(|h| h.type_id != type_id) {
+        // All inputs must be of the same type. This is a problem.
+        return Err(Error::InvalidProxy);
+    }
+    out.dims = proxy.dims;
+    registry.alloc::<T>(out)?;
+    registry
+        .with_mut(&[out.handle], |out_decks| -> Result<(), Error> {
+            let out_deck = out_decks[0]
+                .downcast_mut::<Deck<T>>()
+                .ok_or(Error::DeckTypeMismatch)?;
+            let (items, marks) = match proxy_type {
+                ProxyType::CopyAll => {
+                    // We expect exactly one input, and we will make a full clone of that data.
+                    if inputs.len() != 1 {
+                        return Err(Error::InvalidProxy);
+                    }
+                    let input_handle = unsafe { inputs.get_unchecked(0) }; // SAFETY: we just checked above.
+                    let input = DeckView::<T>::from_handle(input_handle)?;
+                    (input.items().to_vec(), input.marks().to_vec())
+                }
+                ProxyType::CopyItems => {
+                    // We expect exactly one input. We will copy the items of the input, but the marks from the proxy.
+                    if inputs.len() != 1 {
+                        return Err(Error::InvalidProxy);
+                    }
+                    let input_handle = unsafe { inputs.get_unchecked(0) }; // SAFETY: we just checked above.
+                    let input = DeckView::<T>::from_handle(input_handle)?;
+                    let proxy = DeckView::<OrcItemProxy>::from_handle(proxy)?;
+                    (input.items().to_vec(), proxy.marks().to_vec())
+                }
+                ProxyType::Shuffle => {
+                    let proxy = DeckView::<OrcItemProxy>::from_handle(proxy)?;
+                    let inputs = inputs
+                        .iter()
+                        .map(|input| DeckView::<T>::from_handle(input))
+                        .collect::<Result<Box<[DeckView<T>]>, Error>>()?;
+                    (
+                        proxy
+                            .items()
+                            .iter()
+                            .map(|ii| inputs[ii.tree as usize].items()[ii.item as usize].clone())
+                            .collect::<Vec<T>>(),
+                        proxy.marks().to_vec(),
+                    )
+                }
+            };
+            out_deck.assign_from_raw_data(items, marks);
+            unsafe { update_handle_from_deck(out_deck, out) }; // SAFETY: we pulled the deck out of the same handle.
+            Ok(())
+        })
+        .flatten()
+}
 
 #[cfg(test)]
 mod tests {

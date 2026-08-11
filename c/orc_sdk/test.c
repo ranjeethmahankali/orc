@@ -4286,6 +4286,8 @@ static void test_deck_printf(void)
                                              "        1 ---|\n"
                                              "     2 ------|\n"
                                              "     2 ------| 3\n")));
+  orc_str_free(output);
+  orc_sdk_deck_free(deck);
 }
 
 static void test_deck_init(void)
@@ -4438,6 +4440,7 @@ static void test_dv_binary_deck(void)
     } while (orc_sdk_dv_advance(&v3));
     TEST_ASSERT_TRUE(counter == 32);
   }
+  orc_sdk_deck_free(deck);
 }
 
 // ========== OrcSdk_DeckWriter ==========

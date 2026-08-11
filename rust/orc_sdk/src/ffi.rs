@@ -1,5 +1,6 @@
 use crate::Error;
 use crate::bindings::*;
+use crate::slice_from_ptr;
 
 // ===========================================================
 // Functions meant to be implemented by the plugin.
@@ -95,7 +96,7 @@ impl OrcHandle {
     pub fn free(&mut self) {
         if let Some(free_fn) = self.free_fn {
             let err = unsafe { free_fn(self as *mut OrcHandle) };
-            if err != ORC_ERROR_NONE {
+            if err != ORC_ERROR_NONE && !std::thread::panicking() {
                 eprintln!("Unable to free OrcHandle: error {:#x}", err);
                 std::process::abort();
             }
@@ -120,6 +121,11 @@ impl OrcHandle {
             dims: self.dims,
             free_fn: None,
         }
+    }
+
+    pub fn items<T: TOrcData>(&self) -> &[T] {
+        // SAFETY; We're using the pointer and the length from the same pointer.
+        unsafe { slice_from_ptr(self.items.cast(), self.n_items as usize) }
     }
 }
 

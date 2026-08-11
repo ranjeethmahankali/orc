@@ -646,15 +646,31 @@ fn generate_dispatch_fn(
             }
         })
         .collect();
+    // Destructure out_decks_ with a slice pattern so each element is an
+    // independent &mut borrow. Sequential indexing (out_decks_[0], out_decks_[1])
+    // would leave the whole slice mutably borrowed across statements, which the
+    // borrow checker rejects when n_outputs > 1.
+    let out_elem_idents: Vec<proc_macro2::Ident> = (0..n_outputs)
+        .map(|j| format_ident!("out_decks_elem_{j}_"))
+        .collect();
+    let out_decks_destructure = {
+        let elems = &out_elem_idents;
+        quote! {
+            let [#(#elems),*] = out_decks_ else {
+                return Err(orc_sdk::Error::DeckTypeMismatch);
+            };
+        }
+    };
     let out_downcasts: Vec<proc_macro2::TokenStream> = params
         .outputs
         .iter()
         .enumerate()
         .map(|(j, p)| {
             let deck_ident = &out_deck_idents[j];
+            let elem_ident = &out_elem_idents[j];
             let inner_ty = &p.inner_type;
             quote! {
-                let #deck_ident: &mut orc_sdk::Deck<#inner_ty> = out_decks_[#j]
+                let #deck_ident: &mut orc_sdk::Deck<#inner_ty> = #elem_ident
                     .downcast_mut()
                     .ok_or(orc_sdk::Error::DeckTypeMismatch)?;
             }
@@ -719,6 +735,7 @@ fn generate_dispatch_fn(
             let result_ = registry_.with_mut(
                 &[#(#out_handle_refs),*],
                 |out_decks_| -> Result<(), orc_sdk::Error> {
+                    #out_decks_destructure
                     #(#out_downcasts)*
                     loop {
                         #(#out_writer_setup)*

@@ -1,9 +1,9 @@
 use orc_sdk::{
-    Deck, DeckRegistry, DeckView, Error, HostCallbacks, ORC_ABI_VERSION, ORC_TYPE_F32,
-    ORC_TYPE_F64, ORC_TYPE_I8, ORC_TYPE_I16, ORC_TYPE_I32, ORC_TYPE_I64, ORC_TYPE_U8, ORC_TYPE_U16,
-    ORC_TYPE_U32, ORC_TYPE_U64, OrcFuncInfo, OrcHandle, OrcHost, OrcHostCallbackAPI, OrcItemProxy,
-    OrcPlugin, OrcTypeId, ProxyType, TOrcData, TOrcPluginAdaptor, orc_fn_info, orc_plugin,
-    reset_handle, update_handle_from_deck,
+    DeckRegistry, Error, HostCallbacks, ORC_ABI_VERSION, ORC_TYPE_F32, ORC_TYPE_F64, ORC_TYPE_I8,
+    ORC_TYPE_I16, ORC_TYPE_I32, ORC_TYPE_I64, ORC_TYPE_U8, ORC_TYPE_U16, ORC_TYPE_U32,
+    ORC_TYPE_U64, OrcFuncInfo, OrcHandle, OrcHost, OrcHostCallbackAPI, OrcPlugin, OrcTypeId,
+    OrcTypeInfo, ProxyType, TOrcData, TOrcPluginAdaptor, deck_from_proxy, orc_fn_info, orc_plugin,
+    reset_handle,
 };
 use std::sync::{LazyLock, OnceLock};
 
@@ -20,10 +20,6 @@ pub(crate) fn host_callbacks() -> &'static OrcHostCallbackAPI {
 
 pub(crate) fn registry() -> &'static DeckRegistry {
     &REGISTRY
-}
-
-fn alloc_deck<T: TOrcData>(handle: &mut OrcHandle) -> Result<(), Error> {
-    REGISTRY.alloc::<T>(handle)
 }
 
 struct Adaptor;
@@ -43,8 +39,8 @@ impl TOrcPluginAdaptor for Adaptor {
         out.abi_version = ORC_ABI_VERSION;
         out.name = c"math_plugin".as_ptr();
         out.desc = c"Math plugin to test and flesh out the SDK".as_ptr();
-        out.n_types = 0;
-        out.types = std::ptr::null();
+        out.n_types = ORC_EXPORTED_TYPES.len() as u64;
+        out.types = ORC_EXPORTED_TYPES.as_ptr();
         out.n_functions = ORC_EXPORTED_FUNCTIONS.len() as u64;
         out.functions = ORC_EXPORTED_FUNCTIONS.as_ptr();
         Ok(())
@@ -52,16 +48,17 @@ impl TOrcPluginAdaptor for Adaptor {
 
     fn deck_alloc(type_id: OrcTypeId, handle: &mut OrcHandle) -> Result<(), Error> {
         match type_id {
-            ORC_TYPE_U8 => alloc_deck::<u8>(handle),
-            ORC_TYPE_U16 => alloc_deck::<u16>(handle),
-            ORC_TYPE_U32 => alloc_deck::<u32>(handle),
-            ORC_TYPE_U64 => alloc_deck::<u64>(handle),
-            ORC_TYPE_I8 => alloc_deck::<i8>(handle),
-            ORC_TYPE_I16 => alloc_deck::<i16>(handle),
-            ORC_TYPE_I32 => alloc_deck::<i32>(handle),
-            ORC_TYPE_I64 => alloc_deck::<i64>(handle),
-            ORC_TYPE_F32 => alloc_deck::<f32>(handle),
-            ORC_TYPE_F64 => alloc_deck::<f64>(handle),
+            ORC_TYPE_U8 => REGISTRY.alloc::<u8>(handle),
+            ORC_TYPE_U16 => REGISTRY.alloc::<u16>(handle),
+            ORC_TYPE_U32 => REGISTRY.alloc::<u32>(handle),
+            ORC_TYPE_U64 => REGISTRY.alloc::<u64>(handle),
+            ORC_TYPE_I8 => REGISTRY.alloc::<i8>(handle),
+            ORC_TYPE_I16 => REGISTRY.alloc::<i16>(handle),
+            ORC_TYPE_I32 => REGISTRY.alloc::<i32>(handle),
+            ORC_TYPE_I64 => REGISTRY.alloc::<i64>(handle),
+            ORC_TYPE_F32 => REGISTRY.alloc::<f32>(handle),
+            ORC_TYPE_F64 => REGISTRY.alloc::<f64>(handle),
+            complex::COMPLEX_NUM_TYPE_ID => REGISTRY.alloc::<complex::Complex>(handle),
             _ => Err(Error::DeckTypeMismatch),
         }
     }
@@ -87,83 +84,22 @@ impl TOrcPluginAdaptor for Adaptor {
             None => return Err(Error::InvalidProxy),
         };
         match type_id {
-            ORC_TYPE_U8 => deck_from_proxy_impl::<u8>(inputs, proxy_type, proxy, out),
-            ORC_TYPE_U16 => deck_from_proxy_impl::<u16>(inputs, proxy_type, proxy, out),
-            ORC_TYPE_U32 => deck_from_proxy_impl::<u32>(inputs, proxy_type, proxy, out),
-            ORC_TYPE_U64 => deck_from_proxy_impl::<u64>(inputs, proxy_type, proxy, out),
-            ORC_TYPE_I8 => deck_from_proxy_impl::<i8>(inputs, proxy_type, proxy, out),
-            ORC_TYPE_I16 => deck_from_proxy_impl::<i16>(inputs, proxy_type, proxy, out),
-            ORC_TYPE_I32 => deck_from_proxy_impl::<i32>(inputs, proxy_type, proxy, out),
-            ORC_TYPE_I64 => deck_from_proxy_impl::<i64>(inputs, proxy_type, proxy, out),
-            ORC_TYPE_F32 => deck_from_proxy_impl::<f32>(inputs, proxy_type, proxy, out),
-            ORC_TYPE_F64 => deck_from_proxy_impl::<f64>(inputs, proxy_type, proxy, out),
+            ORC_TYPE_U8 => deck_from_proxy::<u8>(inputs, proxy_type, proxy, out, &REGISTRY),
+            ORC_TYPE_U16 => deck_from_proxy::<u16>(inputs, proxy_type, proxy, out, &REGISTRY),
+            ORC_TYPE_U32 => deck_from_proxy::<u32>(inputs, proxy_type, proxy, out, &REGISTRY),
+            ORC_TYPE_U64 => deck_from_proxy::<u64>(inputs, proxy_type, proxy, out, &REGISTRY),
+            ORC_TYPE_I8 => deck_from_proxy::<i8>(inputs, proxy_type, proxy, out, &REGISTRY),
+            ORC_TYPE_I16 => deck_from_proxy::<i16>(inputs, proxy_type, proxy, out, &REGISTRY),
+            ORC_TYPE_I32 => deck_from_proxy::<i32>(inputs, proxy_type, proxy, out, &REGISTRY),
+            ORC_TYPE_I64 => deck_from_proxy::<i64>(inputs, proxy_type, proxy, out, &REGISTRY),
+            ORC_TYPE_F32 => deck_from_proxy::<f32>(inputs, proxy_type, proxy, out, &REGISTRY),
+            ORC_TYPE_F64 => deck_from_proxy::<f64>(inputs, proxy_type, proxy, out, &REGISTRY),
+            complex::COMPLEX_NUM_TYPE_ID => {
+                deck_from_proxy::<complex::Complex>(inputs, proxy_type, proxy, out, &REGISTRY)
+            }
             _ => Err(Error::DeckTypeMismatch),
         }
     }
-}
-
-fn deck_from_proxy_impl<T: TOrcData>(
-    inputs: &[OrcHandle],
-    proxy_type: ProxyType,
-    proxy: &OrcHandle,
-    out: &mut OrcHandle,
-) -> Result<(), Error> {
-    let type_id = match inputs.first() {
-        Some(input) => input.type_id,
-        None => return Err(Error::InvalidProxy),
-    };
-    if inputs.iter().skip(1).any(|h| h.type_id != type_id) {
-        // All inputs must be of the same type. This is a problem.
-        return Err(Error::InvalidProxy);
-    }
-    out.dims = proxy.dims;
-    REGISTRY.alloc::<T>(out)?;
-    REGISTRY
-        .with_mut(&[out.handle], |out_decks| -> Result<(), Error> {
-            let out_deck = out_decks[0]
-                .downcast_mut::<Deck<T>>()
-                .ok_or(Error::DeckTypeMismatch)?;
-            let (items, marks) = match proxy_type {
-                ProxyType::CopyAll => {
-                    // We expect exactly one input, and we will make a full clone of that data.
-                    if inputs.len() != 1 {
-                        return Err(Error::InvalidProxy);
-                    }
-                    let input_handle = unsafe { inputs.get_unchecked(0) }; // SAFETY: we just checked above.
-                    let input = DeckView::<T>::from_handle(input_handle)?;
-                    (input.items().to_vec(), input.marks().to_vec())
-                }
-                ProxyType::CopyItems => {
-                    // We expect exactly one input. We will copy the items of the input, but the marks from the proxy.
-                    if inputs.len() != 1 {
-                        return Err(Error::InvalidProxy);
-                    }
-                    let input_handle = unsafe { inputs.get_unchecked(0) }; // SAFETY: we just checked above.
-                    let input = DeckView::<T>::from_handle(input_handle)?;
-                    let proxy = DeckView::<OrcItemProxy>::from_handle(proxy)?;
-                    (input.items().to_vec(), proxy.marks().to_vec())
-                }
-                ProxyType::Shuffle => {
-                    let proxy = DeckView::<OrcItemProxy>::from_handle(proxy)?;
-                    let inputs = inputs
-                        .iter()
-                        .map(|input| DeckView::<T>::from_handle(input))
-                        .collect::<Result<Box<[DeckView<T>]>, Error>>()?;
-                    (
-                        proxy
-                            .items()
-                            .iter()
-                            .map(|ii| inputs[ii.tree as usize].items()[ii.item as usize].clone())
-                            .collect::<Vec<T>>(),
-                        proxy.marks().to_vec(),
-                    )
-                }
-            };
-            out_deck.assign_from_raw_data(items, marks);
-            unsafe { update_handle_from_deck(out_deck, out) }; // SAFETY: we pulled the deck out of the same handle.
-            Ok(())
-        })
-        .flatten()
 }
 
 orc_plugin!(Adaptor);
@@ -178,6 +114,10 @@ const ORC_EXPORTED_FUNCTIONS: &[OrcFuncInfo] = &[
     orc_fn_info!(basic::div),
     orc_fn_info!(basic::repeat_list),
     // Complex numbers.
+    orc_fn_info!(complex::create_complex),
     orc_fn_info!(complex::add_complex),
     orc_fn_info!(complex::mul_complex),
+    orc_fn_info!(complex::complex_get_parts),
 ];
+
+const ORC_EXPORTED_TYPES: &[OrcTypeInfo] = &[complex::Complex::TYPE_INFO];
