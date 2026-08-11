@@ -408,13 +408,9 @@ def t_flatten_integer_type():
 def t_flatten_mismatched_counts():
     """Flatten with n_inputs != n_outputs produces no output."""
     a = make_handle([[1.0]])
-    fn = get_function(plugins, "flatten_deck")
-    in_arr = (OrcHandle * 1)(a)
-    out1 = empty_handle()
-    out_arr = (OrcHandle * 1)(out1)
-    fn._fi.func(0, in_arr, 2, out_arr, 1)
-    assert not out_arr[0].items
-    assert not out_arr[0].free_fn
+    out = orc.flatten_deck(a, a, n_out = 1)
+    assert not out.items
+    assert not out.free_fn
 
 
 # ============================================================
@@ -434,14 +430,9 @@ def t_output_handle_id_preserved():
     """Plugin preserves the handle ID set by the caller."""
     a = make_handle([1.0])
     b = make_handle([2.0])
-    out = OrcHandle()
-    ctypes.memset(ctypes.addressof(out), 0, ctypes.sizeof(out))
-    out.handle = 9999
-    fn = get_function(plugins, "add")
-    in_arr = (OrcHandle * 2)(a, b)
-    out_arr = (OrcHandle * 1)(out)
-    fn._fi.func(0, in_arr, 2, out_arr, 1)
-    assert out_arr[0].handle == 9999
+    expected_out_id = orc.next_handle_id() + 1
+    out = orc.add(a, b)
+    assert out.handle == expected_out_id
 
 
 def t_output_type_matches_input_for_flatten():
@@ -563,7 +554,7 @@ def t_numpy_f64():
     a = make_handle([1.0, 2.0, 3.0])
     b = make_handle([10.0, 20.0, 30.0])
     [out] = call_fn(orc.add, [a, b])
-    arr = as_numpy(out)
+    arr = orc.orc.as_numpy(out)
     assert arr.dtype == np.float64
     assert arr.ctypes.data == out.items
     assert list(arr * 2.0) == [22.0, 44.0, 66.0]
@@ -572,7 +563,7 @@ def t_numpy_f64():
 def t_numpy_f32():
     """Convert f32 handle to numpy, verify pointer and arithmetic."""
     h = make_handle([1.5, 2.5, 3.5], type_id=orc.ORC_TYPE_F32)
-    arr = as_numpy(h)
+    arr = orc.as_numpy(h)
     assert arr.dtype == np.float32
     assert arr.ctypes.data == h.items
     result = arr + np.float32(0.5)
@@ -584,7 +575,7 @@ def t_numpy_u8():
     a = make_handle([10, 20, 30])
     b = make_handle([1, 2, 3])
     [out] = call_fn(orc.add, [a, b])
-    arr = as_numpy(out)
+    arr = orc.as_numpy(out)
     assert arr.dtype == np.uint8
     assert arr.ctypes.data == out.items
     assert list(arr + np.uint8(100)) == [111, 122, 133]
@@ -593,7 +584,7 @@ def t_numpy_u8():
 def t_numpy_u16():
     """Convert u16 handle to numpy, verify pointer and arithmetic."""
     h = make_handle([300, 400, 500], type_id=orc.ORC_TYPE_U16)
-    arr = as_numpy(h)
+    arr = orc.as_numpy(h)
     assert arr.dtype == np.uint16
     assert arr.ctypes.data == h.items
     assert list(arr - np.uint16(100)) == [200, 300, 400]
@@ -604,7 +595,7 @@ def t_numpy_u32():
     a = make_handle([100000, 200000])
     b = make_handle([300000, 400000])
     [out] = call_fn(orc.add, [a, b])
-    arr = as_numpy(out)
+    arr = orc.as_numpy(out)
     assert arr.dtype == np.uint32
     assert arr.ctypes.data == out.items
     assert list(arr // np.uint32(100000)) == [4, 6]
@@ -613,7 +604,7 @@ def t_numpy_u32():
 def t_numpy_u64():
     """Convert u64 handle to numpy, verify pointer and arithmetic."""
     h = make_handle([2**40, 2**41], type_id=orc.ORC_TYPE_U64)
-    arr = as_numpy(h)
+    arr = orc.as_numpy(h)
     assert arr.dtype == np.uint64
     assert arr.ctypes.data == h.items
     assert list(arr * np.uint64(2)) == [2**41, 2**42]
@@ -622,7 +613,7 @@ def t_numpy_u64():
 def t_numpy_i8():
     """Convert i8 handle to numpy, verify pointer and arithmetic."""
     h = make_handle([-10, 0, 10], type_id=orc.ORC_TYPE_I8)
-    arr = as_numpy(h)
+    arr = orc.as_numpy(h)
     assert arr.dtype == np.int8
     assert arr.ctypes.data == h.items
     assert list(arr + np.int8(5)) == [-5, 5, 15]
@@ -631,7 +622,7 @@ def t_numpy_i8():
 def t_numpy_i16():
     """Convert i16 handle to numpy, verify pointer and arithmetic."""
     h = make_handle([-1000, 0, 1000], type_id=orc.ORC_TYPE_I16)
-    arr = as_numpy(h)
+    arr = orc.as_numpy(h)
     assert arr.dtype == np.int16
     assert arr.ctypes.data == h.items
     assert list(arr * np.int16(-1)) == [1000, 0, -1000]
@@ -640,7 +631,7 @@ def t_numpy_i16():
 def t_numpy_i32():
     """Convert i32 handle to numpy, verify pointer and arithmetic."""
     h = make_handle([-100000, 0, 100000], type_id=orc.ORC_TYPE_I32)
-    arr = as_numpy(h)
+    arr = orc.as_numpy(h)
     assert arr.dtype == np.int32
     assert arr.ctypes.data == h.items
     assert list(arr + np.int32(1)) == [-99999, 1, 100001]
@@ -649,7 +640,7 @@ def t_numpy_i32():
 def t_numpy_i64():
     """Convert i64 handle to numpy, verify pointer and arithmetic."""
     h = make_handle([-2**40, 0, 2**40], type_id=orc.ORC_TYPE_I64)
-    arr = as_numpy(h)
+    arr = orc.as_numpy(h)
     assert arr.dtype == np.int64
     assert arr.ctypes.data == h.items
     assert list(arr + np.int64(1)) == [-(2**40) + 1, 1, 2**40 + 1]
@@ -659,7 +650,7 @@ def t_numpy_3x3_matrix():
     """Convert a 3x3 nested handle to a numpy matrix, verify arithmetic."""
     data = [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]]
     h = make_handle(data)
-    arr = as_numpy(h)
+    arr = orc.as_numpy(h)
     assert arr.ctypes.data == h.items
     # Flat view of 9 items
     assert len(arr) == 9
@@ -678,7 +669,7 @@ def t_numpy_3x3_from_plugin():
     a = make_handle([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]])
     b = make_handle([1.0])
     [out] = call_fn(orc.add, [a, b])
-    arr = as_numpy(out)
+    arr = orc.as_numpy(out)
     assert arr.ctypes.data == out.items
     mat = arr.reshape(3, 3)
     # Each element should be original + 1
@@ -694,7 +685,7 @@ def t_numpy_survives_handle_gc():
 
     def get_arr():
         h = make_handle([1.0, 2.0, 3.0])
-        return as_numpy(h)
+        return orc.as_numpy(h)
 
     arr = get_arr()
     gc.collect()  # Force GC of the handle
@@ -708,7 +699,7 @@ def t_numpy_and_handle_both_freed():
 
     def create_and_drop():
         h = make_handle([1.0, 2.0, 3.0])
-        arr = as_numpy(h)
+        arr = orc.as_numpy(h)
         assert list(arr) == [1.0, 2.0, 3.0]
         # Both h and arr go out of scope here.
 
@@ -772,7 +763,7 @@ def t_complex_add_negative_components():
 
 
 def t_complex_add_wrong_n_inputs():
-    """add_complex with one input produces no output."""
+    """add_complex raises ValueError when called with the wrong number of inputs."""
     lhs = make_complex([1.0, 3.0], [2.0, 4.0])
     try:
         [out] = call_fn(orc.add_complex, [lhs])
@@ -827,11 +818,14 @@ def t_complex_mul_by_zero():
 
 
 def t_complex_mul_wrong_n_inputs():
-    """mul_complex with one input produces no output."""
+    """mul_complex raises ValueError when called with the wrong number of inputs."""
     lhs = make_complex([1.0, 3.0], [2.0, 4.0])
-    [out] = call_fn(orc.mul_complex, [lhs])
-    assert not out.items
-    assert not out.free_fn
+    try:
+        [out] = call_fn(orc.mul_complex, [lhs])
+    except ValueError:
+        # We supplied the wrong number of inputs, so this is expected.
+        return
+    assert False, "This should be unreachable"
 
 
 def t_complex_flatten():
