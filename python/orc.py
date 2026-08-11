@@ -428,11 +428,12 @@ def _is_plugin(path):
     return True
 
 
-def load_plugins(search_dir, host):
+def load_plugins(search_dir, verbose=False):
     """Load all compatible plugin shared libraries from search_dir.
 
     Returns a list of (lib, OrcPlugin) tuples.
     """
+    host = default_host()
     ext = _shared_lib_ext()
     plugins = []
     if not os.path.isdir(search_dir):
@@ -455,17 +456,24 @@ def load_plugins(search_dir, host):
             print(f"Skipping {f}: orc_plugin_init failed ({err:#x})")
             continue
         plugins.append((lib, plugin))
-        print(f"Loaded plugin: {f}")
+        if verbose:
+            print(f"Loaded plugin: {f}")
     global _loaded_plugins
-    _loaded_plugins.clear()
     _loaded_plugins.extend(plugins)
+    if verbose:
+        print(f"\nLoaded {len(plugins)} plugin(s):")
+        for _lib, plugin in plugins:
+            print(f"  {plugin.name.decode()}: {plugin.desc.decode()}")
+            for i in range(plugin.n_functions):
+                fi = plugin.functions[i]
+                print(f"    - {fi.name.decode()}: {fi.desc.decode()}")
+        print()
     module = sys.modules[__name__]
     for _lib, plugin in plugins:
         for i in range(plugin.n_functions):
             fi = plugin.functions[i]
             wrapper = OrcFuncWrapper(fi, fi.n_inputs, fi.n_outputs)
             setattr(module, wrapper.name, wrapper)
-    return plugins
 
 
 class OrcFuncWrapper:

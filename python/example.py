@@ -16,24 +16,11 @@ import orc
 
 def main():
     """Run example script that uses orc plugins."""
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    project_root = os.path.dirname(script_dir)
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     search_dir = os.path.join(project_root, "build", "debug")
-    host = orc.default_host()
     # Load all plugins from the search directory
     print(f"Searching for plugins in: {search_dir}")
-    plugins = orc.load_plugins(search_dir, host)
-    if not plugins:
-        print("No plugins found.")
-        sys.exit(1)
-
-    print(f"\nLoaded {len(plugins)} plugin(s):")
-    for _lib, plugin in plugins:
-        print(f"  {plugin.name.decode()}: {plugin.desc.decode()}")
-        for i in range(plugin.n_functions):
-            fi = plugin.functions[i]
-            print(f"    - {fi.name.decode()}: {fi.desc.decode()}")
-    print()
+    orc.load_plugins(search_dir)
 
     a = orc.make_deck([[1.0, 2.0, 3.0], [2.0, 4.0, 6.0, 8.0]])
     b = orc.make_deck([[10.0, 20.0, 30.0], [3.0, 5.0, 7.0, 11.0]])
