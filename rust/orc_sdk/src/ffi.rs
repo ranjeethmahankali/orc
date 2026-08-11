@@ -96,7 +96,7 @@ impl OrcHandle {
     pub fn free(&mut self) {
         if let Some(free_fn) = self.free_fn {
             let err = unsafe { free_fn(self as *mut OrcHandle) };
-            if err != ORC_ERROR_NONE {
+            if err != ORC_ERROR_NONE && !std::thread::panicking() {
                 eprintln!("Unable to free OrcHandle: error {:#x}", err);
                 std::process::abort();
             }
