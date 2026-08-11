@@ -774,9 +774,12 @@ def t_complex_add_negative_components():
 def t_complex_add_wrong_n_inputs():
     """add_complex with one input produces no output."""
     lhs = make_complex([1.0, 3.0], [2.0, 4.0])
-    [out] = call_fn(orc.add_complex, [lhs])
-    assert not out.items
-    assert not out.free_fn
+    try:
+        [out] = call_fn(orc.add_complex, [lhs])
+    except ValueError:
+        # We supplied the wrong number of inputs, so this is expected.
+        return
+    assert False, "This should be unreachable"
 
 
 # ==================== mul_complex ====================
