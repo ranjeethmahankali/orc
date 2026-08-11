@@ -1,17 +1,17 @@
-* Building the C SDK and Plugins
+* C SDK and Plugins
   :PROPERTIES:
   :CREATED:  2026-08-03 Mon 15:08
   :END:
 
   Run these commands from the project root. To configure once:
 
-  #+begin_src sh :results none
+  #+begin_src sh :results drawer
     # For a debug build - configure then build.
     cmake -S c/ -B build/debug -DCMAKE_BUILD_TYPE=Debug
     cmake --build build/debug
   #+end_src
 
-  #+begin_src sh
+  #+begin_src sh :results drawer
     # For a release build - configure then build.
     cmake -S c/ -B build/release -DCMAKE_BUILD_TYPE=Release
     cmake --build build/release
@@ -19,6 +19,20 @@
 
   To generate compile_commands.json (useful for Clangd LSP):
 
-  #+begin_src sh :results raw
+  #+begin_src sh :results drawer
     cmake -S c/ -B build/debug -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DCMAKE_BUILD_TYPE=Debug
+  #+end_src
+
+  To run C SDK unit tests:
+
+  #+begin_src sh :results drawer
+    build/debug/orc_sdk_tests
+    build/debug/deck_ops_plugin_tests
+  #+end_src
+
+  or in release:
+
+  #+begin_src sh :results drawer
+    build/release/orc_sdk_tests
+    build/release/deck_ops_plugin_tests
   #+end_src
