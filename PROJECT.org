@@ -201,9 +201,9 @@
   :CREATED:  2026-08-11 Tue 09:00
   :END:
 
-  - ~__all__~: Figure this out.
-  - Figure out ~n_out~ from ~load_plugins~.
-  - Use normal delete for OrcHandle outside tests.
+  - [X] Figure out ~n_out~ from ~load_plugins~.
+  - [X] Use normal delete for OrcHandle outside tests. - This was already happening. Nothing to do.
+  - [ ] ~__all__~: Figure this out.
 
 * DONE tjkesx - Test with custom types
   CLOSED: [2026-08-10 Mon 22:51]
