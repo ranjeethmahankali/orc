@@ -12,7 +12,7 @@ from bindings import (OrcDeckFreeFn, OrcHandle, OrcAllocFn, OrcDeallocFn,
                       ORC_ABI_VERSION, OrcCreateDeckFromProxyFn, OrcItemProxy,
                       ORC_ERROR_INVALID_HANDLE, ORC_ERROR_INVALID_PROXY,
                       ORC_DECK_PROXY_COPY_ALL, ORC_DECK_PROXY_COPY_ITEMS,
-                      ORC_DECK_PROXY_SHUFFLE)
+                      ORC_DECK_PROXY_SHUFFLE, ORC_ARGS_VARIADIC)
 
 
 def _handle_del(self):
@@ -464,20 +464,29 @@ def load_plugins(search_dir, host):
 class OrcFuncWrapper:
     """Callable wrapper around a plugin function."""
 
-    def __init__(self, fi):
+    def __init__(self, fi, n_inputs, n_outputs):
         """Wrap an OrcFuncInfo as a callable."""
         self._fi = fi
         self.name = fi.name.decode("utf-8")
+        self.n_inputs = None if n_inputs == ORC_ARGS_VARIADIC else n_inputs
+        self.n_outputs = None if n_outputs == ORC_ARGS_VARIADIC else n_outputs
 
-    def __call__(self, *inputs, n_out=1):
+    def __call__(self, *inputs, n_out=None):
         """Call the plugin function with the given input handles."""
         in_arr = (OrcHandle * len(inputs))(*inputs)
+        if n_out is None:
+            if self.n_outputs is None:
+                # The user nor the function tell us how many outputs the function has.
+                # So we assume 1 as the default.
+                n_out = 1
+            else:
+                n_out = self.n_outputs
         outs = [empty_handle() for _ in range(n_out)]
         out_arr = (OrcHandle * n_out)(*outs)
         self._fi.func(0, in_arr, len(inputs), out_arr, n_out)
         if n_out == 1:
             return out_arr[0]
-        return tuple(out_arr[i] for i in range(n_out))
+        return [out_arr[i] for i in range(n_out)]
 
     def __repr__(self):
         """Return a string representation of the function."""
@@ -490,5 +499,5 @@ def get_function(plugins, name):
         for i in range(plugin.n_functions):
             fi = plugin.functions[i]
             if fi.name.decode("utf-8") == name:
-                return OrcFuncWrapper(fi)
+                return OrcFuncWrapper(fi, fi.n_inputs, fi.n_outputs)
     raise KeyError(f"Function '{name}' not found in any plugin")

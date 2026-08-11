@@ -69,7 +69,7 @@ def main():
     # Complex numbers.
     comp = create_complex(a, b)
     comp2 = mul_complex(comp, comp)
-    real, imag = complex_get_parts(comp2, n_out=2)
+    real, imag = complex_get_parts(comp2)
 
     print("==========\nComplex Numbers\n==========")
     print("Real part: ", read_deck(real))
