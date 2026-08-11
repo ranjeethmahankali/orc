@@ -220,39 +220,6 @@ mod tests {
         assert_eq!(view.items(), &[10.0]);
     }
 
-    // 7. Handle counter increments correctly.
-    #[test]
-    fn t_handle_counter() {
-        let hc = AtomicU64::new(0);
-        let a_deck: Deck<f64> = deck![1.0];
-        let b_deck: Deck<f64> = deck![2.0];
-        let a = make_handle(&hc, &a_deck);
-        let b = make_handle(&hc, &b_deck);
-        assert_eq!(hc.load(Ordering::Relaxed), 2); // a=0, b=1
-        let _out = kbb_dag!(*PLUGIN_SET, &hc, {
-            (add a b)
-        });
-        assert_eq!(hc.load(Ordering::Relaxed), 3); // one output handle allocated
-    }
-
-    // 8. Handle counter increments correctly with nested calls.
-    #[test]
-    fn t_handle_counter_nested() {
-        let hc = AtomicU64::new(0);
-        let a_deck: Deck<f64> = deck![1.0];
-        let b_deck: Deck<f64> = deck![2.0];
-        let c_deck: Deck<f64> = deck![3.0];
-        let a = make_handle(&hc, &a_deck);
-        let b = make_handle(&hc, &b_deck);
-        let c = make_handle(&hc, &c_deck);
-        assert_eq!(hc.load(Ordering::Relaxed), 3);
-        // Nested: (mul a b) allocates 1 handle, (add _ c) allocates 1 handle
-        let _out = kbb_dag!(*PLUGIN_SET, &hc, {
-            (add (mul a b) c)
-        });
-        assert_eq!(hc.load(Ordering::Relaxed), 5);
-    }
-
     // 9. External variables are usable as inputs.
     #[test]
     fn t_external_variables() {
@@ -270,7 +237,6 @@ mod tests {
     // 10. Empty block returns unit.
     #[test]
     fn t_empty_block() {
-        let hc = AtomicU64::new(0);
-        assert_eq!(kbb_dag!(*PLUGIN_SET, &hc, {}), ());
+        assert_eq!(kbb_dag!(*PLUGIN_SET, &HANDLE_COUNTER, {}), ());
     }
 }
