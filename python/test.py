@@ -554,7 +554,7 @@ def t_numpy_f64():
     a = make_handle([1.0, 2.0, 3.0])
     b = make_handle([10.0, 20.0, 30.0])
     [out] = call_fn(orc.add, [a, b])
-    arr = orc.orc.as_numpy(out)
+    arr = orc.as_numpy(out)
     assert arr.dtype == np.float64
     assert arr.ctypes.data == out.items
     assert list(arr * 2.0) == [22.0, 44.0, 66.0]
