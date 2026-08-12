@@ -171,9 +171,12 @@
   Maybe I can write a rasterizer for my curve types, and somehow get the optimizer to export images
   of the sample points in the design space, so that I can visualize them when viewing the DOE.
 
-* TODO Don't use build.rs
+* NEXT tjo88p - Don't use build.rs
   :PROPERTIES:
   :CREATED:  2026-08-09 Sun 00:18
+  :END:
+  :LOGBOOK:
+  - State "NEXT"       from "TODO"       [2026-08-12 Wed 15:17]
   :END:
 
   - Pull the bindings generation into a separate crate somewhere in the repo, that is not built by
