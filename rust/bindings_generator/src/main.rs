@@ -62,6 +62,7 @@ fn main() {
             bindings
                 .write_to_file(path)
                 .expect("Couldn't write Rust bindings");
+            println!("Rust bindings written to {path}");
         }
         if let Some(path) = &rust_check {
             let mut buf = Vec::new();
@@ -77,6 +78,7 @@ fn main() {
                 eprintln!("Rust bindings are out of sync with {path}");
                 std::process::exit(1);
             }
+            println!("Rust bindings are up to date with {path}");
         }
     }
     if needs_python {
@@ -90,6 +92,7 @@ fn main() {
                 eprintln!("Couldn't write {path}: {e}");
                 std::process::exit(1);
             });
+            println!("Python bindings written to {path}");
         }
         if let Some(path) = &python_check {
             let generated =
@@ -102,6 +105,7 @@ fn main() {
                 eprintln!("Python bindings are out of sync with {path}");
                 std::process::exit(1);
             }
+            println!("Python bindings are up to date with {path}");
         }
     }
 }
@@ -109,7 +113,6 @@ fn main() {
 fn generate_rust_bindings(header: &str) -> bindgen::Bindings {
     bindgen::Builder::default()
         .header(header)
-        .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()))
         .parse_callbacks(Box::new(TypeAliasCallback))
         .allowlist_type("Orc.*")
         .allowlist_var("ORC_.*")
