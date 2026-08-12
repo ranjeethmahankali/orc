@@ -171,9 +171,12 @@
   Maybe I can write a rasterizer for my curve types, and somehow get the optimizer to export images
   of the sample points in the design space, so that I can visualize them when viewing the DOE.
 
-* TODO Don't use build.rs
+* NEXT tjo88p - Don't use build.rs
   :PROPERTIES:
   :CREATED:  2026-08-09 Sun 00:18
+  :END:
+  :LOGBOOK:
+  - State "NEXT"       from "TODO"       [2026-08-12 Wed 15:17]
   :END:
 
   - Pull the bindings generation into a separate crate somewhere in the repo, that is not built by
@@ -184,6 +187,13 @@
   - Add a test to the CI, that runs the bindings generator binary, and asserts the diff is empty.
   - Might be a good idea to include a timestamp in the generated code. If I end up doing that, I
     should account for that when checking the diff in CI.
+
+  <2026-08-12 Wed 15:32> Baked the Rust bindings into the git, and pulled the build.rs logic out
+  into a separate crate. Adding command line arguments etc. to the crate.
+
+  <2026-08-12 Wed 15:35> Adding ~--check~ options to both Rust and Python bindings generation.
+
+  - [ ] Add the --check option to the CI to ensure the bindings never go out of sync.
 
 * DONE tjmcc9 - orc_map_fn Macro in Rust SDK
   CLOSED: [2026-08-12 Wed 15:11]

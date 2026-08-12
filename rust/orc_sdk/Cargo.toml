@@ -9,7 +9,3 @@ derive = ["orc_sdk_derive"]
 [dependencies]
 orc_sdk_derive = { path = "derive_macros", optional = true }
 libloading = "0.8"
-
-[build-dependencies]
-bindgen = "0.72"
-clang = { version = "2", features = ["runtime"] }
