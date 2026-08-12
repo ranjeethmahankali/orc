@@ -227,20 +227,16 @@ fn validate_orc_fn(
             "first parameter of fn run must be a reference to the host callbacks",
         ));
     }
-    // fn run must return Result<_, _>.
-    let returns_result = match &run_fn.sig.output {
-        syn::ReturnType::Type(_, ty) => matches!(
-            ty.as_ref(),
-            syn::Type::Path(p)
-                if p.path.segments.last().is_some_and(|s| s.ident == "Result")
-        ),
-        syn::ReturnType::Default => false,
-    };
-    if !returns_result {
-        return Err(syn::Error::new_spanned(
-            &run_fn.sig,
-            "fn run must return `Result<(), Error>`",
-        ));
+    // fn run must return Result<_, _> or nothing.
+    if let syn::ReturnType::Type(_, ty) = &run_fn.sig.output {
+        if !matches!(ty.as_ref(), syn::Type::Path(p)
+            if p.path.segments.last().is_some_and(|s| s.ident == "Result"))
+        {
+            return Err(syn::Error::new_spanned(
+                &run_fn.sig,
+                "fn run must return `Result<(), Error>` or nothing",
+            ));
+        }
     }
     // Classify remaining params (skip host).
     let mut input_params: Vec<syn::PatType> = Vec::new();
@@ -720,6 +716,16 @@ fn generate_dispatch_fn(
         .collect();
     let input_depths_vals: Vec<u8> = params.inputs.iter().map(|p| p.depth).collect();
     let output_depths_vals: Vec<u8> = params.outputs.iter().map(|p| p.depth).collect();
+    let run_returns_result = matches!(
+        &run_fn.sig.output,
+        syn::ReturnType::Type(_, ty) if matches!(ty.as_ref(), syn::Type::Path(p)
+            if p.path.segments.last().is_some_and(|s| s.ident == "Result"))
+    );
+    let run_call = if run_returns_result {
+        quote! { run(host_, #(#in_call_args,)* #(#out_call_args),*)?; }
+    } else {
+        quote! { run(host_, #(#in_call_args,)* #(#out_call_args),*); }
+    };
     quote! {
         fn dispatch_ #run_generics (
             host_: &orc_sdk::HostCallbacks,
@@ -739,7 +745,7 @@ fn generate_dispatch_fn(
                     #(#out_downcasts)*
                     loop {
                         #(#out_writer_setup)*
-                        run(host_, #(#in_call_args,)* #(#out_call_args),*)?;
+                        #run_call
                         if !comb_.advance() { break; }
                     }
                     #(#out_handle_updates)*
