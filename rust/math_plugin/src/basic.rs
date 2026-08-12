@@ -22,7 +22,7 @@ orc_fn!(add, {
     /// Adds two inputs values, assigns result to the output. This function supports any integer or
     /// floating point scalar types. The two inputs must be of the same type. The output produced
     /// will be of the same type also.
-    fn run<T>(_host: &HostCallbacks, lhs: &T, rhs: &T, out: &mut T)
+    fn run<T>(lhs: &T, rhs: &T, out: &mut T)
     where
         T: TOrcData + Add<Output = T> + Copy,
     {
@@ -59,7 +59,7 @@ orc_fn!(mul, {
     /// Multiplies two inputs values, and assigns the result to the output. This function supports
     /// any integer or floating point scalar types. The two inputs must be of the same type. The
     /// output produced will be of the same type also.
-    fn run<T>(_host: &HostCallbacks, lhs: &T, rhs: &T, out: &mut T)
+    fn run<T>(lhs: &T, rhs: &T, out: &mut T)
     where
         T: TOrcData + Mul<Output = T> + Copy,
     {
@@ -84,7 +84,7 @@ orc_fn!(sub, {
 
     /// Subtracts the second operand from the first, and assigns to the output. The input types must
     /// be the same, matching the output type. This function supports floating point scalar types.
-    fn run<T>(_host: &HostCallbacks, lhs: &T, rhs: &T, out: &mut T)
+    fn run<T>(lhs: &T, rhs: &T, out: &mut T)
     where
         T: TOrcData + Sub<Output = T> + Copy,
     {
@@ -101,7 +101,7 @@ orc_fn!(div, {
     /// Divides the first input with the second input, and assign to the output. All inputs must be
     /// of the same type, matching the output type. This function supports floating point scalar
     /// types.
-    fn run<T>(_host: &HostCallbacks, lhs: &T, rhs: &T, out: &mut T)
+    fn run<T>(lhs: &T, rhs: &T, out: &mut T)
     where
         T: TOrcData + Div<Output = T> + Copy,
     {
@@ -113,7 +113,7 @@ orc_fn!(pow_f32, {
     let host_callbacks = host_callbacks();
     let registry: &ObjectRegistry = registry();
 
-    fn run(_host: &HostCallbacks, lhs: &f32, rhs: &f32, out: &mut f32) {
+    fn run(lhs: &f32, rhs: &f32, out: &mut f32) {
         *out = lhs.powf(*rhs);
     }
 });

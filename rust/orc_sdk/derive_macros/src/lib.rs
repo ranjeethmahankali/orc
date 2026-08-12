@@ -57,6 +57,7 @@ struct ParamInfo {
 struct ValidatedParams {
     inputs: Box<[ParamInfo]>,
     outputs: Box<[ParamInfo]>,
+    has_host: bool,
 }
 
 /// Returns the number of args in `Case<...>`, or `None` if the type is not `Case<...>`.
@@ -207,6 +208,13 @@ fn resolve_depths(
     }
 }
 
+fn is_host_param(ty: &syn::Type) -> bool {
+    matches!(ty, syn::Type::Reference(r)
+        if r.mutability.is_none()
+        && matches!(r.elem.as_ref(), syn::Type::Path(p)
+            if p.path.segments.last().is_some_and(|s| s.ident == "HostCallbacks")))
+}
+
 fn validate_orc_fn(
     run_fn: &syn::ItemFn,
     dims_fn: Option<&syn::ItemFn>,
@@ -215,18 +223,11 @@ fn validate_orc_fn(
     input_depths: Option<&syn::ExprArray>,
     output_depths: Option<&syn::ExprArray>,
 ) -> syn::Result<ValidatedParams> {
-    // First parameter must be a reference to the host callbacks.
-    let host_ok = matches!(
+    // Detect whether the first parameter is &HostCallbacks.
+    let has_host = matches!(
         run_fn.sig.inputs.first(),
-        Some(syn::FnArg::Typed(pt))
-            if matches!(pt.ty.as_ref(), syn::Type::Reference(_))
+        Some(syn::FnArg::Typed(pt)) if is_host_param(pt.ty.as_ref())
     );
-    if !host_ok {
-        return Err(syn::Error::new_spanned(
-            &run_fn.sig,
-            "first parameter of fn run must be a reference to the host callbacks",
-        ));
-    }
     // fn run must return Result<_, _> or nothing.
     if let syn::ReturnType::Type(_, ty) = &run_fn.sig.output {
         if !matches!(ty.as_ref(), syn::Type::Path(p)
@@ -238,11 +239,11 @@ fn validate_orc_fn(
             ));
         }
     }
-    // Classify remaining params (skip host).
+    // Classify params (skip host if present).
     let mut input_params: Vec<syn::PatType> = Vec::new();
     let mut output_params: Vec<syn::PatType> = Vec::new();
     let mut saw_output = false;
-    for arg in run_fn.sig.inputs.iter().skip(1) {
+    for arg in run_fn.sig.inputs.iter().skip(if has_host { 1 } else { 0 }) {
         let pat_ty = match arg {
             syn::FnArg::Typed(pt) => pt,
             syn::FnArg::Receiver(r) => {
@@ -344,6 +345,7 @@ fn validate_orc_fn(
                 }
             })
             .collect(),
+        has_host,
     })
 }
 
@@ -721,10 +723,11 @@ fn generate_dispatch_fn(
         syn::ReturnType::Type(_, ty) if matches!(ty.as_ref(), syn::Type::Path(p)
             if p.path.segments.last().is_some_and(|s| s.ident == "Result"))
     );
+    let host_arg = if params.has_host { quote! { host_, } } else { quote! {} };
     let run_call = if run_returns_result {
-        quote! { run(host_, #(#in_call_args,)* #(#out_call_args),*)?; }
+        quote! { run(#host_arg #(#in_call_args,)* #(#out_call_args),*)?; }
     } else {
-        quote! { run(host_, #(#in_call_args,)* #(#out_call_args),*); }
+        quote! { run(#host_arg #(#in_call_args,)* #(#out_call_args),*); }
     };
     quote! {
         fn dispatch_ #run_generics (
