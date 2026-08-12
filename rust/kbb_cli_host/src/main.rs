@@ -7,7 +7,7 @@ use orc_sdk::{
     Deck, DeckRegistry, Error, ORC_ABI_VERSION, ORC_ERROR_INVALID_PROXY, ORC_ERROR_NONE,
     ORC_TYPE_F32, ORC_TYPE_F64, ORC_TYPE_I8, ORC_TYPE_I16, ORC_TYPE_I32, ORC_TYPE_I64, ORC_TYPE_U8,
     ORC_TYPE_U16, ORC_TYPE_U32, ORC_TYPE_U64, OrcError, OrcHandle, OrcHost, OrcHostCallbackAPI,
-    OrcHostMemoryAPI, OrcProxyType, PluginSet, ProxyType, TypeOwner, deck, reset_handle,
+    OrcHostMemoryAPI, OrcProxyType, PluginSet, ProxyType, TypeOwner, deck, orc_dag, reset_handle,
     update_handle_from_deck,
 };
 use std::alloc::{Layout, alloc, dealloc};

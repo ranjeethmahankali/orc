@@ -1,7 +1,7 @@
 use crate::{HANDLE_COUNTER, PLUGIN_SET};
-use orc_sdk::{Deck, DeckView, OrcHandle, deck, update_handle_from_deck};
+use orc_sdk::{Deck, DeckView, OrcHandle, deck, orc_dag, update_handle_from_deck};
 
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 fn next_id() -> u64 {
     HANDLE_COUNTER.fetch_add(1, Ordering::Relaxed)
@@ -183,4 +183,136 @@ fn t_flatten_complex() {
     let imag = DeckView::<f64>::from_handle(&parts[1]).unwrap();
     assert_eq!(real.items(), &[5.0, -1.0, 6.0]);
     assert_eq!(imag.items(), &[0.0, 0.0, 0.0]);
+}
+
+// ==================================================
+// orc_dag macro tests.
+// ==================================================
+
+fn make_handle(hc: &AtomicU64, deck: &Deck<f64>) -> OrcHandle {
+    let mut h = OrcHandle {
+        handle: hc.fetch_add(1, Ordering::Relaxed),
+        ..Default::default()
+    };
+    unsafe { update_handle_from_deck(deck, &mut h) };
+    h
+}
+
+// 1. Single function call as trailing expression.
+#[test]
+fn t_single_call() {
+    let a_deck: Deck<f64> = deck![1.0, 2.0, 3.0];
+    let b_deck: Deck<f64> = deck![10.0, 20.0, 30.0];
+    let a = make_handle(&HANDLE_COUNTER, &a_deck);
+    let b = make_handle(&HANDLE_COUNTER, &b_deck);
+    let out = orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, {
+        (add a b)
+    });
+    let view = DeckView::<f64>::from_handle(&out).unwrap();
+    assert_eq!(view.items(), &[11.0, 22.0, 33.0]);
+}
+
+// 2. let binding followed by trailing expression.
+#[test]
+fn t_let_then_trailing() {
+    let a_deck: Deck<f64> = deck![1.0, 2.0, 3.0];
+    let b_deck: Deck<f64> = deck![10.0, 20.0, 30.0];
+    let c_deck: Deck<f64> = deck![100.0, 200.0, 300.0];
+    let a = make_handle(&HANDLE_COUNTER, &a_deck);
+    let b = make_handle(&HANDLE_COUNTER, &b_deck);
+    let c = make_handle(&HANDLE_COUNTER, &c_deck);
+    let out = orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, {
+        (let ab (add a b))
+        (add ab c)
+    });
+    let view = DeckView::<f64>::from_handle(&out).unwrap();
+    assert_eq!(view.items(), &[111.0, 222.0, 333.0]);
+}
+
+// 3. Multiple let bindings.
+#[test]
+fn t_multiple_lets() {
+    let a_deck: Deck<f64> = deck![2.0, 3.0];
+    let b_deck: Deck<f64> = deck![5.0, 10.0];
+    let a = make_handle(&HANDLE_COUNTER, &a_deck);
+    let b = make_handle(&HANDLE_COUNTER, &b_deck);
+    // (a + b) * (a + b) = (7, 13) * (7, 13) = (49, 169)
+    let out = orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, {
+        (let sum (add a b))
+        (mul sum sum)
+    });
+    let view = DeckView::<f64>::from_handle(&out).unwrap();
+    assert_eq!(view.items(), &[49.0, 169.0]);
+}
+
+// 4. Nested single-output call.
+#[test]
+fn t_nested_call() {
+    let a_deck: Deck<f64> = deck![2.0, 3.0];
+    let b_deck: Deck<f64> = deck![5.0, 10.0];
+    let c_deck: Deck<f64> = deck![1.0, 1.0];
+    let a = make_handle(&HANDLE_COUNTER, &a_deck);
+    let b = make_handle(&HANDLE_COUNTER, &b_deck);
+    let c = make_handle(&HANDLE_COUNTER, &c_deck);
+    // (a * b) + c = (10, 30) + (1, 1) = (11, 31)
+    let out = orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, {
+        (add (mul a b) c)
+    });
+    let view = DeckView::<f64>::from_handle(&out).unwrap();
+    assert_eq!(view.items(), &[11.0, 31.0]);
+}
+
+// 5. Deeply nested calls.
+#[test]
+fn t_deep_nesting() {
+    let a_deck: Deck<f64> = deck![1.0, 2.0];
+    let b_deck: Deck<f64> = deck![3.0, 4.0];
+    let c_deck: Deck<f64> = deck![10.0, 10.0];
+    let a = make_handle(&HANDLE_COUNTER, &a_deck);
+    let b = make_handle(&HANDLE_COUNTER, &b_deck);
+    let c = make_handle(&HANDLE_COUNTER, &c_deck);
+    // (a + b) * c = (4, 6) * (10, 10) = (40, 60)
+    let out = orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, {
+        (mul (add a b) c)
+    });
+    let view = DeckView::<f64>::from_handle(&out).unwrap();
+    assert_eq!(view.items(), &[40.0, 60.0]);
+}
+
+// 6. let binding with nested call in the body.
+#[test]
+fn t_let_with_nested() {
+    let a_deck: Deck<f64> = deck![2.0];
+    let b_deck: Deck<f64> = deck![3.0];
+    let c_deck: Deck<f64> = deck![10.0];
+    let a = make_handle(&HANDLE_COUNTER, &a_deck);
+    let b = make_handle(&HANDLE_COUNTER, &b_deck);
+    let c = make_handle(&HANDLE_COUNTER, &c_deck);
+    // let prod = a * b = 6; prod + c = 16; result - prod = 16 - 6 = 10
+    let out = orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, {
+        (let prod (mul a b))
+        (sub (add prod c) prod)
+    });
+    let view = DeckView::<f64>::from_handle(&out).unwrap();
+    assert_eq!(view.items(), &[10.0]);
+}
+
+// 9. External variables are usable as inputs.
+#[test]
+fn t_external_variables() {
+    let x_deck: Deck<f64> = deck![100.0];
+    let y_deck: Deck<f64> = deck![1.0];
+    let x = make_handle(&HANDLE_COUNTER, &x_deck);
+    let y = make_handle(&HANDLE_COUNTER, &y_deck);
+    let result = orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, {
+        (sub x y)
+    });
+    let view = DeckView::<f64>::from_handle(&result).unwrap();
+    assert_eq!(view.items(), &[99.0]);
+}
+
+// 10. Empty block returns unit.
+#[test]
+fn t_empty_block() {
+    assert_eq!(orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, {}), ());
 }
