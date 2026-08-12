@@ -728,7 +728,11 @@ fn generate_dispatch_fn(
         syn::ReturnType::Type(_, ty) if matches!(ty.as_ref(), syn::Type::Path(p)
             if p.path.segments.last().is_some_and(|s| s.ident == "Result"))
     );
-    let host_arg = if params.has_host { quote! { host_, } } else { quote! {} };
+    let host_arg = if params.has_host {
+        quote! { host_, }
+    } else {
+        quote! {}
+    };
     let run_call = if run_returns_result {
         quote! { run(#host_arg #(#in_call_args,)* #(#out_call_args),*)?; }
     } else {
@@ -1173,7 +1177,10 @@ fn validate_orc_map_fn(
         let pat_ty = match arg {
             syn::FnArg::Typed(pt) => pt,
             syn::FnArg::Receiver(r) => {
-                return Err(syn::Error::new_spanned(r, "`run` must not have a self parameter"));
+                return Err(syn::Error::new_spanned(
+                    r,
+                    "`run` must not have a self parameter",
+                ));
             }
         };
         let is_out = is_output_param(pat_ty.ty.as_ref())?;
@@ -1299,7 +1306,11 @@ fn generate_map_dispatch_fn(
         syn::ReturnType::Type(_, ty) if matches!(ty.as_ref(), syn::Type::Path(p)
             if p.path.segments.last().is_some_and(|s| s.ident == "Result"))
     );
-    let host_arg = if params.has_host { quote! { host_, } } else { quote! {} };
+    let host_arg = if params.has_host {
+        quote! { host_, }
+    } else {
+        quote! {}
+    };
     let run_call = if run_returns_result {
         quote! { run(#host_arg in_item_, out_item_)?; }
     } else {
@@ -1604,10 +1615,11 @@ pub fn orc_map_fn(input: TokenStream) -> TokenStream {
             .into();
         }
     };
-    let validated_params = match validate_orc_map_fn(&run_fn, dims_fn.as_ref(), types.as_ref(), registry.as_ref()) {
-        Ok(v) => v,
-        Err(e) => return e.to_compile_error().into(),
-    };
+    let validated_params =
+        match validate_orc_map_fn(&run_fn, dims_fn.as_ref(), types.as_ref(), registry.as_ref()) {
+            Ok(v) => v,
+            Err(e) => return e.to_compile_error().into(),
+        };
     generate_orc_map_fn(FnConfig {
         name: &name,
         docs: &docs,
