@@ -7,7 +7,7 @@
 /// ```ignore
 /// use std::sync::atomic::AtomicU64;
 /// let hc = AtomicU64::new(0);
-/// kbb_dag!(plugin_set, &hc, {
+/// orc_dag!(plugin_set, &hc, {
 ///     (let tmp (mul a b))
 ///     (let result (add tmp c))
 ///     (let (mean variance) (compute_stats data))
@@ -15,33 +15,33 @@
 /// })
 /// ```
 #[macro_export]
-macro_rules! kbb_dag {
+macro_rules! orc_dag {
     // Entry point: takes a PluginSet, an &AtomicU64 handle counter, and a block of statements.
     ($ps:expr, $hc:expr, { $($body:tt)* }) => {{
         #[allow(unused_variables)]
         let ps_ref_ = &$ps;
         #[allow(unused_variables)]
         let hc_ref_: &std::sync::atomic::AtomicU64 = $hc;
-        kbb_dag!(@stmts ps_ref_, hc_ref_, $($body)*)
+        orc_dag!(@stmts ps_ref_, hc_ref_, $($body)*)
     }};
 
     // --- Statements ---
 
     // let single output, more statements follow
     (@stmts $ps:ident, $hc:ident, (let $name:ident ($func:ident $($arg:tt)*)) $($rest:tt)*) => {{
-        let $name = kbb_dag!(@call1 $ps, $hc, $func, $($arg)*);
-        kbb_dag!(@stmts $ps, $hc, $($rest)*)
+        let $name = orc_dag!(@call1 $ps, $hc, $func, $($arg)*);
+        orc_dag!(@stmts $ps, $hc, $($rest)*)
     }};
 
     // let multiple outputs, more statements follow
     (@stmts $ps:ident, $hc:ident, (let ($($name:ident)+) ($func:ident $($arg:tt)*)) $($rest:tt)*) => {{
-        kbb_dag!(@call_n $ps, $hc, ($($name)+) $func, $($arg)*);
-        kbb_dag!(@stmts $ps, $hc, $($rest)*)
+        orc_dag!(@call_n $ps, $hc, ($($name)+) $func, $($arg)*);
+        orc_dag!(@stmts $ps, $hc, $($rest)*)
     }};
 
     // Trailing expression — bare function call as the block's return value
     (@stmts $ps:ident, $hc:ident, ($func:ident $($arg:tt)*)) => {
-        kbb_dag!(@call1 $ps, $hc, $func, $($arg)*)
+        orc_dag!(@call1 $ps, $hc, $func, $($arg)*)
     };
 
     // Empty — end of statements
@@ -50,7 +50,7 @@ macro_rules! kbb_dag {
     // --- Expression: either a variable reference or a nested function call ---
     // Nested call: (func args...)
     (@expr $ps:ident, $hc:ident, ($func:ident $($arg:tt)*)) => {
-        kbb_dag!(@call1 $ps, $hc, $func, $($arg)*)
+        orc_dag!(@call1 $ps, $hc, $func, $($arg)*)
     };
     // Variable reference
     (@expr $ps:ident, $hc:ident, $var:ident) => {
@@ -59,7 +59,7 @@ macro_rules! kbb_dag {
 
     // --- Single-output function call ---
     (@call1 $ps:ident, $hc:ident, $func:ident, $($arg:tt)*) => {{
-        let inputs_ = [$(kbb_dag!(@expr $ps, $hc, $arg)),*];
+        let inputs_ = [$(orc_dag!(@expr $ps, $hc, $arg)),*];
         let mut out_: OrcHandle = OrcHandle::default();
         out_.handle = $hc.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let func_ = $ps.get_function(stringify!($func))
@@ -72,10 +72,10 @@ macro_rules! kbb_dag {
 
     // --- Multi-output function call ---
     (@call_n $ps:ident, $hc:ident, ($($name:ident)+) $func:ident, $($arg:tt)*) => {
-        let inputs_ = [$(kbb_dag!(@expr $ps, $hc, $arg)),*];
+        let inputs_ = [$(orc_dag!(@expr $ps, $hc, $arg)),*];
         let func_ = $ps.get_function(stringify!($func))
             .expect(concat!("function '", stringify!($func), "' not found"));
-        const N_OUTS_: u64 = kbb_dag!(@count $($name)+) as u64;
+        const N_OUTS_: u64 = orc_dag!(@count $($name)+) as u64;
         let base_handle_ = $hc.fetch_add(N_OUTS_, std::sync::atomic::Ordering::Relaxed);
         let mut outs_: [OrcHandle; N_OUTS_ as usize] = std::array::from_fn(|i| {
             let mut h = OrcHandle::default();
@@ -95,14 +95,14 @@ macro_rules! kbb_dag {
 
     // --- Counting ---
     (@count $x:ident) => { 1usize };
-    (@count $x:ident $($rest:ident)+) => { 1usize + kbb_dag!(@count $($rest)+) };
+    (@count $x:ident $($rest:ident)+) => { 1usize + orc_dag!(@count $($rest)+) };
 
     // --- Error messages for wrong usage ---
     ($ps:expr, { $($body:tt)* }) => {
-        compile_error!("kbb_dag! requires 3 arguments: kbb_dag!(plugin_set, handle_counter, { ... })")
+        compile_error!("orc_dag! requires 3 arguments: orc_dag!(plugin_set, handle_counter, { ... })")
     };
     ($ps:expr) => {
-        compile_error!("kbb_dag! requires 3 arguments: kbb_dag!(plugin_set, handle_counter, { ... })")
+        compile_error!("orc_dag! requires 3 arguments: orc_dag!(plugin_set, handle_counter, { ... })")
     };
 }
 
@@ -128,7 +128,7 @@ mod tests {
         let b_deck: Deck<f64> = deck![10.0, 20.0, 30.0];
         let a = make_handle(&HANDLE_COUNTER, &a_deck);
         let b = make_handle(&HANDLE_COUNTER, &b_deck);
-        let out = kbb_dag!(*PLUGIN_SET, &HANDLE_COUNTER, {
+        let out = orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, {
             (add a b)
         });
         let view = DeckView::<f64>::from_handle(&out).unwrap();
@@ -144,7 +144,7 @@ mod tests {
         let a = make_handle(&HANDLE_COUNTER, &a_deck);
         let b = make_handle(&HANDLE_COUNTER, &b_deck);
         let c = make_handle(&HANDLE_COUNTER, &c_deck);
-        let out = kbb_dag!(*PLUGIN_SET, &HANDLE_COUNTER, {
+        let out = orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, {
             (let ab (add a b))
             (add ab c)
         });
@@ -160,7 +160,7 @@ mod tests {
         let a = make_handle(&HANDLE_COUNTER, &a_deck);
         let b = make_handle(&HANDLE_COUNTER, &b_deck);
         // (a + b) * (a + b) = (7, 13) * (7, 13) = (49, 169)
-        let out = kbb_dag!(*PLUGIN_SET, &HANDLE_COUNTER, {
+        let out = orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, {
             (let sum (add a b))
             (mul sum sum)
         });
@@ -178,7 +178,7 @@ mod tests {
         let b = make_handle(&HANDLE_COUNTER, &b_deck);
         let c = make_handle(&HANDLE_COUNTER, &c_deck);
         // (a * b) + c = (10, 30) + (1, 1) = (11, 31)
-        let out = kbb_dag!(*PLUGIN_SET, &HANDLE_COUNTER, {
+        let out = orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, {
             (add (mul a b) c)
         });
         let view = DeckView::<f64>::from_handle(&out).unwrap();
@@ -195,7 +195,7 @@ mod tests {
         let b = make_handle(&HANDLE_COUNTER, &b_deck);
         let c = make_handle(&HANDLE_COUNTER, &c_deck);
         // (a + b) * c = (4, 6) * (10, 10) = (40, 60)
-        let out = kbb_dag!(*PLUGIN_SET, &HANDLE_COUNTER, {
+        let out = orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, {
             (mul (add a b) c)
         });
         let view = DeckView::<f64>::from_handle(&out).unwrap();
@@ -212,7 +212,7 @@ mod tests {
         let b = make_handle(&HANDLE_COUNTER, &b_deck);
         let c = make_handle(&HANDLE_COUNTER, &c_deck);
         // let prod = a * b = 6; prod + c = 16; result - prod = 16 - 6 = 10
-        let out = kbb_dag!(*PLUGIN_SET, &HANDLE_COUNTER, {
+        let out = orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, {
             (let prod (mul a b))
             (sub (add prod c) prod)
         });
@@ -227,7 +227,7 @@ mod tests {
         let y_deck: Deck<f64> = deck![1.0];
         let x = make_handle(&HANDLE_COUNTER, &x_deck);
         let y = make_handle(&HANDLE_COUNTER, &y_deck);
-        let result = kbb_dag!(*PLUGIN_SET, &HANDLE_COUNTER, {
+        let result = orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, {
             (sub x y)
         });
         let view = DeckView::<f64>::from_handle(&result).unwrap();
@@ -237,6 +237,6 @@ mod tests {
     // 10. Empty block returns unit.
     #[test]
     fn t_empty_block() {
-        assert_eq!(kbb_dag!(*PLUGIN_SET, &HANDLE_COUNTER, {}), ());
+        assert_eq!(orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, {}), ());
     }
 }
