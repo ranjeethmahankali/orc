@@ -159,6 +159,10 @@ orc_map_fn!(sin, {
     fn run(lhs: &f64, rhs: &mut f64) {
         *rhs = lhs.sin();
     }
+
+    fn dims(lhs: &OrcDims, out: &mut OrcDims) {
+        *out = *lhs;
+    }
 });
 
 orc_map_fn!(cos, {

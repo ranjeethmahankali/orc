@@ -1142,6 +1142,7 @@ pub fn orc_fn(input: TokenStream) -> TokenStream {
 
 fn validate_orc_map_fn(
     run_fn: &syn::ItemFn,
+    dims_fn: Option<&syn::ItemFn>,
     types: Option<&syn::Type>,
     registry: Option<&syn::Expr>,
 ) -> syn::Result<ValidatedParams> {
@@ -1259,6 +1260,9 @@ fn validate_orc_map_fn(
             "orc_map_fn! requires `let registry: &DeckRegistry = ...`",
         ));
     }
+    if let Some(dims) = dims_fn {
+        validate_dims_fn(dims, 1, 1)?;
+    }
     let in_inner = inner_type(input_param.ty.as_ref()).clone();
     let out_inner = inner_type(output_param.ty.as_ref()).clone();
     Ok(ValidatedParams {
@@ -1343,12 +1347,12 @@ fn generate_orc_map_fn(cfg: FnConfig<'_>) -> proc_macro2::TokenStream {
         name,
         docs,
         run_fn,
+        dims_fn,
         types,
         registry_expr,
         host_callbacks_expr,
         user_items,
         params,
-        ..
     } = cfg;
     let info_name = info_const_name(&name.to_string());
     let name_lit = proc_macro2::Literal::c_string(
@@ -1360,6 +1364,19 @@ fn generate_orc_map_fn(cfg: FnConfig<'_>) -> proc_macro2::TokenStream {
     let dispatch_fn = generate_map_dispatch_fn(run_fn, params);
     let registry_expr_ts = registry_expr.map(|r| quote! { #r }).unwrap_or_default();
     let type_dispatch = generate_type_dispatch(run_fn, types, params, &registry_expr_ts);
+    let (dims_fn_tokens, dims_call) = match dims_fn {
+        Some(d) => (
+            quote! { #d },
+            quote! {
+                orc_sdk::orc_check_return!(
+                    host_,
+                    dims(&inputs_[0].dims, &mut outputs_[0].dims).is_ok(),
+                    "dims computation failed"
+                );
+            },
+        ),
+        None => (quote! {}, quote! {}),
+    };
     let all_generics: Vec<&syn::GenericParam> = run_fn.sig.generics.params.iter().collect();
     let in_ty = &params.inputs[0].inner_type;
     let out_ty = &params.outputs[0].inner_type;
@@ -1405,6 +1422,7 @@ fn generate_orc_map_fn(cfg: FnConfig<'_>) -> proc_macro2::TokenStream {
             };
             #(#user_items)*
             #run_fn
+            #dims_fn_tokens
             orc_sdk::orc_check_return!(
                 host_,
                 n_inputs_ == 1u64,
@@ -1419,6 +1437,7 @@ fn generate_orc_map_fn(cfg: FnConfig<'_>) -> proc_macro2::TokenStream {
             );
             let inputs_ = unsafe { orc_sdk::slice_from_ptr(inputs_ptr_, 1) };
             let outputs_ = unsafe { orc_sdk::slice_from_ptr_mut(outputs_ptr_, 1) };
+            #dims_call
             #dispatch_fn
             #type_dispatch
         }
@@ -1434,6 +1453,7 @@ pub fn orc_map_fn(input: TokenStream) -> TokenStream {
     let FnMacroArgs { name, stmts } = parse_macro_input!(input as FnMacroArgs);
     let mut docs = String::new();
     let mut run_fn: Option<syn::ItemFn> = None;
+    let mut dims_fn: Option<syn::ItemFn> = None;
     let mut types: Option<syn::Type> = None;
     let mut registry: Option<syn::Expr> = None;
     let mut host_callbacks_expr: Option<syn::Expr> = None;
@@ -1514,6 +1534,11 @@ pub fn orc_map_fn(input: TokenStream) -> TokenStream {
                     f.attrs.retain(|a| !a.path().is_ident("doc"));
                     run_fn = Some(f);
                 }
+                "dims" => {
+                    let mut f = f.clone();
+                    f.attrs.retain(|a| !a.path().is_ident("doc"));
+                    dims_fn = Some(f);
+                }
                 _ => user_items.push(quote::quote!(#f)),
             },
             syn::Stmt::Item(syn::Item::Const(c)) => user_items.push(quote::quote!(#c)),
@@ -1569,7 +1594,7 @@ pub fn orc_map_fn(input: TokenStream) -> TokenStream {
             .into();
         }
     };
-    let validated_params = match validate_orc_map_fn(&run_fn, types.as_ref(), registry.as_ref()) {
+    let validated_params = match validate_orc_map_fn(&run_fn, dims_fn.as_ref(), types.as_ref(), registry.as_ref()) {
         Ok(v) => v,
         Err(e) => return e.to_compile_error().into(),
     };
@@ -1577,7 +1602,7 @@ pub fn orc_map_fn(input: TokenStream) -> TokenStream {
         name: &name,
         docs: &docs,
         run_fn: &run_fn,
-        dims_fn: None,
+        dims_fn: dims_fn.as_ref(),
         types: types.as_ref(),
         registry_expr: registry.as_ref(),
         host_callbacks_expr: &host_callbacks_expr,
