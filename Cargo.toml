@@ -1,3 +1,4 @@
 [workspace]
-members = ["rust/orc_sdk", "rust/math_plugin", "rust/kbb_cli_host"]
+members = ["rust/orc_sdk", "rust/math_plugin", "rust/kbb_cli_host", "rust/bindings_generator"]
+default-members = ["rust/orc_sdk", "rust/math_plugin", "rust/kbb_cli_host"]
 resolver = "3"
