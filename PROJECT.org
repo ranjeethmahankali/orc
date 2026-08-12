@@ -188,6 +188,13 @@
   - Might be a good idea to include a timestamp in the generated code. If I end up doing that, I
     should account for that when checking the diff in CI.
 
+  <2026-08-12 Wed 15:32> Baked the Rust bindings into the git, and pulled the build.rs logic out
+  into a separate crate. Adding command line arguments etc. to the crate.
+
+  <2026-08-12 Wed 15:35> Adding ~--check~ options to both Rust and Python bindings generation.
+
+  - [ ] Add the --check option to the CI to ensure the bindings never go out of sync.
+
 * DONE tjmcc9 - orc_map_fn Macro in Rust SDK
   CLOSED: [2026-08-12 Wed 15:11]
   :PROPERTIES:
