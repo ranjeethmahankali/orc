@@ -199,6 +199,10 @@
   optimize that code much better. It will be nice to have another proc_macro specialized for these
   types of functions. Something like ~orc_map_fn~.
 
+  <2026-08-12 Wed 14:44> Got this working, and made a few other improvements to both macros. But
+  realized this type of macro limits the LSP support when writing the body of the function. So I am
+  switching to an attribute macro that works similar to what I have now.
+
 * DONE tjlw5f - Python Improvements
   CLOSED: [2026-08-11 Tue 12:26]
   :PROPERTIES:
