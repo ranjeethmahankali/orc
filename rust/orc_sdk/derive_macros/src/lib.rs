@@ -349,21 +349,28 @@ fn validate_orc_fn(
     })
 }
 
-fn validate_dims_fn(dims: &ItemFn, n_inputs: usize, n_outputs: usize) -> syn::Result<()> {
-    // fn dims must return Result<_, _>.
-    let returns_result = match &dims.sig.output {
+fn dims_returns_result(dims: &ItemFn) -> bool {
+    match &dims.sig.output {
         syn::ReturnType::Type(_, ty) => matches!(
             ty.as_ref(),
             syn::Type::Path(p)
                 if p.path.segments.last().is_some_and(|s| s.ident == "Result")
         ),
         syn::ReturnType::Default => false,
-    };
-    if !returns_result {
-        return Err(syn::Error::new_spanned(
-            &dims.sig,
-            "fn dims must return `Result<(), Error>`",
-        ));
+    }
+}
+
+fn validate_dims_fn(dims: &ItemFn, n_inputs: usize, n_outputs: usize) -> syn::Result<()> {
+    // fn dims must return Result<_, _> or nothing.
+    if let syn::ReturnType::Type(_, ty) = &dims.sig.output {
+        if !matches!(ty.as_ref(), syn::Type::Path(p)
+            if p.path.segments.last().is_some_and(|s| s.ident == "Result"))
+        {
+            return Err(syn::Error::new_spanned(
+                &dims.sig,
+                "fn dims must return `Result<(), Error>` or nothing",
+            ));
+        }
     }
     let expected_total = n_inputs + n_outputs;
     let dims_args: Vec<_> = dims.sig.inputs.iter().collect();
@@ -802,16 +809,18 @@ fn generate_orc_fn(cfg: FnConfig<'_>) -> proc_macro2::TokenStream {
             let out_args: Vec<proc_macro2::TokenStream> = (0..n_outputs)
                 .map(|j| quote! { &mut outputs_[#j].dims })
                 .collect();
-            (
-                quote! { #d },
+            let call = if dims_returns_result(d) {
                 quote! {
                     orc_sdk::orc_check_return!(
                         host_,
                         dims(#(#in_args,)* #(#out_args),*).is_ok(),
                         "dims computation failed"
                     );
-                },
-            )
+                }
+            } else {
+                quote! { dims(#(#in_args,)* #(#out_args),*); }
+            };
+            (quote! { #d }, call)
         }
         None => (quote! {}, quote! {}),
     };
@@ -1365,16 +1374,20 @@ fn generate_orc_map_fn(cfg: FnConfig<'_>) -> proc_macro2::TokenStream {
     let registry_expr_ts = registry_expr.map(|r| quote! { #r }).unwrap_or_default();
     let type_dispatch = generate_type_dispatch(run_fn, types, params, &registry_expr_ts);
     let (dims_fn_tokens, dims_call) = match dims_fn {
-        Some(d) => (
-            quote! { #d },
-            quote! {
-                orc_sdk::orc_check_return!(
-                    host_,
-                    dims(&inputs_[0].dims, &mut outputs_[0].dims).is_ok(),
-                    "dims computation failed"
-                );
-            },
-        ),
+        Some(d) => {
+            let call = if dims_returns_result(d) {
+                quote! {
+                    orc_sdk::orc_check_return!(
+                        host_,
+                        dims(&inputs_[0].dims, &mut outputs_[0].dims).is_ok(),
+                        "dims computation failed"
+                    );
+                }
+            } else {
+                quote! { dims(&inputs_[0].dims, &mut outputs_[0].dims); }
+            };
+            (quote! { #d }, call)
+        }
         None => (quote! {}, quote! {}),
     };
     let all_generics: Vec<&syn::GenericParam> = run_fn.sig.generics.params.iter().collect();
