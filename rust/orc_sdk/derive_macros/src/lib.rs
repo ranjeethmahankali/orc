@@ -69,11 +69,14 @@ fn parse_types_expr(expr: &syn::Expr) -> syn::Result<Vec<Vec<syn::GenericArgumen
             return Err(syn::Error::new_spanned(
                 expr,
                 "`let types` must be a tuple of `run::<...>` expressions",
-            ))
+            ));
         }
     };
     if tuple.elems.is_empty() {
-        return Err(syn::Error::new_spanned(expr, "`let types` cannot be an empty tuple"));
+        return Err(syn::Error::new_spanned(
+            expr,
+            "`let types` cannot be an empty tuple",
+        ));
     }
     let mut result = Vec::new();
     for elem in &tuple.elems {
@@ -83,14 +86,12 @@ fn parse_types_expr(expr: &syn::Expr) -> syn::Result<Vec<Vec<syn::GenericArgumen
                 return Err(syn::Error::new_spanned(
                     elem,
                     "each element of `let types` must be a `run::<...>` expression",
-                ))
+                ));
             }
         };
-        let seg = path_expr
-            .path
-            .segments
-            .last()
-            .ok_or_else(|| syn::Error::new_spanned(elem, "each element of `let types` must be `run::<...>`"))?;
+        let seg = path_expr.path.segments.last().ok_or_else(|| {
+            syn::Error::new_spanned(elem, "each element of `let types` must be `run::<...>`")
+        })?;
         if seg.ident != "run" {
             return Err(syn::Error::new_spanned(
                 &seg.ident,
@@ -104,7 +105,7 @@ fn parse_types_expr(expr: &syn::Expr) -> syn::Result<Vec<Vec<syn::GenericArgumen
                 return Err(syn::Error::new_spanned(
                     elem,
                     "each element of `let types` must be `run::<...>`",
-                ))
+                ));
             }
         };
         result.push(args);
@@ -935,10 +936,7 @@ fn generate_orc_fn(cfg: FnConfig<'_>) -> proc_macro2::TokenStream {
     }
 }
 
-fn parse_fn_body(
-    item: &syn::ItemFn,
-    has_input_output_depths: bool,
-) -> syn::Result<ParsedBody> {
+fn parse_fn_body(item: &syn::ItemFn, has_input_output_depths: bool) -> syn::Result<ParsedBody> {
     let mut docs = docs_from_attrs(&item.attrs);
     let mut run_fn: Option<syn::ItemFn> = None;
     let mut dims_fn: Option<syn::ItemFn> = None;
@@ -968,7 +966,10 @@ fn parse_fn_body(
         match stmt {
             syn::Stmt::Item(syn::Item::Const(c))
                 if has_input_output_depths
-                    && matches!(c.ident.to_string().as_str(), "INPUT_DEPTHS" | "OUTPUT_DEPTHS") =>
+                    && matches!(
+                        c.ident.to_string().as_str(),
+                        "INPUT_DEPTHS" | "OUTPUT_DEPTHS"
+                    ) =>
             {
                 let is_u8_array = matches!(c.ty.as_ref(),
                     syn::Type::Array(syn::TypeArray { elem, .. })
