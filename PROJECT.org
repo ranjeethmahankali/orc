@@ -171,11 +171,13 @@
   Maybe I can write a rasterizer for my curve types, and somehow get the optimizer to export images
   of the sample points in the design space, so that I can visualize them when viewing the DOE.
 
-* NEXT tjo88p - Don't use build.rs
+* DONE tjo88p - Don't use build.rs
+  CLOSED: [2026-08-12 Wed 16:14]
   :PROPERTIES:
   :CREATED:  2026-08-09 Sun 00:18
   :END:
   :LOGBOOK:
+  - State "DONE"       from "NEXT"       [2026-08-12 Wed 16:14]
   - State "NEXT"       from "TODO"       [2026-08-12 Wed 15:17]
   :END:
 
@@ -193,7 +195,10 @@
 
   <2026-08-12 Wed 15:35> Adding ~--check~ options to both Rust and Python bindings generation.
 
-  - [ ] Add the --check option to the CI to ensure the bindings never go out of sync.
+  - [X] Add the --check option to the CI to ensure the bindings never go out of sync.
+
+  <2026-08-12 Wed 16:11> Added the checks to the CI. Not consistently passing on Windows. Started
+  using the ~diff~ crate to see what the problem is.
 
 * DONE tjmcc9 - orc_map_fn Macro in Rust SDK
   CLOSED: [2026-08-12 Wed 15:11]
