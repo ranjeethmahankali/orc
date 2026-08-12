@@ -106,6 +106,24 @@ where
         );
     }
 
+    pub fn reshape_with_marks(&mut self, n_items: usize, marks: &[OrcMark])
+    where
+        T: TOrcData,
+    {
+        self.items.resize(n_items, T::default());
+        self.marks.clear();
+        self.marks.extend_from_slice(marks);
+        self.stride_offset.clear();
+        self.strides.clear();
+        self.pegs.clear();
+        calc_strides(
+            &self.marks,
+            &mut self.pegs,
+            &mut self.stride_offset,
+            &mut self.strides,
+        );
+    }
+
     /**
     Get the maximum depth of this deck. By definition, this is the depth of the
     first mark.
@@ -329,6 +347,10 @@ where
 
     pub fn items(&self) -> &[T] {
         &self.items
+    }
+
+    pub fn items_mut(&mut self) -> &mut [T] {
+        &mut self.items
     }
 
     pub fn marks(&self) -> &[OrcMark] {

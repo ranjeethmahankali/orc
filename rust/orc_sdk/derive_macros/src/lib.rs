@@ -57,18 +57,60 @@ struct ParamInfo {
 struct ValidatedParams {
     inputs: Box<[ParamInfo]>,
     outputs: Box<[ParamInfo]>,
+    has_host: bool,
 }
 
-/// Returns the number of args in `Case<...>`, or `None` if the type is not `Case<...>`.
-fn sig_arg_count(ty: &syn::Type) -> Option<usize> {
-    if let syn::Type::Path(p) = ty
-        && let Some(seg) = p.path.segments.last()
-        && seg.ident == "Case"
-        && let syn::PathArguments::AngleBracketed(args) = &seg.arguments
-    {
-        return Some(args.args.len());
+/// Parses `(run::<T1, T2>, run::<U1, U2>, ...)` into a list of generic arg lists,
+/// one per monomorphization.
+fn parse_types_expr(expr: &syn::Expr) -> syn::Result<Vec<Vec<syn::GenericArgument>>> {
+    let tuple = match expr {
+        syn::Expr::Tuple(t) => t,
+        _ => {
+            return Err(syn::Error::new_spanned(
+                expr,
+                "`let types` must be a tuple of `run::<...>` expressions",
+            ));
+        }
+    };
+    if tuple.elems.is_empty() {
+        return Err(syn::Error::new_spanned(
+            expr,
+            "`let types` cannot be an empty tuple",
+        ));
     }
-    None
+    let mut result = Vec::new();
+    for elem in &tuple.elems {
+        let path_expr = match elem {
+            syn::Expr::Path(p) => p,
+            _ => {
+                return Err(syn::Error::new_spanned(
+                    elem,
+                    "each element of `let types` must be a `run::<...>` expression",
+                ));
+            }
+        };
+        let seg = path_expr.path.segments.last().ok_or_else(|| {
+            syn::Error::new_spanned(elem, "each element of `let types` must be `run::<...>`")
+        })?;
+        if seg.ident != "run" {
+            return Err(syn::Error::new_spanned(
+                &seg.ident,
+                "each element of `let types` must call `run` (e.g. `run::<f32, f64>`)",
+            ));
+        }
+        let args: Vec<syn::GenericArgument> = match &seg.arguments {
+            syn::PathArguments::AngleBracketed(ab) => ab.args.iter().cloned().collect(),
+            syn::PathArguments::None => vec![],
+            _ => {
+                return Err(syn::Error::new_spanned(
+                    elem,
+                    "each element of `let types` must be `run::<...>`",
+                ));
+            }
+        };
+        result.push(args);
+    }
+    Ok(result)
 }
 
 fn is_deck_type(ty: &syn::Type) -> bool {
@@ -207,46 +249,41 @@ fn resolve_depths(
     }
 }
 
+fn is_host_param(ty: &syn::Type) -> bool {
+    matches!(ty, syn::Type::Reference(r)
+        if r.mutability.is_none()
+        && matches!(r.elem.as_ref(), syn::Type::Path(p)
+            if p.path.segments.last().is_some_and(|s| s.ident == "HostCallbacks")))
+}
+
 fn validate_orc_fn(
     run_fn: &syn::ItemFn,
     dims_fn: Option<&syn::ItemFn>,
-    types: Option<&syn::Type>,
+    types: Option<&[Vec<syn::GenericArgument>]>,
     registry: Option<&syn::Expr>,
     input_depths: Option<&syn::ExprArray>,
     output_depths: Option<&syn::ExprArray>,
 ) -> syn::Result<ValidatedParams> {
-    // First parameter must be a reference to the host callbacks.
-    let host_ok = matches!(
+    // Detect whether the first parameter is &HostCallbacks.
+    let has_host = matches!(
         run_fn.sig.inputs.first(),
-        Some(syn::FnArg::Typed(pt))
-            if matches!(pt.ty.as_ref(), syn::Type::Reference(_))
+        Some(syn::FnArg::Typed(pt)) if is_host_param(pt.ty.as_ref())
     );
-    if !host_ok {
+    // fn run must return Result<_, _> or nothing.
+    if let syn::ReturnType::Type(_, ty) = &run_fn.sig.output
+        && !matches!(ty.as_ref(), syn::Type::Path(p)
+            if p.path.segments.last().is_some_and(|s| s.ident == "Result"))
+    {
         return Err(syn::Error::new_spanned(
             &run_fn.sig,
-            "first parameter of fn run must be a reference to the host callbacks",
+            "fn run must return `Result<(), Error>` or nothing",
         ));
     }
-    // fn run must return Result<_, _>.
-    let returns_result = match &run_fn.sig.output {
-        syn::ReturnType::Type(_, ty) => matches!(
-            ty.as_ref(),
-            syn::Type::Path(p)
-                if p.path.segments.last().is_some_and(|s| s.ident == "Result")
-        ),
-        syn::ReturnType::Default => false,
-    };
-    if !returns_result {
-        return Err(syn::Error::new_spanned(
-            &run_fn.sig,
-            "fn run must return `Result<(), Error>`",
-        ));
-    }
-    // Classify remaining params (skip host).
+    // Classify params (skip host if present).
     let mut input_params: Vec<syn::PatType> = Vec::new();
     let mut output_params: Vec<syn::PatType> = Vec::new();
     let mut saw_output = false;
-    for arg in run_fn.sig.inputs.iter().skip(1) {
+    for arg in run_fn.sig.inputs.iter().skip(if has_host { 1 } else { 0 }) {
         let pat_ty = match arg {
             syn::FnArg::Typed(pt) => pt,
             syn::FnArg::Receiver(r) => {
@@ -270,7 +307,7 @@ fn validate_orc_fn(
             input_params.push(pat_ty.clone());
         }
     }
-    // If run_fn has generics (type or const), Types must be defined with matching arity.
+    // If run_fn has generics (type or const), `let types` must be defined with matching arity.
     let generic_count = run_fn
         .sig
         .generics
@@ -283,23 +320,19 @@ fn validate_orc_fn(
             None => {
                 return Err(syn::Error::new_spanned(
                     &run_fn.sig,
-                    "fn run is generic; Types must be defined",
+                    "fn run is generic; `let types = (run::<...>, ...)` must be provided",
                 ));
             }
-            Some(ty) => {
-                let arity = match ty {
-                    syn::Type::Tuple(outer) => {
-                        outer.elems.first().and_then(sig_arg_count).unwrap_or(0)
+            Some(cases) => {
+                for case_args in cases {
+                    if case_args.len() != generic_count {
+                        return Err(syn::Error::new_spanned(
+                            &run_fn.sig,
+                            format!(
+                                "each entry in `let types` must have {generic_count} type argument(s) to match fn run's generics"
+                            ),
+                        ));
                     }
-                    _ => 0,
-                };
-                if arity != generic_count {
-                    return Err(syn::Error::new_spanned(
-                        ty,
-                        format!(
-                            "Each Case<...> in Types must have {generic_count} argument(s) to match fn run's generics, found {arity}"
-                        ),
-                    ));
                 }
             }
         }
@@ -348,23 +381,30 @@ fn validate_orc_fn(
                 }
             })
             .collect(),
+        has_host,
     })
 }
 
-fn validate_dims_fn(dims: &ItemFn, n_inputs: usize, n_outputs: usize) -> syn::Result<()> {
-    // fn dims must return Result<_, _>.
-    let returns_result = match &dims.sig.output {
+fn dims_returns_result(dims: &ItemFn) -> bool {
+    match &dims.sig.output {
         syn::ReturnType::Type(_, ty) => matches!(
             ty.as_ref(),
             syn::Type::Path(p)
                 if p.path.segments.last().is_some_and(|s| s.ident == "Result")
         ),
         syn::ReturnType::Default => false,
-    };
-    if !returns_result {
+    }
+}
+
+fn validate_dims_fn(dims: &ItemFn, n_inputs: usize, n_outputs: usize) -> syn::Result<()> {
+    // fn dims must return Result<_, _> or nothing.
+    if let syn::ReturnType::Type(_, ty) = &dims.sig.output
+        && !matches!(ty.as_ref(), syn::Type::Path(p)
+            if p.path.segments.last().is_some_and(|s| s.ident == "Result"))
+    {
         return Err(syn::Error::new_spanned(
             &dims.sig,
-            "fn dims must return `Result<(), Error>`",
+            "fn dims must return `Result<(), Error>` or nothing",
         ));
     }
     let expected_total = n_inputs + n_outputs;
@@ -458,7 +498,7 @@ fn substitute_type(
 
 fn generate_type_dispatch(
     run_fn: &syn::ItemFn,
-    types: Option<&syn::Type>,
+    types: Option<&[Vec<syn::GenericArgument>]>,
     params: &ValidatedParams,
     registry_expr: &proc_macro2::TokenStream,
 ) -> proc_macro2::TokenStream {
@@ -470,28 +510,15 @@ fn generate_type_dispatch(
 
     let all_generics: Vec<&syn::GenericParam> = run_fn.sig.generics.params.iter().collect();
 
-    // Each entry: (case args, original Case type for error spans).
-    // Non-generic / no Types → one empty case.
-    let cases: Vec<(Vec<&syn::GenericArgument>, Option<&syn::Type>)> = match types {
-        Some(syn::Type::Tuple(outer)) => outer
-            .elems
-            .iter()
-            .map(|elem| {
-                let args = match elem {
-                    syn::Type::Path(p) => match p.path.segments.last() {
-                        Some(seg) => match &seg.arguments {
-                            syn::PathArguments::AngleBracketed(ab) => ab.args.iter().collect(),
-                            _ => vec![],
-                        },
-                        None => vec![],
-                    },
-                    _ => vec![],
-                };
-                (args, Some(elem))
-            })
-            .collect(),
-        _ => vec![(vec![], None)],
+    // Non-generic / no types → one empty case. Otherwise one case per monomorphization.
+    let owned_cases: Vec<Vec<syn::GenericArgument>> = match types {
+        Some(cases) if !cases.is_empty() => cases.to_vec(),
+        _ => vec![vec![]],
     };
+    let cases: Vec<Vec<&syn::GenericArgument>> = owned_cases
+        .iter()
+        .map(|args| args.iter().collect())
+        .collect();
 
     // Track unique types → their const ident.
     let mut type_to_const: std::collections::HashMap<String, proc_macro2::Ident> =
@@ -521,7 +548,7 @@ fn generate_type_dispatch(
     let mut errors: Vec<proc_macro2::TokenStream> = Vec::new();
     let mut arms: Vec<proc_macro2::TokenStream> = Vec::new();
 
-    for (case_args, case_ty) in &cases {
+    for case_args in &cases {
         let mono_input_types: Vec<syn::Type> = params
             .inputs
             .iter()
@@ -538,15 +565,9 @@ fn generate_type_dispatch(
             .join(",");
 
         if !seen_patterns.insert(pattern_key) {
-            if let Some(ty) = case_ty {
-                errors.push(
-                    syn::Error::new_spanned(
-                        ty,
-                        r"This Case produces the same input type signature as a previous one when applied to `fn run`'s input parameters — likely because the generic type parameters substituted by this Case do not appear in any input parameter, making it indistinguishable from another Case at dispatch time. This can also happen if the Case itself is duplicated.",
-                    )
-                    .to_compile_error(),
-                );
-            }
+            errors.push(quote! {
+                compile_error!("duplicate dispatch pattern in `let types`: this monomorphization produces the same input type signature as a previous entry");
+            });
             continue;
         }
 
@@ -720,6 +741,21 @@ fn generate_dispatch_fn(
         .collect();
     let input_depths_vals: Vec<u8> = params.inputs.iter().map(|p| p.depth).collect();
     let output_depths_vals: Vec<u8> = params.outputs.iter().map(|p| p.depth).collect();
+    let run_returns_result = matches!(
+        &run_fn.sig.output,
+        syn::ReturnType::Type(_, ty) if matches!(ty.as_ref(), syn::Type::Path(p)
+            if p.path.segments.last().is_some_and(|s| s.ident == "Result"))
+    );
+    let host_arg = if params.has_host {
+        quote! { host_, }
+    } else {
+        quote! {}
+    };
+    let run_call = if run_returns_result {
+        quote! { run(#host_arg #(#in_call_args,)* #(#out_call_args),*)?; }
+    } else {
+        quote! { run(#host_arg #(#in_call_args,)* #(#out_call_args),*); }
+    };
     quote! {
         fn dispatch_ #run_generics (
             host_: &orc_sdk::HostCallbacks,
@@ -739,7 +775,7 @@ fn generate_dispatch_fn(
                     #(#out_downcasts)*
                     loop {
                         #(#out_writer_setup)*
-                        run(host_, #(#in_call_args,)* #(#out_call_args),*)?;
+                        #run_call
                         if !comb_.advance() { break; }
                     }
                     #(#out_handle_updates)*
@@ -757,7 +793,7 @@ struct FnConfig<'a> {
     docs: &'a str,
     run_fn: &'a syn::ItemFn,
     dims_fn: Option<&'a syn::ItemFn>,
-    types: Option<&'a syn::Type>,
+    types: Option<&'a [Vec<syn::GenericArgument>]>,
     registry_expr: Option<&'a syn::Expr>,
     host_callbacks_expr: &'a syn::Expr,
     user_items: &'a [proc_macro2::TokenStream],
@@ -793,16 +829,18 @@ fn generate_orc_fn(cfg: FnConfig<'_>) -> proc_macro2::TokenStream {
             let out_args: Vec<proc_macro2::TokenStream> = (0..n_outputs)
                 .map(|j| quote! { &mut outputs_[#j].dims })
                 .collect();
-            (
-                quote! { #d },
+            let call = if dims_returns_result(d) {
                 quote! {
                     orc_sdk::orc_check_return!(
                         host_,
                         dims(#(#in_args,)* #(#out_args),*).is_ok(),
                         "dims computation failed"
                     );
-                },
-            )
+                }
+            } else {
+                quote! { dims(#(#in_args,)* #(#out_args),*); }
+            };
+            (quote! { #d }, call)
         }
         None => (quote! {}, quote! {}),
     };
@@ -898,53 +936,21 @@ fn generate_orc_fn(cfg: FnConfig<'_>) -> proc_macro2::TokenStream {
     }
 }
 
-struct FnMacroArgs {
-    name: proc_macro2::Ident,
-    stmts: Vec<syn::Stmt>,
-}
-
-impl syn::parse::Parse for FnMacroArgs {
-    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
-        let name = input.parse()?;
-        input.parse::<syn::Token![,]>()?;
-        let content;
-        syn::braced!(content in input);
-        let mut stmts = Vec::new();
-        while !content.is_empty() {
-            stmts.push(content.parse()?);
-        }
-        Ok(FnMacroArgs { name, stmts })
-    }
-}
-
-/// Expands `orc_fn!(name, { ... })` into a full FFI function + OrcFuncInfo const.
-#[proc_macro]
-pub fn orc_fn(input: TokenStream) -> TokenStream {
-    let FnMacroArgs { name, stmts } = parse_macro_input!(input as FnMacroArgs);
-    let mut docs = String::new();
-    // fn run(<&HostCallbacks>, <inputs...>, <outputs...>) { ... }  — required.
+fn parse_fn_body(item: &syn::ItemFn, has_input_output_depths: bool) -> syn::Result<ParsedBody> {
+    let mut docs = docs_from_attrs(&item.attrs);
     let mut run_fn: Option<syn::ItemFn> = None;
-    // fn dims(<&OrcDims inputs...>, <&mut OrcDims outputs...>) { ... }  — optional.
     let mut dims_fn: Option<syn::ItemFn> = None;
-    // const INPUT_DEPTHS: [u8; N] = [...];
     let mut input_depths: Option<syn::ExprArray> = None;
-    // const OUTPUT_DEPTHS: [u8; N] = [...];
     let mut output_depths: Option<syn::ExprArray> = None;
-    // type Types = (Case<f32>, Case<f64>, ...);  — optional, one case per monomorphization.
-    let mut types: Option<syn::Type> = None;
-    // let registry: &ObjectRegistry = &MY_REGISTRY;
+    let mut types: Option<Vec<Vec<syn::GenericArgument>>> = None;
     let mut registry: Option<syn::Expr> = None;
-    // let host_callbacks = host_callbacks();
     let mut host_callbacks_expr: Option<syn::Expr> = None;
-    // Anything unrecognized is collected here and pasted verbatim into the function body.
     let mut user_items: Vec<proc_macro2::TokenStream> = Vec::new();
-    for stmt in &stmts {
-        // Collect doc attributes from any item in the body into the description string.
+    for stmt in &item.block.stmts {
         let attrs: &[syn::Attribute] = match stmt {
             syn::Stmt::Item(item) => match item {
                 syn::Item::Const(c) => &c.attrs,
                 syn::Item::Fn(f) => &f.attrs,
-                syn::Item::Type(t) => &t.attrs,
                 _ => &[],
             },
             syn::Stmt::Local(l) => &l.attrs,
@@ -958,87 +964,35 @@ pub fn orc_fn(input: TokenStream) -> TokenStream {
             docs.push_str(&stmt_docs);
         }
         match stmt {
-            syn::Stmt::Item(syn::Item::Const(c)) => match c.ident.to_string().as_str() {
-                "INPUT_DEPTHS" | "OUTPUT_DEPTHS" => {
-                    let is_u8_array = matches!(c.ty.as_ref(),
-                        syn::Type::Array(syn::TypeArray { elem, .. })
-                        if matches!(elem.as_ref(), syn::Type::Path(p) if p.path.is_ident("u8"))
-                    );
-                    if !is_u8_array {
-                        return syn::Error::new_spanned(
-                            &c.ty,
-                            "INPUT_DEPTHS and OUTPUT_DEPTHS must be of type [u8; N]",
-                        )
-                        .to_compile_error()
-                        .into();
-                    }
-                    if let syn::Expr::Array(arr) = c.expr.as_ref() {
-                        if c.ident == "INPUT_DEPTHS" {
-                            input_depths = Some(arr.clone());
-                        } else {
-                            output_depths = Some(arr.clone());
-                        }
+            syn::Stmt::Item(syn::Item::Const(c))
+                if has_input_output_depths
+                    && matches!(
+                        c.ident.to_string().as_str(),
+                        "INPUT_DEPTHS" | "OUTPUT_DEPTHS"
+                    ) =>
+            {
+                let is_u8_array = matches!(c.ty.as_ref(),
+                    syn::Type::Array(syn::TypeArray { elem, .. })
+                    if matches!(elem.as_ref(), syn::Type::Path(p) if p.path.is_ident("u8"))
+                );
+                if !is_u8_array {
+                    return Err(syn::Error::new_spanned(
+                        &c.ty,
+                        "INPUT_DEPTHS and OUTPUT_DEPTHS must be of type [u8; N]",
+                    ));
+                }
+                if let syn::Expr::Array(arr) = c.expr.as_ref() {
+                    if c.ident == "INPUT_DEPTHS" {
+                        input_depths = Some(arr.clone());
+                    } else {
+                        output_depths = Some(arr.clone());
                     }
                 }
-                _ => user_items.push(quote::quote!(#c)),
-            },
-            syn::Stmt::Item(syn::Item::Type(t)) if t.ident == "Types" => {
-                let outer = match t.ty.as_ref() {
-                    syn::Type::Tuple(tup) => tup,
-                    _ => {
-                        return syn::Error::new_spanned(
-                            &t.ty,
-                            "Types must be a tuple of Case<...>",
-                        )
-                        .to_compile_error()
-                        .into();
-                    }
-                };
-                if outer.elems.is_empty() {
-                    return syn::Error::new_spanned(&t.ty, "Types cannot be an empty tuple")
-                        .to_compile_error()
-                        .into();
-                }
-                // All elements must be Case<...> with the same number of args.
-                let first_arity = match sig_arg_count(outer.elems.first().unwrap()) {
-                    Some(n) => n,
-                    None => {
-                        return syn::Error::new_spanned(
-                            outer.elems.first().unwrap(),
-                            "each element of Types must be `Case<T, U, ...>`",
-                        )
-                        .to_compile_error()
-                        .into();
-                    }
-                };
-                for elem in outer.elems.iter().skip(1) {
-                    match sig_arg_count(elem) {
-                        Some(n) if n == first_arity => {}
-                        Some(n) => {
-                            return syn::Error::new_spanned(
-                                elem,
-                                format!("expected Case with {first_arity} argument(s), found {n}"),
-                            )
-                            .to_compile_error()
-                            .into();
-                        }
-                        None => {
-                            return syn::Error::new_spanned(
-                                elem,
-                                "each element of Types must be `Case<T, U, ...>`",
-                            )
-                            .to_compile_error()
-                            .into();
-                        }
-                    }
-                }
-                types = Some(*t.ty.clone());
             }
+            syn::Stmt::Item(syn::Item::Const(c)) => user_items.push(quote::quote!(#c)),
             syn::Stmt::Item(syn::Item::Fn(f)) => match f.sig.ident.to_string().as_str() {
                 "run" => {
                     let mut f = f.clone();
-                    // Doc attrs were already collected into `docs`; strip them so they
-                    // don't re-appear as #[doc = ...] on the emitted inner function.
                     f.attrs.retain(|a| !a.path().is_ident("doc"));
                     run_fn = Some(f);
                 }
@@ -1065,10 +1019,15 @@ pub fn orc_fn(input: TokenStream) -> TokenStream {
                             registry = Some(*init.expr.clone());
                             recognized = true;
                         }
-                    } else if ident == "host_callbacks"
+                    } else if ident == "host_callbacks" {
+                        if let Some(init) = &local.init {
+                            host_callbacks_expr = Some(*init.expr.clone());
+                            recognized = true;
+                        }
+                    } else if ident == "types"
                         && let Some(init) = &local.init
                     {
-                        host_callbacks_expr = Some(*init.expr.clone());
+                        types = Some(parse_types_expr(init.expr.as_ref())?);
                         recognized = true;
                     }
                 }
@@ -1079,36 +1038,74 @@ pub fn orc_fn(input: TokenStream) -> TokenStream {
             _ => user_items.push(quote::quote!(#stmt)),
         }
     }
+    Ok(ParsedBody {
+        docs,
+        run_fn,
+        dims_fn,
+        input_depths,
+        output_depths,
+        types,
+        registry,
+        host_callbacks_expr,
+        user_items,
+    })
+}
 
-    // host_callbacks is required.
+struct ParsedBody {
+    docs: String,
+    run_fn: Option<syn::ItemFn>,
+    dims_fn: Option<syn::ItemFn>,
+    input_depths: Option<syn::ExprArray>,
+    output_depths: Option<syn::ExprArray>,
+    types: Option<Vec<Vec<syn::GenericArgument>>>,
+    registry: Option<syn::Expr>,
+    host_callbacks_expr: Option<syn::Expr>,
+    user_items: Vec<proc_macro2::TokenStream>,
+}
+
+/// Expands `#[orc_fn] fn name() { ... }` into a full FFI function + OrcFuncInfo const.
+#[proc_macro_attribute]
+pub fn orc_fn(_attrs: TokenStream, input: TokenStream) -> TokenStream {
+    let item = parse_macro_input!(input as syn::ItemFn);
+    let name = item.sig.ident.clone();
+    let body = match parse_fn_body(&item, true) {
+        Ok(b) => b,
+        Err(e) => return e.to_compile_error().into(),
+    };
+    let ParsedBody {
+        docs,
+        run_fn,
+        dims_fn,
+        input_depths,
+        output_depths,
+        types,
+        registry,
+        host_callbacks_expr,
+        user_items,
+    } = body;
     let host_callbacks_expr = match host_callbacks_expr {
         Some(e) => e,
         None => {
-            return syn::Error::new(
-                proc_macro2::Span::call_site(),
-                "orc_fn! requires `let host_callbacks = <expr returning &OrcHostCallbackAPI>`",
+            return syn::Error::new_spanned(
+                &item.sig,
+                "#[orc_fn] requires `let host_callbacks = <expr returning &OrcHostCallbackAPI>`",
             )
             .to_compile_error()
             .into();
         }
     };
-    // run_fn is required.
     let run_fn = match run_fn {
         Some(f) => f,
         None => {
-            return syn::Error::new(
-                proc_macro2::Span::call_site(),
-                "orc_fn! requires a `fn run(...)` body",
-            )
-            .to_compile_error()
-            .into();
+            return syn::Error::new_spanned(&item.sig, "#[orc_fn] requires a `fn run(...)` body")
+                .to_compile_error()
+                .into();
         }
     };
-    // Validate the rest.
     let validated_params = match validate_orc_fn(
         &run_fn,
         dims_fn.as_ref(),
-        types.as_ref(),
+        types.as_deref(),
         registry.as_ref(),
         input_depths.as_ref(),
         output_depths.as_ref(),
@@ -1116,13 +1113,389 @@ pub fn orc_fn(input: TokenStream) -> TokenStream {
         Ok(v) => v,
         Err(e) => return e.to_compile_error().into(),
     };
-    // Now that we validated everything, we can generate the code for this orc_fn.
     generate_orc_fn(FnConfig {
         name: &name,
         docs: &docs,
         run_fn: &run_fn,
         dims_fn: dims_fn.as_ref(),
-        types: types.as_ref(),
+        types: types.as_deref(),
+        registry_expr: registry.as_ref(),
+        host_callbacks_expr: &host_callbacks_expr,
+        user_items: &user_items,
+        params: &validated_params,
+    })
+    .into()
+}
+
+fn validate_orc_map_fn(
+    run_fn: &syn::ItemFn,
+    dims_fn: Option<&syn::ItemFn>,
+    types: Option<&[Vec<syn::GenericArgument>]>,
+    registry: Option<&syn::Expr>,
+) -> syn::Result<ValidatedParams> {
+    let has_host = matches!(
+        run_fn.sig.inputs.first(),
+        Some(syn::FnArg::Typed(pt)) if is_host_param(pt.ty.as_ref())
+    );
+    // fn run must return Result<_, _> or nothing.
+    if let syn::ReturnType::Type(_, ty) = &run_fn.sig.output
+        && !matches!(ty.as_ref(), syn::Type::Path(p)
+            if p.path.segments.last().is_some_and(|s| s.ident == "Result"))
+    {
+        return Err(syn::Error::new_spanned(
+            &run_fn.sig,
+            "fn run must return `Result<(), Error>` or nothing",
+        ));
+    }
+    let mut input_param: Option<syn::PatType> = None;
+    let mut output_param: Option<syn::PatType> = None;
+    for arg in run_fn.sig.inputs.iter().skip(if has_host { 1 } else { 0 }) {
+        let pat_ty = match arg {
+            syn::FnArg::Typed(pt) => pt,
+            syn::FnArg::Receiver(r) => {
+                return Err(syn::Error::new_spanned(
+                    r,
+                    "`run` must not have a self parameter",
+                ));
+            }
+        };
+        let is_out = is_output_param(pat_ty.ty.as_ref())?;
+        if is_out {
+            if output_param.is_some() {
+                return Err(syn::Error::new_spanned(
+                    pat_ty,
+                    "orc_map_fn! run must have exactly one output parameter",
+                ));
+            }
+            if is_deck_writer_param(pat_ty.ty.as_ref()) {
+                return Err(syn::Error::new_spanned(
+                    pat_ty,
+                    "orc_map_fn! run output must be `&mut T`, not `&mut DeckWriter<T>`",
+                ));
+            }
+            output_param = Some(pat_ty.clone());
+        } else {
+            if input_param.is_some() {
+                return Err(syn::Error::new_spanned(
+                    pat_ty,
+                    "orc_map_fn! run must have exactly one input parameter",
+                ));
+            }
+            if is_deck_type(pat_ty.ty.as_ref()) {
+                return Err(syn::Error::new_spanned(
+                    pat_ty,
+                    "orc_map_fn! run input must be `&T`, not `DeckView<T>`",
+                ));
+            }
+            if let syn::Type::Reference(r) = pat_ty.ty.as_ref()
+                && matches!(r.elem.as_ref(), syn::Type::Slice(_))
+            {
+                return Err(syn::Error::new_spanned(
+                    pat_ty,
+                    "orc_map_fn! run input must be `&T`, not `&[T]`",
+                ));
+            }
+            input_param = Some(pat_ty.clone());
+        }
+    }
+    let input_param = input_param.ok_or_else(|| {
+        syn::Error::new_spanned(
+            &run_fn.sig,
+            "orc_map_fn! run must have exactly one input parameter",
+        )
+    })?;
+    let output_param = output_param.ok_or_else(|| {
+        syn::Error::new_spanned(
+            &run_fn.sig,
+            "orc_map_fn! run must have exactly one output parameter",
+        )
+    })?;
+    let generic_count = run_fn
+        .sig
+        .generics
+        .params
+        .iter()
+        .filter(|p| matches!(p, syn::GenericParam::Type(_) | syn::GenericParam::Const(_)))
+        .count();
+    if generic_count > 0 {
+        match types {
+            None => {
+                return Err(syn::Error::new_spanned(
+                    &run_fn.sig,
+                    "fn run is generic; `let types = (run::<...>, ...)` must be provided",
+                ));
+            }
+            Some(cases) => {
+                for case_args in cases {
+                    if case_args.len() != generic_count {
+                        return Err(syn::Error::new_spanned(
+                            &run_fn.sig,
+                            format!(
+                                "each entry in `let types` must have {generic_count} type argument(s) to match fn run's generics"
+                            ),
+                        ));
+                    }
+                }
+            }
+        }
+    }
+    if registry.is_none() {
+        return Err(syn::Error::new_spanned(
+            &run_fn.sig,
+            "orc_map_fn requires `let registry: &DeckRegistry = ...`",
+        ));
+    }
+    if let Some(dims) = dims_fn {
+        validate_dims_fn(dims, 1, 1)?;
+    }
+    let in_inner = inner_type(input_param.ty.as_ref()).clone();
+    let out_inner = inner_type(output_param.ty.as_ref()).clone();
+    Ok(ValidatedParams {
+        inputs: Box::new([ParamInfo {
+            param: input_param,
+            depth: 1,
+            inner_type: in_inner,
+        }]),
+        outputs: Box::new([ParamInfo {
+            param: output_param,
+            depth: 1,
+            inner_type: out_inner,
+        }]),
+        has_host,
+    })
+}
+
+fn generate_map_dispatch_fn(
+    run_fn: &syn::ItemFn,
+    params: &ValidatedParams,
+) -> proc_macro2::TokenStream {
+    let run_generics = &run_fn.sig.generics;
+    let where_clause = &run_fn.sig.generics.where_clause;
+    let in_inner_ty = &params.inputs[0].inner_type;
+    let out_inner_ty = &params.outputs[0].inner_type;
+    let run_returns_result = matches!(
+        &run_fn.sig.output,
+        syn::ReturnType::Type(_, ty) if matches!(ty.as_ref(), syn::Type::Path(p)
+            if p.path.segments.last().is_some_and(|s| s.ident == "Result"))
+    );
+    let host_arg = if params.has_host {
+        quote! { host_, }
+    } else {
+        quote! {}
+    };
+    let run_call = if run_returns_result {
+        quote! { run(#host_arg in_item_, out_item_)?; }
+    } else {
+        quote! { run(#host_arg in_item_, out_item_); }
+    };
+    quote! {
+        fn dispatch_ #run_generics (
+            host_: &orc_sdk::HostCallbacks,
+            registry_: &orc_sdk::DeckRegistry,
+            inputs_: &[orc_sdk::OrcHandle],
+            outputs_: &mut [orc_sdk::OrcHandle],
+        ) -> Result<(), orc_sdk::Error> #where_clause {
+            let in_items_ = unsafe {
+                orc_sdk::slice_from_ptr(
+                    inputs_[0].items.cast::<#in_inner_ty>(),
+                    inputs_[0].n_items as usize,
+                )
+            };
+            let in_marks_ = unsafe {
+                orc_sdk::slice_from_ptr(inputs_[0].marks, inputs_[0].n_marks as usize)
+            };
+            registry_.alloc::<#out_inner_ty>(&mut outputs_[0])?;
+            let result_ = registry_.with_mut(
+                &[outputs_[0].handle],
+                |out_decks_| -> Result<(), orc_sdk::Error> {
+                    let [out_elem_] = out_decks_ else {
+                        return Err(orc_sdk::Error::DeckTypeMismatch);
+                    };
+                    let out_deck_: &mut orc_sdk::Deck<#out_inner_ty> = out_elem_
+                        .downcast_mut()
+                        .ok_or(orc_sdk::Error::DeckTypeMismatch)?;
+                    out_deck_.reshape_with_marks(in_items_.len(), in_marks_);
+                    for (in_item_, out_item_) in
+                        in_items_.iter().zip(out_deck_.items_mut().iter_mut())
+                    {
+                        #run_call
+                    }
+                    unsafe { orc_sdk::update_handle_from_deck(out_deck_, &mut outputs_[0]) };
+                    outputs_[0].free_fn = Some(crate::orc_deck_free);
+                    Ok(())
+                },
+            )
+            .flatten();
+            result_
+        }
+    }
+}
+
+fn generate_orc_map_fn(cfg: FnConfig<'_>) -> proc_macro2::TokenStream {
+    let FnConfig {
+        name,
+        docs,
+        run_fn,
+        dims_fn,
+        types,
+        registry_expr,
+        host_callbacks_expr,
+        user_items,
+        params,
+    } = cfg;
+    let info_name = info_const_name(&name.to_string());
+    let name_lit = proc_macro2::Literal::c_string(
+        &std::ffi::CString::new(name.to_string()).expect("name contains null byte"),
+    );
+    let desc_lit = proc_macro2::Literal::c_string(
+        &std::ffi::CString::new(docs).expect("docs contains null byte"),
+    );
+    let dispatch_fn = generate_map_dispatch_fn(run_fn, params);
+    let registry_expr_ts = registry_expr.map(|r| quote! { #r }).unwrap_or_default();
+    let type_dispatch = generate_type_dispatch(run_fn, types, params, &registry_expr_ts);
+    let (dims_fn_tokens, dims_call) = match dims_fn {
+        Some(d) => {
+            let call = if dims_returns_result(d) {
+                quote! {
+                    orc_sdk::orc_check_return!(
+                        host_,
+                        dims(&inputs_[0].dims, &mut outputs_[0].dims).is_ok(),
+                        "dims computation failed"
+                    );
+                }
+            } else {
+                quote! { dims(&inputs_[0].dims, &mut outputs_[0].dims); }
+            };
+            (quote! { #d }, call)
+        }
+        None => (quote! {}, quote! {}),
+    };
+    let all_generics: Vec<&syn::GenericParam> = run_fn.sig.generics.params.iter().collect();
+    let in_ty = &params.inputs[0].inner_type;
+    let out_ty = &params.outputs[0].inner_type;
+    let input_types_ptr = if is_generic_type(in_ty, &all_generics) {
+        quote! { ::std::ptr::null_mut() }
+    } else {
+        quote! {
+            (&[<#in_ty as orc_sdk::TOrcData>::TYPE_INFO.type_id] as *const [orc_sdk::OrcTypeId; 1])
+                .cast::<orc_sdk::OrcTypeId>()
+                .cast_mut()
+        }
+    };
+    let output_types_ptr = if is_generic_type(out_ty, &all_generics) {
+        quote! { ::std::ptr::null_mut() }
+    } else {
+        quote! {
+            (&[<#out_ty as orc_sdk::TOrcData>::TYPE_INFO.type_id] as *const [orc_sdk::OrcTypeId; 1])
+                .cast::<orc_sdk::OrcTypeId>()
+                .cast_mut()
+        }
+    };
+    quote! {
+        pub const #info_name: orc_sdk::OrcFuncInfo = orc_sdk::OrcFuncInfo {
+            name: #name_lit.as_ptr(),
+            desc: #desc_lit.as_ptr(),
+            n_inputs: 1u64,
+            n_outputs: 1u64,
+            input_types: #input_types_ptr,
+            output_types: #output_types_ptr,
+            func: Some(#name),
+        };
+        unsafe extern "C" fn #name(
+            ctx_: u64,
+            inputs_ptr_: *const orc_sdk::OrcHandle,
+            n_inputs_: u64,
+            outputs_ptr_: *mut orc_sdk::OrcHandle,
+            n_outputs_: u64,
+        ) {
+            let orc_hc_ref_: &orc_sdk::OrcHostCallbackAPI = #host_callbacks_expr;
+            let host_ = orc_sdk::HostCallbacks {
+                inner: *orc_hc_ref_,
+                context: ctx_,
+            };
+            #(#user_items)*
+            #run_fn
+            #dims_fn_tokens
+            orc_sdk::orc_check_return!(
+                host_,
+                n_inputs_ == 1u64,
+                "Expected 1 input, got {}",
+                n_inputs_
+            );
+            orc_sdk::orc_check_return!(
+                host_,
+                n_outputs_ == 1u64,
+                "Expected 1 output, got {}",
+                n_outputs_
+            );
+            let inputs_ = unsafe { orc_sdk::slice_from_ptr(inputs_ptr_, 1) };
+            let outputs_ = unsafe { orc_sdk::slice_from_ptr_mut(outputs_ptr_, 1) };
+            #dims_call
+            #dispatch_fn
+            #type_dispatch
+        }
+    }
+}
+
+/// Expands `#[orc_map_fn] fn name() { ... }` into a full FFI function + OrcFuncInfo const,
+/// specialized for functions with exactly one input and one output deck.
+/// Unlike `#[orc_fn]`, this avoids the overhead of `Combinations` and instead
+/// reshapes the output to match the input structure, then maps items pairwise.
+#[proc_macro_attribute]
+pub fn orc_map_fn(_attrs: TokenStream, input: TokenStream) -> TokenStream {
+    let item = parse_macro_input!(input as syn::ItemFn);
+    let name = item.sig.ident.clone();
+    let body = match parse_fn_body(&item, false) {
+        Ok(b) => b,
+        Err(e) => return e.to_compile_error().into(),
+    };
+    let ParsedBody {
+        docs,
+        run_fn,
+        dims_fn,
+        types,
+        registry,
+        host_callbacks_expr,
+        user_items,
+        ..
+    } = body;
+    let host_callbacks_expr = match host_callbacks_expr {
+        Some(e) => e,
+        None => {
+            return syn::Error::new_spanned(
+                &item.sig,
+                "#[orc_map_fn] requires `let host_callbacks = <expr returning &OrcHostCallbackAPI>`",
+            )
+            .to_compile_error()
+            .into();
+        }
+    };
+    let run_fn = match run_fn {
+        Some(f) => f,
+        None => {
+            return syn::Error::new_spanned(
+                &item.sig,
+                "#[orc_map_fn] requires a `fn run(...)` body",
+            )
+            .to_compile_error()
+            .into();
+        }
+    };
+    let validated_params = match validate_orc_map_fn(
+        &run_fn,
+        dims_fn.as_ref(),
+        types.as_deref(),
+        registry.as_ref(),
+    ) {
+        Ok(v) => v,
+        Err(e) => return e.to_compile_error().into(),
+    };
+    generate_orc_map_fn(FnConfig {
+        name: &name,
+        docs: &docs,
+        run_fn: &run_fn,
+        dims_fn: dims_fn.as_ref(),
+        types: types.as_deref(),
         registry_expr: registry.as_ref(),
         host_callbacks_expr: &host_callbacks_expr,
         user_items: &user_items,

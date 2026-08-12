@@ -17,7 +17,8 @@ impl TOrcData for Complex {
     };
 }
 
-orc_fn!(create_complex, {
+#[orc_fn]
+fn create_complex() {
     let host_callbacks = host_callbacks();
     let registry: &ObjectRegistry = registry();
 
@@ -28,9 +29,10 @@ orc_fn!(create_complex, {
         };
         Ok(())
     }
-});
+}
 
-orc_fn!(add_complex, {
+#[orc_fn]
+fn add_complex() {
     let host_callbacks = host_callbacks();
     let registry: &ObjectRegistry = registry();
 
@@ -46,9 +48,10 @@ orc_fn!(add_complex, {
         };
         Ok(())
     }
-});
+}
 
-orc_fn!(mul_complex, {
+#[orc_fn]
+fn mul_complex() {
     let host_callbacks = host_callbacks();
     let registry: &ObjectRegistry = registry();
 
@@ -64,9 +67,10 @@ orc_fn!(mul_complex, {
         };
         Ok(())
     }
-});
+}
 
-orc_fn!(complex_get_parts, {
+#[orc_fn]
+fn complex_get_parts() {
     let host_callbacks = host_callbacks();
     let registry: &ObjectRegistry = registry();
 
@@ -80,7 +84,7 @@ orc_fn!(complex_get_parts, {
         *imag_out = c.imag;
         Ok(())
     }
-});
+}
 
 #[cfg(test)]
 mod tests {

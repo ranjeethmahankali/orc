@@ -1,33 +1,22 @@
 use crate::{host_callbacks, registry};
-use orc_sdk::{DeckWriter, Error, HostCallbacks, OrcDims, TOrcData, orc_fn};
+use orc_sdk::{DeckWriter, Error, HostCallbacks, OrcDims, TOrcData, orc_fn, orc_map_fn};
 use std::ops::{Add, Div, Mul, Sub};
 
-orc_fn!(add, {
+#[orc_fn]
+fn add() {
     let host_callbacks = host_callbacks();
     let registry: &ObjectRegistry = registry();
 
-    type Types = (
-        Case<f32>,
-        Case<f64>,
-        Case<u8>,
-        Case<u16>,
-        Case<u32>,
-        Case<u64>,
-        Case<i8>,
-        Case<i16>,
-        Case<i32>,
-        Case<i64>,
-    );
+    let types = (run::<f64>, run::<i64>);
 
     /// Adds two inputs values, assigns result to the output. This function supports any integer or
     /// floating point scalar types. The two inputs must be of the same type. The output produced
     /// will be of the same type also.
-    fn run<T>(_host: &HostCallbacks, lhs: &T, rhs: &T, out: &mut T) -> Result<(), Error>
+    fn run<T>(lhs: &T, rhs: &T, out: &mut T)
     where
         T: TOrcData + Add<Output = T> + Copy,
     {
         *out = *lhs + *rhs;
-        Ok(())
     }
 
     /// The dimensions of both inputs must be the same. The output dimensions will match that.
@@ -38,34 +27,23 @@ orc_fn!(add, {
         *out = *lhs;
         Ok(())
     }
-});
+}
 
-orc_fn!(mul, {
+#[orc_fn]
+fn mul() {
     let host_callbacks = host_callbacks();
     let registry: &ObjectRegistry = registry();
 
-    type Types = (
-        Case<f32>,
-        Case<f64>,
-        Case<u8>,
-        Case<u16>,
-        Case<u32>,
-        Case<u64>,
-        Case<i8>,
-        Case<i16>,
-        Case<i32>,
-        Case<i64>,
-    );
+    let types = (run::<f64>, run::<i64>);
 
     /// Multiplies two inputs values, and assigns the result to the output. This function supports
     /// any integer or floating point scalar types. The two inputs must be of the same type. The
     /// output produced will be of the same type also.
-    fn run<T>(_host: &HostCallbacks, lhs: &T, rhs: &T, out: &mut T) -> Result<(), Error>
+    fn run<T>(lhs: &T, rhs: &T, out: &mut T)
     where
         T: TOrcData + Mul<Output = T> + Copy,
     {
         *out = *lhs * *rhs;
-        Ok(())
     }
 
     /// The dimensions of both inputs must be the same. The output dimensions will match that.
@@ -76,68 +54,61 @@ orc_fn!(mul, {
         *out = *lhs;
         Ok(())
     }
-});
+}
 
-orc_fn!(sub, {
+#[orc_fn]
+fn sub() {
     let host_callbacks = host_callbacks();
     let registry: &ObjectRegistry = registry();
 
-    type Types = (Case<f32>, Case<f64>);
+    let types = (run::<f32>, run::<f64>);
 
     /// Subtracts the second operand from the first, and assigns to the output. The input types must
     /// be the same, matching the output type. This function supports floating point scalar types.
-    fn run<T>(_host: &HostCallbacks, lhs: &T, rhs: &T, out: &mut T) -> Result<(), Error>
+    fn run<T>(lhs: &T, rhs: &T, out: &mut T)
     where
         T: TOrcData + Sub<Output = T> + Copy,
     {
         *out = *lhs - *rhs;
-        Ok(())
     }
-});
+}
 
-orc_fn!(div, {
+#[orc_fn]
+fn div() {
     let host_callbacks = host_callbacks();
     let registry: &ObjectRegistry = registry();
 
-    type Types = (Case<f32>, Case<f64>);
+    let types = (run::<f32>, run::<f64>);
 
     /// Divides the first input with the second input, and assign to the output. All inputs must be
     /// of the same type, matching the output type. This function supports floating point scalar
     /// types.
-    fn run<T>(_host: &HostCallbacks, lhs: &T, rhs: &T, out: &mut T) -> Result<(), Error>
+    fn run<T>(lhs: &T, rhs: &T, out: &mut T)
     where
         T: TOrcData + Div<Output = T> + Copy,
     {
         *out = *lhs / *rhs;
-        Ok(())
     }
-});
+}
 
-orc_fn!(pow_f32, {
+#[orc_fn]
+fn pow() {
     let host_callbacks = host_callbacks();
     let registry: &ObjectRegistry = registry();
 
-    fn run(_host: &HostCallbacks, lhs: &f32, rhs: &f32, out: &mut f32) -> Result<(), Error> {
+    fn run(lhs: &f64, rhs: &f64, out: &mut f64) {
         *out = lhs.powf(*rhs);
-        Ok(())
     }
-});
+}
 
-orc_fn!(repeat_list, {
+#[orc_fn]
+fn repeat_list() {
     let host_callbacks = host_callbacks();
     let registry: &ObjectRegistry = registry();
 
-    type Types = (
-        Case<f32>,
-        Case<f64>,
-        Case<u8>,
-        Case<u16>,
-        Case<u32>,
-        Case<u64>,
-        Case<i8>,
-        Case<i16>,
-        Case<i32>,
-        Case<i64>,
+    let types = (
+        run::<f32>, run::<f64>, run::<u8>, run::<u16>, run::<u32>, run::<u64>, run::<i8>,
+        run::<i16>, run::<i32>, run::<i64>,
     );
 
     const OUTPUT_DEPTHS: [u8; 1] = [1u8];
@@ -155,7 +126,41 @@ orc_fn!(repeat_list, {
         }
         Ok(())
     }
-});
+}
+
+#[orc_map_fn]
+fn sin() {
+    let host_callbacks = host_callbacks();
+    let registry: &ObjectRegistry = registry();
+
+    fn run(lhs: &f64, rhs: &mut f64) {
+        *rhs = lhs.sin();
+    }
+
+    fn dims(lhs: &OrcDims, out: &mut OrcDims) {
+        *out = *lhs;
+    }
+}
+
+#[orc_map_fn]
+fn cos() {
+    let host_callbacks = host_callbacks();
+    let registry: &ObjectRegistry = registry();
+
+    fn run(lhs: &f64, rhs: &mut f64) {
+        *rhs = lhs.cos();
+    }
+}
+
+#[orc_map_fn]
+fn tan() {
+    let host_callbacks = host_callbacks();
+    let registry: &ObjectRegistry = registry();
+
+    fn run(lhs: &f64, rhs: &mut f64) {
+        *rhs = lhs.tan();
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -202,28 +207,7 @@ mod tests {
     }
 
     #[test]
-    fn t_add_f32_elementwise() {
-        let lhs: Deck<f32> = orc_sdk::deck![1.0f32, 2.0, 3.0];
-        let rhs: Deck<f32> = orc_sdk::deck![10.0f32, 20.0, 30.0];
-        let mut out = out_handle();
-        let inputs = [view(&lhs), view(&rhs)];
-        unsafe { add(0, inputs.as_ptr(), 2, &mut out, 1) };
-        assert_eq!(
-            DeckView::<f32>::from_handle(&out).unwrap().items(),
-            &[11.0f32, 22.0, 33.0]
-        );
-    }
-
-    #[test]
-    fn t_add_integer_types() {
-        // u32
-        let lhs: Deck<u32> = orc_sdk::deck![5u32];
-        let rhs: Deck<u32> = orc_sdk::deck![3u32];
-        let mut out = out_handle();
-        let inputs = [view(&lhs), view(&rhs)];
-        unsafe { add(0, inputs.as_ptr(), 2, &mut out, 1) };
-        assert_eq!(DeckView::<u32>::from_handle(&out).unwrap().items(), &[8u32]);
-
+    fn t_add_integers() {
         // i64
         let lhs2: Deck<i64> = orc_sdk::deck![100i64];
         let rhs2: Deck<i64> = orc_sdk::deck![-7i64];
@@ -323,15 +307,15 @@ mod tests {
         assert_eq!(out.type_id, f64::TYPE_INFO.type_id);
 
         // Second call: f32 — type changes cleanly.
-        let c: Deck<f32> = orc_sdk::deck![3.0f32];
-        let d: Deck<f32> = orc_sdk::deck![4.0f32];
+        let c: Deck<i64> = orc_sdk::deck![3i64];
+        let d: Deck<i64> = orc_sdk::deck![4i64];
         let inputs2 = [view(&c), view(&d)];
         unsafe { mul(0, inputs2.as_ptr(), 2, &mut out, 1) };
-        assert_eq!(out.type_id, f32::TYPE_INFO.type_id);
+        assert_eq!(out.type_id, i64::TYPE_INFO.type_id);
         assert_eq!(out.handle, out_id);
         assert_eq!(
-            DeckView::<f32>::from_handle(&out).unwrap().items(),
-            &[12.0f32]
+            DeckView::<i64>::from_handle(&out).unwrap().items(),
+            &[12i64]
         );
     }
 
@@ -352,14 +336,14 @@ mod tests {
 
     #[test]
     fn t_mul_integer_types() {
-        let lhs: Deck<i32> = orc_sdk::deck![3i32, 4];
-        let rhs: Deck<i32> = orc_sdk::deck![7i32, 8];
+        let lhs: Deck<i64> = orc_sdk::deck![3i64, 4];
+        let rhs: Deck<i64> = orc_sdk::deck![7i64, 8];
         let mut out = out_handle();
         let inputs = [view(&lhs), view(&rhs)];
         unsafe { mul(0, inputs.as_ptr(), 2, &mut out, 1) };
         assert_eq!(
-            DeckView::<i32>::from_handle(&out).unwrap().items(),
-            &[21i32, 32]
+            DeckView::<i64>::from_handle(&out).unwrap().items(),
+            &[21i64, 32]
         );
     }
 
@@ -481,17 +465,17 @@ mod tests {
         assert_eq!(out.type_id, f64::TYPE_INFO.type_id);
 
         // Second call: i32 — old deck freed, new deck allocated.
-        let lhs2: Deck<i32> = orc_sdk::deck![100i32];
-        let rhs2: Deck<i32> = orc_sdk::deck![200i32];
+        let lhs2: Deck<i64> = orc_sdk::deck![100i64];
+        let rhs2: Deck<i64> = orc_sdk::deck![200i64];
         let inputs2 = [view(&lhs2), view(&rhs2)];
         unsafe { add(0, inputs2.as_ptr(), 2, &mut out, 1) };
         // Handle must reflect the new type and data.
-        assert_eq!(out.type_id, i32::TYPE_INFO.type_id);
+        assert_eq!(out.type_id, i64::TYPE_INFO.type_id);
         assert_eq!(out.handle, out_id);
         assert_eq!(out.n_items, 1);
         assert_eq!(
-            DeckView::<i32>::from_handle(&out).unwrap().items(),
-            &[300i32]
+            DeckView::<i64>::from_handle(&out).unwrap().items(),
+            &[300i64]
         );
     }
 

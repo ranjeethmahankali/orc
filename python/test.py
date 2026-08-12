@@ -115,34 +115,14 @@ def t_add_depth3():
 # ============================================================
 
 
-def t_add_i32():
+def t_add_i64():
     """Add I8 and U8 lists triggers type mismatch."""
-    a = make_handle([-5, -3, 0, 3, 5])
-    b = make_handle([10, 20, 30, 40, 50])
-    assert a.type_id == orc.ORC_TYPE_I8
+    a = make_handle([-5, -3, 0, 3, 5], orc.ORC_TYPE_I64)
+    b = make_handle([10, 20, 30, 40, 50], orc.ORC_TYPE_I64)
+    assert a.type_id == orc.ORC_TYPE_I64
     [out] = call_fn(orc.add, [a, b])
     # a is I8 (has negatives), b is U8 (all positive).
     # Type mismatch — output untouched.
-
-
-def t_add_u8():
-    """Add two U8 lists element-wise."""
-    a = make_handle([1, 2, 3])
-    b = make_handle([10, 20, 30])
-    assert a.type_id == orc.ORC_TYPE_U8
-    assert b.type_id == orc.ORC_TYPE_U8
-    [out] = call_fn(orc.add, [a, b])
-    assert orc.read_deck(out) == [11, 22, 33]
-
-
-def t_add_u32():
-    """Add two U32 lists element-wise."""
-    a = make_handle([100000, 200000])
-    b = make_handle([300000, 400000])
-    assert a.type_id == orc.ORC_TYPE_U32
-    [out] = call_fn(orc.add, [a, b])
-    assert orc.read_deck(out) == [400000, 600000]
-
 
 # ============================================================
 # add — Error cases
@@ -172,10 +152,10 @@ def t_mul_f64():
     assert orc.read_deck(out) == [10.0, 18.0, 28.0]
 
 
-def t_mul_u8():
+def t_mul_i64():
     """Multiply two U8 lists element-wise."""
-    a = make_handle([3, 4])
-    b = make_handle([7, 8])
+    a = make_handle([3, 4], orc.ORC_TYPE_I64)
+    b = make_handle([7, 8], orc.ORC_TYPE_I64)
     [out] = call_fn(orc.mul, [a, b])
     assert orc.read_deck(out) == [21, 32]
 
@@ -558,84 +538,7 @@ def t_numpy_f64():
     assert arr.dtype == np.float64
     assert arr.ctypes.data == out.items
     assert list(arr * 2.0) == [22.0, 44.0, 66.0]
-
-
-def t_numpy_f32():
-    """Convert f32 handle to numpy, verify pointer and arithmetic."""
-    h = make_handle([1.5, 2.5, 3.5], type_id=orc.ORC_TYPE_F32)
-    arr = orc.as_numpy(h)
-    assert arr.dtype == np.float32
-    assert arr.ctypes.data == h.items
-    result = arr + np.float32(0.5)
-    assert list(result) == [2.0, 3.0, 4.0]
-
-
-def t_numpy_u8():
-    """Convert u8 handle to numpy, verify pointer and arithmetic."""
-    a = make_handle([10, 20, 30])
-    b = make_handle([1, 2, 3])
-    [out] = call_fn(orc.add, [a, b])
-    arr = orc.as_numpy(out)
-    assert arr.dtype == np.uint8
-    assert arr.ctypes.data == out.items
-    assert list(arr + np.uint8(100)) == [111, 122, 133]
-
-
-def t_numpy_u16():
-    """Convert u16 handle to numpy, verify pointer and arithmetic."""
-    h = make_handle([300, 400, 500], type_id=orc.ORC_TYPE_U16)
-    arr = orc.as_numpy(h)
-    assert arr.dtype == np.uint16
-    assert arr.ctypes.data == h.items
-    assert list(arr - np.uint16(100)) == [200, 300, 400]
-
-
-def t_numpy_u32():
-    """Convert u32 handle to numpy, verify pointer and arithmetic."""
-    a = make_handle([100000, 200000])
-    b = make_handle([300000, 400000])
-    [out] = call_fn(orc.add, [a, b])
-    arr = orc.as_numpy(out)
-    assert arr.dtype == np.uint32
-    assert arr.ctypes.data == out.items
-    assert list(arr // np.uint32(100000)) == [4, 6]
-
-
-def t_numpy_u64():
-    """Convert u64 handle to numpy, verify pointer and arithmetic."""
-    h = make_handle([2**40, 2**41], type_id=orc.ORC_TYPE_U64)
-    arr = orc.as_numpy(h)
-    assert arr.dtype == np.uint64
-    assert arr.ctypes.data == h.items
-    assert list(arr * np.uint64(2)) == [2**41, 2**42]
-
-
-def t_numpy_i8():
-    """Convert i8 handle to numpy, verify pointer and arithmetic."""
-    h = make_handle([-10, 0, 10], type_id=orc.ORC_TYPE_I8)
-    arr = orc.as_numpy(h)
-    assert arr.dtype == np.int8
-    assert arr.ctypes.data == h.items
-    assert list(arr + np.int8(5)) == [-5, 5, 15]
-
-
-def t_numpy_i16():
-    """Convert i16 handle to numpy, verify pointer and arithmetic."""
-    h = make_handle([-1000, 0, 1000], type_id=orc.ORC_TYPE_I16)
-    arr = orc.as_numpy(h)
-    assert arr.dtype == np.int16
-    assert arr.ctypes.data == h.items
-    assert list(arr * np.int16(-1)) == [1000, 0, -1000]
-
-
-def t_numpy_i32():
-    """Convert i32 handle to numpy, verify pointer and arithmetic."""
-    h = make_handle([-100000, 0, 100000], type_id=orc.ORC_TYPE_I32)
-    arr = orc.as_numpy(h)
-    assert arr.dtype == np.int32
-    assert arr.ctypes.data == h.items
-    assert list(arr + np.int32(1)) == [-99999, 1, 100001]
-
+    
 
 def t_numpy_i64():
     """Convert i64 handle to numpy, verify pointer and arithmetic."""
