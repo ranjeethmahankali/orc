@@ -70,16 +70,7 @@ fn main() {
                 .write(Box::new(&mut buf))
                 .expect("Couldn't serialize Rust bindings");
             let generated = String::from_utf8(buf).expect("Rust bindings are not valid UTF-8");
-            let existing = std::fs::read_to_string(path).unwrap_or_else(|e| {
-                eprintln!("Couldn't read {path}: {e}");
-                std::process::exit(1);
-            });
-            let existing = existing.replace("\r\n", "\n");
-            if generated != existing {
-                eprintln!("Rust bindings are out of sync with {path}");
-                std::process::exit(1);
-            }
-            println!("Rust bindings are up to date with {path}");
+            check_bindings("Rust", path, &generated);
         }
     }
     if needs_python {
@@ -98,18 +89,41 @@ fn main() {
         if let Some(path) = &python_check {
             let generated =
                 String::from_utf8(python_content).expect("Python bindings are not valid UTF-8");
-            let existing = std::fs::read_to_string(path).unwrap_or_else(|e| {
-                eprintln!("Couldn't read {path}: {e}");
-                std::process::exit(1);
-            });
-            let existing = existing.replace("\r\n", "\n");
-            if generated != existing {
-                eprintln!("Python bindings are out of sync with {path}");
-                std::process::exit(1);
-            }
-            println!("Python bindings are up to date with {path}");
+            check_bindings("Python", path, &generated);
         }
     }
+}
+
+fn check_bindings(label: &str, path: &str, generated: &str) {
+    let existing = std::fs::read_to_string(path).unwrap_or_else(|e| {
+        eprintln!("Couldn't read {path}: {e}");
+        std::process::exit(1);
+    });
+    let existing = existing.replace("\r\n", "\n");
+    let mut has_diff = false;
+    for diff in diff::lines(&existing, generated) {
+        match diff {
+            diff::Result::Left(l) => {
+                if !has_diff {
+                    eprintln!("{label} bindings are out of sync with {path}:");
+                    has_diff = true;
+                }
+                eprintln!("- {l}");
+            }
+            diff::Result::Right(r) => {
+                if !has_diff {
+                    eprintln!("{label} bindings are out of sync with {path}:");
+                    has_diff = true;
+                }
+                eprintln!("+ {r}");
+            }
+            diff::Result::Both(..) => {}
+        }
+    }
+    if has_diff {
+        std::process::exit(1);
+    }
+    println!("{label} bindings are up to date with {path}");
 }
 
 fn generate_rust_bindings(header: &str) -> bindgen::Bindings {
