@@ -74,6 +74,7 @@ fn main() {
                 eprintln!("Couldn't read {path}: {e}");
                 std::process::exit(1);
             });
+            let existing = existing.replace("\r\n", "\n");
             if generated != existing {
                 eprintln!("Rust bindings are out of sync with {path}");
                 std::process::exit(1);
@@ -101,6 +102,7 @@ fn main() {
                 eprintln!("Couldn't read {path}: {e}");
                 std::process::exit(1);
             });
+            let existing = existing.replace("\r\n", "\n");
             if generated != existing {
                 eprintln!("Python bindings are out of sync with {path}");
                 std::process::exit(1);
