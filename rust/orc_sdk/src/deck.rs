@@ -349,6 +349,10 @@ where
         &self.items
     }
 
+    pub fn items_mut(&mut self) -> &mut [T] {
+        &mut self.items
+    }
+
     pub fn marks(&self) -> &[OrcMark] {
         &self.marks
     }

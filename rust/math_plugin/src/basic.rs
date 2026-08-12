@@ -1,5 +1,5 @@
 use crate::{host_callbacks, registry};
-use orc_sdk::{DeckWriter, Error, HostCallbacks, OrcDims, TOrcData, orc_fn};
+use orc_sdk::{DeckWriter, Error, HostCallbacks, OrcDims, TOrcData, orc_fn, orc_map_fn};
 use std::ops::{Add, Div, Mul, Sub};
 
 orc_fn!(add, {
@@ -149,6 +149,33 @@ orc_fn!(repeat_list, {
             out.extend_from_slice(list);
         }
         Ok(())
+    }
+});
+
+orc_map_fn!(sin, {
+    let host_callbacks = host_callbacks();
+    let registry: &ObjectRegistry = registry();
+
+    fn run(lhs: &f64, rhs: &mut f64) {
+        *rhs = lhs.sin();
+    }
+});
+
+orc_map_fn!(cos, {
+    let host_callbacks = host_callbacks();
+    let registry: &ObjectRegistry = registry();
+
+    fn run(lhs: &f64, rhs: &mut f64) {
+        *rhs = lhs.cos();
+    }
+});
+
+orc_map_fn!(tan, {
+    let host_callbacks = host_callbacks();
+    let registry: &ObjectRegistry = registry();
+
+    fn run(lhs: &f64, rhs: &mut f64) {
+        *rhs = lhs.tan();
     }
 });
 
