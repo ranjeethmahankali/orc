@@ -229,15 +229,14 @@ fn validate_orc_fn(
         Some(syn::FnArg::Typed(pt)) if is_host_param(pt.ty.as_ref())
     );
     // fn run must return Result<_, _> or nothing.
-    if let syn::ReturnType::Type(_, ty) = &run_fn.sig.output {
-        if !matches!(ty.as_ref(), syn::Type::Path(p)
+    if let syn::ReturnType::Type(_, ty) = &run_fn.sig.output
+        && !matches!(ty.as_ref(), syn::Type::Path(p)
             if p.path.segments.last().is_some_and(|s| s.ident == "Result"))
-        {
-            return Err(syn::Error::new_spanned(
-                &run_fn.sig,
-                "fn run must return `Result<(), Error>` or nothing",
-            ));
-        }
+    {
+        return Err(syn::Error::new_spanned(
+            &run_fn.sig,
+            "fn run must return `Result<(), Error>` or nothing",
+        ));
     }
     // Classify params (skip host if present).
     let mut input_params: Vec<syn::PatType> = Vec::new();
@@ -362,15 +361,14 @@ fn dims_returns_result(dims: &ItemFn) -> bool {
 
 fn validate_dims_fn(dims: &ItemFn, n_inputs: usize, n_outputs: usize) -> syn::Result<()> {
     // fn dims must return Result<_, _> or nothing.
-    if let syn::ReturnType::Type(_, ty) = &dims.sig.output {
-        if !matches!(ty.as_ref(), syn::Type::Path(p)
+    if let syn::ReturnType::Type(_, ty) = &dims.sig.output
+        && !matches!(ty.as_ref(), syn::Type::Path(p)
             if p.path.segments.last().is_some_and(|s| s.ident == "Result"))
-        {
-            return Err(syn::Error::new_spanned(
-                &dims.sig,
-                "fn dims must return `Result<(), Error>` or nothing",
-            ));
-        }
+    {
+        return Err(syn::Error::new_spanned(
+            &dims.sig,
+            "fn dims must return `Result<(), Error>` or nothing",
+        ));
     }
     let expected_total = n_inputs + n_outputs;
     let dims_args: Vec<_> = dims.sig.inputs.iter().collect();
@@ -1160,15 +1158,14 @@ fn validate_orc_map_fn(
         Some(syn::FnArg::Typed(pt)) if is_host_param(pt.ty.as_ref())
     );
     // fn run must return Result<_, _> or nothing.
-    if let syn::ReturnType::Type(_, ty) = &run_fn.sig.output {
-        if !matches!(ty.as_ref(), syn::Type::Path(p)
+    if let syn::ReturnType::Type(_, ty) = &run_fn.sig.output
+        && !matches!(ty.as_ref(), syn::Type::Path(p)
             if p.path.segments.last().is_some_and(|s| s.ident == "Result"))
-        {
-            return Err(syn::Error::new_spanned(
-                &run_fn.sig,
-                "fn run must return `Result<(), Error>` or nothing",
-            ));
-        }
+    {
+        return Err(syn::Error::new_spanned(
+            &run_fn.sig,
+            "fn run must return `Result<(), Error>` or nothing",
+        ));
     }
     let mut input_param: Option<syn::PatType> = None;
     let mut output_param: Option<syn::PatType> = None;
