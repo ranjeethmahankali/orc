@@ -1,5 +1,5 @@
 use crate::{host_callbacks, registry};
-use orc_sdk::{Error, HostCallbacks, OrcTypeId, TOrcData, orc_fn};
+use orc_sdk::{OrcTypeId, TOrcData, orc_fn};
 
 #[derive(Default, Clone, Debug, PartialEq)]
 pub struct Complex {
@@ -23,12 +23,11 @@ fn create_complex() {
     let host_callbacks = host_callbacks();
     let registry: &ObjectRegistry = registry();
 
-    fn run(_host: &HostCallbacks, real: &f64, imag: &f64, out: &mut Complex) -> Result<(), Error> {
+    fn run(real: &f64, imag: &f64, out: &mut Complex) {
         *out = Complex {
             real: *real,
             imag: *imag,
         };
-        Ok(())
     }
 }
 
@@ -38,17 +37,11 @@ fn add_complex() {
     let host_callbacks = host_callbacks();
     let registry: &ObjectRegistry = registry();
 
-    fn run(
-        _host: &HostCallbacks,
-        lhs: &Complex,
-        rhs: &Complex,
-        out: &mut Complex,
-    ) -> Result<(), Error> {
+    fn run(lhs: &Complex, rhs: &Complex, out: &mut Complex) {
         *out = Complex {
             real: lhs.real + rhs.real,
             imag: lhs.imag + rhs.imag,
         };
-        Ok(())
     }
 }
 
@@ -58,17 +51,11 @@ fn mul_complex() {
     let host_callbacks = host_callbacks();
     let registry: &ObjectRegistry = registry();
 
-    fn run(
-        _host: &HostCallbacks,
-        lhs: &Complex,
-        rhs: &Complex,
-        out: &mut Complex,
-    ) -> Result<(), Error> {
+    fn run(lhs: &Complex, rhs: &Complex, out: &mut Complex) {
         *out = Complex {
             real: lhs.real * rhs.real - lhs.imag * rhs.imag,
             imag: lhs.real * rhs.imag + rhs.real * lhs.imag,
         };
-        Ok(())
     }
 }
 
@@ -78,15 +65,9 @@ fn complex_get_parts() {
     let host_callbacks = host_callbacks();
     let registry: &ObjectRegistry = registry();
 
-    fn run(
-        _host: &HostCallbacks,
-        c: &Complex,
-        real_out: &mut f64,
-        imag_out: &mut f64,
-    ) -> Result<(), Error> {
+    fn run(c: &Complex, real_out: &mut f64, imag_out: &mut f64) {
         *real_out = c.real;
         *imag_out = c.imag;
-        Ok(())
     }
 }
 
