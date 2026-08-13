@@ -5,7 +5,7 @@ use std::{
     rc::{Rc, Weak},
 };
 
-use crate::FuncInfo;
+use crate::{FuncInfo, PluginSet};
 
 /// Declarative macro for composing a DAG of plugin function calls.
 ///
@@ -895,4 +895,8 @@ impl Default for Workflow {
         let node_infos = graph.create_node_property(FuncInfo::default());
         Self { graph, node_infos }
     }
+}
+
+impl Workflow {
+    pub fn add_node(&mut self, fn_name: &str, plugin_set: &PluginSet) {}
 }

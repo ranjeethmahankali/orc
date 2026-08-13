@@ -196,6 +196,10 @@
   <2026-08-13 Thu 13:45> Trying to get the current state merged to pivot to a different task. Will
   return to this task later.
 
+  <2026-08-13 Thu 19:26> Added a lot of untesed, unused boiler plate. The property system stuff is
+  copied over from the alum project, with slight changes. Don't yet know what the outward facing API
+  of a workflow will be. I need to think about how this will be used, and come up with something.
+
 * TODO Check for cycles when adding new links
   :PROPERTIES:
   :CREATED:  2026-08-13 Thu 17:07
