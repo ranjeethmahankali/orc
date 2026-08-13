@@ -189,7 +189,7 @@ impl WorkflowGraph {
         nh
     }
 
-    pub fn set_next_pin(&mut self, prev: PH, next: PH) {
+    fn set_next_pin(&mut self, prev: PH, next: PH) {
         self.pins[prev.idx].next = Some(next);
         self.pins[next.idx].prev = Some(prev);
     }
