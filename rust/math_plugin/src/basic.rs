@@ -1,5 +1,6 @@
 use crate::{host_callbacks, registry};
 use orc_sdk::{DeckWriter, Error, HostCallbacks, OrcDims, TOrcData, orc_fn, orc_map_fn};
+use rayon::prelude::*;
 use std::ops::{Add, Div, Mul, Sub};
 
 #[orc_fn]
@@ -154,6 +155,31 @@ fn tan() {
 
     fn run(lhs: &f64, rhs: &mut f64) {
         *rhs = lhs.tan();
+    }
+}
+
+#[orc_fn]
+fn collatz_parallel_experiment() {
+    let host_callbacks = host_callbacks();
+    let registry: &ObjectRegistry = registry();
+
+    const OUTPUT_DEPTHS: [u8; 1] = [1];
+    fn run(host: &HostCallbacks, nums: &[u64], n_iter: &u64, output: &mut DeckWriter<u64>) {
+        let output = output.push_default_mut_many(nums.len());
+        output
+            .par_iter_mut()
+            .zip(nums.par_iter())
+            .for_each(|(out, num)| {
+                *out = *num;
+                for iter in 0..*n_iter {
+                    if *out % 2 == 0 {
+                        *out /= 2;
+                    } else {
+                        *out = *out * 3 + 1;
+                    }
+                    host.info(&format!("{} after {} iterations: {}", *num, iter, *out));
+                }
+            });
     }
 }
 

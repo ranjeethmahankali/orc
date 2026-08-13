@@ -8,13 +8,14 @@ and calls a function (e.g. 'add') on two f64 decks.
 import os
 import sys
 import orc
+import random
 
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
 
-def main():
+def simple_experiment():
     """Run example script that uses orc plugins."""
     project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     search_dir = os.path.join(project_root, "build", "debug")
@@ -57,5 +58,22 @@ def main():
     print("PASS")
 
 
+def collatz_parallel_experiment():
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    search_dir = os.path.join(project_root, "build", "debug")
+    # Load all plugins from the search directory
+    print(f"Searching for plugins in: {search_dir}")
+    orc.load_plugins(search_dir)
+
+    nums = [i for i in range(500)]
+    print(f"Inputs: {nums}")
+    nums = orc.make_deck(nums, type_id=orc.ORC_TYPE_U64)
+    iterations = orc.make_deck(128, type_id=orc.ORC_TYPE_U64)
+    outputs = orc.collatz_parallel_experiment(nums, iterations)
+    outputs = orc.read_deck(outputs)
+    print(f"Outputs: {outputs}")
+
+
 if __name__ == "__main__":
-    main()
+    # simple_experiment()
+    collatz_parallel_experiment()
