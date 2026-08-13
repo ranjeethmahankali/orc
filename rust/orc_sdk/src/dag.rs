@@ -107,57 +107,71 @@ macro_rules! orc_dag {
 }
 
 #[repr(transparent)]
-#[derive(Copy, Clone, Eq, PartialEq)]
-struct PH {
+#[derive(Copy, Clone, Eq, PartialEq, Default)]
+struct IH {
     idx: usize,
 }
 
 #[repr(transparent)]
-#[derive(Copy, Clone, Eq, PartialEq)]
+#[derive(Copy, Clone, Eq, PartialEq, Default)]
+struct OH {
+    idx: usize,
+}
+
+#[repr(transparent)]
+#[derive(Copy, Clone, Eq, PartialEq, Default)]
 struct LH {
     idx: usize,
 }
 
 #[repr(transparent)]
-#[derive(Copy, Clone, Eq, PartialEq)]
+#[derive(Copy, Clone, Eq, PartialEq, Default)]
 struct NH {
     idx: usize,
 }
 
 struct Node {
-    input: Option<PH>,
-    output: Option<PH>,
+    input: Option<IH>,
+    output: Option<OH>,
 }
 
-struct Pin {
+struct Input {
     node: NH,
     link: Option<LH>,
-    prev: Option<PH>,
-    next: Option<PH>,
+    prev: Option<IH>,
+    next: Option<IH>,
+}
+
+struct Output {
+    node: NH,
+    link: Option<LH>,
+    prev: Option<OH>,
+    next: Option<OH>,
 }
 
 struct Link {
-    start: PH,
-    end: PH,
+    start: OH,
+    end: IH,
     prev: Option<LH>,
     next: Option<LH>,
 }
 
 struct WorkflowGraph {
-    pins: Vec<Pin>,
+    inputs: Vec<Input>,
+    outputs: Vec<Output>,
     links: Vec<Link>,
     nodes: Vec<Node>,
 }
 
 impl WorkflowGraph {
-    pub fn push_node(&mut self, input_handles: &mut [PH], output_handles: &mut [PH]) -> NH {
+    pub fn push_node(&mut self, input_handles: &mut [IH], output_handles: &mut [OH]) -> NH {
         let nh = NH {
             idx: self.nodes.len(),
         };
         // Push the input pins.
         for input_handle in input_handles.iter_mut() {
-            input_handle.idx = self.pins.len();
-            self.pins.push(Pin {
+            input_handle.idx = self.inputs.len();
+            self.inputs.push(Input {
                 node: nh,
                 link: None,
                 prev: None,
@@ -166,12 +180,12 @@ impl WorkflowGraph {
         }
         // Link the consecutive input pins together.
         for [prev, next] in input_handles.array_windows::<2>() {
-            self.set_next_pin(*prev, *next);
+            self.link_consecutive_inputs(*prev, *next);
         }
         // Push output pins.
         for output_handle in output_handles.iter_mut() {
-            output_handle.idx = self.pins.len();
-            self.pins.push(Pin {
+            output_handle.idx = self.outputs.len();
+            self.outputs.push(Output {
                 node: nh,
                 link: None,
                 prev: None,
@@ -180,7 +194,7 @@ impl WorkflowGraph {
         }
         // Link the consecutive output pins together.
         for [prev, next] in output_handles.array_windows::<2>() {
-            self.set_next_pin(*prev, *next);
+            self.link_consecutive_outputs(*prev, *next);
         }
         self.nodes.push(Node {
             input: input_handles.first().copied(),
@@ -189,13 +203,51 @@ impl WorkflowGraph {
         nh
     }
 
-    fn set_next_pin(&mut self, prev: PH, next: PH) {
-        self.pins[prev.idx].next = Some(next);
-        self.pins[next.idx].prev = Some(prev);
+    pub fn push_link(&mut self, from: OH, to: IH) -> Option<LH> {
+        // TODO: Check to see if this link creates a cycle, and return None if it does.
+        // Find the tail of the output's linked list of outgoing links.
+        let mut prev: Option<LH> = None;
+        {
+            let mut tail = &self.outputs[from.idx].link;
+            debug_assert!(
+                match tail {
+                    Some(li) => self.links[li.idx].prev == None,
+                    None => true,
+                },
+                "The first link should not have a previous link. The topology is broken."
+            );
+            while let Some(li) = *tail {
+                prev = Some(li);
+                tail = &self.links[li.idx].next;
+            }
+        }
+        // Push the link first so it exists in the vec before we reference it.
+        let lh = LH {
+            idx: self.links.len(),
+        };
+        self.links.push(Link {
+            start: from,
+            end: to,
+            prev,
+            next: None,
+        });
+        // Connect the link to the input. Inputs only have one incoming link.
+        self.inputs[to.idx].link = Some(lh);
+        // Append to the output's linked list.
+        match prev {
+            Some(p) => self.links[p.idx].next = Some(lh),
+            None => self.outputs[from.idx].link = Some(lh),
+        }
+        Some(lh)
     }
-}
 
-pub struct Workflow {
-    graph: WorkflowGraph,
-    props: (),
+    fn link_consecutive_inputs(&mut self, prev: IH, next: IH) {
+        self.inputs[prev.idx].next = Some(next);
+        self.inputs[next.idx].prev = Some(prev);
+    }
+
+    fn link_consecutive_outputs(&mut self, prev: OH, next: OH) {
+        self.outputs[prev.idx].next = Some(next);
+        self.outputs[next.idx].prev = Some(prev);
+    }
 }
