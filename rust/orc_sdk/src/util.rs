@@ -295,7 +295,7 @@ impl From<&OrcTypeInfo> for TypeInfo {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct FuncInfo {
     pub name: String,
     pub desc: String,
