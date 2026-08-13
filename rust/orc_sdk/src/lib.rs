@@ -23,5 +23,7 @@ pub use util::{
     update_handle_from_deck,
 };
 
+mod dag;
+
 mod host;
 pub use host::{Plugin, PluginSet, TypeOwner, load_plugins};

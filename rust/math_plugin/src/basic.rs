@@ -6,7 +6,6 @@ use std::ops::{Add, Div, Mul, Sub};
 fn add() {
     let host_callbacks = host_callbacks();
     let registry: &ObjectRegistry = registry();
-
     let types = (run::<f64>, run::<i64>);
 
     /// Adds two inputs values, assigns result to the output. This function supports any integer or
@@ -33,7 +32,6 @@ fn add() {
 fn mul() {
     let host_callbacks = host_callbacks();
     let registry: &ObjectRegistry = registry();
-
     let types = (run::<f64>, run::<i64>);
 
     /// Multiplies two inputs values, and assigns the result to the output. This function supports
@@ -60,7 +58,6 @@ fn mul() {
 fn sub() {
     let host_callbacks = host_callbacks();
     let registry: &ObjectRegistry = registry();
-
     let types = (run::<f32>, run::<f64>);
 
     /// Subtracts the second operand from the first, and assigns to the output. The input types must
@@ -77,7 +74,6 @@ fn sub() {
 fn div() {
     let host_callbacks = host_callbacks();
     let registry: &ObjectRegistry = registry();
-
     let types = (run::<f32>, run::<f64>);
 
     /// Divides the first input with the second input, and assign to the output. All inputs must be
@@ -105,7 +101,6 @@ fn pow() {
 fn repeat_list() {
     let host_callbacks = host_callbacks();
     let registry: &ObjectRegistry = registry();
-
     let types = (
         run::<f32>, run::<f64>, run::<u8>, run::<u16>, run::<u32>, run::<u64>, run::<i8>,
         run::<i16>, run::<i32>, run::<i64>,

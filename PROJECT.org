@@ -171,6 +171,41 @@
   Maybe I can write a rasterizer for my curve types, and somehow get the optimizer to export images
   of the sample points in the design space, so that I can visualize them when viewing the DOE.
 
+* TODO Multithreading in a Python host
+  :PROPERTIES:
+  :CREATED:  2026-08-13 Thu 10:06
+  :END:
+
+  Need a proof of concept for a plugin function that uses multiple threads to do some work. It
+  should also be able to check for cancellations, report messages, progress etc. from multiple
+  threads. I was warned about problems with the Python interpreter, something called the GIL getting
+  in my way. Need to navigate these problems, make the necessary design changes, and get it working.
+
+* NEXT tjockq - DAG capability inside Rust SDK
+  :PROPERTIES:
+  :CREATED:  2026-08-12 Wed 16:50
+  :END:
+  :LOGBOOK:
+  - State "NEXT"       from "TODO"       [2026-08-12 Wed 16:50]
+  :END:
+
+  Currently inside kbb_cli_host. But more general DAG capabilities are useful in many plugins and
+  host apps.
+
+  <2026-08-12 Wed 18:33>  Moved the dag helper macro into the SDK. A DAG datastructure inside the
+  SDK will require some more thought. It needs to be a generic graph to allow for cheap and
+  arbitrary edits. A flat tape is not good for arbitrary edits. I want to resurrect the halfedge
+  style graph structure I used in ~galproject~ many years ago.
+
+  The datastructure should have a property system. A node editor might use it to save user assigned
+  aliases / names for nodes. Another UI app might choose to store colors, render settings etc. This
+  information should be stored in the file, as generic properties. The properties that one UI app
+  cares about should not step on the toes of other UI apps. They should coexist with unique property
+  identifiers.
+
+  <2026-08-13 Thu 13:45> Trying to get the current state merged to pivot to a different task. Will
+  return to this task later.
+
 * DONE tjo88p - Don't use build.rs
   CLOSED: [2026-08-12 Wed 16:14]
   :PROPERTIES:
@@ -219,4 +254,3 @@
   <2026-08-12 Wed 14:44> Got this working, and made a few other improvements to both macros. But
   realized this type of macro limits the LSP support when writing the body of the function. So I am
   switching to an attribute macro that works similar to what I have now.
-

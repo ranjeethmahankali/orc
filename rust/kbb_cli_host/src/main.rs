@@ -7,7 +7,7 @@ use orc_sdk::{
     Deck, DeckRegistry, Error, ORC_ABI_VERSION, ORC_ERROR_INVALID_PROXY, ORC_ERROR_NONE,
     ORC_TYPE_F32, ORC_TYPE_F64, ORC_TYPE_I8, ORC_TYPE_I16, ORC_TYPE_I32, ORC_TYPE_I64, ORC_TYPE_U8,
     ORC_TYPE_U16, ORC_TYPE_U32, ORC_TYPE_U64, OrcError, OrcHandle, OrcHost, OrcHostCallbackAPI,
-    OrcHostMemoryAPI, OrcProxyType, PluginSet, ProxyType, TypeOwner, deck, reset_handle,
+    OrcHostMemoryAPI, OrcProxyType, PluginSet, ProxyType, TypeOwner, deck, orc_dag, reset_handle,
     update_handle_from_deck,
 };
 use std::alloc::{Layout, alloc, dealloc};
@@ -222,30 +222,30 @@ fn main() -> Result<(), Error> {
         }
         (a, b, c)
     };
-    let a_plus_b = kbb_dag!(plugin_set, &HANDLE_COUNTER, {
+    let a_plus_b = orc_dag!(plugin_set, &HANDLE_COUNTER, {
         (add a b)
     });
     println!(
         "math_plugin add([1,2,3], [10,20,30]):\n{}",
         a_plus_b.display::<f64>()
     );
-    let len_a = kbb_dag!(plugin_set, &HANDLE_COUNTER, {
+    let len_a = orc_dag!(plugin_set, &HANDLE_COUNTER, {
         (list_length a)
     });
     println!("List length output:\n{}", len_a.display::<u64>());
-    let flat_c = kbb_dag!(plugin_set, &HANDLE_COUNTER, {
+    let flat_c = orc_dag!(plugin_set, &HANDLE_COUNTER, {
         (flatten_deck c)
     });
     println!(
         "flatten_deck([[1,2,3],[4,5]]):\n{}",
         flat_c.display::<f64>()
     );
-    let fmad_abc = kbb_dag!(plugin_set, &HANDLE_COUNTER, {
+    let fmad_abc = orc_dag!(plugin_set, &HANDLE_COUNTER, {
         (let m (mul a b))
         (add m c)
     });
     println!("mul_add_a_b_c:\n{}", fmad_abc.display::<f64>());
-    let complex_result = kbb_dag!(plugin_set, &HANDLE_COUNTER, {
+    let complex_result = orc_dag!(plugin_set, &HANDLE_COUNTER, {
         (let c (create_complex a b))
             (let c2 (create_complex b a))
             (let (real imag) (complex_get_parts (flatten_deck (mul_complex c c2))))
