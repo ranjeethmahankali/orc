@@ -105,3 +105,47 @@ macro_rules! orc_dag {
         compile_error!("orc_dag! requires 3 arguments: orc_dag!(plugin_set, handle_counter, { ... })")
     };
 }
+
+#[repr(transparent)]
+struct PH {
+    idx: usize,
+}
+
+#[repr(transparent)]
+struct LH {
+    idx: usize,
+}
+
+#[repr(transparent)]
+struct NH {
+    idx: usize,
+}
+
+struct Node {
+    input: Option<PH>,
+    output: Option<PH>,
+}
+
+struct Pin {
+    node: NH,
+    link: Option<LH>,
+    prev: Option<PH>,
+    next: Option<PH>,
+}
+
+struct Link {
+    start: PH,
+    end: PH,
+    prev: Option<LH>,
+    next: Option<LH>,
+}
+
+struct DagWorkflow {
+    pins: Vec<Pin>,
+    links: Vec<Link>,
+    nodes: Vec<Node>,
+}
+
+impl DagWorkflow {
+    pub fn push_function(&mut self) {}
+}
