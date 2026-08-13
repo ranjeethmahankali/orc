@@ -106,46 +106,46 @@ macro_rules! orc_dag {
     };
 }
 
-#[repr(transparent)]
-struct PH {
-    idx: usize,
-}
+// #[repr(transparent)]
+// struct PH {
+//     idx: usize,
+// }
 
-#[repr(transparent)]
-struct LH {
-    idx: usize,
-}
+// #[repr(transparent)]
+// struct LH {
+//     idx: usize,
+// }
 
-#[repr(transparent)]
-struct NH {
-    idx: usize,
-}
+// #[repr(transparent)]
+// struct NH {
+//     idx: usize,
+// }
 
-struct Node {
-    input: Option<PH>,
-    output: Option<PH>,
-}
+// struct Node {
+//     input: Option<PH>,
+//     output: Option<PH>,
+// }
 
-struct Pin {
-    node: NH,
-    link: Option<LH>,
-    prev: Option<PH>,
-    next: Option<PH>,
-}
+// struct Pin {
+//     node: NH,
+//     link: Option<LH>,
+//     prev: Option<PH>,
+//     next: Option<PH>,
+// }
 
-struct Link {
-    start: PH,
-    end: PH,
-    prev: Option<LH>,
-    next: Option<LH>,
-}
+// struct Link {
+//     start: PH,
+//     end: PH,
+//     prev: Option<LH>,
+//     next: Option<LH>,
+// }
 
-struct DagWorkflow {
-    pins: Vec<Pin>,
-    links: Vec<Link>,
-    nodes: Vec<Node>,
-}
+// struct DagWorkflow {
+//     pins: Vec<Pin>,
+//     links: Vec<Link>,
+//     nodes: Vec<Node>,
+// }
 
-impl DagWorkflow {
-    pub fn push_function(&mut self) {}
-}
+// impl DagWorkflow {
+//     pub fn push_function(&mut self) {}
+// }
