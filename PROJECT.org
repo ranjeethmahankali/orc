@@ -203,6 +203,9 @@
   cares about should not step on the toes of other UI apps. They should coexist with unique property
   identifiers.
 
+  <2026-08-13 Thu 13:45> Trying to get the current state merged to pivot to a different task. Will
+  return to this task later.
+
 * DONE tjo88p - Don't use build.rs
   CLOSED: [2026-08-12 Wed 16:14]
   :PROPERTIES:
