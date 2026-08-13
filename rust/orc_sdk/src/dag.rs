@@ -156,14 +156,14 @@ struct Link {
     next: Option<LH>,
 }
 
-struct WorkflowGraph {
+pub struct Workflow {
     inputs: Vec<Input>,
     outputs: Vec<Output>,
     links: Vec<Link>,
     nodes: Vec<Node>,
 }
 
-impl WorkflowGraph {
+impl Workflow {
     pub fn push_node(&mut self, input_handles: &mut [IH], output_handles: &mut [OH]) -> NH {
         let nh = NH {
             idx: self.nodes.len(),
