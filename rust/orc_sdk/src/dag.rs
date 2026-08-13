@@ -48,7 +48,7 @@ macro_rules! orc_dag {
     (@stmts $ps:ident, $hc:ident, (let ($($name:ident)+) ($func:ident $($arg:tt)*)) $($rest:tt)*) => {{
         let inputs_ = [$(orc_dag!(@expr $ps, $hc, $arg)),*];
         let func_ = $ps.get_function(stringify!($func))
-            .ok_or($crate::Error::NullPointer)?
+            .ok_or($crate::Error::InvalidFunction)?
             .func
             .ok_or($crate::Error::NullPointer)?;
         const N_OUTS_: u64 = orc_dag!(@count $($name)+) as u64;
@@ -94,7 +94,7 @@ macro_rules! orc_dag {
         let mut out_: OrcHandle = OrcHandle::default();
         out_.handle = $hc.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let func_ = $ps.get_function(stringify!($func))
-            .ok_or($crate::Error::NullPointer)?
+            .ok_or($crate::Error::InvalidFunction)?
             .func
             .ok_or($crate::Error::NullPointer)?;
         unsafe {
