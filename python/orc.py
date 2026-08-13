@@ -33,17 +33,22 @@ _alloc_registry = {}
 
 @OrcAllocFn
 def host_alloc(size, alignment):
-    """Allocate a buffer and keep it alive until host_dealloc is called."""
-    buf = (ctypes.c_uint8 * size)()
-    ptr = ctypes.addressof(buf)
-    _alloc_registry[ptr] = buf
-    return ptr
+    """Allocate an aligned buffer and keep it alive until host_dealloc is called."""
+    total = size + alignment - 1 + 8
+    buf = (ctypes.c_uint8 * total)()
+    raw = ctypes.addressof(buf)
+    aligned = (raw + 8 + alignment - 1) & ~(alignment - 1)
+    # Store original address just before the aligned region for dealloc lookup.
+    ctypes.cast(aligned - 8, ctypes.POINTER(ctypes.c_uint64))[0] = raw
+    _alloc_registry[raw] = buf
+    return aligned
 
 
 @OrcDeallocFn
 def host_dealloc(ptr, size, alignment):
-    """Release a previously allocated buffer."""
-    _alloc_registry.pop(ptr, None)
+    """Release a previously allocated aligned buffer."""
+    raw = ctypes.cast(ptr - 8, ctypes.POINTER(ctypes.c_uint64))[0]
+    _alloc_registry.pop(raw, None)
 
 
 @OrcReportMessageFn
@@ -163,7 +168,6 @@ def default_host(use_custom_allocator=False):
     host = OrcHost()
     host.abi_version = ORC_ABI_VERSION
     if use_custom_allocator: # This should be used only for debugging. Lower level code in the DLL probably has a better allocator.
-        # In particular, If the DLL is using Rust's rayon crate for parallelism, it is incompatible with Python's allocator.
         host.memory_api.alloc = host_alloc
         host.memory_api.dealloc = host_dealloc
     host.callbacks.report_message = report_message
