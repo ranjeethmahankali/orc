@@ -106,46 +106,96 @@ macro_rules! orc_dag {
     };
 }
 
-// #[repr(transparent)]
-// struct PH {
-//     idx: usize,
-// }
+#[repr(transparent)]
+#[derive(Copy, Clone, Eq, PartialEq)]
+struct PH {
+    idx: usize,
+}
 
-// #[repr(transparent)]
-// struct LH {
-//     idx: usize,
-// }
+#[repr(transparent)]
+#[derive(Copy, Clone, Eq, PartialEq)]
+struct LH {
+    idx: usize,
+}
 
-// #[repr(transparent)]
-// struct NH {
-//     idx: usize,
-// }
+#[repr(transparent)]
+#[derive(Copy, Clone, Eq, PartialEq)]
+struct NH {
+    idx: usize,
+}
 
-// struct Node {
-//     input: Option<PH>,
-//     output: Option<PH>,
-// }
+struct Node {
+    input: Option<PH>,
+    output: Option<PH>,
+}
 
-// struct Pin {
-//     node: NH,
-//     link: Option<LH>,
-//     prev: Option<PH>,
-//     next: Option<PH>,
-// }
+struct Pin {
+    node: NH,
+    link: Option<LH>,
+    prev: Option<PH>,
+    next: Option<PH>,
+}
 
-// struct Link {
-//     start: PH,
-//     end: PH,
-//     prev: Option<LH>,
-//     next: Option<LH>,
-// }
+struct Link {
+    start: PH,
+    end: PH,
+    prev: Option<LH>,
+    next: Option<LH>,
+}
 
-// struct DagWorkflow {
-//     pins: Vec<Pin>,
-//     links: Vec<Link>,
-//     nodes: Vec<Node>,
-// }
+struct WorkflowGraph {
+    pins: Vec<Pin>,
+    links: Vec<Link>,
+    nodes: Vec<Node>,
+}
 
-// impl DagWorkflow {
-//     pub fn push_function(&mut self) {}
-// }
+impl WorkflowGraph {
+    pub fn push_node(&mut self, input_handles: &mut [PH], output_handles: &mut [PH]) -> NH {
+        let nh = NH {
+            idx: self.nodes.len(),
+        };
+        // Push the input pins.
+        for input_handle in input_handles.iter_mut() {
+            input_handle.idx = self.pins.len();
+            self.pins.push(Pin {
+                node: nh,
+                link: None,
+                prev: None,
+                next: None,
+            });
+        }
+        // Link the consecutive input pins together.
+        for [prev, next] in input_handles.array_windows::<2>() {
+            self.set_next_pin(*prev, *next);
+        }
+        // Push output pins.
+        for output_handle in output_handles.iter_mut() {
+            output_handle.idx = self.pins.len();
+            self.pins.push(Pin {
+                node: nh,
+                link: None,
+                prev: None,
+                next: None,
+            });
+        }
+        // Link the consecutive output pins together.
+        for [prev, next] in output_handles.array_windows::<2>() {
+            self.set_next_pin(*prev, *next);
+        }
+        self.nodes.push(Node {
+            input: input_handles.first().copied(),
+            output: output_handles.first().copied(),
+        });
+        nh
+    }
+
+    pub fn set_next_pin(&mut self, prev: PH, next: PH) {
+        self.pins[prev.idx].next = Some(next);
+        self.pins[next.idx].prev = Some(prev);
+    }
+}
+
+pub struct Workflow {
+    graph: WorkflowGraph,
+    props: (),
+}
