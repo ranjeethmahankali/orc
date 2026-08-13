@@ -158,12 +158,14 @@ def host_create_proxy_deck(inputs_ptr, n_inputs, proxy_type, proxy_ptr, out_ptr)
     return ORC_ERROR_NONE
 
 
-def default_host():
+def default_host(use_custom_allocator=False):
     """Create an OrcHost with default memory and message callbacks."""
     host = OrcHost()
     host.abi_version = ORC_ABI_VERSION
-    host.memory_api.alloc = host_alloc
-    host.memory_api.dealloc = host_dealloc
+    if use_custom_allocator: # This should be used only for debugging. Lower level code in the DLL probably has a better allocator.
+        # In particular, If the DLL is using Rust's rayon crate for parallelism, it is incompatible with Python's allocator.
+        host.memory_api.alloc = host_alloc
+        host.memory_api.dealloc = host_dealloc
     host.callbacks.report_message = report_message
     host.create_deck_from_proxy = host_create_proxy_deck
     return host

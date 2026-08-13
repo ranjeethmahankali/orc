@@ -8,3 +8,4 @@ crate-type = ["cdylib"]
 
 [dependencies]
 orc_sdk = { path = "../orc_sdk", features = ["derive"] }
+rayon = "1.12"

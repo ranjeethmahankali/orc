@@ -861,6 +861,14 @@ where
         // SAFETY: We just pushed an element to his index.
         unsafe { self.deck.items.get_unchecked_mut(i) }
     }
+
+    pub fn push_default_mut_many(&mut self, n_items: usize) -> &mut [T] {
+        let start = self.deck.items.len();
+        for _ in 0..n_items {
+            self.push(T::default());
+        }
+        &mut self.deck.items[start..]
+    }
 }
 
 /**
