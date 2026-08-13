@@ -227,6 +227,7 @@ typedef struct
 #define ORC_ERROR_ALLOC_FAILED 0xff0bu
 #define ORC_ERROR_NULL_PTR 0xff0cu
 #define ORC_ERROR_MISSING_CAPABILITY 0xff0du
+#define ORC_ERROR_INVALID_FUNCTION 0xff0eu
 #define ORC_ERROR_UNKNOWN 0xffffu
 
 /**

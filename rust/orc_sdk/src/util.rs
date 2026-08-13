@@ -295,17 +295,19 @@ impl From<&OrcTypeInfo> for TypeInfo {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct FuncInfo {
     pub name: String,
     pub desc: String,
-    pub func: unsafe extern "C" fn(
-        ctx: u64,
-        inputs: *const OrcHandle,
-        n_inputs: u64,
-        outputs: *mut OrcHandle,
-        n_outputs: u64,
-    ),
+    pub func: Option<
+        unsafe extern "C" fn(
+            ctx: u64,
+            inputs: *const OrcHandle,
+            n_inputs: u64,
+            outputs: *mut OrcHandle,
+            n_outputs: u64,
+        ),
+    >,
 }
 
 impl From<&OrcFuncInfo> for FuncInfo {
@@ -313,7 +315,7 @@ impl From<&OrcFuncInfo> for FuncInfo {
         Self {
             name: string_from_ffi(info.name.cast()),
             desc: string_from_ffi(info.desc.cast()),
-            func: info.func.expect("NULL function pointer"),
+            func: info.func,
         }
     }
 }
