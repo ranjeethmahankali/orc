@@ -51,7 +51,7 @@ def report_message(ctx, level, msg):
     """Print a plugin message to stdout with its severity level."""
     level_names = {1: "DEBUG", 2: "INFO", 3: "WARN", 4: "ERROR", 5: "FATAL"}
     text = msg.decode("utf-8", errors="replace") if msg else ""
-    print(f"[{level_names.get(level, 'UNKNOWN')}][{ctx}] {text}")
+    print(f"[{level_names.get(level, 'UNKNOWN')}][{ctx}] {text}", flush=True)
 
 
 _proxy_deck_registry = {}  # handle_id -> tuple of backing ctypes objects
