@@ -434,7 +434,7 @@ def _is_plugin(path):
     return True
 
 
-def load_plugins(search_dir, verbose=False):
+def load_plugins(search_dir, verbose=False, use_custom_allocator=False):
     """Load all compatible plugin shared libraries from search_dir.
 
     Returns a list of (lib, OrcPlugin) tuples.

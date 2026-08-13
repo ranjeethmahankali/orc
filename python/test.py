@@ -749,7 +749,7 @@ def t_complex_flatten():
 
 if __name__ == "__main__":
     # by convention all tests start with _t
-    orc.load_plugins(search_dir)
+    orc.load_plugins(search_dir, use_custom_allocator=True)
     tests = [(name, fn) for name, fn in globals().items()
              if name.startswith("t_") and callable(fn)]
     tests.sort(key=lambda x: x[0])
