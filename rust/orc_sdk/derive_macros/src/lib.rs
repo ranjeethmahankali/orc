@@ -751,10 +751,37 @@ fn generate_dispatch_fn(
     } else {
         quote! {}
     };
+    let run_turbofish = {
+        let args: Vec<proc_macro2::TokenStream> = run_fn
+            .sig
+            .generics
+            .params
+            .iter()
+            .map(|p| match p {
+                syn::GenericParam::Type(tp) => {
+                    let ident = &tp.ident;
+                    quote! { #ident }
+                }
+                syn::GenericParam::Const(cp) => {
+                    let ident = &cp.ident;
+                    quote! { #ident }
+                }
+                syn::GenericParam::Lifetime(lp) => {
+                    let lifetime = &lp.lifetime;
+                    quote! { #lifetime }
+                }
+            })
+            .collect();
+        if args.is_empty() {
+            quote! {}
+        } else {
+            quote! { ::<#(#args),*> }
+        }
+    };
     let run_call = if run_returns_result {
-        quote! { run(#host_arg #(#in_call_args,)* #(#out_call_args),*)?; }
+        quote! { run #run_turbofish (#host_arg #(#in_call_args,)* #(#out_call_args),*)?; }
     } else {
-        quote! { run(#host_arg #(#in_call_args,)* #(#out_call_args),*); }
+        quote! { run #run_turbofish (#host_arg #(#in_call_args,)* #(#out_call_args),*); }
     };
     quote! {
         fn dispatch_ #run_generics (
