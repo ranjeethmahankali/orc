@@ -210,22 +210,6 @@ impl<H> PropertyContainer<H>
 where
     H: Handle,
 {
-    pub fn new_with_size(length: usize) -> Self {
-        PropertyContainer {
-            props: Vec::new(),
-            length,
-            _phantom: PhantomData,
-        }
-    }
-
-    pub fn new() -> Self {
-        PropertyContainer {
-            props: Vec::new(),
-            length: 0,
-            _phantom: PhantomData,
-        }
-    }
-
     fn push_property(&mut self, prop: Box<dyn GenericProperty<H>>) {
         self.props.push(prop);
     }
@@ -237,14 +221,6 @@ where
         for prop in self.props.iter_mut() {
             prop.reserve(n)?;
         }
-        Ok(())
-    }
-
-    pub fn resize(&mut self, n: usize) -> Result<(), DagError> {
-        for prop in self.props.iter_mut() {
-            prop.resize(n)?;
-        }
-        self.length = n;
         Ok(())
     }
 
@@ -725,6 +701,7 @@ where
 struct Node {
     input: Option<IH>,
     output: Option<OH>,
+    deleted: bool,
 }
 
 struct Input {
@@ -732,6 +709,7 @@ struct Input {
     link: Option<LH>,
     prev: Option<IH>,
     next: Option<IH>,
+    deleted: bool,
 }
 
 struct Output {
@@ -739,6 +717,7 @@ struct Output {
     link: Option<LH>,
     prev: Option<OH>,
     next: Option<OH>,
+    deleted: bool,
 }
 
 struct Link {
@@ -746,6 +725,7 @@ struct Link {
     end: IH,
     prev: Option<LH>,
     next: Option<LH>,
+    deleted: bool,
 }
 
 #[derive(Debug)]
@@ -761,7 +741,7 @@ struct Graph {
     outputs: Vec<Output>,
     links: Vec<Link>,
     nodes: Vec<Node>,
-    // Properties.
+    // Property containers.
     node_props: PropertyContainer<NH>,
     link_props: PropertyContainer<LH>,
     input_props: PropertyContainer<IH>,
@@ -780,11 +760,12 @@ impl Graph {
         // Push the input pins.
         for input_handle in input_handles.iter_mut() {
             input_handle.idx = self.inputs.len();
-            self.inputs.push(Input {
+            self.push_input_impl(Input {
                 node: nh,
                 link: None,
                 prev: None,
                 next: None,
+                deleted: false,
             });
         }
         // Link the consecutive input pins together.
@@ -794,11 +775,12 @@ impl Graph {
         // Push output pins.
         for output_handle in output_handles.iter_mut() {
             output_handle.idx = self.outputs.len();
-            self.outputs.push(Output {
+            self.push_output_impl(Output {
                 node: nh,
                 link: None,
                 prev: None,
                 next: None,
+                deleted: false,
             });
         }
         // Link the consecutive output pins together.
@@ -808,8 +790,19 @@ impl Graph {
         self.push_node_impl(Node {
             input: input_handles.first().copied(),
             output: output_handles.first().copied(),
+            deleted: false,
         })
         .map(|()| nh)
+    }
+
+    fn push_input_impl(&mut self, input: Input) -> Result<(), DagError> {
+        self.inputs.push(input);
+        self.input_props.push_value()
+    }
+
+    fn push_output_impl(&mut self, output: Output) -> Result<(), DagError> {
+        self.outputs.push(output);
+        self.output_props.push_value()
     }
 
     fn push_node_impl(&mut self, node: Node) -> Result<(), DagError> {
@@ -842,6 +835,7 @@ impl Graph {
             end: to,
             prev,
             next: None,
+            deleted: false,
         })?;
         // Connect the link to the input. Inputs only have one incoming link.
         self.inputs[to.idx].link = Some(lh);
@@ -895,6 +889,38 @@ impl Graph {
         self.outputs[prev.idx].next = Some(next);
         self.outputs[next.idx].prev = Some(prev);
     }
+
+    fn reserve(
+        &mut self,
+        n_inputs: usize,
+        n_outputs: usize,
+        n_links: usize,
+        n_nodes: usize,
+    ) -> Result<(), DagError> {
+        self.inputs.reserve(n_inputs);
+        self.outputs.reserve(n_outputs);
+        self.links.reserve(n_links);
+        self.nodes.reserve(n_nodes);
+        // Also reserve the property containers.
+        self.input_props.reserve(n_inputs)?;
+        self.output_props.reserve(n_outputs)?;
+        self.link_props.reserve(n_links)?;
+        self.node_props.reserve(n_nodes)?;
+        Ok(())
+    }
+
+    fn clear(&mut self) -> Result<(), DagError> {
+        self.inputs.clear();
+        self.outputs.clear();
+        self.links.clear();
+        self.nodes.clear();
+        // Also clear the property containers.
+        self.input_props.clear()?;
+        self.output_props.clear()?;
+        self.link_props.clear()?;
+        self.node_props.clear()?;
+        Ok(())
+    }
 }
 
 pub struct Workflow {
@@ -926,6 +952,20 @@ impl Workflow {
             node_infos[n] = info;
         }
         Ok(n)
+    }
+
+    pub fn reserve(
+        &mut self,
+        n_inputs: usize,
+        n_outputs: usize,
+        n_links: usize,
+        n_nodes: usize,
+    ) -> Result<(), DagError> {
+        self.graph.reserve(n_inputs, n_outputs, n_links, n_nodes)
+    }
+
+    pub fn clear(&mut self) -> Result<(), DagError> {
+        self.graph.clear()
     }
 
     pub fn create_input_property<T>(&mut self, default: T) -> InputProperty<T>
