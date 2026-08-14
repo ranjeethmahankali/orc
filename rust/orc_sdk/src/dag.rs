@@ -5,7 +5,7 @@ use std::{
     rc::{Rc, Weak},
 };
 
-use crate::{FuncInfo, PluginSet};
+use crate::FuncInfo;
 
 /// Declarative macro for composing a DAG of plugin function calls.
 ///
@@ -126,25 +126,25 @@ pub trait Handle: From<usize> + Copy + Clone + 'static {
 
 #[repr(transparent)]
 #[derive(Copy, Clone, Eq, PartialEq, Default)]
-struct IH {
+pub struct IH {
     idx: usize,
 }
 
 #[repr(transparent)]
 #[derive(Copy, Clone, Eq, PartialEq, Default)]
-struct OH {
+pub struct OH {
     idx: usize,
 }
 
 #[repr(transparent)]
 #[derive(Copy, Clone, Eq, PartialEq, Default)]
-struct LH {
+pub struct LH {
     idx: usize,
 }
 
 #[repr(transparent)]
 #[derive(Copy, Clone, Eq, PartialEq, Default)]
-struct NH {
+pub struct NH {
     idx: usize,
 }
 
@@ -752,6 +752,7 @@ struct Link {
 pub enum DagError {
     BorrowedPropertyAccess,
     MismatchedArrayLengths(usize, usize),
+    CycleDetected,
 }
 
 #[derive(Default)]
@@ -768,7 +769,11 @@ struct Graph {
 }
 
 impl Graph {
-    pub fn push_node(&mut self, input_handles: &mut [IH], output_handles: &mut [OH]) -> NH {
+    pub fn push_node(
+        &mut self,
+        input_handles: &mut [IH],
+        output_handles: &mut [OH],
+    ) -> Result<NH, DagError> {
         let nh = NH {
             idx: self.nodes.len(),
         };
@@ -800,16 +805,19 @@ impl Graph {
         for [prev, next] in output_handles.array_windows::<2>() {
             self.link_consecutive_outputs(*prev, *next);
         }
-        self.nodes.push(Node {
+        self.push_node_impl(Node {
             input: input_handles.first().copied(),
             output: output_handles.first().copied(),
-        });
-        nh
+        })
+        .map(|()| nh)
     }
 
-    pub fn push_link(&mut self, from: OH, to: IH) -> Option<LH> {
-        // TODO: Check to see if this link creates a cycle, and return None if it does.
-        // Find the tail of the output's linked list of outgoing links.
+    fn push_node_impl(&mut self, node: Node) -> Result<(), DagError> {
+        self.nodes.push(node);
+        self.node_props.push_value()
+    }
+
+    pub fn push_link(&mut self, from: OH, to: IH) -> Result<LH, DagError> {
         let mut prev: Option<LH> = None;
         {
             let mut tail = &self.outputs[from.idx].link;
@@ -829,12 +837,12 @@ impl Graph {
         let lh = LH {
             idx: self.links.len(),
         };
-        self.links.push(Link {
+        self.push_link_impl(Link {
             start: from,
             end: to,
             prev,
             next: None,
-        });
+        })?;
         // Connect the link to the input. Inputs only have one incoming link.
         self.inputs[to.idx].link = Some(lh);
         // Append to the output's linked list.
@@ -842,7 +850,12 @@ impl Graph {
             Some(p) => self.links[p.idx].next = Some(lh),
             None => self.outputs[from.idx].link = Some(lh),
         }
-        Some(lh)
+        Ok(lh)
+    }
+
+    fn push_link_impl(&mut self, link: Link) -> Result<(), DagError> {
+        self.links.push(link);
+        self.link_props.push_value()
     }
 
     pub fn create_input_property<T>(&mut self, default: T) -> InputProperty<T>
@@ -898,5 +911,48 @@ impl Default for Workflow {
 }
 
 impl Workflow {
-    pub fn add_node(&mut self, fn_name: &str, plugin_set: &PluginSet) {}
+    pub fn add_node(
+        &mut self,
+        info: FuncInfo,
+        input_handles: &mut [IH],
+        output_handles: &mut [OH],
+    ) -> Result<NH, DagError> {
+        let n = self.graph.push_node(input_handles, output_handles)?;
+        {
+            let mut node_infos = self
+                .node_infos
+                .try_borrow_mut()
+                .map_err(|_e| DagError::BorrowedPropertyAccess)?;
+            node_infos[n] = info;
+        }
+        Ok(n)
+    }
+
+    pub fn create_input_property<T>(&mut self, default: T) -> InputProperty<T>
+    where
+        T: Clone + 'static,
+    {
+        self.graph.create_input_property(default)
+    }
+
+    pub fn create_output_property<T>(&mut self, default: T) -> OutputProperty<T>
+    where
+        T: Clone + 'static,
+    {
+        self.graph.create_output_property(default)
+    }
+
+    pub fn create_link_property<T>(&mut self, default: T) -> LinkProperty<T>
+    where
+        T: Clone + 'static,
+    {
+        self.graph.create_link_property(default)
+    }
+
+    pub fn create_node_property<T>(&mut self, default: T) -> NodeProperty<T>
+    where
+        T: Clone + 'static,
+    {
+        self.graph.create_node_property(default)
+    }
 }
