@@ -171,6 +171,42 @@
   Maybe I can write a rasterizer for my curve types, and somehow get the optimizer to export images
   of the sample points in the design space, so that I can visualize them when viewing the DOE.
 
+* NEXT tjockq - DAG capability inside Rust SDK
+  :PROPERTIES:
+  :CREATED:  2026-08-12 Wed 16:50
+  :END:
+  :LOGBOOK:
+  - State "NEXT"       from "TODO"       [2026-08-12 Wed 16:50]
+  :END:
+
+  Currently inside kbb_cli_host. But more general DAG capabilities are useful in many plugins and
+  host apps.
+
+  <2026-08-12 Wed 18:33>  Moved the dag helper macro into the SDK. A DAG datastructure inside the
+  SDK will require some more thought. It needs to be a generic graph to allow for cheap and
+  arbitrary edits. A flat tape is not good for arbitrary edits. I want to resurrect the halfedge
+  style graph structure I used in ~galproject~ many years ago.
+
+  The datastructure should have a property system. A node editor might use it to save user assigned
+  aliases / names for nodes. Another UI app might choose to store colors, render settings etc. This
+  information should be stored in the file, as generic properties. The properties that one UI app
+  cares about should not step on the toes of other UI apps. They should coexist with unique property
+  identifiers.
+
+  <2026-08-13 Thu 13:45> Trying to get the current state merged to pivot to a different task. Will
+  return to this task later.
+
+  <2026-08-13 Thu 19:26> Added a lot of untesed, unused boiler plate. The property system stuff is
+  copied over from the alum project, with slight changes. Don't yet know what the outward facing API
+  of a workflow will be. I need to think about how this will be used, and come up with something.
+
+** TODO Check for cycles when adding new links
+   :PROPERTIES:
+   :CREATED:  2026-08-13 Thu 17:07
+   :END:
+
+   The check should go [[file:rust/orc_sdk/src/dag.rs::pub fn push_link(&mut self, from: OH, to: IH) -> Option<LH> {][here]].
+
 * DONE tjrpd8 - Support const generics in orc_fn macro
   CLOSED: [2026-08-14 Fri 12:25]
   :PROPERTIES:
@@ -234,42 +270,6 @@
     corrupting the data.
 
   Read to merge.
-
-* NEXT tjockq - DAG capability inside Rust SDK
-  :PROPERTIES:
-  :CREATED:  2026-08-12 Wed 16:50
-  :END:
-  :LOGBOOK:
-  - State "NEXT"       from "TODO"       [2026-08-12 Wed 16:50]
-  :END:
-
-  Currently inside kbb_cli_host. But more general DAG capabilities are useful in many plugins and
-  host apps.
-
-  <2026-08-12 Wed 18:33>  Moved the dag helper macro into the SDK. A DAG datastructure inside the
-  SDK will require some more thought. It needs to be a generic graph to allow for cheap and
-  arbitrary edits. A flat tape is not good for arbitrary edits. I want to resurrect the halfedge
-  style graph structure I used in ~galproject~ many years ago.
-
-  The datastructure should have a property system. A node editor might use it to save user assigned
-  aliases / names for nodes. Another UI app might choose to store colors, render settings etc. This
-  information should be stored in the file, as generic properties. The properties that one UI app
-  cares about should not step on the toes of other UI apps. They should coexist with unique property
-  identifiers.
-
-  <2026-08-13 Thu 13:45> Trying to get the current state merged to pivot to a different task. Will
-  return to this task later.
-
-  <2026-08-13 Thu 19:26> Added a lot of untesed, unused boiler plate. The property system stuff is
-  copied over from the alum project, with slight changes. Don't yet know what the outward facing API
-  of a workflow will be. I need to think about how this will be used, and come up with something.
-
-* TODO Check for cycles when adding new links
-  :PROPERTIES:
-  :CREATED:  2026-08-13 Thu 17:07
-  :END:
-
-  The check should go [[file:rust/orc_sdk/src/dag.rs::pub fn push_link(&mut self, from: OH, to: IH) -> Option<LH> {][here]].
 
 * DONE tjpyye - Multithreading in a Python host
   CLOSED: [2026-08-13 Thu 15:28]
