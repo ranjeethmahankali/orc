@@ -1,8 +1,8 @@
 use crate::{
     Deck, DeckView, Error, ORC_MSG_LEVEL_DEBUG, ORC_MSG_LEVEL_ERROR, ORC_MSG_LEVEL_FATAL,
     ORC_MSG_LEVEL_INFO, ORC_MSG_LEVEL_WARN, ORC_NUM_DIMS, OrcFuncInfo, OrcHandle, OrcHost,
-    OrcHostCallbackAPI, OrcItemProxy, OrcTypeId, OrcTypeInfo, ProxyType, deck::fmt_raw_deck,
-    ffi::TOrcData,
+    OrcHostCallbackAPI, OrcItemProxy, OrcPluginFunction, OrcTypeId, OrcTypeInfo, ProxyType,
+    deck::fmt_raw_deck, ffi::TOrcData,
 };
 use std::{
     alloc::{GlobalAlloc, Layout, System},
@@ -299,15 +299,7 @@ impl From<&OrcTypeInfo> for TypeInfo {
 pub struct FuncInfo {
     pub name: String,
     pub desc: String,
-    pub func: Option<
-        unsafe extern "C" fn(
-            ctx: u64,
-            inputs: *const OrcHandle,
-            n_inputs: u64,
-            outputs: *mut OrcHandle,
-            n_outputs: u64,
-        ),
-    >,
+    pub func: OrcPluginFunction,
 }
 
 impl From<&OrcFuncInfo> for FuncInfo {
