@@ -15,6 +15,7 @@ pub enum Error {
     AllocFailed,
     NullPointer,
     MissingCapability,
+    InvalidFunction,
     Unknown,
 }
 
@@ -35,6 +36,7 @@ impl Error {
             crate::ORC_ERROR_ALLOC_FAILED => Err(Error::AllocFailed),
             crate::ORC_ERROR_NULL_PTR => Err(Error::NullPointer),
             crate::ORC_ERROR_MISSING_CAPABILITY => Err(Error::MissingCapability),
+            crate::ORC_ERROR_INVALID_FUNCTION => Err(Error::InvalidFunction),
             _ => Err(Error::Unknown),
         }
     }
@@ -56,6 +58,10 @@ impl std::fmt::Display for Error {
             Error::AllocFailed => write!(f, "Memory allocation failed"),
             Error::NullPointer => write!(f, "Null pointer"),
             Error::MissingCapability => write!(f, "This capability is missing / not implemented"),
+            Error::InvalidFunction => write!(
+                f,
+                "The function is not valid, or not properly loaded from a plugin."
+            ),
             Error::Unknown => write!(f, "Unknown error"),
         }
     }
@@ -79,6 +85,7 @@ impl From<Error> for OrcError {
             Error::AllocFailed => crate::ORC_ERROR_ALLOC_FAILED,
             Error::NullPointer => crate::ORC_ERROR_NULL_PTR,
             Error::MissingCapability => crate::ORC_ERROR_MISSING_CAPABILITY,
+            Error::InvalidFunction => crate::ORC_ERROR_INVALID_FUNCTION,
             Error::Unknown => crate::ORC_ERROR_UNKNOWN,
         }
     }

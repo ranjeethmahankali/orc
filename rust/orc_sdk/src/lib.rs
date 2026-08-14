@@ -24,6 +24,7 @@ pub use util::{
 };
 
 mod dag;
+pub use dag::Workflow;
 
 mod host;
 pub use host::{Plugin, PluginSet, TypeOwner, load_plugins};

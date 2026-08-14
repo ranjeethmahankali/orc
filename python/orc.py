@@ -33,17 +33,22 @@ _alloc_registry = {}
 
 @OrcAllocFn
 def host_alloc(size, alignment):
-    """Allocate a buffer and keep it alive until host_dealloc is called."""
-    buf = (ctypes.c_uint8 * size)()
-    ptr = ctypes.addressof(buf)
-    _alloc_registry[ptr] = buf
-    return ptr
+    """Allocate an aligned buffer and keep it alive until host_dealloc is called."""
+    total = size + alignment - 1 + 8
+    buf = (ctypes.c_uint8 * total)()
+    raw = ctypes.addressof(buf)
+    aligned = (raw + 8 + alignment - 1) & ~(alignment - 1)
+    # Store original address just before the aligned region for dealloc lookup.
+    ctypes.cast(aligned - 8, ctypes.POINTER(ctypes.c_uint64))[0] = raw
+    _alloc_registry[raw] = buf
+    return aligned
 
 
 @OrcDeallocFn
 def host_dealloc(ptr, size, alignment):
-    """Release a previously allocated buffer."""
-    _alloc_registry.pop(ptr, None)
+    """Release a previously allocated aligned buffer."""
+    raw = ctypes.cast(ptr - 8, ctypes.POINTER(ctypes.c_uint64))[0]
+    _alloc_registry.pop(raw, None)
 
 
 @OrcReportMessageFn
@@ -51,7 +56,7 @@ def report_message(ctx, level, msg):
     """Print a plugin message to stdout with its severity level."""
     level_names = {1: "DEBUG", 2: "INFO", 3: "WARN", 4: "ERROR", 5: "FATAL"}
     text = msg.decode("utf-8", errors="replace") if msg else ""
-    print(f"[{level_names.get(level, 'UNKNOWN')}][{ctx}] {text}")
+    print(f"[{level_names.get(level, 'UNKNOWN')}][{ctx}] {text}", flush=True)
 
 
 _proxy_deck_registry = {}  # handle_id -> tuple of backing ctypes objects
@@ -158,12 +163,13 @@ def host_create_proxy_deck(inputs_ptr, n_inputs, proxy_type, proxy_ptr, out_ptr)
     return ORC_ERROR_NONE
 
 
-def default_host():
+def default_host(use_custom_allocator=False):
     """Create an OrcHost with default memory and message callbacks."""
     host = OrcHost()
     host.abi_version = ORC_ABI_VERSION
-    host.memory_api.alloc = host_alloc
-    host.memory_api.dealloc = host_dealloc
+    if use_custom_allocator: # This should be used only for debugging. Lower level code in the DLL probably has a better allocator.
+        host.memory_api.alloc = host_alloc
+        host.memory_api.dealloc = host_dealloc
     host.callbacks.report_message = report_message
     host.create_deck_from_proxy = host_create_proxy_deck
     return host
@@ -428,7 +434,7 @@ def _is_plugin(path):
     return True
 
 
-def load_plugins(search_dir, verbose=False):
+def load_plugins(search_dir, verbose=False, use_custom_allocator=False):
     """Load all compatible plugin shared libraries from search_dir.
 
     Returns a list of (lib, OrcPlugin) tuples.

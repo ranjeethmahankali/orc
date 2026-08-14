@@ -224,18 +224,18 @@ fn main() -> Result<(), Error> {
     };
     let a_plus_b = orc_dag!(plugin_set, &HANDLE_COUNTER, {
         (add a b)
-    });
+    })?;
     println!(
         "math_plugin add([1,2,3], [10,20,30]):\n{}",
         a_plus_b.display::<f64>()
     );
     let len_a = orc_dag!(plugin_set, &HANDLE_COUNTER, {
         (list_length a)
-    });
+    })?;
     println!("List length output:\n{}", len_a.display::<u64>());
     let flat_c = orc_dag!(plugin_set, &HANDLE_COUNTER, {
         (flatten_deck c)
-    });
+    })?;
     println!(
         "flatten_deck([[1,2,3],[4,5]]):\n{}",
         flat_c.display::<f64>()
@@ -243,14 +243,14 @@ fn main() -> Result<(), Error> {
     let fmad_abc = orc_dag!(plugin_set, &HANDLE_COUNTER, {
         (let m (mul a b))
         (add m c)
-    });
+    })?;
     println!("mul_add_a_b_c:\n{}", fmad_abc.display::<f64>());
     let complex_result = orc_dag!(plugin_set, &HANDLE_COUNTER, {
         (let c (create_complex a b))
             (let c2 (create_complex b a))
             (let (real imag) (complex_get_parts (flatten_deck (mul_complex c c2))))
             (add real imag)
-    });
+    })?;
     println!("complex_resunt:\n{}", complex_result.display::<f64>());
     Ok(())
 }

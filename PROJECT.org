@@ -171,16 +171,6 @@
   Maybe I can write a rasterizer for my curve types, and somehow get the optimizer to export images
   of the sample points in the design space, so that I can visualize them when viewing the DOE.
 
-* TODO Multithreading in a Python host
-  :PROPERTIES:
-  :CREATED:  2026-08-13 Thu 10:06
-  :END:
-
-  Need a proof of concept for a plugin function that uses multiple threads to do some work. It
-  should also be able to check for cancellations, report messages, progress etc. from multiple
-  threads. I was warned about problems with the Python interpreter, something called the GIL getting
-  in my way. Need to navigate these problems, make the necessary design changes, and get it working.
-
 * NEXT tjockq - DAG capability inside Rust SDK
   :PROPERTIES:
   :CREATED:  2026-08-12 Wed 16:50
@@ -202,6 +192,44 @@
   information should be stored in the file, as generic properties. The properties that one UI app
   cares about should not step on the toes of other UI apps. They should coexist with unique property
   identifiers.
+
+  <2026-08-13 Thu 13:45> Trying to get the current state merged to pivot to a different task. Will
+  return to this task later.
+
+  <2026-08-13 Thu 19:26> Added a lot of untesed, unused boiler plate. The property system stuff is
+  copied over from the alum project, with slight changes. Don't yet know what the outward facing API
+  of a workflow will be. I need to think about how this will be used, and come up with something.
+
+* TODO Check for cycles when adding new links
+  :PROPERTIES:
+  :CREATED:  2026-08-13 Thu 17:07
+  :END:
+
+  The check should go [[file:rust/orc_sdk/src/dag.rs::pub fn push_link(&mut self, from: OH, to: IH) -> Option<LH> {][here]].
+
+* DONE tjpyye - Multithreading in a Python host
+  CLOSED: [2026-08-13 Thu 15:28]
+  :PROPERTIES:
+  :CREATED:  2026-08-13 Thu 10:06
+  :END:
+  :LOGBOOK:
+  - State "DONE"       from "NEXT"       [2026-08-13 Thu 15:28]
+  - State "NEXT"       from "TODO"       [2026-08-13 Thu 13:53]
+  :END:
+
+  Need a proof of concept for a plugin function that uses multiple threads to do some work. It
+  should also be able to check for cancellations, report messages, progress etc. from multiple
+  threads. I was warned about problems with the Python interpreter, something called the GIL getting
+  in my way. Need to navigate these problems, make the necessary design changes, and get it working.
+
+  <2026-08-13 Thu 15:26> Works well. Had to overcome two minor issues:
+  - The Python allocator was not respecting the requested alignment. Rayon wasn't happy with
+    that. But worked after Python allocator was fixed.
+  - Inside the report_message callback inside Python, I had to do ~flush=True~. Otherwise, Python
+    printed weird garbage, because it was deferring the printing somehow and other threads were
+    corrupting the data.
+
+  Read to merge.
 
 * DONE tjo88p - Don't use build.rs
   CLOSED: [2026-08-12 Wed 16:14]
