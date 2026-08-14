@@ -200,12 +200,36 @@
   copied over from the alum project, with slight changes. Don't yet know what the outward facing API
   of a workflow will be. I need to think about how this will be used, and come up with something.
 
-** TODO Check for cycles when adding new links
+** CLOSED Check for cycles when adding new links
+   CLOSED: [2026-08-14 Fri 14:12]
    :PROPERTIES:
    :CREATED:  2026-08-13 Thu 17:07
    :END:
+   :LOGBOOK:
+   - State "CLOSED"     from "TODO"       [2026-08-14 Fri 14:12]
+   :END:
 
    The check should go [[file:rust/orc_sdk/src/dag.rs::pub fn push_link(&mut self, from: OH, to: IH) -> Option<LH> {][here]].
+
+   <2026-08-14 Fri 13:32> I decided against doing this at this time. I will do what Grasshopper
+   does, and allow the creation of graphs with cycles, and only perform the check once just before I
+   have to run the graph.
+
+   I think that would be way better than checking each link. Checking each link will make parsing
+   a file and constructing a graph slow. Checking for one or more cycles in a complete graph is much
+   cheaper than checking before each edit. So it makes sense to keep the cycle checking a concept
+   associated with running the graph. When not running the graph, it is allowed to exist with cycles
+   in an error state. This also allows the user to work save, reopen and edit files that may have
+   turned cyclic by accident.
+
+   Just a note for future development: I probably need some sort of "plan" step, that walks the DAG,
+   determines what needs to be computed, and in what order. This phase might also do some sort of
+   thread allocation, to figure out what parts of the DAG can be run concurrently. This phase should
+   support a fully unevaluated DAG (e.g. after loading a new file), or a partially evaluated DAG
+   (e.g. when making incremental edits to an active DAG, or loading cached outputs from disk). This
+   "plan" phase takes on the responsibility of checking for cycles.
+
+   In light of this insight, closing this task.
 
 * DONE tjrpd8 - Support const generics in orc_fn macro
   CLOSED: [2026-08-14 Fri 12:25]
