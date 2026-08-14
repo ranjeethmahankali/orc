@@ -171,6 +171,46 @@
   Maybe I can write a rasterizer for my curve types, and somehow get the optimizer to export images
   of the sample points in the design space, so that I can visualize them when viewing the DOE.
 
+* DONE tjrpd8 - Support const generics in orc_fn macro
+  CLOSED: [2026-08-14 Fri 12:25]
+  :PROPERTIES:
+  :CREATED:  2026-08-14 Fri 12:19
+  :END:
+  :LOGBOOK:
+  - State "DONE"       from "NEXT"       [2026-08-14 Fri 12:25]
+  - State "NEXT"       from "TODO"       [2026-08-14 Fri 12:20]
+  :END:
+
+  This was supposed to work. But turns out the generated code doesn't specify all the generics
+  explicitly, and that is an issue. It needs to.
+
+  <2026-08-14 Fri 12:24> LLM fixed it. The function below now compiles and runs without issues:
+  #+begin_src rust
+    #[orc_fn]
+    fn sub() {
+        let host_callbacks = host_callbacks();
+        let registry: &ObjectRegistry = registry();
+        let types = (run::<4, f32>, run::<8, f64>);
+
+        /// Subtracts the second operand from the first, and assigns to the output. The input types must
+        /// be the same, matching the output type. This function supports floating point scalar types.
+        fn run<const N: usize, T>(lhs: &T, rhs: &T, out: &mut T)
+        where
+            T: TOrcData + Sub<Output = T> + Copy,
+        {
+            const {
+                assert!(
+                    N == std::mem::size_of::<T>(),
+                    "Forcing the caller to pass in the size of the type T as a generic, to demonstrate the use of const generics."
+                )
+            };
+            ,*out = *lhs - *rhs;
+        }
+    }
+  #+end_src
+
+  Read to merge.
+
 * DONE tjpyye - Multithreading in a Python host
   CLOSED: [2026-08-13 Thu 15:28]
   :PROPERTIES:
