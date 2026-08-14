@@ -68,6 +68,12 @@ typedef struct
 #define ORC_ARGS_VARIADIC 0xffffffffffffffff
 #define ORC_TYPE_ANY 0xffffffffffffffff
 
+typedef void (*OrcPluginFunction)(uint64_t const   ctx,
+                                  OrcHandle const *inputs,
+                                  uint64_t const   n_inputs,
+                                  OrcHandle       *outputs,
+                                  uint64_t const   n_outputs);
+
 /**
 Metadata for a function exposed by the plugin. All plugin functions have the same
 signature. The metadata encodes information about the inputs, outputs, and the function
@@ -92,18 +98,13 @@ the function may still fail when called with said inputs/outputs.
  */
 typedef struct
 {
-  char const *name;
-  char const *desc;
-  uint64_t    n_inputs;
-  uint64_t    n_outputs;
-  OrcTypeId  *input_types;
-  OrcTypeId  *output_types;
-
-  void (*func)(uint64_t const   ctx,
-               OrcHandle const *inputs,
-               uint64_t const   n_inputs,
-               OrcHandle       *outputs,
-               uint64_t const   n_outputs);
+  char const       *name;
+  char const       *desc;
+  uint64_t          n_inputs;
+  uint64_t          n_outputs;
+  OrcTypeId        *input_types;
+  OrcTypeId        *output_types;
+  OrcPluginFunction func;
 } OrcFuncInfo;
 
 /**

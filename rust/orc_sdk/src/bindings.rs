@@ -76,6 +76,15 @@ impl Default for OrcTypeInfo {
         }
     }
 }
+pub type OrcPluginFunction = ::std::option::Option<
+    unsafe extern "C" fn(
+        ctx: u64,
+        inputs: *const OrcHandle,
+        n_inputs: u64,
+        outputs: *mut OrcHandle,
+        n_outputs: u64,
+    ),
+>;
 #[doc = "Metadata for a function exposed by the plugin. All plugin functions have the same\nsignature. The metadata encodes information about the inputs, outputs, and the function\npointer.\n\n`name` and `desc` are optional strings that are meant to help the host / user understand\nwhat the function does. `n_inputs` and `n_outputs` can be any value, except\n`ORC_ARGS_VARIADIC`. If they are set to `ORC_ARGS_VARIADIC`, host will infer that the\nfunctions will support any number of inputs / outputs.\n\nIf `n_inputs` / `n_outputs` are set to a value other than `ORC_ARGS_VARIADIC`, then the\nhost can read the corresponding `input_types` and `output_types` arrays to infer the types\nexpected by the function. This should only be set if the function expects one concrete\ntype. If the function is generic / and can process many types, the corresponding type must\nbe set to `ORC_TYPE_ANY`. If the `input_types` and `output_types` pointers are set to\n`NULL`, the host must infer that all inputs and outputs can be of any type.\n\nThis metadata is a hint for the host. The plugin function must still validate all it's\ninputs, and outputs, counts, and types, and return appropriate errors. Conversely, even if\nthe metadata implies a certain input/output configuration is supported by the function,\nthe function may still fail when called with said inputs/outputs."]
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
@@ -86,15 +95,7 @@ pub struct OrcFuncInfo {
     pub n_outputs: u64,
     pub input_types: *mut OrcTypeId,
     pub output_types: *mut OrcTypeId,
-    pub func: ::std::option::Option<
-        unsafe extern "C" fn(
-            ctx: u64,
-            inputs: *const OrcHandle,
-            n_inputs: u64,
-            outputs: *mut OrcHandle,
-            n_outputs: u64,
-        ),
-    >,
+    pub func: OrcPluginFunction,
 }
 #[allow(clippy::unnecessary_operation, clippy::identity_op)]
 const _: () = {
