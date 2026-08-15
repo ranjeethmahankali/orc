@@ -212,11 +212,13 @@
   metadata. The actual function should still handle everything procedurally. Should be completely
   optional. Everything should still work without this metadata, albeit a more inconvenient manner.
 
-* NEXT tjtsc1 - OrcHandle ownership in Rust
+* DONE tjtsc1 - OrcHandle ownership in Rust
+  CLOSED: [2026-08-15 Sat 17:37]
   :PROPERTIES:
   :CREATED:  2026-08-15 Sat 14:21
   :END:
   :LOGBOOK:
+  - State "DONE"       from "NEXT"       [2026-08-15 Sat 17:37]
   - State "NEXT"       from "TODO"       [2026-08-15 Sat 15:19]
   :END:
 
@@ -233,6 +235,9 @@
   owning, borrow checked wrapper class is used in its place. Tested it. Borrow checking
   works. Passing a pointer to the wrapper across the FFI boundary also works. Also implemented
   contant node type, unused, untested.
+
+  <2026-08-15 Sat 17:37> Renamed variable to 'parameter' to make it less confusing. Getting this
+  merged.
 
 * DONE tjockq - DAG capability inside Rust SDK
   CLOSED: [2026-08-15 Sat 14:28]
