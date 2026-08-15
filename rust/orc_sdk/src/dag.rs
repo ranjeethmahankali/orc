@@ -773,6 +773,10 @@ impl Graph {
     }
 
     pub fn push_link(&mut self, from: OH, to: IH) -> Result<LH, DagError> {
+        // Disconnect any existing link on the input first, before walking the
+        // output's linked list. Otherwise, if the old link belongs to the same
+        // output, the tail pointer computed below would go stale.
+        self.disconnect_input(to);
         let mut last: Option<LH> = None;
         {
             let mut tail = &self.outputs[from.idx].link;
@@ -799,8 +803,6 @@ impl Graph {
             next: None,
             deleted: false,
         })?;
-        // Connect the link to the input. Inputs only have one incoming link.
-        self.disconnect_input(to);
         self.inputs[to.idx].link = Some(lh);
         // Append to the output's linked list.
         match last {
