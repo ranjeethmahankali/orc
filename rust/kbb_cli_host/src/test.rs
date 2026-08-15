@@ -344,3 +344,77 @@ fn t_empty_block() {
         ()
     );
 }
+
+// 11. Const scalar via let binding.
+#[test]
+fn t_const_scalar() {
+    let out = orc_inline_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, {
+        (let a (const 3.0f64))
+        (let b (const 7.0f64))
+        (add a b)
+    })
+    .unwrap();
+    let view = DeckView::<f64>::from_handle(&out).unwrap();
+    assert_eq!(view.items(), &[10.0]);
+}
+
+// 12. Const list via let binding.
+#[test]
+fn t_const_list() {
+    let out = orc_inline_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, {
+        (let a (const [1.0f64, 2.0, 3.0]))
+        (let b (const [10.0f64, 20.0, 30.0]))
+        (add a b)
+    })
+    .unwrap();
+    let view = DeckView::<f64>::from_handle(&out).unwrap();
+    assert_eq!(view.items(), &[11.0, 22.0, 33.0]);
+}
+
+// 13. Const nested list.
+#[test]
+fn t_const_nested_list() {
+    let out = orc_inline_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, {
+        (let a (const [[1.0f64, 2.0], [3.0]]))
+        (flatten_deck a)
+    })
+    .unwrap();
+    let view = DeckView::<f64>::from_handle(&out).unwrap();
+    assert_eq!(view.items(), &[1.0, 2.0, 3.0]);
+}
+
+// 14. Const used inline as expression argument.
+#[test]
+fn t_const_inline_expr() {
+    let out = orc_inline_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, {
+        (add (const [2.0f64, 4.0]) (const [10.0f64, 20.0]))
+    })
+    .unwrap();
+    let view = DeckView::<f64>::from_handle(&out).unwrap();
+    assert_eq!(view.items(), &[12.0, 24.0]);
+}
+
+// 15. Const mixed with external variables.
+#[test]
+fn t_const_with_external_var() {
+    let a_deck: Deck<f64> = deck![5.0, 10.0];
+    let a = make_handle(&HANDLE_COUNTER, &a_deck);
+    let out = orc_inline_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, {
+        (add a (const [1.0f64, 2.0]))
+    })
+    .unwrap();
+    let view = DeckView::<f64>::from_handle(&out).unwrap();
+    assert_eq!(view.items(), &[6.0, 12.0]);
+}
+
+// 16. Const scalar reused in multiple expressions.
+#[test]
+fn t_const_reused() {
+    let out = orc_inline_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, {
+        (let x (const [3.0f64, 4.0]))
+        (mul x x)
+    })
+    .unwrap();
+    let view = DeckView::<f64>::from_handle(&out).unwrap();
+    assert_eq!(view.items(), &[9.0, 16.0]);
+}
