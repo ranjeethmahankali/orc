@@ -24,7 +24,10 @@ pub use util::{
 };
 
 mod dag;
-pub use dag::Workflow;
+pub use dag::{
+    IH, InputPropBuf, InputProperty, LH, LinkPropBuf, LinkProperty, NH, NodePropBuf, NodeProperty,
+    OH, OutputPropBuf, OutputProperty, Property, Workflow,
+};
 
 mod host;
 pub use host::{Plugin, PluginSet, TypeOwner, load_plugins};

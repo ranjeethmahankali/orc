@@ -276,23 +276,12 @@ where
         Ok(())
     }
 
-    pub fn copy_many(&mut self, src: &[H], dst: &[H]) -> Result<(), DagError> {
-        for prop in self.props.iter_mut() {
-            prop.copy_many(src, dst)?;
-        }
-        Ok(())
-    }
-
     pub fn len(&self) -> usize {
         self.length
     }
 
     pub fn garbage_collection(&mut self) {
         self.props.retain(|prop| prop.is_valid())
-    }
-
-    pub fn num_properties(&self) -> usize {
-        self.props.len()
     }
 }
 
@@ -308,13 +297,9 @@ where
 
     fn push(&mut self) -> Result<(), DagError>;
 
-    fn push_many(&mut self, num: usize) -> Result<(), DagError>;
-
     fn swap(&mut self, i: usize, j: usize) -> Result<(), DagError>;
 
     fn copy(&mut self, src: usize, dst: usize) -> Result<(), DagError>;
-
-    fn copy_many(&mut self, src: &[H], dst: &[H]) -> Result<(), DagError>;
 
     fn is_valid(&self) -> bool;
 }
@@ -484,17 +469,6 @@ where
         Ok(())
     }
 
-    fn push_many(&mut self, num: usize) -> Result<(), DagError> {
-        if let Some(prop) = self.data.upgrade() {
-            let mut prop = prop
-                .try_borrow_mut()
-                .map_err(|_| DagError::BorrowedPropertyAccess)?;
-            let prop: &mut Vec<T> = &mut prop.buf;
-            prop.resize(prop.len() + num, self.default.clone());
-        }
-        Ok(())
-    }
-
     fn swap(&mut self, i: usize, j: usize) -> Result<(), DagError> {
         if let Some(prop) = self.data.upgrade() {
             prop.try_borrow_mut()
@@ -511,26 +485,6 @@ where
                 .map_err(|_| DagError::BorrowedPropertyAccess)?;
             let buf: &mut [T] = &mut buf;
             buf[dst] = buf[src].clone();
-        }
-        Ok(())
-    }
-
-    fn copy_many(&mut self, src: &[H], dst: &[H]) -> Result<(), DagError> {
-        if let Some(prop) = self.data.upgrade() {
-            if src.len() != dst.len() {
-                return Err(DagError::MismatchedArrayLengths(src.len(), dst.len()));
-            }
-            let mut buf = prop
-                .try_borrow_mut()
-                .map_err(|_| DagError::BorrowedPropertyAccess)?;
-            let buf: &mut [T] = &mut buf;
-            for (src, dst) in src
-                .iter()
-                .map(|h| h.index() as usize)
-                .zip(dst.iter().map(|h| h.index() as usize))
-            {
-                buf[dst] = buf[src].clone();
-            }
         }
         Ok(())
     }
@@ -739,6 +693,24 @@ struct Graph {
 }
 
 impl Graph {
+    pub fn with_capacity(
+        n_inputs: usize,
+        n_outputs: usize,
+        n_links: usize,
+        n_nodes: usize,
+    ) -> Self {
+        Graph {
+            inputs: Vec::with_capacity(n_inputs),
+            outputs: Vec::with_capacity(n_outputs),
+            links: Vec::with_capacity(n_links),
+            nodes: Vec::with_capacity(n_nodes),
+            node_props: Default::default(),
+            link_props: Default::default(),
+            input_props: Default::default(),
+            output_props: Default::default(),
+        }
+    }
+
     pub fn push_node(
         &mut self,
         input_handles: &mut [IH],
@@ -756,7 +728,7 @@ impl Graph {
                 prev: None,
                 next: None,
                 deleted: false,
-            });
+            })?;
         }
         // Link the consecutive input pins together.
         for [prev, next] in input_handles.array_windows::<2>() {
@@ -771,7 +743,7 @@ impl Graph {
                 prev: None,
                 next: None,
                 deleted: false,
-            });
+            })?;
         }
         // Link the consecutive output pins together.
         for [prev, next] in output_handles.array_windows::<2>() {
@@ -1068,6 +1040,22 @@ impl Graph {
         self.node_props.garbage_collection();
         Ok(())
     }
+
+    pub fn num_node_inputs(&self, n: NH) -> usize {
+        self.node_inputs(n).count()
+    }
+
+    pub fn num_node_outputs(&self, n: NH) -> usize {
+        self.node_outputs(n).count()
+    }
+
+    pub fn node_inputs(&self, n: NH) -> impl Iterator<Item = IH> {
+        std::iter::successors(self.nodes[n.idx].input, |i| self.inputs[i.idx].next)
+    }
+
+    pub fn node_outputs(&self, n: NH) -> impl Iterator<Item = OH> {
+        std::iter::successors(self.nodes[n.idx].output, |o| self.outputs[o.idx].next)
+    }
 }
 
 pub struct Workflow {
@@ -1084,6 +1072,18 @@ impl Default for Workflow {
 }
 
 impl Workflow {
+    pub fn with_capacity(
+        n_inputs: usize,
+        n_outputs: usize,
+        n_links: usize,
+        n_nodes: usize,
+    ) -> Self {
+        let mut graph = Graph::with_capacity(n_inputs, n_outputs, n_links, n_nodes);
+        let node_infos =
+            Property::with_capacity(n_nodes, &mut graph.node_props, FuncInfo::default());
+        Workflow { graph, node_infos }
+    }
+
     pub fn add_node(
         &mut self,
         info: FuncInfo,
@@ -1099,6 +1099,10 @@ impl Workflow {
             node_infos[n] = info;
         }
         Ok(n)
+    }
+
+    pub fn connect(&mut self, from: OH, to: IH) -> Result<LH, DagError> {
+        self.graph.push_link(from, to)
     }
 
     pub fn reserve(
@@ -1145,5 +1149,14 @@ impl Workflow {
 
     pub fn garbage_collection(&mut self) -> Result<(), DagError> {
         self.graph.garbage_collection()
+    }
+
+    pub fn duplicate_node(&mut self, old: NH) -> Result<NH, DagError> {
+        let mut input_handles = vec![IH::default(); self.graph.num_node_inputs(old)];
+        let mut output_handles = vec![OH::default(); self.graph.num_node_outputs(old)];
+        let new = self
+            .graph
+            .push_node(&mut input_handles, &mut output_handles)?;
+        self.graph.node_props.copy(old, new).map(|()| new)
     }
 }
