@@ -204,20 +204,8 @@
   bit of testing. Next: parse kbb file into this DAG, and sketch out a way to run it in topological
   order.
 
-** TODO Parse a DAG from a kbb file
-   :PROPERTIES:
-   :CREATED:  2026-08-15 Sat 07:52
-   :END:
-
-   kbb file is a LISP
-
-** TODO Figure out the ABI equivalent for the DAG format
-   :PROPERTIES:
-   :CREATED:  2026-08-15 Sat 07:53
-   :END:
-
-   Something that is stable and language agnostic like ~orc_abi.h~, but for a datastructure and the
-   associated serialized file format.
+  <2026-08-15 Sat 11:16> On second thought, I will defer the parsing from a file to a later task. I
+  will just focus on running the DAG now.
 
 ** CLOSED Check for cycles when adding new links
    CLOSED: [2026-08-14 Fri 14:12]
@@ -251,6 +239,13 @@
    time to clean up after the user makes a long series of edits, and now wants to run the graph.
 
    In light of this insight, closing this task.
+
+* TODO Parse a DAG from a kbb file
+  :PROPERTIES:
+  :CREATED:  2026-08-15 Sat 07:52
+  :END:
+
+  kbb file is a LISP
 
 * DONE tjrpd8 - Support const generics in orc_fn macro
   CLOSED: [2026-08-14 Fri 12:25]
