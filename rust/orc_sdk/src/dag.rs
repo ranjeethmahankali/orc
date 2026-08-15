@@ -1070,6 +1070,10 @@ impl Graph {
     pub fn node_outputs(&self, n: NH) -> impl Iterator<Item = OH> {
         std::iter::successors(self.nodes[n.idx].output, |o| self.outputs[o.idx].next)
     }
+
+    pub fn input_source(&self, i: IH) -> Option<OH> {
+        self.inputs[i.idx].link.map(|l| self.links[l.idx].start)
+    }
 }
 
 pub struct Workflow {
@@ -1117,6 +1121,18 @@ impl Workflow {
 
     pub fn connect(&mut self, from: OH, to: IH) -> Result<LH, DagError> {
         self.graph.push_link(from, to)
+    }
+
+    pub fn disconnect(&mut self, from: OH, to: IH) -> bool {
+        // Only successfully disconnect if the given input / output pairs are actually connected.
+        if let Some(src) = self.graph.input_source(to)
+            && src == from
+        {
+            self.graph.disconnect_input(to);
+            true
+        } else {
+            false
+        }
     }
 
     pub fn reserve(
