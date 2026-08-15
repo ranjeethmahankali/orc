@@ -1235,10 +1235,8 @@ mod test {
         let mut ins = [IH::default(); 3];
         let mut outs = [OH::default(); 2];
         let n = g.push_node(&mut ins, &mut outs).unwrap();
-        let collected_ins: Vec<IH> = g.node_inputs(n).collect();
-        let collected_outs: Vec<OH> = g.node_outputs(n).collect();
-        assert_eq!(&collected_ins, &ins);
-        assert_eq!(&collected_outs, &outs);
+        assert!(g.node_inputs(n).eq(ins));
+        assert!(g.node_outputs(n).eq(outs));
     }
 
     #[test]
@@ -1519,9 +1517,10 @@ mod test {
         assert_eq!(w.graph.node_inputs(dup).count(), 2);
         assert_eq!(w.graph.node_outputs(dup).count(), 1);
         // Input properties are copied.
-        let dup_inputs: Vec<IH> = w.graph.node_inputs(dup).collect();
-        assert_eq!(*input_labels.get(dup_inputs[0]).unwrap(), "x");
-        assert_eq!(*input_labels.get(dup_inputs[1]).unwrap(), "y");
+        let mut dup_ins = w.graph.node_inputs(dup);
+        assert_eq!(*input_labels.get(dup_ins.next().unwrap()).unwrap(), "x");
+        assert_eq!(*input_labels.get(dup_ins.next().unwrap()).unwrap(), "y");
+        assert!(dup_ins.next().is_none());
         // Duplicated node is disconnected.
         for ih in w.graph.node_inputs(dup) {
             assert!(w.graph.inputs[ih.idx].link.is_none());
