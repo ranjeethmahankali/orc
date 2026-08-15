@@ -215,6 +215,9 @@
   types of nodes I need in the DAG other than pure functions (constants, variables, ...). I need
   clarity on all that before I can start.
 
+  <2026-08-15 Sat 17:45> Renamed the existing macro to ~orc_inline_dag~ to be more descriptive and
+  avoid conflict with new macro I want to add, to construct a DAG for testing.
+
 * DONE tjtsc1 - OrcHandle ownership in Rust
   CLOSED: [2026-08-15 Sat 17:37]
   :PROPERTIES:
