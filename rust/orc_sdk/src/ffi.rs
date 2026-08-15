@@ -161,6 +161,27 @@ It's job is to provide a borrow checked copy of the original handle, without it'
     );
 };
 
+impl<'a> Clone for OrcHandleBorrowed<'a> {
+    fn clone(&self) -> Self {
+        Self {
+            inner: OrcHandle {
+                handle: self.inner.handle,
+                items: self.inner.items,
+                n_items: self.inner.n_items,
+                item_size: self.inner.item_size,
+                marks: self.inner.marks,
+                stride_offset: self.inner.stride_offset,
+                n_marks: self.inner.n_marks,
+                strides: self.inner.strides,
+                type_id: self.inner.type_id,
+                dims: self.inner.dims,
+                free_fn: None,
+            },
+            _borrow: self._borrow.clone(),
+        }
+    }
+}
+
 pub type PluginInitFn = unsafe extern "C" fn(*const OrcHost, *mut OrcPlugin) -> OrcError;
 pub type DeckAllocFn = unsafe extern "C" fn(OrcTypeId, *mut OrcHandle) -> OrcError;
 pub type DeckFreeFn = unsafe extern "C" fn(*mut OrcHandle) -> OrcError;
