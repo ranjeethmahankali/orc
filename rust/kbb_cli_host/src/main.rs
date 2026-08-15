@@ -237,6 +237,6 @@ fn main() -> Result<(), Error> {
         (let (real imag) (complex_get_parts (flatten_deck (mul_complex c c2))))
         (add real imag)
     })?;
-    println!("complex_resunt:\n{}", complex_result.display::<f64>());
+    println!("complex_result:\n{}", complex_result.display::<f64>());
     Ok(())
 }
