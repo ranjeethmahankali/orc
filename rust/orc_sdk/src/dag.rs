@@ -1292,6 +1292,79 @@ mod test {
     }
 
     #[test]
+    fn t_reconnect_input_from_different_output() {
+        let mut g = Graph::default();
+        let mut a_out = [OH::default()];
+        let _na = g.push_node(&mut [], &mut a_out).unwrap();
+        let mut b_out = [OH::default()];
+        let _nb = g.push_node(&mut [], &mut b_out).unwrap();
+        let mut c_in = [IH::default()];
+        let _nc = g.push_node(&mut c_in, &mut []).unwrap();
+
+        // Connect A -> C.
+        let l0 = g.push_link(a_out[0], c_in[0]).unwrap();
+        assert_eq!(g.inputs[c_in[0].idx].link, Some(l0));
+        // Reconnect B -> C. Old link should be deleted.
+        let l1 = g.push_link(b_out[0], c_in[0]).unwrap();
+        assert_eq!(g.inputs[c_in[0].idx].link, Some(l1));
+        assert!(g.links[l0.idx].deleted);
+        // A's output has no live links.
+        assert_eq!(g.outputs[a_out[0].idx].link, None);
+        // B's output has the new link.
+        assert_eq!(g.outputs[b_out[0].idx].link, Some(l1));
+    }
+
+    #[test]
+    fn t_reconnect_input_from_same_output() {
+        // Output O fans out to I1 and I2. Reconnecting O -> I2 should keep
+        // the output's linked list intact (regression test for stale tail).
+        let mut g = Graph::default();
+        let mut o = [OH::default()];
+        let _src = g.push_node(&mut [], &mut o).unwrap();
+        let mut i1 = [IH::default()];
+        let _n1 = g.push_node(&mut i1, &mut []).unwrap();
+        let mut i2 = [IH::default()];
+        let _n2 = g.push_node(&mut i2, &mut []).unwrap();
+
+        let l0 = g.push_link(o[0], i1[0]).unwrap();
+        let _l1 = g.push_link(o[0], i2[0]).unwrap();
+        // Reconnect O -> I2 (same pair as _l1).
+        let l2 = g.push_link(o[0], i2[0]).unwrap();
+        // l0 is still live, _l1 is deleted, l2 is the new link.
+        assert!(!g.links[l0.idx].deleted);
+        assert!(g.links[_l1.idx].deleted);
+        assert!(!g.links[l2.idx].deleted);
+        // Output's linked list: l0 -> l2.
+        assert_eq!(g.outputs[o[0].idx].link, Some(l0));
+        assert_eq!(g.links[l0.idx].next, Some(l2));
+        assert_eq!(g.links[l2.idx].prev, Some(l0));
+        assert_eq!(g.links[l2.idx].next, None);
+        // Both inputs are connected.
+        assert_eq!(g.inputs[i1[0].idx].link, Some(l0));
+        assert_eq!(g.inputs[i2[0].idx].link, Some(l2));
+    }
+
+    #[test]
+    fn t_reconnect_sole_link_on_output() {
+        // Output has exactly one link O -> I. Reconnecting O -> I should
+        // replace it cleanly (the old link was both head and tail).
+        let mut g = Graph::default();
+        let mut o = [OH::default()];
+        let _src = g.push_node(&mut [], &mut o).unwrap();
+        let mut i = [IH::default()];
+        let _dst = g.push_node(&mut i, &mut []).unwrap();
+
+        let l0 = g.push_link(o[0], i[0]).unwrap();
+        let l1 = g.push_link(o[0], i[0]).unwrap();
+        assert!(g.links[l0.idx].deleted);
+        assert!(!g.links[l1.idx].deleted);
+        assert_eq!(g.outputs[o[0].idx].link, Some(l1));
+        assert_eq!(g.links[l1.idx].prev, None);
+        assert_eq!(g.links[l1.idx].next, None);
+        assert_eq!(g.inputs[i[0].idx].link, Some(l1));
+    }
+
+    #[test]
     fn t_chain_structure() {
         let (g, nodes, ins, outs, _) = chain_graph();
         // A has 0 inputs, 1 output.
