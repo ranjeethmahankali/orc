@@ -229,6 +229,11 @@
   clone on them. This requires a lot more thought, and this needs to be figured out soon, before I
   can make more progress on other tasks.
 
+  <2026-08-15 Sat 17:29> Got rid of the unsafe non_owning_clone. Now, a bitwise identical non
+  owning, borrow checked wrapper class is used in its place. Tested it. Borrow checking
+  works. Passing a pointer to the wrapper across the FFI boundary also works. Also implemented
+  contant node type, unused, untested.
+
 * DONE tjockq - DAG capability inside Rust SDK
   CLOSED: [2026-08-15 Sat 14:28]
   :PROPERTIES:
