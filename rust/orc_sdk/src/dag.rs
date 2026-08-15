@@ -1237,8 +1237,8 @@ mod test {
         let n = g.push_node(&mut ins, &mut outs).unwrap();
         let collected_ins: Vec<IH> = g.node_inputs(n).collect();
         let collected_outs: Vec<OH> = g.node_outputs(n).collect();
-        assert_eq!(collected_ins, vec![ins[0], ins[1], ins[2]]);
-        assert_eq!(collected_outs, vec![outs[0], outs[1]]);
+        assert_eq!(&collected_ins, &ins);
+        assert_eq!(&collected_outs, &outs);
     }
 
     #[test]
