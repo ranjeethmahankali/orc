@@ -1152,11 +1152,20 @@ impl Workflow {
     }
 
     pub fn duplicate_node(&mut self, old: NH) -> Result<NH, DagError> {
-        let mut input_handles = vec![IH::default(); self.graph.num_node_inputs(old)];
-        let mut output_handles = vec![OH::default(); self.graph.num_node_outputs(old)];
+        let src_inputs = self.graph.node_inputs(old).collect::<Box<[_]>>();
+        let mut input_handles = vec![IH::default(); src_inputs.len()];
+        let src_outputs = self.graph.node_outputs(old).collect::<Box<[_]>>();
+        let mut output_handles = vec![OH::default(); src_outputs.len()];
         let new = self
             .graph
             .push_node(&mut input_handles, &mut output_handles)?;
-        self.graph.node_props.copy(old, new).map(|()| new)
+        self.graph.node_props.copy(old, new)?;
+        for (&new, &old) in input_handles.iter().zip(src_inputs.iter()) {
+            self.graph.input_props.copy(old, new)?;
+        }
+        for (&new, &old) in output_handles.iter().zip(src_outputs.iter()) {
+            self.graph.output_props.copy(old, new)?;
+        }
+        Ok(new)
     }
 }
