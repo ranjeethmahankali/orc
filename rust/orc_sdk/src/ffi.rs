@@ -150,6 +150,17 @@ pub struct OrcHandleBorrowed<'a> {
     _borrow: PhantomData<&'a OrcHandle>,
 }
 
+const _: () = {
+    assert!(
+        size_of::<OrcHandleBorrowed>() == size_of::<OrcHandle>()
+            && align_of::<OrcHandleBorrowed>() == align_of::<OrcHandle>(),
+        "
+The borrowed wrapper should be a bitwise identical wrapper to the handle.
+It's job is to provide a borrow checked copy of the original handle, without it's free function.
+"
+    );
+};
+
 pub type PluginInitFn = unsafe extern "C" fn(*const OrcHost, *mut OrcPlugin) -> OrcError;
 pub type DeckAllocFn = unsafe extern "C" fn(OrcTypeId, *mut OrcHandle) -> OrcError;
 pub type DeckFreeFn = unsafe extern "C" fn(*mut OrcHandle) -> OrcError;
