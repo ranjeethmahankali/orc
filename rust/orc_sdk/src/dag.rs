@@ -1076,15 +1076,36 @@ impl Graph {
     }
 }
 
+#[derive(Clone)]
+pub enum NodeInfo {
+    Variable { name: String },
+    Function(FuncInfo),
+}
+
+impl Default for NodeInfo {
+    fn default() -> Self {
+        Self::Function(FuncInfo::default())
+    }
+}
+
+impl NodeInfo {
+    pub fn name(&self) -> &str {
+        match self {
+            NodeInfo::Variable { name } => &name,
+            NodeInfo::Function(func_info) => &func_info.name,
+        }
+    }
+}
+
 pub struct Workflow {
     graph: Graph,
-    node_infos: NodeProperty<FuncInfo>,
+    node_infos: NodeProperty<NodeInfo>,
 }
 
 impl Default for Workflow {
     fn default() -> Self {
         let mut graph = Graph::default();
-        let node_infos = graph.create_node_property(FuncInfo::default());
+        let node_infos = graph.create_node_property(NodeInfo::default());
         Self { graph, node_infos }
     }
 }
@@ -1098,11 +1119,11 @@ impl Workflow {
     ) -> Self {
         let mut graph = Graph::with_capacity(n_inputs, n_outputs, n_links, n_nodes);
         let node_infos =
-            Property::with_capacity(n_nodes, &mut graph.node_props, FuncInfo::default());
+            Property::with_capacity(n_nodes, &mut graph.node_props, NodeInfo::default());
         Workflow { graph, node_infos }
     }
 
-    pub fn add_node(
+    pub fn add_function(
         &mut self,
         info: FuncInfo,
         input_handles: &mut [IH],
@@ -1114,7 +1135,7 @@ impl Workflow {
                 .node_infos
                 .try_borrow_mut()
                 .map_err(|_e| DagError::BorrowedPropertyAccess)?;
-            node_infos[n] = info;
+            node_infos[n] = NodeInfo::Function(info);
         }
         Ok(n)
     }
@@ -1565,10 +1586,10 @@ mod test {
         let mut ins = [IH::default(); 2];
         let mut outs = [OH::default(); 1];
         let n = w
-            .add_node(make_func_info("add"), &mut ins, &mut outs)
+            .add_function(make_func_info("add"), &mut ins, &mut outs)
             .unwrap();
         let info = w.node_infos.get(n).unwrap();
-        assert_eq!(info.name, "add");
+        assert_eq!(info.name(), "add");
     }
 
     #[test]
@@ -1576,11 +1597,11 @@ mod test {
         let mut w = Workflow::default();
         let mut a_out = [OH::default()];
         let _na = w
-            .add_node(make_func_info("source"), &mut [], &mut a_out)
+            .add_function(make_func_info("source"), &mut [], &mut a_out)
             .unwrap();
         let mut b_in = [IH::default()];
         let _nb = w
-            .add_node(make_func_info("sink"), &mut b_in, &mut [])
+            .add_function(make_func_info("sink"), &mut b_in, &mut [])
             .unwrap();
         let lh = w.connect(a_out[0], b_in[0]).unwrap();
         assert_eq!(w.graph.links[lh.idx].start, a_out[0]);
@@ -1594,7 +1615,7 @@ mod test {
         let mut ins = [IH::default(); 2];
         let mut outs = [OH::default(); 1];
         let orig = w
-            .add_node(make_func_info("mul"), &mut ins, &mut outs)
+            .add_function(make_func_info("mul"), &mut ins, &mut outs)
             .unwrap();
         input_labels.set(ins[0], "x".into()).unwrap();
         input_labels.set(ins[1], "y".into()).unwrap();
@@ -1603,7 +1624,7 @@ mod test {
         // Duplicated node has same func info.
         let orig_info = w.node_infos.get_cloned(orig).unwrap();
         let dup_info = w.node_infos.get_cloned(dup).unwrap();
-        assert_eq!(orig_info.name, dup_info.name);
+        assert_eq!(orig_info.name(), dup_info.name());
         // Duplicated node has same number of inputs/outputs.
         assert_eq!(w.graph.node_inputs(dup).count(), 2);
         assert_eq!(w.graph.node_outputs(dup).count(), 1);
@@ -1624,20 +1645,22 @@ mod test {
         let mut w = Workflow::default();
         let mut a_out = [OH::default(); 2];
         let na = w
-            .add_node(make_func_info("A"), &mut [], &mut a_out)
+            .add_function(make_func_info("A"), &mut [], &mut a_out)
             .unwrap();
         let mut b_in = [IH::default()];
         let mut b_out = [OH::default()];
         let nb = w
-            .add_node(make_func_info("B"), &mut b_in, &mut b_out)
+            .add_function(make_func_info("B"), &mut b_in, &mut b_out)
             .unwrap();
         let mut c_in = [IH::default()];
         let mut c_out = [OH::default()];
         let nc = w
-            .add_node(make_func_info("C"), &mut c_in, &mut c_out)
+            .add_function(make_func_info("C"), &mut c_in, &mut c_out)
             .unwrap();
         let mut d_in = [IH::default(); 2];
-        let nd = w.add_node(make_func_info("D"), &mut d_in, &mut []).unwrap();
+        let nd = w
+            .add_function(make_func_info("D"), &mut d_in, &mut [])
+            .unwrap();
 
         w.connect(a_out[0], b_in[0]).unwrap();
         w.connect(a_out[1], c_in[0]).unwrap();
@@ -1680,11 +1703,11 @@ mod test {
         let mut w = Workflow::default();
         let mut a_out = [OH::default()];
         let _na = w
-            .add_node(make_func_info("src"), &mut [], &mut a_out)
+            .add_function(make_func_info("src"), &mut [], &mut a_out)
             .unwrap();
         let mut b_in = [IH::default()];
         let _nb = w
-            .add_node(make_func_info("dst"), &mut b_in, &mut [])
+            .add_function(make_func_info("dst"), &mut b_in, &mut [])
             .unwrap();
         let lh = w.connect(a_out[0], b_in[0]).unwrap();
         // Disconnect the correct pair.
@@ -1699,14 +1722,16 @@ mod test {
         let mut w = Workflow::default();
         let mut a_out = [OH::default()];
         let _na = w
-            .add_node(make_func_info("A"), &mut [], &mut a_out)
+            .add_function(make_func_info("A"), &mut [], &mut a_out)
             .unwrap();
         let mut b_out = [OH::default()];
         let _nb = w
-            .add_node(make_func_info("B"), &mut [], &mut b_out)
+            .add_function(make_func_info("B"), &mut [], &mut b_out)
             .unwrap();
         let mut c_in = [IH::default()];
-        let _nc = w.add_node(make_func_info("C"), &mut c_in, &mut []).unwrap();
+        let _nc = w
+            .add_function(make_func_info("C"), &mut c_in, &mut [])
+            .unwrap();
         // Connect A -> C.
         let lh = w.connect(a_out[0], c_in[0]).unwrap();
         // Try to disconnect B -> C (wrong output). Should fail.
@@ -1721,10 +1746,12 @@ mod test {
         let mut w = Workflow::default();
         let mut a_out = [OH::default()];
         let _na = w
-            .add_node(make_func_info("A"), &mut [], &mut a_out)
+            .add_function(make_func_info("A"), &mut [], &mut a_out)
             .unwrap();
         let mut b_in = [IH::default()];
-        let _nb = w.add_node(make_func_info("B"), &mut b_in, &mut []).unwrap();
+        let _nb = w
+            .add_function(make_func_info("B"), &mut b_in, &mut [])
+            .unwrap();
         // No connection exists. Disconnect should return false.
         assert!(!w.disconnect(a_out[0], b_in[0]));
     }
@@ -1733,7 +1760,9 @@ mod test {
     fn t_workflow_clear() {
         let mut w = Workflow::default();
         let mut outs = [OH::default()];
-        let _n = w.add_node(make_func_info("x"), &mut [], &mut outs).unwrap();
+        let _n = w
+            .add_function(make_func_info("x"), &mut [], &mut outs)
+            .unwrap();
         w.clear().unwrap();
         assert!(w.graph.nodes.is_empty());
         assert!(w.graph.inputs.is_empty());
@@ -1749,11 +1778,11 @@ mod test {
 
         let mut a_out = [OH::default()];
         let na = w
-            .add_node(make_func_info("source"), &mut [], &mut a_out)
+            .add_function(make_func_info("source"), &mut [], &mut a_out)
             .unwrap();
         let mut b_in = [IH::default(); 2];
         let nb = w
-            .add_node(make_func_info("add"), &mut b_in, &mut [])
+            .add_function(make_func_info("add"), &mut b_in, &mut [])
             .unwrap();
 
         dirty.set(na, true).unwrap();

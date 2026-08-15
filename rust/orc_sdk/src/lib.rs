@@ -25,8 +25,8 @@ pub use util::{
 
 mod dag;
 pub use dag::{
-    IH, InputPropBuf, InputProperty, LH, LinkPropBuf, LinkProperty, NH, NodePropBuf, NodeProperty,
-    OH, OutputPropBuf, OutputProperty, Property, Workflow,
+    IH, InputPropBuf, InputProperty, LH, LinkPropBuf, LinkProperty, NH, NodeInfo, NodePropBuf,
+    NodeProperty, OH, OutputPropBuf, OutputProperty, Property, Workflow,
 };
 
 mod host;
