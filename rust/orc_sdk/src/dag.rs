@@ -125,25 +125,25 @@ pub trait Handle: From<usize> + Copy + Clone + 'static {
 }
 
 #[repr(transparent)]
-#[derive(Copy, Clone, Eq, PartialEq, Default)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Default)]
 pub struct IH {
     idx: usize,
 }
 
 #[repr(transparent)]
-#[derive(Copy, Clone, Eq, PartialEq, Default)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Default)]
 pub struct OH {
     idx: usize,
 }
 
 #[repr(transparent)]
-#[derive(Copy, Clone, Eq, PartialEq, Default)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Default)]
 pub struct LH {
     idx: usize,
 }
 
 #[repr(transparent)]
-#[derive(Copy, Clone, Eq, PartialEq, Default)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Default)]
 pub struct NH {
     idx: usize,
 }
@@ -1179,5 +1179,429 @@ impl Workflow {
             self.graph.output_props.copy(old, new)?;
         }
         Ok(new)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::FuncInfo;
+
+    // ============================================================
+    // Graph — building and querying
+    // ============================================================
+
+    /// Build a simple chain: A(0 in, 1 out) -> B(1 in, 1 out) -> C(1 in, 0 out).
+    fn chain_graph() -> (Graph, [NH; 3], [IH; 2], [OH; 2], [LH; 2]) {
+        let mut g = Graph::default();
+        let mut a_in = [];
+        let mut a_out = [OH::default()];
+        let na = g.push_node(&mut a_in, &mut a_out).unwrap();
+        let mut b_in = [IH::default()];
+        let mut b_out = [OH::default()];
+        let nb = g.push_node(&mut b_in, &mut b_out).unwrap();
+        let mut c_in = [IH::default()];
+        let mut c_out = [];
+        let nc = g.push_node(&mut c_in, &mut c_out).unwrap();
+        let l0 = g.push_link(a_out[0], b_in[0]).unwrap();
+        let l1 = g.push_link(b_out[0], c_in[0]).unwrap();
+
+        (
+            g,
+            [na, nb, nc],
+            [b_in[0], c_in[0]],
+            [a_out[0], b_out[0]],
+            [l0, l1],
+        )
+    }
+
+    #[test]
+    fn t_push_node_assigns_handles() {
+        let mut g = Graph::default();
+        let mut ins = [IH::default(); 2];
+        let mut outs = [OH::default(); 3];
+        let n = g.push_node(&mut ins, &mut outs).unwrap();
+        assert_eq!(n.idx, 0);
+        assert_eq!(ins[0].idx, 0);
+        assert_eq!(ins[1].idx, 1);
+        assert_eq!(outs[0].idx, 0);
+        assert_eq!(outs[1].idx, 1);
+        assert_eq!(outs[2].idx, 2);
+    }
+
+    #[test]
+    fn t_node_inputs_outputs_iteration() {
+        let mut g = Graph::default();
+        let mut ins = [IH::default(); 3];
+        let mut outs = [OH::default(); 2];
+        let n = g.push_node(&mut ins, &mut outs).unwrap();
+        let collected_ins: Vec<IH> = g.node_inputs(n).collect();
+        let collected_outs: Vec<OH> = g.node_outputs(n).collect();
+        assert_eq!(collected_ins, vec![ins[0], ins[1], ins[2]]);
+        assert_eq!(collected_outs, vec![outs[0], outs[1]]);
+    }
+
+    #[test]
+    fn t_num_node_inputs_outputs() {
+        let mut g = Graph::default();
+        let mut ins = [IH::default(); 4];
+        let mut outs = [OH::default(); 1];
+        let n = g.push_node(&mut ins, &mut outs).unwrap();
+        assert_eq!(g.node_inputs(n).count(), 4);
+        assert_eq!(g.node_outputs(n).count(), 1);
+    }
+
+    #[test]
+    fn t_zero_inputs_zero_outputs() {
+        let mut g = Graph::default();
+        let n = g.push_node(&mut [], &mut []).unwrap();
+        assert_eq!(g.node_inputs(n).count(), 0);
+        assert_eq!(g.node_outputs(n).count(), 0);
+        assert_eq!(g.node_inputs(n).count(), 0);
+        assert_eq!(g.node_outputs(n).count(), 0);
+    }
+
+    #[test]
+    fn t_push_link_connects() {
+        let (g, _, ins, outs, links) = chain_graph();
+        // A's output links to B's input.
+        assert_eq!(g.links[links[0].idx].start, outs[0]);
+        assert_eq!(g.links[links[0].idx].end, ins[0]);
+        // B's input references the link.
+        assert_eq!(g.inputs[ins[0].idx].link, Some(links[0]));
+    }
+
+    #[test]
+    fn t_multiple_links_from_one_output() {
+        let mut g = Graph::default();
+        let mut a_out = [OH::default()];
+        let _na = g.push_node(&mut [], &mut a_out).unwrap();
+
+        let mut b_in = [IH::default()];
+        let _nb = g.push_node(&mut b_in, &mut []).unwrap();
+
+        let mut c_in = [IH::default()];
+        let _nc = g.push_node(&mut c_in, &mut []).unwrap();
+
+        let l0 = g.push_link(a_out[0], b_in[0]).unwrap();
+        let l1 = g.push_link(a_out[0], c_in[0]).unwrap();
+
+        // Output's linked list: l0 -> l1.
+        assert_eq!(g.outputs[a_out[0].idx].link, Some(l0));
+        assert_eq!(g.links[l0.idx].next, Some(l1));
+        assert_eq!(g.links[l1.idx].prev, Some(l0));
+        assert_eq!(g.links[l1.idx].next, None);
+    }
+
+    #[test]
+    fn t_chain_structure() {
+        let (g, nodes, ins, outs, _) = chain_graph();
+        // A has 0 inputs, 1 output.
+        assert_eq!(g.node_inputs(nodes[0]).count(), 0);
+        assert_eq!(g.node_outputs(nodes[0]).count(), 1);
+        // B has 1 input, 1 output.
+        assert_eq!(g.node_inputs(nodes[1]).count(), 1);
+        assert_eq!(g.node_outputs(nodes[1]).count(), 1);
+        // C has 1 input, 0 outputs.
+        assert_eq!(g.node_inputs(nodes[2]).count(), 1);
+        assert_eq!(g.node_outputs(nodes[2]).count(), 0);
+        // B's input belongs to node B.
+        assert_eq!(g.inputs[ins[0].idx].node, nodes[1]);
+        // A's output belongs to node A.
+        assert_eq!(g.outputs[outs[0].idx].node, nodes[0]);
+    }
+
+    #[test]
+    fn t_clear_empties_everything() {
+        let (mut g, _, _, _, _) = chain_graph();
+        g.clear().unwrap();
+        assert!(g.inputs.is_empty());
+        assert!(g.outputs.is_empty());
+        assert!(g.links.is_empty());
+        assert!(g.nodes.is_empty());
+    }
+
+    // ============================================================
+    // Properties — lifecycle
+    // ============================================================
+
+    #[test]
+    fn t_property_default_on_creation() {
+        let mut g = Graph::default();
+        let labels = g.create_node_property("unnamed".to_string());
+        let mut ins = [IH::default()];
+        let mut outs = [OH::default()];
+        let n = g.push_node(&mut ins, &mut outs).unwrap();
+        assert_eq!(*labels.get(n).unwrap(), "unnamed");
+    }
+
+    #[test]
+    fn t_property_set_and_get() {
+        let mut g = Graph::default();
+        let mut labels = g.create_node_property(0i32);
+        let n0 = g.push_node(&mut [], &mut []).unwrap();
+        let n1 = g.push_node(&mut [], &mut []).unwrap();
+        labels.set(n0, 42).unwrap();
+        labels.set(n1, 99).unwrap();
+        assert_eq!(*labels.get(n0).unwrap(), 42);
+        assert_eq!(*labels.get(n1).unwrap(), 99);
+    }
+
+    #[test]
+    fn t_property_get_cloned() {
+        let mut g = Graph::default();
+        let mut labels = g.create_node_property(String::new());
+        let n = g.push_node(&mut [], &mut []).unwrap();
+        labels.set(n, "hello".into()).unwrap();
+        let val = labels.get_cloned(n).unwrap();
+        assert_eq!(val, "hello");
+    }
+
+    #[test]
+    fn t_property_created_after_elements() {
+        let mut g = Graph::default();
+        let n0 = g.push_node(&mut [], &mut []).unwrap();
+        let n1 = g.push_node(&mut [], &mut []).unwrap();
+        // Property created after 2 nodes exist — should have 2 entries with default.
+        let labels = g.create_node_property(7i32);
+        assert_eq!(*labels.get(n0).unwrap(), 7);
+        assert_eq!(*labels.get(n1).unwrap(), 7);
+    }
+
+    #[test]
+    fn t_property_grows_with_new_elements() {
+        let mut g = Graph::default();
+        let mut labels = g.create_node_property(-1i32);
+        let n0 = g.push_node(&mut [], &mut []).unwrap();
+        labels.set(n0, 100).unwrap();
+        // Add another node — property should grow with default.
+        let n1 = g.push_node(&mut [], &mut []).unwrap();
+        assert_eq!(*labels.get(n0).unwrap(), 100);
+        assert_eq!(*labels.get(n1).unwrap(), -1);
+    }
+
+    #[test]
+    fn t_input_property_on_multi_input_node() {
+        let mut g = Graph::default();
+        let mut costs = g.create_input_property(0.0f64);
+        let mut ins = [IH::default(); 3];
+        let _n = g.push_node(&mut ins, &mut []).unwrap();
+        costs.set(ins[0], 1.0).unwrap();
+        costs.set(ins[1], 2.0).unwrap();
+        costs.set(ins[2], 3.0).unwrap();
+        assert_eq!(*costs.get(ins[0]).unwrap(), 1.0);
+        assert_eq!(*costs.get(ins[1]).unwrap(), 2.0);
+        assert_eq!(*costs.get(ins[2]).unwrap(), 3.0);
+    }
+
+    #[test]
+    fn t_link_property() {
+        let (mut g, _, ins, outs, links) = chain_graph();
+        let mut weights = g.create_link_property(1.0f64);
+        weights.set(links[0], 0.5).unwrap();
+        weights.set(links[1], 0.8).unwrap();
+        assert_eq!(*weights.get(links[0]).unwrap(), 0.5);
+        assert_eq!(*weights.get(links[1]).unwrap(), 0.8);
+        // Links have correct topology.
+        assert_eq!(g.links[links[0].idx].start, outs[0]);
+        assert_eq!(g.links[links[0].idx].end, ins[0]);
+    }
+
+    #[test]
+    fn t_multiple_properties_on_same_handle_type() {
+        let mut g = Graph::default();
+        let mut names = g.create_node_property(String::new());
+        let mut flags = g.create_node_property(false);
+        let n = g.push_node(&mut [], &mut []).unwrap();
+        names.set(n, "add".into()).unwrap();
+        flags.set(n, true).unwrap();
+        assert_eq!(*names.get(n).unwrap(), "add");
+        assert_eq!(*flags.get(n).unwrap(), true);
+    }
+
+    #[test]
+    fn t_property_drop_cleans_up_in_gc() {
+        let mut g = Graph::default();
+        let _n = g.push_node(&mut [], &mut []).unwrap();
+        {
+            let _temp = g.create_node_property(0i32);
+            assert_eq!(g.node_props.props.len(), 1);
+            // _temp dropped here
+        }
+        g.node_props.garbage_collection();
+        assert_eq!(g.node_props.props.len(), 0);
+    }
+
+    #[test]
+    fn t_propbuf_deref_to_slice() {
+        let mut g = Graph::default();
+        let mut vals = g.create_node_property(0i32);
+        let n0 = g.push_node(&mut [], &mut []).unwrap();
+        let n1 = g.push_node(&mut [], &mut []).unwrap();
+        vals.set(n0, 10).unwrap();
+        vals.set(n1, 20).unwrap();
+        let buf = vals.try_borrow().unwrap();
+        let slice: &[i32] = &buf;
+        assert_eq!(slice, &[10, 20]);
+    }
+
+    #[test]
+    fn t_propbuf_index_by_handle() {
+        let mut g = Graph::default();
+        let mut vals = g.create_node_property(0i32);
+        let n0 = g.push_node(&mut [], &mut []).unwrap();
+        let n1 = g.push_node(&mut [], &mut []).unwrap();
+        vals.set(n0, 10).unwrap();
+        vals.set(n1, 20).unwrap();
+        let buf = vals.try_borrow().unwrap();
+        assert_eq!(buf[n0], 10);
+        assert_eq!(buf[n1], 20);
+    }
+
+    // ============================================================
+    // Workflow
+    // ============================================================
+
+    fn make_func_info(name: &str) -> FuncInfo {
+        FuncInfo {
+            name: name.to_string(),
+            desc: String::new(),
+            func: None,
+        }
+    }
+
+    #[test]
+    fn t_workflow_add_node() {
+        let mut w = Workflow::default();
+        let mut ins = [IH::default(); 2];
+        let mut outs = [OH::default(); 1];
+        let n = w
+            .add_node(make_func_info("add"), &mut ins, &mut outs)
+            .unwrap();
+        let info = w.node_infos.get(n).unwrap();
+        assert_eq!(info.name, "add");
+    }
+
+    #[test]
+    fn t_workflow_connect() {
+        let mut w = Workflow::default();
+        let mut a_out = [OH::default()];
+        let _na = w
+            .add_node(make_func_info("source"), &mut [], &mut a_out)
+            .unwrap();
+        let mut b_in = [IH::default()];
+        let _nb = w
+            .add_node(make_func_info("sink"), &mut b_in, &mut [])
+            .unwrap();
+        let lh = w.connect(a_out[0], b_in[0]).unwrap();
+        assert_eq!(w.graph.links[lh.idx].start, a_out[0]);
+        assert_eq!(w.graph.links[lh.idx].end, b_in[0]);
+    }
+
+    #[test]
+    fn t_workflow_duplicate_node() {
+        let mut w = Workflow::default();
+        let mut input_labels = w.create_input_property("default_in".to_string());
+        let mut ins = [IH::default(); 2];
+        let mut outs = [OH::default(); 1];
+        let orig = w
+            .add_node(make_func_info("mul"), &mut ins, &mut outs)
+            .unwrap();
+        input_labels.set(ins[0], "x".into()).unwrap();
+        input_labels.set(ins[1], "y".into()).unwrap();
+        let dup = w.duplicate_node(orig).unwrap();
+        assert_ne!(orig, dup);
+        // Duplicated node has same func info.
+        let orig_info = w.node_infos.get_cloned(orig).unwrap();
+        let dup_info = w.node_infos.get_cloned(dup).unwrap();
+        assert_eq!(orig_info.name, dup_info.name);
+        // Duplicated node has same number of inputs/outputs.
+        assert_eq!(w.graph.node_inputs(dup).count(), 2);
+        assert_eq!(w.graph.node_outputs(dup).count(), 1);
+        // Input properties are copied.
+        let dup_inputs: Vec<IH> = w.graph.node_inputs(dup).collect();
+        assert_eq!(*input_labels.get(dup_inputs[0]).unwrap(), "x");
+        assert_eq!(*input_labels.get(dup_inputs[1]).unwrap(), "y");
+        // Duplicated node is disconnected.
+        for ih in w.graph.node_inputs(dup) {
+            assert!(w.graph.inputs[ih.idx].link.is_none());
+        }
+    }
+
+    #[test]
+    fn t_workflow_diamond_topology() {
+        // A -> B, A -> C, B -> D, C -> D
+        let mut w = Workflow::default();
+        let mut a_out = [OH::default(); 2];
+        let na = w
+            .add_node(make_func_info("A"), &mut [], &mut a_out)
+            .unwrap();
+        let mut b_in = [IH::default()];
+        let mut b_out = [OH::default()];
+        let nb = w
+            .add_node(make_func_info("B"), &mut b_in, &mut b_out)
+            .unwrap();
+        let mut c_in = [IH::default()];
+        let mut c_out = [OH::default()];
+        let nc = w
+            .add_node(make_func_info("C"), &mut c_in, &mut c_out)
+            .unwrap();
+        let mut d_in = [IH::default(); 2];
+        let nd = w.add_node(make_func_info("D"), &mut d_in, &mut []).unwrap();
+
+        w.connect(a_out[0], b_in[0]).unwrap();
+        w.connect(a_out[1], c_in[0]).unwrap();
+        w.connect(b_out[0], d_in[0]).unwrap();
+        w.connect(c_out[0], d_in[1]).unwrap();
+
+        // Verify fan-out from A.
+        assert_eq!(w.graph.node_outputs(na).count(), 2);
+        // Verify D has 2 inputs, both linked.
+        assert_eq!(w.graph.node_inputs(nd).count(), 2);
+        for ih in w.graph.node_inputs(nd) {
+            assert!(w.graph.inputs[ih.idx].link.is_some());
+        }
+        // Verify B and C each have 1 input, 1 output.
+        assert_eq!(w.graph.node_inputs(nb).count(), 1);
+        assert_eq!(w.graph.node_outputs(nb).count(), 1);
+        assert_eq!(w.graph.node_inputs(nc).count(), 1);
+        assert_eq!(w.graph.node_outputs(nc).count(), 1);
+    }
+
+    #[test]
+    fn t_workflow_clear() {
+        let mut w = Workflow::default();
+        let mut outs = [OH::default()];
+        let _n = w.add_node(make_func_info("x"), &mut [], &mut outs).unwrap();
+        w.clear().unwrap();
+        assert!(w.graph.nodes.is_empty());
+        assert!(w.graph.inputs.is_empty());
+        assert!(w.graph.outputs.is_empty());
+        assert!(w.graph.links.is_empty());
+    }
+
+    #[test]
+    fn t_workflow_with_custom_properties() {
+        let mut w = Workflow::default();
+        let mut dirty = w.create_node_property(false);
+        let mut input_vals = w.create_input_property(0.0f64);
+
+        let mut a_out = [OH::default()];
+        let na = w
+            .add_node(make_func_info("source"), &mut [], &mut a_out)
+            .unwrap();
+        let mut b_in = [IH::default(); 2];
+        let nb = w
+            .add_node(make_func_info("add"), &mut b_in, &mut [])
+            .unwrap();
+
+        dirty.set(na, true).unwrap();
+        input_vals.set(b_in[0], 3.14).unwrap();
+        input_vals.set(b_in[1], 2.72).unwrap();
+
+        assert_eq!(*dirty.get(na).unwrap(), true);
+        assert_eq!(*dirty.get(nb).unwrap(), false); // default
+        assert_eq!(*input_vals.get(b_in[0]).unwrap(), 3.14);
+        assert_eq!(*input_vals.get(b_in[1]).unwrap(), 2.72);
     }
 }
