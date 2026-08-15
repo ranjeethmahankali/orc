@@ -356,6 +356,7 @@ fn t_const_scalar() {
     .unwrap();
     let view = DeckView::<f64>::from_handle(&out).unwrap();
     assert_eq!(view.items(), &[10.0]);
+    assert_eq!(view.depth(), 0);
 }
 
 // 12. Const list via let binding.
@@ -369,6 +370,7 @@ fn t_const_list() {
     .unwrap();
     let view = DeckView::<f64>::from_handle(&out).unwrap();
     assert_eq!(view.items(), &[11.0, 22.0, 33.0]);
+    assert_eq!(view.depth(), 1);
 }
 
 // 13. Const nested list.
@@ -381,6 +383,7 @@ fn t_const_nested_list() {
     .unwrap();
     let view = DeckView::<f64>::from_handle(&out).unwrap();
     assert_eq!(view.items(), &[1.0, 2.0, 3.0]);
+    assert_eq!(view.depth(), 1);
 }
 
 // 14. Const used inline as expression argument.
@@ -392,6 +395,7 @@ fn t_const_inline_expr() {
     .unwrap();
     let view = DeckView::<f64>::from_handle(&out).unwrap();
     assert_eq!(view.items(), &[12.0, 24.0]);
+    assert_eq!(view.depth(), 1);
 }
 
 // 15. Const mixed with external variables.
@@ -405,6 +409,7 @@ fn t_const_with_external_var() {
     .unwrap();
     let view = DeckView::<f64>::from_handle(&out).unwrap();
     assert_eq!(view.items(), &[6.0, 12.0]);
+    assert_eq!(view.depth(), 1);
 }
 
 // 16. Const scalar reused in multiple expressions.
@@ -417,4 +422,5 @@ fn t_const_reused() {
     .unwrap();
     let view = DeckView::<f64>::from_handle(&out).unwrap();
     assert_eq!(view.items(), &[9.0, 16.0]);
+    assert_eq!(view.depth(), 1);
 }
