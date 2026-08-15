@@ -47,6 +47,7 @@ macro_rules! orc_dag {
     // let multiple outputs, more statements follow
     (@stmts $ps:ident, $hc:ident, (let ($($name:ident)+) ($func:ident $($arg:tt)*)) $($rest:tt)*) => {{
         let inputs_ = [$(orc_dag!(@expr $ps, $hc, $arg)),*];
+        let borrowed_ = inputs_.map(|h| h.borrowed());
         let func_ = $ps.get_function(stringify!($func))
             .ok_or($crate::Error::InvalidFunction)?
             .func
@@ -59,7 +60,7 @@ macro_rules! orc_dag {
             h
         });
         unsafe {
-            (func_)(0, inputs_.as_ptr(), inputs_.len() as u64, outs_.as_mut_ptr(), N_OUTS_);
+            (func_)(0, borrowed_.as_ptr().cast(), borrowed_.len() as u64, outs_.as_mut_ptr(), N_OUTS_);
         }
         let mut idx_ = 0usize;
         $(
@@ -81,16 +82,17 @@ macro_rules! orc_dag {
     // --- Expression: either a variable reference or a nested function call ---
     // Nested call: (func args...)
     (@expr $ps:ident, $hc:ident, ($func:ident $($arg:tt)*)) => {
-        orc_dag!(@call1 $ps, $hc, $func, $($arg)*)?
+        &orc_dag!(@call1 $ps, $hc, $func, $($arg)*)?
     };
     // Variable reference
     (@expr $ps:ident, $hc:ident, $var:ident) => {
-        unsafe { $var.non_owning_clone() }
+        &$var
     };
 
     // --- Single-output function call ---
     (@call1 $ps:ident, $hc:ident, $func:ident, $($arg:tt)*) => {{
         let inputs_ = [$(orc_dag!(@expr $ps, $hc, $arg)),*];
+        let borrowed_ = inputs_.map(|h| h.borrowed());
         let mut out_: OrcHandle = OrcHandle::default();
         out_.handle = $hc.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let func_ = $ps.get_function(stringify!($func))
@@ -98,7 +100,7 @@ macro_rules! orc_dag {
             .func
             .ok_or($crate::Error::NullPointer)?;
         unsafe {
-            (func_)(0, inputs_.as_ptr(), inputs_.len() as u64, &mut out_, 1);
+            (func_)(0, borrowed_.as_ptr().cast(), borrowed_.len() as u64, &mut out_, 1);
         }
         Ok::<OrcHandle, $crate::Error>(out_)
     }};
