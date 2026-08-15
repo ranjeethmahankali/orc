@@ -171,6 +171,135 @@
   Maybe I can write a rasterizer for my curve types, and somehow get the optimizer to export images
   of the sample points in the design space, so that I can visualize them when viewing the DOE.
 
+* TODO Parse a DAG from a kbb file
+  :PROPERTIES:
+  :CREATED:  2026-08-15 Sat 07:52
+  :END:
+
+  kbb file is a LISP
+
+* TODO Running a DAG workflow
+  :PROPERTIES:
+  :CREATED:  2026-08-15 Sat 14:26
+  :END:
+
+  First I need to iron out the details of handle ownership in Rust, and figure out what are all the
+  types of nodes I need in the DAG other than pure functions (constants, variables, ...). I need
+  clarity on all that before I can start.
+
+* TODO Function metadata ABI improvements
+  :PROPERTIES:
+  :CREATED:  2026-08-15 Sat 13:54
+  :END:
+
+  A node-editor UI app that wants to create nodes with properly named inputs needs to get that
+  information from the plugin that defines the corresponding function. This will require adding new
+  fields to the function metadata's ABI. It certainly needs to be flexible, and allow for the host
+  app to overwrite the behavior if need be.
+
+  Requires more thought as to what the new metadata will be. I need to come up with a proper
+  algebraic datatype that supports all the below cases. These apply for both inputs and outputs. I
+  am using 'arguments' as a general term for both inputs and outputs:
+
+  1. Fixed number of arguments with all their types known.
+  2. Fixed number of arguments, with some of the types known.
+  3. Fixed number of arguments, where none of the types are known.
+  4. Variadic arguments, all of a single known type.
+  5. Variadic arguments, where none of the types aree known.
+
+  Once this is implemented, and used, based on that experience it might be good to add more things
+  to this metadata to improve the overall experience. But no matter what, it should remain purely
+  metadata. The actual function should still handle everything procedurally. Should be completely
+  optional. Everything should still work without this metadata, albeit a more inconvenient manner.
+
+* TODO OrcHandle ownership in Rust
+  :PROPERTIES:
+  :CREATED:  2026-08-15 Sat 14:21
+  :END:
+
+  Currently, I am trying to do RAII for these handles. But at the same time, I need to make copies
+  of these handles to pass as inputs to other functions. So right now I have a hacky
+  ~non_owning_clone~ letting me do that. This is not good, and is causing more problems as I flesh
+  out the details of the DAG implementation. I need something better. Ideally, I can just clone the
+  handles as I wish, and they are automatically reference counted in the background for me. Or maybe
+  I shouldn't use RAII at all for these handles, and have the host manually free them, and implement
+  clone on them. This requires a lot more thought, and this needs to be figured out soon, before I
+  can make more progress on other tasks.
+
+* DONE tjockq - DAG capability inside Rust SDK
+  CLOSED: [2026-08-15 Sat 14:28]
+  :PROPERTIES:
+  :CREATED:  2026-08-12 Wed 16:50
+  :END:
+  :LOGBOOK:
+  - State "DONE"       from "NEXT"       [2026-08-15 Sat 14:28]
+  - State "NEXT"       from "TODO"       [2026-08-12 Wed 16:50]
+  :END:
+
+  Currently inside kbb_cli_host. But more general DAG capabilities are useful in many plugins and
+  host apps.
+
+  <2026-08-12 Wed 18:33>  Moved the dag helper macro into the SDK. A DAG datastructure inside the
+  SDK will require some more thought. It needs to be a generic graph to allow for cheap and
+  arbitrary edits. A flat tape is not good for arbitrary edits. I want to resurrect the halfedge
+  style graph structure I used in ~galproject~ many years ago.
+
+  The datastructure should have a property system. A node editor might use it to save user assigned
+  aliases / names for nodes. Another UI app might choose to store colors, render settings etc. This
+  information should be stored in the file, as generic properties. The properties that one UI app
+  cares about should not step on the toes of other UI apps. They should coexist with unique property
+  identifiers.
+
+  <2026-08-13 Thu 13:45> Trying to get the current state merged to pivot to a different task. Will
+  return to this task later.
+
+  <2026-08-13 Thu 19:26> Added a lot of untesed, unused boiler plate. The property system stuff is
+  copied over from the alum project, with slight changes. Don't yet know what the outward facing API
+  of a workflow will be. I need to think about how this will be used, and come up with something.
+
+  <2026-08-15 Sat 08:02> Finalized the DAG implementation, with a property system and all, with a
+  bit of testing. Next: parse kbb file into this DAG, and sketch out a way to run it in topological
+  order.
+
+  <2026-08-15 Sat 11:16> On second thought, I will defer the parsing from a file to a later task. I
+  will just focus on running the DAG now.
+
+  <2026-08-15 Sat 14:27> Running into lots of small road blocks. Trying to get the current state
+  merged. Created separate tasks for everything else.
+
+** CLOSED Check for cycles when adding new links
+   CLOSED: [2026-08-14 Fri 14:12]
+   :PROPERTIES:
+   :CREATED:  2026-08-13 Thu 17:07
+   :END:
+   :LOGBOOK:
+   - State "CLOSED"     from "TODO"       [2026-08-14 Fri 14:12]
+   :END:
+
+   The check should go [[file:rust/orc_sdk/src/dag.rs::pub fn push_link(&mut self, from: OH, to: IH) -> Option<LH> {][here]].
+
+   <2026-08-14 Fri 13:32> I decided against doing this at this time. I will do what Grasshopper
+   does, and allow the creation of graphs with cycles, and only perform the check once just before I
+   have to run the graph.
+
+   I think that would be way better than checking each link. Checking each link will make parsing
+   a file and constructing a graph slow. Checking for one or more cycles in a complete graph is much
+   cheaper than checking before each edit. So it makes sense to keep the cycle checking a concept
+   associated with running the graph. When not running the graph, it is allowed to exist with cycles
+   in an error state. This also allows the user to work save, reopen and edit files that may have
+   turned cyclic by accident.
+
+   Just a note for future development: I probably need some sort of "plan" step, that walks the DAG,
+   determines what needs to be computed, and in what order. This phase might also do some sort of
+   thread allocation, to figure out what parts of the DAG can be run concurrently. This phase should
+   support a fully unevaluated DAG (e.g. after loading a new file), or a partially evaluated DAG
+   (e.g. when making incremental edits to an active DAG, or loading cached outputs from disk). This
+   "plan" phase takes on the responsibility of checking for cycles. It is also probably a good idea
+   to run the garbage collection on the graph just before the plan phase. It seems like the best
+   time to clean up after the user makes a long series of edits, and now wants to run the graph.
+
+   In light of this insight, closing this task.
+
 * DONE tjrpd8 - Support const generics in orc_fn macro
   CLOSED: [2026-08-14 Fri 12:25]
   :PROPERTIES:
@@ -210,101 +339,3 @@
   #+end_src
 
   Read to merge.
-
-* DONE tjpyye - Multithreading in a Python host
-  CLOSED: [2026-08-13 Thu 15:28]
-  :PROPERTIES:
-  :CREATED:  2026-08-13 Thu 10:06
-  :END:
-  :LOGBOOK:
-  - State "DONE"       from "NEXT"       [2026-08-13 Thu 15:28]
-  - State "NEXT"       from "TODO"       [2026-08-13 Thu 13:53]
-  :END:
-
-  Need a proof of concept for a plugin function that uses multiple threads to do some work. It
-  should also be able to check for cancellations, report messages, progress etc. from multiple
-  threads. I was warned about problems with the Python interpreter, something called the GIL getting
-  in my way. Need to navigate these problems, make the necessary design changes, and get it working.
-
-  <2026-08-13 Thu 15:26> Works well. Had to overcome two minor issues:
-  - The Python allocator was not respecting the requested alignment. Rayon wasn't happy with
-    that. But worked after Python allocator was fixed.
-  - Inside the report_message callback inside Python, I had to do ~flush=True~. Otherwise, Python
-    printed weird garbage, because it was deferring the printing somehow and other threads were
-    corrupting the data.
-
-  Read to merge.
-
-* NEXT tjockq - DAG capability inside Rust SDK
-  :PROPERTIES:
-  :CREATED:  2026-08-12 Wed 16:50
-  :END:
-  :LOGBOOK:
-  - State "NEXT"       from "TODO"       [2026-08-12 Wed 16:50]
-  :END:
-
-  Currently inside kbb_cli_host. But more general DAG capabilities are useful in many plugins and
-  host apps.
-
-  <2026-08-12 Wed 18:33>  Moved the dag helper macro into the SDK. A DAG datastructure inside the
-  SDK will require some more thought. It needs to be a generic graph to allow for cheap and
-  arbitrary edits. A flat tape is not good for arbitrary edits. I want to resurrect the halfedge
-  style graph structure I used in ~galproject~ many years ago.
-
-  The datastructure should have a property system. A node editor might use it to save user assigned
-  aliases / names for nodes. Another UI app might choose to store colors, render settings etc. This
-  information should be stored in the file, as generic properties. The properties that one UI app
-  cares about should not step on the toes of other UI apps. They should coexist with unique property
-  identifiers.
-
-  <2026-08-13 Thu 13:45> Trying to get the current state merged to pivot to a different task. Will
-  return to this task later.
-
-* DONE tjo88p - Don't use build.rs
-  CLOSED: [2026-08-12 Wed 16:14]
-  :PROPERTIES:
-  :CREATED:  2026-08-09 Sun 00:18
-  :END:
-  :LOGBOOK:
-  - State "DONE"       from "NEXT"       [2026-08-12 Wed 16:14]
-  - State "NEXT"       from "TODO"       [2026-08-12 Wed 15:17]
-  :END:
-
-  - Pull the bindings generation into a separate crate somewhere in the repo, that is not built by
-    default. It should be built only if directly asked to build that crate.
-  - Generate the bindings using that binary crate once, for both Python and Rust, and commit them
-    into the repo. Rust bindings go directly into the src/bindings.rs instead of the OUT_DIR as they
-    do now.
-  - Add a test to the CI, that runs the bindings generator binary, and asserts the diff is empty.
-  - Might be a good idea to include a timestamp in the generated code. If I end up doing that, I
-    should account for that when checking the diff in CI.
-
-  <2026-08-12 Wed 15:32> Baked the Rust bindings into the git, and pulled the build.rs logic out
-  into a separate crate. Adding command line arguments etc. to the crate.
-
-  <2026-08-12 Wed 15:35> Adding ~--check~ options to both Rust and Python bindings generation.
-
-  - [X] Add the --check option to the CI to ensure the bindings never go out of sync.
-
-  <2026-08-12 Wed 16:11> Added the checks to the CI. Not consistently passing on Windows. Started
-  using the ~diff~ crate to see what the problem is.
-
-* DONE tjmcc9 - orc_map_fn Macro in Rust SDK
-  CLOSED: [2026-08-12 Wed 15:11]
-  :PROPERTIES:
-  :CREATED:  2026-08-02 Sun 11:00
-  :END:
-  :LOGBOOK:
-  - State "DONE"       from "NEXT"       [2026-08-12 Wed 15:11]
-  - State "NEXT"       from "TODO"       [2026-08-11 Tue 14:50]
-  :END:
-
-  Some functions will just have one input and one output, and they operate on a single item, and
-  produce a single item. These functions don't need the overhead of ~Combinations~. They can just
-  ~map~ the ~items~ of the deck, and just copy the ~marks~ of the deck. And the Rust compiler can
-  optimize that code much better. It will be nice to have another proc_macro specialized for these
-  types of functions. Something like ~orc_map_fn~.
-
-  <2026-08-12 Wed 14:44> Got this working, and made a few other improvements to both macros. But
-  realized this type of macro limits the LSP support when writing the body of the function. So I am
-  switching to an attribute macro that works similar to what I have now.

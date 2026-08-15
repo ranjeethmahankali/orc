@@ -32,7 +32,13 @@ fn t_add_fn() {
     }
     let inputs: &[OrcHandle] = &[a_handle, b_handle];
     unsafe {
-        (add_fn.func)(0, inputs.as_ptr(), inputs.len() as u64, &mut out_handle, 1);
+        (add_fn.func.expect("Invalid function"))(
+            0,
+            inputs.as_ptr(),
+            inputs.len() as u64,
+            &mut out_handle,
+            1,
+        );
     }
     let view = DeckView::<f64>::from_handle(&out_handle).unwrap();
     const EXPECTED: &[&[f64]] = &[&[11.0, 22.0, 33.0], &[12.0, 24.0, 36.0, 38.0]];
@@ -62,7 +68,13 @@ fn t_list_length_fn() {
     }
     let inputs: &[OrcHandle] = &[a_handle];
     unsafe {
-        (list_length_fn.func)(0, inputs.as_ptr(), inputs.len() as u64, &mut out_handle, 1);
+        (list_length_fn.func.expect("Invalid function"))(
+            0,
+            inputs.as_ptr(),
+            inputs.len() as u64,
+            &mut out_handle,
+            1,
+        );
     }
     let view = DeckView::<u64>::from_handle(&out_handle).unwrap();
     assert_eq!(view.items(), &[3, 4]);
@@ -84,7 +96,7 @@ fn t_flatten_deck_fn() {
     };
     unsafe {
         update_handle_from_deck(&a, &mut a_handle);
-        (flatten_fn.func)(0, &a_handle, 1, &mut out_handle, 1);
+        (flatten_fn.func.expect("Invalid function"))(0, &a_handle, 1, &mut out_handle, 1);
     }
     let view = DeckView::<f64>::from_handle(&out_handle).unwrap();
     assert_eq!(view.items(), &[1.0, 2.0, 3.0, 4.0, 5.0]);
@@ -142,28 +154,34 @@ fn t_flatten_complex() {
         ..Default::default()
     };
     let inputs = [lhs_real_h, lhs_imag_h];
-    unsafe { (create_complex.func)(0, inputs.as_ptr(), 2, &mut lhs_complex, 1) };
+    unsafe {
+        (create_complex.func.expect("Invalid function"))(0, inputs.as_ptr(), 2, &mut lhs_complex, 1)
+    };
 
     let mut rhs_complex = OrcHandle {
         handle: next_id(),
         ..Default::default()
     };
     let inputs = [rhs_real_h, rhs_imag_h];
-    unsafe { (create_complex.func)(0, inputs.as_ptr(), 2, &mut rhs_complex, 1) };
+    unsafe {
+        (create_complex.func.expect("Invalid function"))(0, inputs.as_ptr(), 2, &mut rhs_complex, 1)
+    };
 
     let mut mul_out = OrcHandle {
         handle: next_id(),
         ..Default::default()
     };
     let inputs = [lhs_complex, rhs_complex];
-    unsafe { (mul_complex.func)(0, inputs.as_ptr(), 2, &mut mul_out, 1) };
+    unsafe {
+        (mul_complex.func.expect("Invalid function"))(0, inputs.as_ptr(), 2, &mut mul_out, 1)
+    };
     assert!(mul_out.n_marks > 0); // nested: [[5+0i, -1+0i], [6+0i]]
 
     let mut flat = OrcHandle {
         handle: next_id(),
         ..Default::default()
     };
-    unsafe { (flatten_fn.func)(0, &mul_out, 1, &mut flat, 1) };
+    unsafe { (flatten_fn.func.expect("Invalid function"))(0, &mul_out, 1, &mut flat, 1) };
 
     assert_eq!(flat.n_items, 3);
 
@@ -177,7 +195,7 @@ fn t_flatten_complex() {
             ..Default::default()
         },
     ];
-    unsafe { (get_parts.func)(0, &flat, 1, parts.as_mut_ptr(), 2) };
+    unsafe { (get_parts.func.expect("Invalid function"))(0, &flat, 1, parts.as_mut_ptr(), 2) };
 
     let real = DeckView::<f64>::from_handle(&parts[0]).unwrap();
     let imag = DeckView::<f64>::from_handle(&parts[1]).unwrap();
@@ -207,7 +225,8 @@ fn t_single_call() {
     let b = make_handle(&HANDLE_COUNTER, &b_deck);
     let out = orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, {
         (add a b)
-    });
+    })
+    .unwrap();
     let view = DeckView::<f64>::from_handle(&out).unwrap();
     assert_eq!(view.items(), &[11.0, 22.0, 33.0]);
 }
@@ -224,7 +243,8 @@ fn t_let_then_trailing() {
     let out = orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, {
         (let ab (add a b))
         (add ab c)
-    });
+    })
+    .unwrap();
     let view = DeckView::<f64>::from_handle(&out).unwrap();
     assert_eq!(view.items(), &[111.0, 222.0, 333.0]);
 }
@@ -240,7 +260,8 @@ fn t_multiple_lets() {
     let out = orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, {
         (let sum (add a b))
         (mul sum sum)
-    });
+    })
+    .unwrap();
     let view = DeckView::<f64>::from_handle(&out).unwrap();
     assert_eq!(view.items(), &[49.0, 169.0]);
 }
@@ -257,7 +278,8 @@ fn t_nested_call() {
     // (a * b) + c = (10, 30) + (1, 1) = (11, 31)
     let out = orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, {
         (add (mul a b) c)
-    });
+    })
+    .unwrap();
     let view = DeckView::<f64>::from_handle(&out).unwrap();
     assert_eq!(view.items(), &[11.0, 31.0]);
 }
@@ -274,7 +296,8 @@ fn t_deep_nesting() {
     // (a + b) * c = (4, 6) * (10, 10) = (40, 60)
     let out = orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, {
         (mul (add a b) c)
-    });
+    })
+    .unwrap();
     let view = DeckView::<f64>::from_handle(&out).unwrap();
     assert_eq!(view.items(), &[40.0, 60.0]);
 }
@@ -292,7 +315,8 @@ fn t_let_with_nested() {
     let out = orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, {
         (let prod (mul a b))
         (sub (add prod c) prod)
-    });
+    })
+    .unwrap();
     let view = DeckView::<f64>::from_handle(&out).unwrap();
     assert_eq!(view.items(), &[10.0]);
 }
@@ -306,7 +330,8 @@ fn t_external_variables() {
     let y = make_handle(&HANDLE_COUNTER, &y_deck);
     let result = orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, {
         (sub x y)
-    });
+    })
+    .unwrap();
     let view = DeckView::<f64>::from_handle(&result).unwrap();
     assert_eq!(view.items(), &[99.0]);
 }
@@ -314,5 +339,5 @@ fn t_external_variables() {
 // 10. Empty block returns unit.
 #[test]
 fn t_empty_block() {
-    assert_eq!(orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, {}), ());
+    assert_eq!(orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, {}).unwrap(), ());
 }

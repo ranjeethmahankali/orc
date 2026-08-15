@@ -53,6 +53,7 @@ ORC_ERROR_OUT_OF_BOUNDS = 0xff0a
 ORC_ERROR_ALLOC_FAILED = 0xff0b
 ORC_ERROR_NULL_PTR = 0xff0c
 ORC_ERROR_MISSING_CAPABILITY = 0xff0d
+ORC_ERROR_INVALID_FUNCTION = 0xff0e
 ORC_ERROR_UNKNOWN = 0xffff
 
 ORC_DECK_PROXY_COPY_ALL = 0x01
@@ -94,9 +95,9 @@ class OrcItemProxy(ctypes.Structure):
 
 OrcDims = ctypes.c_int32 * 7
 
+OrcPluginFunction = ctypes.CFUNCTYPE(None, ctypes.c_uint64, ctypes.POINTER(OrcHandle), ctypes.c_uint64, ctypes.POINTER(OrcHandle), ctypes.c_uint64)
 OrcDeckFreeFn = ctypes.CFUNCTYPE(ctypes.c_uint32, ctypes.POINTER(OrcHandle))
 
-OrcFuncFn = ctypes.CFUNCTYPE(None, ctypes.c_uint64, ctypes.POINTER(OrcHandle), ctypes.c_uint64, ctypes.POINTER(OrcHandle), ctypes.c_uint64)
 OrcAllocFn = ctypes.CFUNCTYPE(ctypes.c_void_p, ctypes.c_uint64, ctypes.c_uint64)
 OrcDeallocFn = ctypes.CFUNCTYPE(None, ctypes.c_void_p, ctypes.c_uint64, ctypes.c_uint64)
 OrcReportProgressFn = ctypes.CFUNCTYPE(None, ctypes.c_uint64, ctypes.c_double)
@@ -132,7 +133,7 @@ OrcFuncInfo._fields_ = [
     ("n_outputs", ctypes.c_uint64),
     ("input_types", ctypes.POINTER(OrcTypeId)),
     ("output_types", ctypes.POINTER(OrcTypeId)),
-    ("func", OrcFuncFn),
+    ("func", OrcPluginFunction),
 ]
 
 OrcPlugin._fields_ = [
