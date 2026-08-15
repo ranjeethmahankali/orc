@@ -178,15 +178,6 @@
 
   kbb file is a LISP
 
-* TODO Running a DAG workflow
-  :PROPERTIES:
-  :CREATED:  2026-08-15 Sat 14:26
-  :END:
-
-  First I need to iron out the details of handle ownership in Rust, and figure out what are all the
-  types of nodes I need in the DAG other than pure functions (constants, variables, ...). I need
-  clarity on all that before I can start.
-
 * TODO Function metadata ABI improvements
   :PROPERTIES:
   :CREATED:  2026-08-15 Sat 13:54
@@ -211,6 +202,18 @@
   to this metadata to improve the overall experience. But no matter what, it should remain purely
   metadata. The actual function should still handle everything procedurally. Should be completely
   optional. Everything should still work without this metadata, albeit a more inconvenient manner.
+
+* NEXT tjtyz1 - Running a DAG workflow
+  :PROPERTIES:
+  :CREATED:  2026-08-15 Sat 14:26
+  :END:
+  :LOGBOOK:
+  - State "NEXT"       from "TODO"       [2026-08-15 Sat 17:42]
+  :END:
+
+  First I need to iron out the details of handle ownership in Rust, and figure out what are all the
+  types of nodes I need in the DAG other than pure functions (constants, variables, ...). I need
+  clarity on all that before I can start.
 
 * DONE tjtsc1 - OrcHandle ownership in Rust
   CLOSED: [2026-08-15 Sat 17:37]
