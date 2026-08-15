@@ -157,6 +157,153 @@ macro_rules! orc_inline_dag {
     };
 }
 
+/// Declarative macro for building a workflow DAG from plugin function calls.
+///
+/// Takes a PluginSet, an `&AtomicU64` handle counter, a `&DeckRegistry`, a
+/// `&mut Workflow`, and a block of statements. Instead of immediately executing
+/// functions, this macro adds nodes to the workflow graph and connects them.
+///
+/// Expressions return `OH` (output handles in the graph) instead of `OrcHandle`.
+///
+/// ```ignore
+/// use std::sync::atomic::AtomicU64;
+/// let hc = AtomicU64::new(0);
+/// let mut workflow = Workflow::default();
+/// orc_dag!(plugin_set, &hc, &registry, &mut workflow, {
+///     (let a (const [[1.0, 2.0], [3.0]]))
+///     (let b (const [10.0, 20.0, 30.0]))
+///     (let sum (add a b))
+///     (let (real imag) (complex_get_parts sum))
+///     (return real imag)
+/// })
+/// ```
+#[macro_export]
+macro_rules! orc_dag {
+    // Entry point.
+    ($ps:expr, $hc:expr, $reg:expr, $wf:expr, { $($body:tt)* }) => {
+        (|| -> Result<_, $crate::DagError> {
+            #[allow(unused_variables)]
+            let ps_ref_ = &$ps;
+            #[allow(unused_variables)]
+            let hc_ref_: &std::sync::atomic::AtomicU64 = $hc;
+            #[allow(unused_variables)]
+            let reg_ref_: &$crate::DeckRegistry = $reg;
+            #[allow(unused_variables)]
+            let wf_ref_: &mut $crate::Workflow = $wf;
+            orc_dag!(@stmts ps_ref_, hc_ref_, reg_ref_, wf_ref_, $($body)*)
+        })()
+    };
+
+    // --- Statements ---
+
+    // let const with list literal: (let x (const [1, 2, 3]))
+    (@stmts $ps:ident, $hc:ident, $reg:ident, $wf:ident, (let $name:ident (const [$($tt:tt)*])) $($rest:tt)*) => {{
+        let $name = orc_dag!(@const_node $hc, $reg, $wf, $crate::deck![$($tt)*])?;
+        orc_dag!(@stmts $ps, $hc, $reg, $wf, $($rest)*)
+    }};
+
+    // let const with scalar: (let x (const 42.0f64))
+    (@stmts $ps:ident, $hc:ident, $reg:ident, $wf:ident, (let $name:ident (const $val:expr)) $($rest:tt)*) => {{
+        let $name = orc_dag!(@const_node $hc, $reg, $wf, $crate::Deck::from_value($val))?;
+        orc_dag!(@stmts $ps, $hc, $reg, $wf, $($rest)*)
+    }};
+
+    // let single output, more statements follow
+    (@stmts $ps:ident, $hc:ident, $reg:ident, $wf:ident, (let $name:ident ($func:ident $($arg:tt)*)) $($rest:tt)*) => {{
+        let $name = orc_dag!(@call1 $ps, $hc, $reg, $wf, $func, $($arg)*)?;
+        orc_dag!(@stmts $ps, $hc, $reg, $wf, $($rest)*)
+    }};
+
+    // let multiple outputs, more statements follow
+    (@stmts $ps:ident, $hc:ident, $reg:ident, $wf:ident, (let ($($name:ident)+) ($func:ident $($arg:tt)*)) $($rest:tt)*) => {{
+        let input_ohs_ = [$(orc_dag!(@expr $ps, $hc, $reg, $wf, $arg)),*];
+        let func_info_ = $ps.get_function(stringify!($func))
+            .ok_or($crate::DagError::InvalidFunction)?
+            .clone();
+        const N_INS_: usize = orc_dag!(@count_tt $($arg)*);
+        const N_OUTS_: usize = orc_dag!(@count $($name)+);
+        let mut ihs_: [$crate::IH; N_INS_] = std::array::from_fn(|_| $crate::IH { idx: 0 });
+        let mut ohs_: [$crate::OH; N_OUTS_] = std::array::from_fn(|_| $crate::OH { idx: 0 });
+        $wf.add_function(func_info_, &mut ihs_, &mut ohs_)?;
+        for (ih_, oh_) in ihs_.iter().zip(input_ohs_.iter()) {
+            $wf.connect(*oh_, *ih_)?;
+        }
+        let mut idx_ = 0usize;
+        $(
+            let $name = ohs_[idx_];
+            idx_ += 1;
+        )+
+        let _ = idx_;
+        orc_dag!(@stmts $ps, $hc, $reg, $wf, $($rest)*)
+    }};
+
+    // Return multiple (or single) named handles as a tuple.
+    (@stmts $ps:ident, $hc:ident, $reg:ident, $wf:ident, (return $($name:ident)+)) => {
+        Ok(($($name),+))
+    };
+
+    // Trailing expression — bare function call as the block's return value
+    (@stmts $ps:ident, $hc:ident, $reg:ident, $wf:ident, ($func:ident $($arg:tt)*)) => {
+        orc_dag!(@call1 $ps, $hc, $reg, $wf, $func, $($arg)*)
+    };
+
+    // Empty — end of statements
+    (@stmts $ps:ident, $hc:ident, $reg:ident, $wf:ident,) => { Ok::<(), $crate::DagError>(()) };
+
+    // --- Expression: either a variable reference, a nested function call, or const ---
+    // Const list: (const [1, 2, 3])
+    (@expr $ps:ident, $hc:ident, $reg:ident, $wf:ident, (const [$($tt:tt)*])) => {
+        orc_dag!(@const_node $hc, $reg, $wf, $crate::deck![$($tt)*])?
+    };
+    // Const scalar: (const 42.0f64)
+    (@expr $ps:ident, $hc:ident, $reg:ident, $wf:ident, (const $val:expr)) => {
+        orc_dag!(@const_node $hc, $reg, $wf, $crate::Deck::from_value($val))?
+    };
+    // Nested call: (func args...)
+    (@expr $ps:ident, $hc:ident, $reg:ident, $wf:ident, ($func:ident $($arg:tt)*)) => {
+        orc_dag!(@call1 $ps, $hc, $reg, $wf, $func, $($arg)*)?
+    };
+    // Variable reference
+    (@expr $ps:ident, $hc:ident, $reg:ident, $wf:ident, $var:ident) => {
+        $var
+    };
+
+    // --- Const node: allocate a deck in the registry, create a constant node with 1 output ---
+    (@const_node $hc:ident, $reg:ident, $wf:ident, $deck:expr) => {{
+        let mut h_ = $crate::OrcHandle::default();
+        h_.handle = $hc.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        $reg.alloc_with_value($deck, &mut h_)
+            .map_err(|e| $crate::DagError::from(e))?;
+        let mut oh_ = $crate::OH { idx: 0 };
+        $wf.add_constant(h_, &mut oh_)?;
+        Ok::<$crate::OH, $crate::DagError>(oh_)
+    }};
+
+    // --- Single-output function call ---
+    (@call1 $ps:ident, $hc:ident, $reg:ident, $wf:ident, $func:ident, $($arg:tt)*) => {{
+        let input_ohs_ = [$(orc_dag!(@expr $ps, $hc, $reg, $wf, $arg)),*];
+        let func_info_ = $ps.get_function(stringify!($func))
+            .ok_or($crate::DagError::InvalidFunction)?
+            .clone();
+        const N_INS_: usize = orc_dag!(@count_tt $($arg)*);
+        let mut ihs_: [$crate::IH; N_INS_] = std::array::from_fn(|_| $crate::IH { idx: 0 });
+        let mut oh_ = $crate::OH { idx: 0 };
+        $wf.add_function(func_info_, &mut ihs_, std::slice::from_mut(&mut oh_))?;
+        for (ih_, src_oh_) in ihs_.iter().zip(input_ohs_.iter()) {
+            $wf.connect(*src_oh_, *ih_)?;
+        }
+        Ok::<$crate::OH, $crate::DagError>(oh_)
+    }};
+
+    // --- Counting ---
+    (@count $x:ident) => { 1usize };
+    (@count $x:ident $($rest:ident)+) => { 1usize + orc_dag!(@count $($rest)+) };
+
+    // Count token trees (for counting arguments which may be tt groups or idents)
+    (@count_tt $x:tt) => { 1usize };
+    (@count_tt $x:tt $($rest:tt)+) => { 1usize + orc_dag!(@count_tt $($rest)+) };
+}
+
 /// All elements of the graph implement this trait. They are identified by their
 /// index.
 pub trait Handle: From<usize> + Copy + Clone + 'static {
@@ -717,6 +864,14 @@ pub enum DagError {
     BorrowedPropertyAccess,
     MismatchedArrayLengths(usize, usize),
     CycleDetected,
+    InvalidFunction,
+    SdkError(crate::Error),
+}
+
+impl From<crate::Error> for DagError {
+    fn from(e: crate::Error) -> Self {
+        DagError::SdkError(e)
+    }
 }
 
 #[derive(Default)]
@@ -1191,6 +1346,27 @@ impl Workflow {
                 .try_borrow_mut()
                 .map_err(|_e| DagError::BorrowedPropertyAccess)?;
             node_infos[n] = NodeInfo::Function(info);
+        }
+        Ok(n)
+    }
+
+    pub fn add_constant(
+        &mut self,
+        data: OrcHandle,
+        output_handle: &mut OH,
+    ) -> Result<NH, DagError> {
+        let n = self
+            .graph
+            .push_node(&mut [], std::slice::from_mut(output_handle))?;
+        {
+            let mut node_infos = self
+                .node_infos
+                .try_borrow_mut()
+                .map_err(|_e| DagError::BorrowedPropertyAccess)?;
+            node_infos[n] = NodeInfo::Constant {
+                name: String::new(),
+                data,
+            };
         }
         Ok(n)
     }
