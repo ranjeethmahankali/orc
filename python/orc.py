@@ -79,12 +79,15 @@ def _read_handle_items(h, ctype):
 def _read_handle_marks(h):
     if not h.marks or h.n_marks == 0:
         return []
-    return [OrcMark(depth=h.marks[i].depth, pos=h.marks[i].pos)
-            for i in range(h.n_marks)]
+    return [
+        OrcMark(depth=h.marks[i].depth, pos=h.marks[i].pos)
+        for i in range(h.n_marks)
+    ]
 
 
 @OrcCreateDeckFromProxyFn
-def host_create_proxy_deck(inputs_ptr, n_inputs, proxy_type, proxy_ptr, out_ptr):
+def host_create_proxy_deck(inputs_ptr, n_inputs, proxy_type, proxy_ptr,
+                           out_ptr):
     if not inputs_ptr or not proxy_ptr or not out_ptr:
         return ORC_ERROR_INVALID_HANDLE
     inputs = [inputs_ptr[i] for i in range(n_inputs)]
@@ -103,13 +106,16 @@ def host_create_proxy_deck(inputs_ptr, n_inputs, proxy_type, proxy_ptr, out_ptr)
             for j in range(plugin.n_types):
                 if plugin.types[j].type_id == type_id:
                     lib.orc_deck_from_proxy.argtypes = [
-                        ctypes.POINTER(OrcHandle), ctypes.c_uint64,
+                        ctypes.POINTER(OrcHandle),
+                        ctypes.c_uint64,
                         ctypes.c_uint8,
-                        ctypes.POINTER(OrcHandle), ctypes.POINTER(OrcHandle),
+                        ctypes.POINTER(OrcHandle),
+                        ctypes.POINTER(OrcHandle),
                     ]
                     lib.orc_deck_from_proxy.restype = OrcError
-                    return lib.orc_deck_from_proxy(
-                        inputs_ptr, n_inputs, proxy_type, proxy_ptr, out_ptr)
+                    return lib.orc_deck_from_proxy(inputs_ptr, n_inputs,
+                                                   proxy_type, proxy_ptr,
+                                                   out_ptr)
         return ORC_ERROR_INVALID_PROXY
 
     # Primitive type — implement proxy operations in Python.
@@ -128,8 +134,10 @@ def host_create_proxy_deck(inputs_ptr, n_inputs, proxy_type, proxy_ptr, out_ptr)
     elif proxy_type == ORC_DECK_PROXY_SHUFFLE:
         input_items = [_read_handle_items(h, ctype) for h in inputs]
         proxy_item_ptr = ctypes.cast(proxy.items, ctypes.POINTER(OrcItemProxy))
-        items = [input_items[proxy_item_ptr[k].tree][proxy_item_ptr[k].item]
-                 for k in range(proxy.n_items)]
+        items = [
+            input_items[proxy_item_ptr[k].tree][proxy_item_ptr[k].item]
+            for k in range(proxy.n_items)
+        ]
         marks = proxy_marks
     else:
         return ORC_ERROR_INVALID_PROXY
@@ -147,8 +155,10 @@ def host_create_proxy_deck(inputs_ptr, n_inputs, proxy_type, proxy_ptr, out_ptr)
     if marks:
         marks_arr = (OrcMark * len(marks))(*marks)
         stride_offset, strides = _calc_strides(list(marks_arr))
-        stride_offset_arr = (ctypes.c_uint64 * len(stride_offset))(*stride_offset)
-        stride_arr = (ctypes.c_uint64 * len(strides))(*strides) if strides else None
+        stride_offset_arr = (ctypes.c_uint64 *
+                             len(stride_offset))(*stride_offset)
+        stride_arr = (ctypes.c_uint64 *
+                      len(strides))(*strides) if strides else None
         out_ptr[0].marks = ctypes.cast(marks_arr, ctypes.POINTER(OrcMark))
         out_ptr[0].stride_offset = ctypes.cast(stride_offset_arr,
                                                ctypes.POINTER(ctypes.c_uint64))
@@ -159,7 +169,8 @@ def host_create_proxy_deck(inputs_ptr, n_inputs, proxy_type, proxy_ptr, out_ptr)
         backing += [marks_arr, stride_offset_arr, stride_arr]
 
     out_ptr[0].free_fn = _proxy_deck_free
-    _proxy_deck_registry[handle_id] = tuple(b for b in backing if b is not None)
+    _proxy_deck_registry[handle_id] = tuple(b for b in backing
+                                            if b is not None)
     return ORC_ERROR_NONE
 
 
@@ -167,7 +178,7 @@ def default_host(use_custom_allocator=False):
     """Create an OrcHost with default memory and message callbacks."""
     host = OrcHost()
     host.abi_version = ORC_ABI_VERSION
-    if use_custom_allocator: # This should be used only for debugging. Lower level code in the DLL probably has a better allocator.
+    if use_custom_allocator:  # This should be used only for debugging. Lower level code in the DLL probably has a better allocator.
         host.memory_api.alloc = host_alloc
         host.memory_api.dealloc = host_dealloc
     host.callbacks.report_message = report_message
@@ -439,7 +450,7 @@ def load_plugins(search_dir, verbose=False, use_custom_allocator=False):
 
     Returns a list of (lib, OrcPlugin) tuples.
     """
-    host = default_host()
+    host = default_host(use_custom_allocator=use_custom_allocator)
     ext = _shared_lib_ext()
     plugins = []
     if not os.path.isdir(search_dir):
@@ -497,9 +508,13 @@ class OrcFuncWrapper:
     def __call__(self, *inputs, n_out=None):
         """Call the plugin function with the given input handles."""
         if self.n_inputs is not None and len(inputs) != self.n_inputs:
-            raise ValueError(f"The function '{self.name}' expects {self.n_inputs} arguments.")
+            raise ValueError(
+                f"The function '{self.name}' expects {self.n_inputs} arguments."
+            )
         if self.n_outputs is not None and n_out is not None and self.n_outputs != n_out:
-            raise ValueError(f"The function '{self.name}' will produce {self.n_outputs} outputs.")
+            raise ValueError(
+                f"The function '{self.name}' will produce {self.n_outputs} outputs."
+            )
         in_arr = (OrcHandle * len(inputs))(*inputs)
         if n_out is None:
             if self.n_outputs is None:
