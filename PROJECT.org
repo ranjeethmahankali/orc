@@ -171,6 +171,24 @@
   Maybe I can write a rasterizer for my curve types, and somehow get the optimizer to export images
   of the sample points in the design space, so that I can visualize them when viewing the DOE.
 
+* TODO Parse a DAG from a kbb file
+  :PROPERTIES:
+  :CREATED:  2026-08-15 Sat 07:52
+  :END:
+
+  kbb file is a LISP
+
+* TODO Function metadata ABI improvements
+  :PROPERTIES:
+  :CREATED:  2026-08-15 Sat 13:54
+  :END:
+
+  A node-editor UI app that wants to create nodes with properly named inputs needs to get that
+  information from the plugin that defines the corresponding function. This will require adding new
+  fields to the function metadata's ABI. Requires more thought as to what the new metadata will
+  be. It certainly needs to be flexible, and allow for the host app to overwrite the behavior if
+  need be.
+
 * NEXT tjockq - DAG capability inside Rust SDK
   :PROPERTIES:
   :CREATED:  2026-08-12 Wed 16:50
@@ -239,13 +257,6 @@
    time to clean up after the user makes a long series of edits, and now wants to run the graph.
 
    In light of this insight, closing this task.
-
-* TODO Parse a DAG from a kbb file
-  :PROPERTIES:
-  :CREATED:  2026-08-15 Sat 07:52
-  :END:
-
-  kbb file is a LISP
 
 * DONE tjrpd8 - Support const generics in orc_fn macro
   CLOSED: [2026-08-14 Fri 12:25]
