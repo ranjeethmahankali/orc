@@ -227,7 +227,9 @@
    thread allocation, to figure out what parts of the DAG can be run concurrently. This phase should
    support a fully unevaluated DAG (e.g. after loading a new file), or a partially evaluated DAG
    (e.g. when making incremental edits to an active DAG, or loading cached outputs from disk). This
-   "plan" phase takes on the responsibility of checking for cycles.
+   "plan" phase takes on the responsibility of checking for cycles. It is also probably a good idea
+   to run the garbage collection on the graph just before the plan phase. It seems like the best
+   time to clean up after the user makes a long series of edits, and now wants to run the graph.
 
    In light of this insight, closing this task.
 
