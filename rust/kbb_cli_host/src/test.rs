@@ -412,7 +412,35 @@ fn t_const_with_external_var() {
     assert_eq!(view.depth(), 1);
 }
 
-// 16. Const scalar reused in multiple expressions.
+// 16. Const depth 2: nested list added element-wise.
+#[test]
+fn t_const_depth2() {
+    let out = orc_inline_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, {
+        (let a (const [[1.0f64, 2.0], [3.0]]))
+        (let b (const [[10.0f64, 20.0], [30.0]]))
+        (add a b)
+    })
+    .unwrap();
+    let view = DeckView::<f64>::from_handle(&out).unwrap();
+    assert_eq!(view.items(), &[11.0, 22.0, 33.0]);
+    assert_eq!(view.depth(), 2);
+}
+
+// 17. Const depth 3.
+#[test]
+fn t_const_depth3() {
+    let out = orc_inline_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, {
+        (let a (const [[[1.0f64, 2.0], [3.0]], [[4.0]]]))
+        (let b (const [[[10.0f64, 20.0], [30.0]], [[40.0]]]))
+        (add a b)
+    })
+    .unwrap();
+    let view = DeckView::<f64>::from_handle(&out).unwrap();
+    assert_eq!(view.items(), &[11.0, 22.0, 33.0, 44.0]);
+    assert_eq!(view.depth(), 3);
+}
+
+// 18. Const scalar reused in multiple expressions.
 #[test]
 fn t_const_reused() {
     let out = orc_inline_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, {
