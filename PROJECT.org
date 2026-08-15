@@ -200,6 +200,10 @@
   copied over from the alum project, with slight changes. Don't yet know what the outward facing API
   of a workflow will be. I need to think about how this will be used, and come up with something.
 
+  <2026-08-15 Sat 08:02> Finalized the DAG implementation, with a property system and all, with a
+  bit of testing. Next: parse kbb file into this DAG, and sketch out a way to run it in topological
+  order.
+
 ** TODO Parse a DAG from a kbb file
    :PROPERTIES:
    :CREATED:  2026-08-15 Sat 07:52
