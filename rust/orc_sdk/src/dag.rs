@@ -224,6 +224,14 @@ where
         Ok(())
     }
 
+    pub fn resize(&mut self, n: usize) -> Result<(), DagError> {
+        for prop in self.props.iter_mut() {
+            prop.resize(n)?;
+        }
+        self.length = n;
+        Ok(())
+    }
+
     pub fn clear(&mut self) -> Result<(), DagError> {
         for prop in self.props.iter_mut() {
             prop.clear()?;
@@ -251,28 +259,6 @@ where
             return err;
         }
         self.length += 1;
-        Ok(())
-    }
-
-    pub fn push_values(&mut self, num: usize) -> Result<(), DagError> {
-        let (count, err) = self
-            .props
-            .iter_mut()
-            .fold((0usize, Ok(())), |(count, err), prop| match err {
-                Ok(()) => match prop.push_many(num) {
-                    Ok(()) => (count + 1, Ok(())),
-                    Err(e) => (count, Err(e)),
-                },
-                Err(e) => (count, Err(e)),
-            });
-        // If something went wrong, go back to how things were.
-        if err.is_err() {
-            for prop in self.props.iter_mut().take(count) {
-                prop.resize(self.length)?;
-            }
-            return err;
-        }
-        self.length += num;
         Ok(())
     }
 
@@ -698,12 +684,7 @@ where
     }
 }
 
-struct Node {
-    input: Option<IH>,
-    output: Option<OH>,
-    deleted: bool,
-}
-
+#[derive(Clone)]
 struct Input {
     node: NH,
     link: Option<LH>,
@@ -712,6 +693,7 @@ struct Input {
     deleted: bool,
 }
 
+#[derive(Clone)]
 struct Output {
     node: NH,
     link: Option<LH>,
@@ -720,11 +702,19 @@ struct Output {
     deleted: bool,
 }
 
+#[derive(Clone)]
 struct Link {
     start: OH,
     end: IH,
     prev: Option<LH>,
     next: Option<LH>,
+    deleted: bool,
+}
+
+#[derive(Clone)]
+struct Node {
+    input: Option<IH>,
+    output: Option<OH>,
     deleted: bool,
 }
 
@@ -921,6 +911,163 @@ impl Graph {
         self.node_props.clear()?;
         Ok(())
     }
+
+    pub fn garbage_collection(&mut self) -> Result<(), DagError> {
+        let mut imap: Vec<IH> = (0usize..self.inputs.len()).map(|i| IH { idx: i }).collect();
+        let mut omap: Vec<OH> = (0usize..self.outputs.len())
+            .map(|i| OH { idx: i })
+            .collect();
+        let mut lmap: Vec<LH> = (0usize..self.links.len()).map(|i| LH { idx: i }).collect();
+        let mut nmap: Vec<NH> = (0usize..self.nodes.len()).map(|i| NH { idx: i }).collect();
+        // Clean up inputs.
+        if !self.inputs.is_empty() {
+            let mut left = 0usize;
+            let mut right = self.inputs.len() - 1;
+            let newlen = loop {
+                // Find first deleted and last un-deleted.
+                while !self.inputs[left].deleted && left < right {
+                    left += 1;
+                }
+                while self.inputs[right].deleted && left < right {
+                    right -= 1;
+                }
+                if left >= right {
+                    break left + if self.inputs[left].deleted { 0 } else { 1 };
+                }
+                // Swap the deleted and the undeleted.
+                self.inputs.swap(left, right);
+                self.input_props.swap(left, right)?;
+                imap.swap(left, right);
+            };
+            self.inputs.truncate(newlen);
+            self.input_props.resize(newlen)?;
+        }
+        // Clean up outputs.
+        if !self.outputs.is_empty() {
+            let mut left = 0usize;
+            let mut right = self.outputs.len() - 1;
+            let newlen = loop {
+                // Find first deleted and last un-deleted.
+                while !self.outputs[left].deleted && left < right {
+                    left += 1;
+                }
+                while self.outputs[right].deleted && left < right {
+                    right -= 1;
+                }
+                if left >= right {
+                    break left + if self.outputs[left].deleted { 0 } else { 1 };
+                }
+                // Swap the deleted and the undeleted.
+                self.outputs.swap(left, right);
+                self.output_props.swap(left, right)?;
+                omap.swap(left, right);
+            };
+            self.outputs.truncate(newlen);
+            self.output_props.resize(newlen)?;
+        }
+        // Clean up links.
+        if !self.links.is_empty() {
+            let mut left = 0usize;
+            let mut right = self.links.len() - 1;
+            let newlen = loop {
+                // Find first deleted and last un-deleted.
+                while !self.links[left].deleted && left < right {
+                    left += 1;
+                }
+                while self.links[right].deleted && left < right {
+                    right -= 1;
+                }
+                if left >= right {
+                    break left + if self.links[left].deleted { 0 } else { 1 };
+                }
+                // Swap the deleted and the undeleted.
+                self.links.swap(left, right);
+                self.link_props.swap(left, right)?;
+                lmap.swap(left, right);
+            };
+            self.links.truncate(newlen);
+            self.link_props.resize(newlen)?;
+        }
+        // Clean up nodes.
+        if !self.nodes.is_empty() {
+            let mut left = 0usize;
+            let mut right = self.nodes.len() - 1;
+            let newlen = loop {
+                // Find first deleted and last un-deleted.
+                while !self.nodes[left].deleted && left < right {
+                    left += 1;
+                }
+                while self.nodes[right].deleted && left < right {
+                    right -= 1;
+                }
+                if left >= right {
+                    break left + if self.nodes[left].deleted { 0 } else { 1 };
+                }
+                // Swap the deleted and the undeleted.
+                self.nodes.swap(left, right);
+                self.node_props.swap(left, right)?;
+                nmap.swap(left, right);
+            };
+            self.nodes.truncate(newlen);
+            self.node_props.resize(newlen)?;
+        }
+        // Update inputs.
+        for input in self.inputs.iter_mut() {
+            debug_assert!(!input.deleted, "Garbage collection isn't working properly");
+            input.node = nmap[input.node.idx];
+            if let Some(l) = &mut input.link {
+                *l = lmap[l.idx]
+            }
+            if let Some(p) = &mut input.prev {
+                *p = imap[p.idx]
+            }
+            if let Some(n) = &mut input.next {
+                *n = imap[n.idx]
+            }
+        }
+        // Update Outputs.
+        for output in self.outputs.iter_mut() {
+            debug_assert!(!output.deleted, "Garbage collection isn't working properly");
+            output.node = nmap[output.node.idx];
+            if let Some(l) = &mut output.link {
+                *l = lmap[l.idx];
+            }
+            if let Some(p) = &mut output.prev {
+                *p = omap[p.idx]
+            }
+            if let Some(n) = &mut output.next {
+                *n = omap[n.idx]
+            }
+        }
+        // Update links.
+        for link in self.links.iter_mut() {
+            debug_assert!(!link.deleted, "Garbage collection isn't working properly");
+            link.start = omap[link.start.idx];
+            link.end = imap[link.end.idx];
+            if let Some(l) = &mut link.prev {
+                *l = lmap[l.idx];
+            }
+            if let Some(l) = &mut link.next {
+                *l = lmap[l.idx];
+            }
+        }
+        // Update nodes.
+        for node in self.nodes.iter_mut() {
+            debug_assert!(!node.deleted, "Garbage collection isn't working properly");
+            if let Some(i) = &mut node.input {
+                *i = imap[i.idx];
+            }
+            if let Some(o) = &mut node.output {
+                *o = omap[o.idx];
+            }
+        }
+        // Clean up properties.
+        self.input_props.garbage_collection();
+        self.output_props.garbage_collection();
+        self.link_props.garbage_collection();
+        self.node_props.garbage_collection();
+        Ok(())
+    }
 }
 
 pub struct Workflow {
@@ -994,5 +1141,9 @@ impl Workflow {
         T: Clone + 'static,
     {
         self.graph.create_node_property(default)
+    }
+
+    pub fn garbage_collection(&mut self) -> Result<(), DagError> {
+        self.graph.garbage_collection()
     }
 }
