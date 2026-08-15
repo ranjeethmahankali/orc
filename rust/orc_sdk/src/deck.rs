@@ -2699,4 +2699,16 @@ mod test {
             assert_eq!(out.items(), &[11.0, 22.0, 23.0, 24.0]);
         }
     }
+
+    #[test]
+    fn t_deck_macro_without_brackets() {
+        // deck![] creates a list (depth-1, one mark).
+        let list: Deck<i32> = deck![42];
+        assert_eq!(list.items(), &[42]);
+        assert_eq!(list.marks().len(), 1);
+        // deck!() creates a scalar (depth-0, no marks).
+        let scalar: Deck<i32> = deck!(42);
+        assert_eq!(scalar.items(), &[42]);
+        assert!(scalar.marks().is_empty());
+    }
 }
