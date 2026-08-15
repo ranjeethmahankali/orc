@@ -218,6 +218,12 @@
   <2026-08-15 Sat 17:45> Renamed the existing macro to ~orc_inline_dag~ to be more descriptive and
   avoid conflict with new macro I want to add, to construct a DAG for testing.
 
+  <2026-08-15 Sat 19:05> Renamed ~orc_dag~ macro to ~orc_inline_dag~. Added support for ~const~ and
+  multiple return values to the orc_inline_dag macro. Added a new ~orc_dag~ macro that constructs a
+  DAG workflow instead of running the logic inline. This new macro hasn't been tested yet. I need a
+  rudimentary way to walk and evaluate the macro to start testing it. I could generate topological
+  tests, but feels messy. Seems much better to just write an evaluator and run that.
+
 * DONE tjtsc1 - OrcHandle ownership in Rust
   CLOSED: [2026-08-15 Sat 17:37]
   :PROPERTIES:
