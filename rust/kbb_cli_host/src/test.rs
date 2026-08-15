@@ -1,4 +1,4 @@
-use crate::{HANDLE_COUNTER, PLUGIN_SET};
+use crate::{HANDLE_COUNTER, PLUGIN_SET, REGISTRY};
 use orc_sdk::{Deck, DeckView, OrcHandle, deck, orc_inline_dag, update_handle_from_deck};
 
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -223,7 +223,7 @@ fn t_single_call() {
     let b_deck: Deck<f64> = deck![10.0, 20.0, 30.0];
     let a = make_handle(&HANDLE_COUNTER, &a_deck);
     let b = make_handle(&HANDLE_COUNTER, &b_deck);
-    let out = orc_inline_dag!(*PLUGIN_SET, &HANDLE_COUNTER, {
+    let out = orc_inline_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, {
         (add a b)
     })
     .unwrap();
@@ -240,7 +240,7 @@ fn t_let_then_trailing() {
     let a = make_handle(&HANDLE_COUNTER, &a_deck);
     let b = make_handle(&HANDLE_COUNTER, &b_deck);
     let c = make_handle(&HANDLE_COUNTER, &c_deck);
-    let out = orc_inline_dag!(*PLUGIN_SET, &HANDLE_COUNTER, {
+    let out = orc_inline_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, {
         (let ab (add a b))
         (add ab c)
     })
@@ -257,7 +257,7 @@ fn t_multiple_lets() {
     let a = make_handle(&HANDLE_COUNTER, &a_deck);
     let b = make_handle(&HANDLE_COUNTER, &b_deck);
     // (a + b) * (a + b) = (7, 13) * (7, 13) = (49, 169)
-    let out = orc_inline_dag!(*PLUGIN_SET, &HANDLE_COUNTER, {
+    let out = orc_inline_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, {
         (let sum (add a b))
         (mul sum sum)
     })
@@ -276,7 +276,7 @@ fn t_nested_call() {
     let b = make_handle(&HANDLE_COUNTER, &b_deck);
     let c = make_handle(&HANDLE_COUNTER, &c_deck);
     // (a * b) + c = (10, 30) + (1, 1) = (11, 31)
-    let out = orc_inline_dag!(*PLUGIN_SET, &HANDLE_COUNTER, {
+    let out = orc_inline_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, {
         (add (mul a b) c)
     })
     .unwrap();
@@ -294,7 +294,7 @@ fn t_deep_nesting() {
     let b = make_handle(&HANDLE_COUNTER, &b_deck);
     let c = make_handle(&HANDLE_COUNTER, &c_deck);
     // (a + b) * c = (4, 6) * (10, 10) = (40, 60)
-    let out = orc_inline_dag!(*PLUGIN_SET, &HANDLE_COUNTER, {
+    let out = orc_inline_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, {
         (mul (add a b) c)
     })
     .unwrap();
@@ -312,7 +312,7 @@ fn t_let_with_nested() {
     let b = make_handle(&HANDLE_COUNTER, &b_deck);
     let c = make_handle(&HANDLE_COUNTER, &c_deck);
     // let prod = a * b = 6; prod + c = 16; result - prod = 16 - 6 = 10
-    let out = orc_inline_dag!(*PLUGIN_SET, &HANDLE_COUNTER, {
+    let out = orc_inline_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, {
         (let prod (mul a b))
         (sub (add prod c) prod)
     })
@@ -328,7 +328,7 @@ fn t_external_variables() {
     let y_deck: Deck<f64> = deck![1.0];
     let x = make_handle(&HANDLE_COUNTER, &x_deck);
     let y = make_handle(&HANDLE_COUNTER, &y_deck);
-    let result = orc_inline_dag!(*PLUGIN_SET, &HANDLE_COUNTER, {
+    let result = orc_inline_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, {
         (sub x y)
     })
     .unwrap();
@@ -340,7 +340,7 @@ fn t_external_variables() {
 #[test]
 fn t_empty_block() {
     assert_eq!(
-        orc_inline_dag!(*PLUGIN_SET, &HANDLE_COUNTER, {}).unwrap(),
+        orc_inline_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, {}).unwrap(),
         ()
     );
 }

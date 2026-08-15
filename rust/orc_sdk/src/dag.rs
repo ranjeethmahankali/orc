@@ -9,14 +9,17 @@ use crate::{FuncInfo, OrcHandle};
 
 /// Declarative macro for composing a DAG of plugin function calls.
 ///
-/// Takes a PluginSet, an `&AtomicU64` handle counter, and a block of statements.
-/// The counter is used to assign unique handle IDs to all output handles.
-/// Supports nesting single-output calls: `(add (mul a b) c)`.
+/// Takes a PluginSet, an `&AtomicU64` handle counter, a `&DeckRegistry`, and a
+/// block of statements. The counter is used to assign unique handle IDs to all
+/// output handles. The registry is used to allocate owning handles for `const`
+/// expressions.
 ///
 /// ```ignore
 /// use std::sync::atomic::AtomicU64;
 /// let hc = AtomicU64::new(0);
-/// orc_inline_dag!(plugin_set, &hc, {
+/// orc_inline_dag!(plugin_set, &hc, &registry, {
+///     (let a (const [[1.0, 2.0], [3.0]]))
+///     (let b (const 10.0f64))
 ///     (let tmp (mul a b))
 ///     (let result (add tmp c))
 ///     (let (mean variance) (compute_stats data))
@@ -25,28 +28,42 @@ use crate::{FuncInfo, OrcHandle};
 /// ```
 #[macro_export]
 macro_rules! orc_inline_dag {
-    // Entry point: takes a PluginSet, an &AtomicU64 handle counter, and a block of statements.
-    ($ps:expr, $hc:expr, { $($body:tt)* }) => {
+    // Entry point: takes a PluginSet, an &AtomicU64 handle counter, a &DeckRegistry, and a block.
+    ($ps:expr, $hc:expr, $reg:expr, { $($body:tt)* }) => {
         (|| -> Result<_, $crate::Error> {
             #[allow(unused_variables)]
             let ps_ref_ = &$ps;
             #[allow(unused_variables)]
             let hc_ref_: &std::sync::atomic::AtomicU64 = $hc;
-            orc_inline_dag!(@stmts ps_ref_, hc_ref_, $($body)*)
+            #[allow(unused_variables)]
+            let reg_ref_: &$crate::DeckRegistry = $reg;
+            orc_inline_dag!(@stmts ps_ref_, hc_ref_, reg_ref_, $($body)*)
         })()
     };
 
     // --- Statements ---
 
+    // let const with list literal: (let x (const [1, 2, 3]))
+    (@stmts $ps:ident, $hc:ident, $reg:ident, (let $name:ident (const [$($tt:tt)*])) $($rest:tt)*) => {{
+        let $name = orc_inline_dag!(@const_handle $hc, $reg, $crate::deck![$($tt)*])?;
+        orc_inline_dag!(@stmts $ps, $hc, $reg, $($rest)*)
+    }};
+
+    // let const with scalar: (let x (const 42.0f64))
+    (@stmts $ps:ident, $hc:ident, $reg:ident, (let $name:ident (const $val:expr)) $($rest:tt)*) => {{
+        let $name = orc_inline_dag!(@const_handle $hc, $reg, $crate::Deck::from_value($val))?;
+        orc_inline_dag!(@stmts $ps, $hc, $reg, $($rest)*)
+    }};
+
     // let single output, more statements follow
-    (@stmts $ps:ident, $hc:ident, (let $name:ident ($func:ident $($arg:tt)*)) $($rest:tt)*) => {{
-        let $name = orc_inline_dag!(@call1 $ps, $hc, $func, $($arg)*)?;
-        orc_inline_dag!(@stmts $ps, $hc, $($rest)*)
+    (@stmts $ps:ident, $hc:ident, $reg:ident, (let $name:ident ($func:ident $($arg:tt)*)) $($rest:tt)*) => {{
+        let $name = orc_inline_dag!(@call1 $ps, $hc, $reg, $func, $($arg)*)?;
+        orc_inline_dag!(@stmts $ps, $hc, $reg, $($rest)*)
     }};
 
     // let multiple outputs, more statements follow
-    (@stmts $ps:ident, $hc:ident, (let ($($name:ident)+) ($func:ident $($arg:tt)*)) $($rest:tt)*) => {{
-        let inputs_ = [$(orc_inline_dag!(@expr $ps, $hc, $arg)),*];
+    (@stmts $ps:ident, $hc:ident, $reg:ident, (let ($($name:ident)+) ($func:ident $($arg:tt)*)) $($rest:tt)*) => {{
+        let inputs_ = [$(orc_inline_dag!(@expr $ps, $hc, $reg, $arg)),*];
         let borrowed_ = inputs_.map(|h| h.borrowed());
         let func_ = $ps.get_function(stringify!($func))
             .ok_or($crate::Error::InvalidFunction)?
@@ -68,30 +85,46 @@ macro_rules! orc_inline_dag {
             idx_ += 1;
         )+
         let _ = idx_;
-        orc_inline_dag!(@stmts $ps, $hc, $($rest)*)
+        orc_inline_dag!(@stmts $ps, $hc, $reg, $($rest)*)
     }};
 
     // Trailing expression — bare function call as the block's return value
-    (@stmts $ps:ident, $hc:ident, ($func:ident $($arg:tt)*)) => {
-        orc_inline_dag!(@call1 $ps, $hc, $func, $($arg)*)
+    (@stmts $ps:ident, $hc:ident, $reg:ident, ($func:ident $($arg:tt)*)) => {
+        orc_inline_dag!(@call1 $ps, $hc, $reg, $func, $($arg)*)
     };
 
     // Empty — end of statements
-    (@stmts $ps:ident, $hc:ident,) => { Ok::<(), $crate::Error>(()) };
+    (@stmts $ps:ident, $hc:ident, $reg:ident,) => { Ok::<(), $crate::Error>(()) };
 
-    // --- Expression: either a variable reference or a nested function call ---
+    // --- Expression: either a variable reference, a nested function call, or const ---
+    // Const list: (const [1, 2, 3])
+    (@expr $ps:ident, $hc:ident, $reg:ident, (const [$($tt:tt)*])) => {
+        &orc_inline_dag!(@const_handle $hc, $reg, $crate::deck![$($tt)*])?
+    };
+    // Const scalar: (const 42.0f64)
+    (@expr $ps:ident, $hc:ident, $reg:ident, (const $val:expr)) => {
+        &orc_inline_dag!(@const_handle $hc, $reg, $crate::Deck::from_value($val))?
+    };
     // Nested call: (func args...)
-    (@expr $ps:ident, $hc:ident, ($func:ident $($arg:tt)*)) => {
-        &orc_inline_dag!(@call1 $ps, $hc, $func, $($arg)*)?
+    (@expr $ps:ident, $hc:ident, $reg:ident, ($func:ident $($arg:tt)*)) => {
+        &orc_inline_dag!(@call1 $ps, $hc, $reg, $func, $($arg)*)?
     };
     // Variable reference
-    (@expr $ps:ident, $hc:ident, $var:ident) => {
+    (@expr $ps:ident, $hc:ident, $reg:ident, $var:ident) => {
         &$var
     };
 
+    // --- Const handle: allocate a deck in the registry and return an owning handle ---
+    (@const_handle $hc:ident, $reg:ident, $deck:expr) => {{
+        let mut h_ = OrcHandle::default();
+        h_.handle = $hc.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        $reg.alloc_with_value($deck, &mut h_)?;
+        Ok::<OrcHandle, $crate::Error>(h_)
+    }};
+
     // --- Single-output function call ---
-    (@call1 $ps:ident, $hc:ident, $func:ident, $($arg:tt)*) => {{
-        let inputs_ = [$(orc_inline_dag!(@expr $ps, $hc, $arg)),*];
+    (@call1 $ps:ident, $hc:ident, $reg:ident, $func:ident, $($arg:tt)*) => {{
+        let inputs_ = [$(orc_inline_dag!(@expr $ps, $hc, $reg, $arg)),*];
         let borrowed_ = inputs_.map(|h| h.borrowed());
         let mut out_: OrcHandle = OrcHandle::default();
         out_.handle = $hc.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -112,10 +145,10 @@ macro_rules! orc_inline_dag {
 
     // --- Error messages for wrong usage ---
     ($ps:expr, { $($body:tt)* }) => {
-        compile_error!("orc_inline_dag! requires 3 arguments: orc_inline_dag!(plugin_set, handle_counter, { ... })")
+        compile_error!("orc_inline_dag! requires 4 arguments: orc_inline_dag!(plugin_set, handle_counter, registry, { ... })")
     };
     ($ps:expr) => {
-        compile_error!("orc_inline_dag! requires 3 arguments: orc_inline_dag!(plugin_set, handle_counter, { ... })")
+        compile_error!("orc_inline_dag! requires 4 arguments: orc_inline_dag!(plugin_set, handle_counter, registry, { ... })")
     };
 }
 
