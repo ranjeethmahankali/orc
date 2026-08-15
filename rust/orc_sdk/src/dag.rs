@@ -1659,6 +1659,77 @@ mod test {
     }
 
     #[test]
+    fn t_input_source() {
+        let (g, _, ins, outs, _) = chain_graph();
+        // B's input is connected from A's output.
+        assert_eq!(g.input_source(ins[0]), Some(outs[0]));
+        // C's input is connected from B's output.
+        assert_eq!(g.input_source(ins[1]), Some(outs[1]));
+    }
+
+    #[test]
+    fn t_input_source_unconnected() {
+        let mut g = Graph::default();
+        let mut ins = [IH::default()];
+        let _n = g.push_node(&mut ins, &mut []).unwrap();
+        assert_eq!(g.input_source(ins[0]), None);
+    }
+
+    #[test]
+    fn t_workflow_disconnect() {
+        let mut w = Workflow::default();
+        let mut a_out = [OH::default()];
+        let _na = w
+            .add_node(make_func_info("src"), &mut [], &mut a_out)
+            .unwrap();
+        let mut b_in = [IH::default()];
+        let _nb = w
+            .add_node(make_func_info("dst"), &mut b_in, &mut [])
+            .unwrap();
+        let lh = w.connect(a_out[0], b_in[0]).unwrap();
+        // Disconnect the correct pair.
+        assert!(w.disconnect(a_out[0], b_in[0]));
+        assert!(w.graph.links[lh.idx].deleted);
+        assert_eq!(w.graph.inputs[b_in[0].idx].link, None);
+        assert_eq!(w.graph.outputs[a_out[0].idx].link, None);
+    }
+
+    #[test]
+    fn t_workflow_disconnect_wrong_pair() {
+        let mut w = Workflow::default();
+        let mut a_out = [OH::default()];
+        let _na = w
+            .add_node(make_func_info("A"), &mut [], &mut a_out)
+            .unwrap();
+        let mut b_out = [OH::default()];
+        let _nb = w
+            .add_node(make_func_info("B"), &mut [], &mut b_out)
+            .unwrap();
+        let mut c_in = [IH::default()];
+        let _nc = w.add_node(make_func_info("C"), &mut c_in, &mut []).unwrap();
+        // Connect A -> C.
+        let lh = w.connect(a_out[0], c_in[0]).unwrap();
+        // Try to disconnect B -> C (wrong output). Should fail.
+        assert!(!w.disconnect(b_out[0], c_in[0]));
+        // Original link is still intact.
+        assert!(!w.graph.links[lh.idx].deleted);
+        assert_eq!(w.graph.inputs[c_in[0].idx].link, Some(lh));
+    }
+
+    #[test]
+    fn t_workflow_disconnect_unconnected() {
+        let mut w = Workflow::default();
+        let mut a_out = [OH::default()];
+        let _na = w
+            .add_node(make_func_info("A"), &mut [], &mut a_out)
+            .unwrap();
+        let mut b_in = [IH::default()];
+        let _nb = w.add_node(make_func_info("B"), &mut b_in, &mut []).unwrap();
+        // No connection exists. Disconnect should return false.
+        assert!(!w.disconnect(a_out[0], b_in[0]));
+    }
+
+    #[test]
     fn t_workflow_clear() {
         let mut w = Workflow::default();
         let mut outs = [OH::default()];
