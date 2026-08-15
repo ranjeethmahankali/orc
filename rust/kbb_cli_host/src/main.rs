@@ -230,14 +230,12 @@ fn main() -> Result<(), Error> {
     })?;
     println!("mul_add_a_b_c:\n{}", fmad_abc.display::<f64>());
     let complex_result = orc_inline_dag!(plugin_set, &HANDLE_COUNTER, &*REGISTRY, {
-        (let c (create_complex
-                (const [[1.0, 2.0, 3.0], [2.0, 4.0, 6.0, 8.0]])
-                (const [10.0, 20.0, 30.0])))
-            (let c2 (create_complex
-                     (const [10.0, 20.0, 30.0])
-                     (const [[1.0, 2.0, 3.0], [2.0, 4.0, 6.0, 8.0]])))
-            (let (real imag) (complex_get_parts (flatten_deck (mul_complex c c2))))
-            (add real imag)
+        (let a (const [[1.0, 2.0, 3.0], [2.0, 4.0, 6.0, 8.0]]))
+        (let b (const [10.0, 20.0, 30.0]))
+        (let c (create_complex a b))
+        (let c2 (create_complex b a))
+        (let (real imag) (complex_get_parts (flatten_deck (mul_complex c c2))))
+        (add real imag)
     })?;
     println!("complex_resunt:\n{}", complex_result.display::<f64>());
     Ok(())
