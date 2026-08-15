@@ -800,7 +800,18 @@ impl Graph {
             deleted: false,
         })?;
         // Connect the link to the input. Inputs only have one incoming link.
-        if let Some(old) = std::mem::replace(&mut self.inputs[to.idx].link, Some(lh)) {
+        self.disconnect_input(to);
+        self.inputs[to.idx].link = Some(lh);
+        // Append to the output's linked list.
+        match last {
+            Some(p) => self.links[p.idx].next = Some(lh),
+            None => self.outputs[from.idx].link = Some(lh),
+        }
+        Ok(lh)
+    }
+
+    fn disconnect_input(&mut self, input: IH) {
+        if let Some(old) = std::mem::replace(&mut self.inputs[input.idx].link, None) {
             self.links[old.idx].deleted = true;
             // Remove references to the deleted link.
             let prev = std::mem::replace(&mut self.links[old.idx].prev, None);
@@ -816,12 +827,6 @@ impl Graph {
                 self.links[next.idx].prev = prev;
             }
         }
-        // Append to the output's linked list.
-        match last {
-            Some(p) => self.links[p.idx].next = Some(lh),
-            None => self.outputs[from.idx].link = Some(lh),
-        }
-        Ok(lh)
     }
 
     fn push_link_impl(&mut self, link: Link) -> Result<(), DagError> {
@@ -1054,14 +1059,6 @@ impl Graph {
         self.link_props.garbage_collection();
         self.node_props.garbage_collection();
         Ok(())
-    }
-
-    pub fn num_node_inputs(&self, n: NH) -> usize {
-        self.node_inputs(n).count()
-    }
-
-    pub fn num_node_outputs(&self, n: NH) -> usize {
-        self.node_outputs(n).count()
     }
 
     pub fn node_inputs(&self, n: NH) -> impl Iterator<Item = IH> {
