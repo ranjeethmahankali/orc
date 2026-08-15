@@ -90,6 +90,26 @@ where
     }
 
     /**
+    Create a deck with a single value, with no structure or nesting.
+     */
+    pub fn from_value(item: T) -> Self {
+        let mut out = Deck {
+            items: vec![item],
+            marks: Default::default(),
+            stride_offset: Default::default(),
+            strides: Default::default(),
+            pegs: Default::default(),
+        };
+        calc_strides(
+            &out.marks,
+            &mut out.pegs,
+            &mut out.stride_offset,
+            &mut out.strides,
+        );
+        out
+    }
+
+    /**
     Assign the given items and marks to this deck. The old contents of this deck are dropped.
     */
     pub fn assign_from_raw_data(&mut self, items: Vec<T>, marks: Vec<OrcMark>) {
@@ -2707,7 +2727,7 @@ mod test {
         assert_eq!(list.items(), &[42]);
         assert_eq!(list.marks().len(), 1);
         // deck!() creates a scalar (depth-0, no marks).
-        let scalar: Deck<i32> = deck!(42);
+        let scalar: Deck<i32> = Deck::from_value(42);
         assert_eq!(scalar.items(), &[42]);
         assert!(scalar.marks().is_empty());
     }
