@@ -5,7 +5,7 @@ use std::{
     rc::{Rc, Weak},
 };
 
-use crate::FuncInfo;
+use crate::{FuncInfo, OrcHandle};
 
 /// Declarative macro for composing a DAG of plugin function calls.
 ///
@@ -1078,10 +1078,24 @@ impl Graph {
     }
 }
 
-#[derive(Clone)]
 pub enum NodeInfo {
     Variable { name: String },
+    Constant { name: String, data: OrcHandle },
     Function(FuncInfo),
+}
+
+impl Clone for NodeInfo {
+    fn clone(&self) -> Self {
+        match self {
+            Self::Variable { name } => Self::Variable { name: name.clone() },
+            // The host application is responsible for allocating the variable data manually.
+            Self::Constant { name, data: _data } => Self::Constant {
+                name: format!("{name}_copy"),
+                data: OrcHandle::default(),
+            },
+            Self::Function(arg0) => Self::Function(arg0.clone()),
+        }
+    }
 }
 
 impl Default for NodeInfo {
@@ -1094,6 +1108,7 @@ impl NodeInfo {
     pub fn name(&self) -> &str {
         match self {
             NodeInfo::Variable { name } => name,
+            NodeInfo::Constant { name, .. } => name,
             NodeInfo::Function(func_info) => &func_info.name,
         }
     }
