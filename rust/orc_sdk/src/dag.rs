@@ -562,7 +562,7 @@ where
     ///
     /// Properties use interior mutability pattern using a [`RefCell<T>`] to
     /// enforce runtime borrow checking rules. If borrowing fails,
-    /// [`Error::BorrowedPropertyAccess`] is returned, otherwise a reference to
+    /// [`DagError::BorrowedPropertyAccess`] is returned, otherwise a reference to
     /// the property is returned.
     pub fn try_borrow(&'_ self) -> Result<Ref<'_, PropBuf<H, T>>, DagError> {
         self.data
