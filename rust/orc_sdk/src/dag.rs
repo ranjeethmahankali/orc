@@ -1079,7 +1079,7 @@ impl Graph {
 }
 
 pub enum NodeInfo {
-    Variable { name: String },
+    Parameter { name: String },
     Constant { name: String, data: OrcHandle },
     Function(FuncInfo),
 }
@@ -1087,7 +1087,7 @@ pub enum NodeInfo {
 impl Clone for NodeInfo {
     fn clone(&self) -> Self {
         match self {
-            Self::Variable { name } => Self::Variable { name: name.clone() },
+            Self::Parameter { name } => Self::Parameter { name: name.clone() },
             // The host application is responsible for allocating the variable data manually.
             Self::Constant { name, data: _data } => Self::Constant {
                 name: format!("{name}_copy"),
@@ -1107,7 +1107,7 @@ impl Default for NodeInfo {
 impl NodeInfo {
     pub fn name(&self) -> &str {
         match self {
-            NodeInfo::Variable { name } => name,
+            NodeInfo::Parameter { name } => name,
             NodeInfo::Constant { name, .. } => name,
             NodeInfo::Function(func_info) => &func_info.name,
         }
