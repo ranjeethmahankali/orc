@@ -1576,6 +1576,8 @@ mod test {
         FuncInfo {
             name: name.to_string(),
             desc: String::new(),
+            n_inputs: Some(0usize),  // good enough for these tests.
+            n_outputs: Some(0usize), // good enough for these tests.
             func: None,
         }
     }

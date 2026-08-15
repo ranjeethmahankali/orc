@@ -1,8 +1,8 @@
 use crate::{
-    Deck, DeckView, Error, ORC_MSG_LEVEL_DEBUG, ORC_MSG_LEVEL_ERROR, ORC_MSG_LEVEL_FATAL,
-    ORC_MSG_LEVEL_INFO, ORC_MSG_LEVEL_WARN, ORC_NUM_DIMS, OrcFuncInfo, OrcHandle, OrcHost,
-    OrcHostCallbackAPI, OrcItemProxy, OrcPluginFunction, OrcTypeId, OrcTypeInfo, ProxyType,
-    deck::fmt_raw_deck, ffi::TOrcData,
+    Deck, DeckView, Error, ORC_ARGS_VARIADIC, ORC_MSG_LEVEL_DEBUG, ORC_MSG_LEVEL_ERROR,
+    ORC_MSG_LEVEL_FATAL, ORC_MSG_LEVEL_INFO, ORC_MSG_LEVEL_WARN, ORC_NUM_DIMS, OrcFuncInfo,
+    OrcHandle, OrcHost, OrcHostCallbackAPI, OrcItemProxy, OrcPluginFunction, OrcTypeId,
+    OrcTypeInfo, ProxyType, deck::fmt_raw_deck, ffi::TOrcData,
 };
 use std::{
     alloc::{GlobalAlloc, Layout, System},
@@ -299,6 +299,8 @@ impl From<&OrcTypeInfo> for TypeInfo {
 pub struct FuncInfo {
     pub name: String,
     pub desc: String,
+    pub n_inputs: Option<usize>,
+    pub n_outputs: Option<usize>,
     pub func: OrcPluginFunction,
 }
 
@@ -307,6 +309,16 @@ impl From<&OrcFuncInfo> for FuncInfo {
         Self {
             name: string_from_ffi(info.name.cast()),
             desc: string_from_ffi(info.desc.cast()),
+            n_inputs: if info.n_inputs == ORC_ARGS_VARIADIC {
+                None
+            } else {
+                Some(info.n_inputs as usize)
+            },
+            n_outputs: if info.n_outputs == ORC_ARGS_VARIADIC {
+                None
+            } else {
+                Some(info.n_outputs as usize)
+            },
             func: info.func,
         }
     }
