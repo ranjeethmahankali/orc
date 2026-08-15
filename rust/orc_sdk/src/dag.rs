@@ -773,7 +773,7 @@ impl Graph {
     }
 
     pub fn push_link(&mut self, from: OH, to: IH) -> Result<LH, DagError> {
-        let mut prev: Option<LH> = None;
+        let mut last: Option<LH> = None;
         {
             let mut tail = &self.outputs[from.idx].link;
             debug_assert!(
@@ -784,7 +784,7 @@ impl Graph {
                 "The first link should not have a previous link. The topology is broken."
             );
             while let Some(li) = *tail {
-                prev = Some(li);
+                last = Some(li);
                 tail = &self.links[li.idx].next;
             }
         }
@@ -795,14 +795,29 @@ impl Graph {
         self.push_link_impl(Link {
             start: from,
             end: to,
-            prev,
+            prev: last,
             next: None,
             deleted: false,
         })?;
         // Connect the link to the input. Inputs only have one incoming link.
-        self.inputs[to.idx].link = Some(lh);
+        if let Some(old) = std::mem::replace(&mut self.inputs[to.idx].link, Some(lh)) {
+            self.links[old.idx].deleted = true;
+            // Remove references to the deleted link.
+            let prev = std::mem::replace(&mut self.links[old.idx].prev, None);
+            let next = std::mem::replace(&mut self.links[old.idx].next, None);
+            let src = self.links[old.idx].start;
+            if self.outputs[src.idx].link == Some(old) {
+                self.outputs[src.idx].link = next;
+            }
+            if let Some(prev) = prev {
+                self.links[prev.idx].next = next;
+            }
+            if let Some(next) = next {
+                self.links[next.idx].prev = prev;
+            }
+        }
         // Append to the output's linked list.
-        match prev {
+        match last {
             Some(p) => self.links[p.idx].next = Some(lh),
             None => self.outputs[from.idx].link = Some(lh),
         }
