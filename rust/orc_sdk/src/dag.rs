@@ -88,6 +88,11 @@ macro_rules! orc_inline_dag {
         orc_inline_dag!(@stmts $ps, $hc, $reg, $($rest)*)
     }};
 
+    // Return multiple (or single) named handles as a tuple.
+    (@stmts $ps:ident, $hc:ident, $reg:ident, (return $($name:ident)+)) => {
+        Ok(($($name),+))
+    };
+
     // Trailing expression — bare function call as the block's return value
     (@stmts $ps:ident, $hc:ident, $reg:ident, ($func:ident $($arg:tt)*)) => {
         orc_inline_dag!(@call1 $ps, $hc, $reg, $func, $($arg)*)

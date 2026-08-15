@@ -440,7 +440,41 @@ fn t_const_depth3() {
     assert_eq!(view.depth(), 3);
 }
 
-// 18. Const scalar reused in multiple expressions.
+// 18. Return multiple outputs.
+#[test]
+fn t_return_multiple() {
+    let (sum, product) = orc_inline_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, {
+        (let a (const [1.0f64, 2.0]))
+        (let b (const [10.0f64, 20.0]))
+        (let s (add a b))
+        (let p (mul a b))
+        (return s p)
+    })
+    .unwrap();
+    let sum_view = DeckView::<f64>::from_handle(&sum).unwrap();
+    assert_eq!(sum_view.items(), &[11.0, 22.0]);
+    assert_eq!(sum_view.depth(), 1);
+    let prod_view = DeckView::<f64>::from_handle(&product).unwrap();
+    assert_eq!(prod_view.items(), &[10.0, 40.0]);
+    assert_eq!(prod_view.depth(), 1);
+}
+
+// 19. Return single output (same as trailing expression, but explicit).
+#[test]
+fn t_return_single() {
+    let out = orc_inline_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, {
+        (let a (const [1.0f64, 2.0, 3.0]))
+        (let b (const [10.0f64, 20.0, 30.0]))
+        (let s (add a b))
+        (return s)
+    })
+    .unwrap();
+    let view = DeckView::<f64>::from_handle(&out).unwrap();
+    assert_eq!(view.items(), &[11.0, 22.0, 33.0]);
+    assert_eq!(view.depth(), 1);
+}
+
+// 20. Const scalar reused in multiple expressions.
 #[test]
 fn t_const_reused() {
     let out = orc_inline_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, {
