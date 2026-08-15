@@ -271,7 +271,7 @@ where
 
     pub fn copy(&mut self, src: H, dst: H) -> Result<(), DagError> {
         for prop in self.props.iter_mut() {
-            prop.copy(src.index() as usize, dst.index() as usize)?;
+            prop.copy(src.index(), dst.index())?;
         }
         Ok(())
     }
@@ -391,7 +391,7 @@ where
     type Output = T;
 
     fn index(&self, handle: H) -> &Self::Output {
-        &self.buf[handle.index() as usize]
+        &self.buf[handle.index()]
     }
 }
 
@@ -404,7 +404,7 @@ where
     /// Get the mutable reference to the property of the element corresponding
     /// to handle `h`.
     fn index_mut(&mut self, h: H) -> &mut Self::Output {
-        &mut self.buf[h.index() as usize]
+        &mut self.buf[h.index()]
     }
 }
 
@@ -591,7 +591,7 @@ where
             self.data
                 .try_borrow()
                 .map_err(|_| DagError::BorrowedPropertyAccess)?,
-            |v| &v.buf[h.index() as usize],
+            |v| &v.buf[h.index()],
         ))
     }
 
@@ -613,7 +613,7 @@ where
             self.data
                 .try_borrow_mut()
                 .map_err(|_| DagError::BorrowedPropertyAccess)?,
-            |v| &mut v.buf[h.index() as usize],
+            |v| &mut v.buf[h.index()],
         ))
     }
 
@@ -782,7 +782,7 @@ impl Graph {
             let mut tail = &self.outputs[from.idx].link;
             debug_assert!(
                 match tail {
-                    Some(li) => self.links[li.idx].prev == None,
+                    Some(li) => self.links[li.idx].prev.is_none(),
                     None => true,
                 },
                 "The first link should not have a previous link. The topology is broken."
@@ -813,11 +813,11 @@ impl Graph {
     }
 
     fn disconnect_input(&mut self, input: IH) {
-        if let Some(old) = std::mem::replace(&mut self.inputs[input.idx].link, None) {
+        if let Some(old) = self.inputs[input.idx].link.take() {
             self.links[old.idx].deleted = true;
             // Remove references to the deleted link.
-            let prev = std::mem::replace(&mut self.links[old.idx].prev, None);
-            let next = std::mem::replace(&mut self.links[old.idx].next, None);
+            let prev = self.links[old.idx].prev.take();
+            let next = self.links[old.idx].next.take();
             let src = self.links[old.idx].start;
             if self.outputs[src.idx].link == Some(old) {
                 self.outputs[src.idx].link = next;
@@ -1091,7 +1091,7 @@ impl Default for NodeInfo {
 impl NodeInfo {
     pub fn name(&self) -> &str {
         match self {
-            NodeInfo::Variable { name } => &name,
+            NodeInfo::Variable { name } => name,
             NodeInfo::Function(func_info) => &func_info.name,
         }
     }
@@ -1526,7 +1526,7 @@ mod test {
         names.set(n, "add".into()).unwrap();
         flags.set(n, true).unwrap();
         assert_eq!(*names.get(n).unwrap(), "add");
-        assert_eq!(*flags.get(n).unwrap(), true);
+        assert!(*flags.get(n).unwrap());
     }
 
     #[test]
@@ -1788,12 +1788,12 @@ mod test {
             .unwrap();
 
         dirty.set(na, true).unwrap();
-        input_vals.set(b_in[0], 3.14).unwrap();
+        input_vals.set(b_in[0], 3.1234).unwrap();
         input_vals.set(b_in[1], 2.72).unwrap();
 
-        assert_eq!(*dirty.get(na).unwrap(), true);
-        assert_eq!(*dirty.get(nb).unwrap(), false); // default
-        assert_eq!(*input_vals.get(b_in[0]).unwrap(), 3.14);
+        assert!(*dirty.get(na).unwrap());
+        assert!(!(*dirty.get(nb).unwrap())); // default
+        assert_eq!(*input_vals.get(b_in[0]).unwrap(), 3.1234);
         assert_eq!(*input_vals.get(b_in[1]).unwrap(), 2.72);
     }
 }
