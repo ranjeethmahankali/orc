@@ -200,6 +200,21 @@
   copied over from the alum project, with slight changes. Don't yet know what the outward facing API
   of a workflow will be. I need to think about how this will be used, and come up with something.
 
+** TODO Parse a DAG from a kbb file
+   :PROPERTIES:
+   :CREATED:  2026-08-15 Sat 07:52
+   :END:
+
+   kbb file is a LISP
+
+** TODO Figure out the ABI equivalent for the DAG format
+   :PROPERTIES:
+   :CREATED:  2026-08-15 Sat 07:53
+   :END:
+
+   Something that is stable and language agnostic like ~orc_abi.h~, but for a datastructure and the
+   associated serialized file format.
+
 ** CLOSED Check for cycles when adding new links
    CLOSED: [2026-08-14 Fri 14:12]
    :PROPERTIES:
