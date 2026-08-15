@@ -4,11 +4,10 @@ mod macros;
 mod test;
 
 use orc_sdk::{
-    Deck, DeckRegistry, Error, ORC_ABI_VERSION, ORC_ERROR_INVALID_PROXY, ORC_ERROR_NONE,
-    ORC_TYPE_F32, ORC_TYPE_F64, ORC_TYPE_I8, ORC_TYPE_I16, ORC_TYPE_I32, ORC_TYPE_I64, ORC_TYPE_U8,
-    ORC_TYPE_U16, ORC_TYPE_U32, ORC_TYPE_U64, OrcError, OrcHandle, OrcHost, OrcHostCallbackAPI,
-    OrcHostMemoryAPI, OrcProxyType, PluginSet, ProxyType, TypeOwner, deck, orc_inline_dag,
-    reset_handle, update_handle_from_deck,
+    DeckRegistry, Error, ORC_ABI_VERSION, ORC_ERROR_INVALID_PROXY, ORC_ERROR_NONE, ORC_TYPE_F32,
+    ORC_TYPE_F64, ORC_TYPE_I8, ORC_TYPE_I16, ORC_TYPE_I32, ORC_TYPE_I64, ORC_TYPE_U8, ORC_TYPE_U16,
+    ORC_TYPE_U32, ORC_TYPE_U64, OrcError, OrcHandle, OrcHost, OrcHostCallbackAPI, OrcHostMemoryAPI,
+    OrcProxyType, PluginSet, ProxyType, TypeOwner, orc_inline_dag, reset_handle,
 };
 use std::alloc::{Layout, alloc, dealloc};
 use std::ffi::{CStr, c_void};
@@ -203,51 +202,40 @@ fn main() -> Result<(), Error> {
         }
         println!();
     }
-    let a_deck: Deck<f64> = deck![[1.0, 2.0, 3.0], [2.0, 4.0, 6.0, 8.0]];
-    let b_deck: Deck<f64> = deck![10.0, 20.0, 30.0];
-    let c_deck: Deck<f64> = deck![[1.0, 2.0, 3.0], [4.0, 5.0]];
-    let (a, b, c) = {
-        let (mut a, mut b, mut c) = (
-            OrcHandle::default(),
-            OrcHandle::default(),
-            OrcHandle::default(),
-        );
-        a.handle = HANDLE_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        b.handle = HANDLE_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        c.handle = HANDLE_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        unsafe {
-            update_handle_from_deck(&a_deck, &mut a);
-            update_handle_from_deck(&b_deck, &mut b);
-            update_handle_from_deck(&c_deck, &mut c);
-        }
-        (a, b, c)
-    };
     let a_plus_b = orc_inline_dag!(plugin_set, &HANDLE_COUNTER, &*REGISTRY, {
-        (add a b)
+        (add
+         (const [[1.0, 2.0, 3.0], [2.0, 4.0, 6.0, 8.0]])
+         (const [10.0, 20.0, 30.0]))
     })?;
     println!(
         "math_plugin add([1,2,3], [10,20,30]):\n{}",
         a_plus_b.display::<f64>()
     );
     let len_a = orc_inline_dag!(plugin_set, &HANDLE_COUNTER, &*REGISTRY, {
-        (list_length a)
+        (list_length (const [[1.0, 2.0, 3.0], [2.0, 4.0, 6.0, 8.0]]))
     })?;
     println!("List length output:\n{}", len_a.display::<u64>());
     let flat_c = orc_inline_dag!(plugin_set, &HANDLE_COUNTER, &*REGISTRY, {
-        (flatten_deck c)
+        (flatten_deck (const [[1.0, 2.0, 3.0], [4.0, 5.0]]))
     })?;
     println!(
         "flatten_deck([[1,2,3],[4,5]]):\n{}",
         flat_c.display::<f64>()
     );
     let fmad_abc = orc_inline_dag!(plugin_set, &HANDLE_COUNTER, &*REGISTRY, {
-        (let m (mul a b))
-        (add m c)
+        (let m (mul
+                (const [[1.0, 2.0, 3.0], [2.0, 4.0, 6.0, 8.0]])
+                (const [10.0, 20.0, 30.0])))
+            (add m (const [[1.0, 2.0, 3.0], [4.0, 5.0]]))
     })?;
     println!("mul_add_a_b_c:\n{}", fmad_abc.display::<f64>());
     let complex_result = orc_inline_dag!(plugin_set, &HANDLE_COUNTER, &*REGISTRY, {
-        (let c (create_complex a b))
-            (let c2 (create_complex b a))
+        (let c (create_complex
+                (const [[1.0, 2.0, 3.0], [2.0, 4.0, 6.0, 8.0]])
+                (const [10.0, 20.0, 30.0])))
+            (let c2 (create_complex
+                     (const [10.0, 20.0, 30.0])
+                     (const [[1.0, 2.0, 3.0], [2.0, 4.0, 6.0, 8.0]])))
             (let (real imag) (complex_get_parts (flatten_deck (mul_complex c c2))))
             (add real imag)
     })?;
