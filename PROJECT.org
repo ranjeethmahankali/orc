@@ -242,8 +242,11 @@
   <2026-08-16 Sun 16:25> Sketched out a depth first euler tour to walk and evaluate the DAG
   serially. This is good enough for testing, for now. Starting to write tests now.
 
-  - [ ] Use the ~const~ syntax in all the existing orc_inline_dag tests, in kbb_cli_host/src/test.rs
+  - [X] Use the ~const~ syntax in all the existing orc_inline_dag tests, in kbb_cli_host/src/test.rs
     instead of declaring the handles directly on the stack.
+
+  <2026-08-16 Sun 16:43> All tests are passing. Now able to run DAGs, retrieve outputs, and test
+  them. Checking a few more things, and ready to merge this soon.
 
 ** TODO Constructing a DAG from Python
    :PROPERTIES:
