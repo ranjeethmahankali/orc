@@ -235,6 +235,123 @@
    :CREATED:  2026-08-16 Sun 17:33
    :END:
 
+*** Goal
+
+    The same Python scripts that call plugin functions in immediate mode can be run inside a context
+    manager that constructs a DAG instead of executing. The user can then evaluate the DAG natively
+    (without Python's ctypes per-call overhead), or serialize it to a file.
+
+*** Dispatch via method swapping, not runtime checks
+
+    To avoid the cost of checking a global flag on every call, the context manager swaps out the
+    dispatch methods on entry and restores them on exit.
+
+    The two dispatch points are:
+
+    - ~OrcFuncWrapper.__call__~ on the class (affects all plugin function wrappers at once).
+    - ~orc.make_deck~ at module level.
+
+    In DAG mode, the swapped-in versions record nodes and edges in the graph instead of doing work.
+    In normal mode, the original methods are in place and there is zero overhead — no flag, no
+    branch, no import side-effect.
+
+*** Separate file, no changes to orc.py
+
+    All compiled-mode logic lives in a separate file (e.g. ~dag.py~). It imports ~orc~ and
+    monkey-patches the dispatch points inside the context manager. ~orc.py~ never imports or
+    references ~dag.py~. If the user never imports ~dag.py~, no trace of it exists in the system.
+
+*** Native shared library for graph construction and evaluation
+
+    The context manager's constructor takes the name or path of a shared library that it loads via
+    ctypes. All recording calls (~add_constant~, ~add_function~, ~add_link~) and the ~run~ call are
+    dispatched to this library. The ABI of that shared library is to be determined.
+
+*** API sketch
+
+    #+begin_src python
+    import orc
+    from dag import DagContext
+
+    orc.load_plugins(search_dir)
+
+    # ---------- Immediate mode (unchanged) ----------
+    a = orc.make_deck([1.0, 2.0, 3.0])
+    b = orc.make_deck([10.0, 20.0, 30.0])
+    c = orc.add(a, b)
+    print(orc.read_deck(c))
+
+    # ---------- Compiled mode (same user code) ----------
+    with DagContext("path/to/native_dag_lib.so") as g:
+        a = orc.make_deck([1.0, 2.0, 3.0])
+        b = orc.make_deck([10.0, 20.0, 30.0])
+        c = orc.add(a, b)
+        d = orc.mul(c, a)
+
+        # Evaluate inside the context. Takes a list of proxy outputs to compute,
+        # returns a corresponding list of real OrcHandles.
+        results = g.run([c, d])
+
+    # results are real OrcHandles that outlive the context.
+    print(orc.read_deck(results[0]))
+    print(orc.read_deck(results[1]))
+    #+end_src
+
+*** Serialization with ~g.write(path)~
+
+    ~g.write(path)~ writes the entire DAG out to a file using an s-expression syntax with parity to
+    the syntax used by the ~orc_dag!~ and ~orc_inline_dag!~ Rust macros. This file can later be
+    loaded by a Rust program to display the graph in a node editor, re-evaluate it, etc.
+
+*** Context manager internals
+
+    #+begin_src python
+    class DagContext:
+        def __init__(self, lib_path):
+            self._lib = ctypes.CDLL(lib_path)
+            # ... set up argtypes/restype for the native API ...
+            self._orig_call = None
+            self._orig_make_deck = None
+
+        def __enter__(self):
+            self._orig_call = OrcFuncWrapper.__call__
+            self._orig_make_deck = orc.make_deck
+
+            ctx = self
+
+            def recording_call(wrapper_self, *inputs, n_out=None):
+                return ctx._add_function(wrapper_self, inputs, n_out)
+
+            OrcFuncWrapper.__call__ = recording_call
+            orc.make_deck = lambda data, type_id=None: ctx._recording_make_deck(data, type_id)
+            return self
+
+        def __exit__(self, *exc):
+            OrcFuncWrapper.__call__ = self._orig_call
+            orc.make_deck = self._orig_make_deck
+
+        def _recording_make_deck(self, data, type_id=None):
+            handle = self._orig_make_deck(data, type_id)
+            return self._add_constant(handle)
+
+        def _add_constant(self, handle):
+            # Dispatch to native lib: register constant node, return proxy.
+            ...
+
+        def _add_function(self, wrapper, inputs, n_out):
+            # Dispatch to native lib: register function node + edges, return proxy.
+            ...
+
+        def run(self, outputs):
+            # Dispatch to native lib: evaluate the DAG for the requested outputs.
+            # Returns a list of real OrcHandles.
+            ...
+
+        def write(self, path):
+            # Serialize the entire DAG to the given file path.
+            ...
+    #+end_src
+
 * DONE tjtyz1 - Running a DAG workflow
   CLOSED: [2026-08-16 Sun 17:03]
   :PROPERTIES:
