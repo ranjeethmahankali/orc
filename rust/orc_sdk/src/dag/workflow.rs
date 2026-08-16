@@ -183,14 +183,18 @@ impl Workflow {
         }
         Ok(new)
     }
+
+    pub fn get_terminal_outputs(&self) -> impl Iterator<Item = OH> {
+        (0usize..self.graph.outputs.len()).filter_map(|i| match self.graph.outputs[i].link {
+            Some(_) => None,
+            None => Some(OH { idx: i }),
+        })
+    }
 }
 
 #[cfg(test)]
 mod test {
-    use crate::{
-        FuncInfo, IH, OH, Workflow,
-        dag::Handle,
-    };
+    use crate::{FuncInfo, IH, OH, Workflow, dag::Handle};
 
     fn make_func_info(name: &str) -> FuncInfo {
         FuncInfo {

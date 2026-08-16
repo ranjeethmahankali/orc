@@ -12,25 +12,25 @@ pub trait Handle: From<usize> + Copy + Clone + 'static {
 #[repr(transparent)]
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Default)]
 pub struct IH {
-    idx: usize,
+    pub(crate) idx: usize,
 }
 
 #[repr(transparent)]
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Default)]
 pub struct OH {
-    idx: usize,
+    pub(crate) idx: usize,
 }
 
 #[repr(transparent)]
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Default)]
 pub struct LH {
-    idx: usize,
+    pub(crate) idx: usize,
 }
 
 #[repr(transparent)]
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Default)]
 pub struct NH {
-    idx: usize,
+    pub(crate) idx: usize,
 }
 
 impl From<usize> for IH {
