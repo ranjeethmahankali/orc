@@ -218,7 +218,7 @@
   screen in a UI app, and how it is stored on the disk in various formats, and make sure they all
   integrate seamlessly.
 
-* TODO Constructing a DAG from Python
+* TODO tjvt98 - Constructing a DAG from Python
   :PROPERTIES:
   :CREATED:  2026-08-16 Sun 14:40
   :END:
@@ -229,6 +229,11 @@
   This is potentially a way of overcoming the overhead of calling functions repeatedly with ctypes
   over FFI. Instead the Python user may choose to construct the DAG and run it many times without
   the Python's ctypes function call overhead.
+
+** Vague Plan
+   :PROPERTIES:
+   :CREATED:  2026-08-16 Sun 17:33
+   :END:
 
 * DONE tjtyz1 - Running a DAG workflow
   CLOSED: [2026-08-16 Sun 17:03]
