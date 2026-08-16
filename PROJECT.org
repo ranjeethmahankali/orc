@@ -218,11 +218,25 @@
   screen in a UI app, and how it is stored on the disk in various formats, and make sure they all
   integrate seamlessly.
 
-* NEXT tjtyz1 - Running a DAG workflow
+* TODO Constructing a DAG from Python
+  :PROPERTIES:
+  :CREATED:  2026-08-16 Sun 14:40
+  :END:
+
+  Ideally the same scripts used to run the plugin functions, can be repurposed by running them in a
+  special context, that constructs the DAG instead of immediately doing the work.
+
+  This is potentially a way of overcoming the overhead of calling functions repeatedly with ctypes
+  over FFI. Instead the Python user may choose to construct the DAG and run it many times without
+  the Python's ctypes function call overhead.
+
+* DONE tjtyz1 - Running a DAG workflow
+  CLOSED: [2026-08-16 Sun 17:03]
   :PROPERTIES:
   :CREATED:  2026-08-15 Sat 14:26
   :END:
   :LOGBOOK:
+  - State "DONE"       from "NEXT"       [2026-08-16 Sun 17:03]
   - State "NEXT"       from "TODO"       [2026-08-15 Sat 17:42]
   :END:
 
@@ -248,17 +262,7 @@
   <2026-08-16 Sun 16:43> All tests are passing. Now able to run DAGs, retrieve outputs, and test
   them. Checking a few more things, and ready to merge this soon.
 
-** TODO Constructing a DAG from Python
-   :PROPERTIES:
-   :CREATED:  2026-08-16 Sun 14:40
-   :END:
-
-   Ideally the same scripts used to run the plugin functions, can be repurposed by running them in a
-   special context, that constructs the DAG instead of immediately doing the work.
-
-   This is potentially a way of overcoming the overhead of calling functions repeatedly with ctypes
-   over FFI. Instead the Python user may choose to construct the DAG and run it many times without
-   the Python's ctypes function call overhead.
+  <2026-08-16 Sun 17:02> Decided to do the Python DAG construction as a separate task. Ready to merge.
 
 * DONE tjtsc1 - OrcHandle ownership in Rust
   CLOSED: [2026-08-15 Sat 17:37]
