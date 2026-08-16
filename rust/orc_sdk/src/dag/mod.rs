@@ -8,7 +8,7 @@ pub use property::{
 };
 
 mod workflow;
-pub use workflow::{NodeInfo, Workflow};
+pub use workflow::{DagOutputData, NodeInfo, Workflow};
 
 /// Declarative macro for composing a DAG of plugin function calls.
 ///
