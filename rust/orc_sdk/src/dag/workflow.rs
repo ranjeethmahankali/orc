@@ -4,7 +4,7 @@ use super::{
     DagError, Graph, IH, InputProperty, LH, LinkProperty, NH, NodeProperty, OH, OutputProperty,
     Property,
 };
-use crate::{FuncInfo, NodePropBuf, OrcHandle};
+use crate::{FuncInfo, OrcHandle};
 
 pub enum NodeInfo {
     Parameter { name: String },
@@ -202,6 +202,10 @@ impl Workflow {
         required_outputs: &[OH],
         handle_counter: &AtomicU64,
     ) -> Result<impl Iterator<Item = OrcHandle>, DagError> {
+        // Remove duplicates from required_outputs.
+        let mut required_outputs = required_outputs.to_vec();
+        required_outputs.sort();
+        required_outputs.dedup();
         // For now, we're just doing a simple depth-first Euler tour of the graph, and running the
         // functions that need to be run. We can do all sorts of fancy things, like running
         // independent arms of the DAG on different threads concurrently, doing something equivalent
@@ -214,8 +218,6 @@ impl Workflow {
                 .iter()
                 .map(|o| (self.graph.outputs[o.idx].node, false)),
         );
-        stack.sort();
-        stack.dedup();
         // Allocating temporary vectors like this is not idea. A host application will likely want
         // thos to run more optimally, with cached resources. But that is not an interesting problem
         // to solve at this time. I will come back to this later.
@@ -229,7 +231,6 @@ impl Workflow {
         let mut temp_output_handles = Vec::<OH>::new();
         // Borrow the node infos for the duration of below eval-loop.
         let node_infos = self.node_infos.try_borrow()?;
-        let node_infos: &NodePropBuf<_> = &node_infos;
         while let Some((node, visited_children)) = stack.pop() {
             if finished[node.idx] {
                 continue;
@@ -290,6 +291,9 @@ impl Workflow {
                 finished[node.idx] = true;
                 on_current_path[node.idx] = false;
             } else {
+                if on_current_path[node.idx] {
+                    return Err(DagError::CycleDetected);
+                }
                 // Because we're doing an Euler tour, and we're visiting this node for the first
                 // time before visiting it's children, we push the node again before pushing its
                 // children.
@@ -303,9 +307,15 @@ impl Workflow {
             }
         }
         // Now return the final outputs.
-        Ok(required_outputs
-            .iter()
-            .map(move |ro| std::mem::take(&mut computed_outputs[ro.idx])))
+        Ok(required_outputs.into_iter().map(move |ro| {
+            match &node_infos[self.graph.outputs[ro.idx].node] {
+                NodeInfo::Parameter { name: _ } => todo!("Parameters are not yet supported."),
+                NodeInfo::Constant { name: _, data: _ } => {
+                    todo!("I don't know what to do about this yet. Not important right now. Will revisit this later.")
+                }
+                NodeInfo::Function(_) => std::mem::take(&mut computed_outputs[ro.idx]),
+            }
+        }))
     }
 }
 
