@@ -4,7 +4,7 @@ use orc_sdk::{
     orc_inline_dag, update_handle_from_deck,
 };
 
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::Ordering;
 
 fn next_id() -> u64 {
     HANDLE_COUNTER.fetch_add(1, Ordering::Relaxed)
@@ -210,24 +210,11 @@ fn t_flatten_complex() {
 // orc_inline_dag macro tests.
 // ==================================================
 
-fn make_handle(hc: &AtomicU64, deck: &Deck<f64>) -> OrcHandle {
-    let mut h = OrcHandle {
-        handle: hc.fetch_add(1, Ordering::Relaxed),
-        ..Default::default()
-    };
-    unsafe { update_handle_from_deck(deck, &mut h) };
-    h
-}
-
 // 1. Single function call as trailing expression.
 #[test]
 fn t_single_call() {
-    let a_deck: Deck<f64> = deck![1.0, 2.0, 3.0];
-    let b_deck: Deck<f64> = deck![10.0, 20.0, 30.0];
-    let a = make_handle(&HANDLE_COUNTER, &a_deck);
-    let b = make_handle(&HANDLE_COUNTER, &b_deck);
     let out = orc_inline_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, {
-        (add a b)
+        (add (const [1.0f64, 2.0, 3.0]) (const [10.0f64, 20.0, 30.0]))
     })
     .unwrap();
     let view = DeckView::<f64>::from_handle(&out).unwrap();
@@ -237,13 +224,10 @@ fn t_single_call() {
 // 2. let binding followed by trailing expression.
 #[test]
 fn t_let_then_trailing() {
-    let a_deck: Deck<f64> = deck![1.0, 2.0, 3.0];
-    let b_deck: Deck<f64> = deck![10.0, 20.0, 30.0];
-    let c_deck: Deck<f64> = deck![100.0, 200.0, 300.0];
-    let a = make_handle(&HANDLE_COUNTER, &a_deck);
-    let b = make_handle(&HANDLE_COUNTER, &b_deck);
-    let c = make_handle(&HANDLE_COUNTER, &c_deck);
     let out = orc_inline_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, {
+        (let a (const [1.0f64, 2.0, 3.0]))
+        (let b (const [10.0f64, 20.0, 30.0]))
+        (let c (const [100.0f64, 200.0, 300.0]))
         (let ab (add a b))
         (add ab c)
     })
@@ -255,12 +239,10 @@ fn t_let_then_trailing() {
 // 3. Multiple let bindings.
 #[test]
 fn t_multiple_lets() {
-    let a_deck: Deck<f64> = deck![2.0, 3.0];
-    let b_deck: Deck<f64> = deck![5.0, 10.0];
-    let a = make_handle(&HANDLE_COUNTER, &a_deck);
-    let b = make_handle(&HANDLE_COUNTER, &b_deck);
     // (a + b) * (a + b) = (7, 13) * (7, 13) = (49, 169)
     let out = orc_inline_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, {
+        (let a (const [2.0f64, 3.0]))
+        (let b (const [5.0f64, 10.0]))
         (let sum (add a b))
         (mul sum sum)
     })
@@ -272,15 +254,9 @@ fn t_multiple_lets() {
 // 4. Nested single-output call.
 #[test]
 fn t_nested_call() {
-    let a_deck: Deck<f64> = deck![2.0, 3.0];
-    let b_deck: Deck<f64> = deck![5.0, 10.0];
-    let c_deck: Deck<f64> = deck![1.0, 1.0];
-    let a = make_handle(&HANDLE_COUNTER, &a_deck);
-    let b = make_handle(&HANDLE_COUNTER, &b_deck);
-    let c = make_handle(&HANDLE_COUNTER, &c_deck);
     // (a * b) + c = (10, 30) + (1, 1) = (11, 31)
     let out = orc_inline_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, {
-        (add (mul a b) c)
+        (add (mul (const [2.0f64, 3.0]) (const [5.0f64, 10.0])) (const [1.0f64, 1.0]))
     })
     .unwrap();
     let view = DeckView::<f64>::from_handle(&out).unwrap();
@@ -290,15 +266,9 @@ fn t_nested_call() {
 // 5. Deeply nested calls.
 #[test]
 fn t_deep_nesting() {
-    let a_deck: Deck<f64> = deck![1.0, 2.0];
-    let b_deck: Deck<f64> = deck![3.0, 4.0];
-    let c_deck: Deck<f64> = deck![10.0, 10.0];
-    let a = make_handle(&HANDLE_COUNTER, &a_deck);
-    let b = make_handle(&HANDLE_COUNTER, &b_deck);
-    let c = make_handle(&HANDLE_COUNTER, &c_deck);
     // (a + b) * c = (4, 6) * (10, 10) = (40, 60)
     let out = orc_inline_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, {
-        (mul (add a b) c)
+        (mul (add (const [1.0f64, 2.0]) (const [3.0f64, 4.0])) (const [10.0f64, 10.0]))
     })
     .unwrap();
     let view = DeckView::<f64>::from_handle(&out).unwrap();
@@ -308,34 +278,24 @@ fn t_deep_nesting() {
 // 6. let binding with nested call in the body.
 #[test]
 fn t_let_with_nested() {
-    let a_deck: Deck<f64> = deck![2.0];
-    let b_deck: Deck<f64> = deck![3.0];
-    let c_deck: Deck<f64> = deck![10.0];
-    let a = make_handle(&HANDLE_COUNTER, &a_deck);
-    let b = make_handle(&HANDLE_COUNTER, &b_deck);
-    let c = make_handle(&HANDLE_COUNTER, &c_deck);
     // let prod = a * b = 6; prod + c = 16; result - prod = 16 - 6 = 10
     let out = orc_inline_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, {
-        (let prod (mul a b))
-        (sub (add prod c) prod)
+        (let prod (mul (const 2.0f64) (const 3.0f64)))
+        (sub (add prod (const 10.0f64)) prod)
     })
     .unwrap();
     let view = DeckView::<f64>::from_handle(&out).unwrap();
     assert_eq!(view.items(), &[10.0]);
 }
 
-// 9. External variables are usable as inputs.
+// 9. Const scalars used as inputs.
 #[test]
-fn t_external_variables() {
-    let x_deck: Deck<f64> = deck![100.0];
-    let y_deck: Deck<f64> = deck![1.0];
-    let x = make_handle(&HANDLE_COUNTER, &x_deck);
-    let y = make_handle(&HANDLE_COUNTER, &y_deck);
-    let result = orc_inline_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, {
-        (sub x y)
+fn t_const_inputs() {
+    let out = orc_inline_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, {
+        (sub (const 100.0f64) (const 1.0f64))
     })
     .unwrap();
-    let view = DeckView::<f64>::from_handle(&result).unwrap();
+    let view = DeckView::<f64>::from_handle(&out).unwrap();
     assert_eq!(view.items(), &[99.0]);
 }
 
@@ -401,12 +361,11 @@ fn t_const_inline_expr() {
     assert_eq!(view.depth(), 1);
 }
 
-// 15. Const mixed with external variables.
+// 15. Const mixed with let-bound const.
 #[test]
-fn t_const_with_external_var() {
-    let a_deck: Deck<f64> = deck![5.0, 10.0];
-    let a = make_handle(&HANDLE_COUNTER, &a_deck);
+fn t_const_mixed() {
     let out = orc_inline_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, {
+        (let a (const [5.0f64, 10.0]))
         (add a (const [1.0f64, 2.0]))
     })
     .unwrap();
