@@ -203,6 +203,21 @@
   metadata. The actual function should still handle everything procedurally. Should be completely
   optional. Everything should still work without this metadata, albeit a more inconvenient manner.
 
+* TODO Functions and Scripts - a clear picture
+  :PROPERTIES:
+  :CREATED:  2026-08-16 Sun 14:36
+  :END:
+
+  Need a way to define incomplete fragments of a workflow DAG, and reuse those fragments by
+  partially or fully substituting the incomplete parts.
+
+  In a node editor UI app, this will map to something similar to Grasshopper's concept of
+  "cluster". In a Python script, this is equivalent to definng functions, and currying them. In
+  LISP, it is also equivalent to defining functions and currying them. I need to figure out a
+  complete picture of this concept that includes how it is represented in memory, how it is drawn on
+  screen in a UI app, and how it is stored on the disk in various formats, and make sure they all
+  integrate seamlessly.
+
 * NEXT tjtyz1 - Running a DAG workflow
   :PROPERTIES:
   :CREATED:  2026-08-15 Sat 14:26
@@ -223,6 +238,18 @@
   DAG workflow instead of running the logic inline. This new macro hasn't been tested yet. I need a
   rudimentary way to walk and evaluate the macro to start testing it. I could generate topological
   tests, but feels messy. Seems much better to just write an evaluator and run that.
+
+** TODO Constructing a DAG from Python
+   :PROPERTIES:
+   :CREATED:  2026-08-16 Sun 14:40
+   :END:
+
+   Ideally the same scripts used to run the plugin functions, can be repurposed by running them in a
+   special context, that constructs the DAG instead of immediately doing the work.
+
+   This is potentially a way of overcoming the overhead of calling functions repeatedly with ctypes
+   over FFI. Instead the Python user may choose to construct the DAG and run it many times without
+   the Python's ctypes function call overhead.
 
 * DONE tjtsc1 - OrcHandle ownership in Rust
   CLOSED: [2026-08-15 Sat 17:37]
