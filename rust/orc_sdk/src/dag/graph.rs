@@ -693,4 +693,21 @@ mod test {
         assert!(g.links.is_empty());
         assert!(g.nodes.is_empty());
     }
+
+    #[test]
+    fn t_input_source() {
+        let (g, _, ins, outs, _) = chain_graph();
+        // B's input is connected from A's output.
+        assert_eq!(g.input_source(ins[0]), Some(outs[0]));
+        // C's input is connected from B's output.
+        assert_eq!(g.input_source(ins[1]), Some(outs[1]));
+    }
+
+    #[test]
+    fn t_input_source_unconnected() {
+        let mut g = Graph::default();
+        let mut ins = [IH::default()];
+        let _n = g.push_node(&mut ins, &mut []).unwrap();
+        assert_eq!(g.input_source(ins[0]), None);
+    }
 }

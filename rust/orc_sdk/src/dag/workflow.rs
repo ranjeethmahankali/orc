@@ -189,7 +189,7 @@ impl Workflow {
 mod test {
     use crate::{
         FuncInfo, IH, OH, Workflow,
-        dag::{Graph, Handle, test::chain_graph},
+        dag::Handle,
     };
 
     fn make_func_info(name: &str) -> FuncInfo {
@@ -301,23 +301,6 @@ mod test {
         assert_eq!(w.graph.node_outputs(nb).count(), 1);
         assert_eq!(w.graph.node_inputs(nc).count(), 1);
         assert_eq!(w.graph.node_outputs(nc).count(), 1);
-    }
-
-    #[test]
-    fn t_input_source() {
-        let (g, _, ins, outs, _) = chain_graph();
-        // B's input is connected from A's output.
-        assert_eq!(g.input_source(ins[0]), Some(outs[0]));
-        // C's input is connected from B's output.
-        assert_eq!(g.input_source(ins[1]), Some(outs[1]));
-    }
-
-    #[test]
-    fn t_input_source_unconnected() {
-        let mut g = Graph::default();
-        let mut ins = [IH::default()];
-        let _n = g.push_node(&mut ins, &mut []).unwrap();
-        assert_eq!(g.input_source(ins[0]), None);
     }
 
     #[test]
