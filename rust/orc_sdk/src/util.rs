@@ -114,6 +114,14 @@ impl DeckRegistry {
         &self,
         handle: &mut OrcHandle,
     ) -> Result<(), Error> {
+        self.alloc_with_value(Deck::<T>::default(), handle)
+    }
+
+    pub fn alloc_with_value<T: TOrcData + Any + Send + Sync>(
+        &self,
+        value: Deck<T>,
+        handle: &mut OrcHandle,
+    ) -> Result<(), Error> {
         // Here, the id is valid, so we try to find the previous allocation and reuse it. If it
         // doesn't match the type, or doesn't exist, we just reallocate. The line below can block
         // this thread until write access is available.
@@ -144,18 +152,16 @@ impl DeckRegistry {
                     unsafe { update_handle_from_deck(deck, handle) };
                 } else {
                     // Different type — drop the old deck and insert a fresh one.
-                    let deck = Deck::<T>::default();
-                    unsafe { update_handle_from_deck(&deck, handle) };
-                    occupied.insert(Arc::new(RwLock::new(Box::new(deck))));
+                    unsafe { update_handle_from_deck(&value, handle) };
+                    occupied.insert(Arc::new(RwLock::new(Box::new(value))));
                 }
                 handle.free_fn = Some(crate::orc_deck_free);
             }
             Entry::Vacant(vacant) => {
                 // This handle could be pointing to data inside another plugin. So we have to free that data first, before reassigning.
                 handle.free();
-                let deck = Deck::<T>::default();
-                unsafe { update_handle_from_deck(&deck, handle) };
-                vacant.insert(Arc::new(RwLock::new(Box::new(deck))));
+                unsafe { update_handle_from_deck(&value, handle) };
+                vacant.insert(Arc::new(RwLock::new(Box::new(value))));
                 handle.free_fn = Some(crate::orc_deck_free);
             }
         };
@@ -194,6 +200,38 @@ impl DeckRegistry {
             .map(|guard| guard.as_mut() as &mut (dyn Any + Send + Sync))
             .collect();
         Ok(callback(&mut references))
+    }
+
+    pub fn with_refs<TResult, F>(&self, ids: &[u64], callback: F) -> Result<TResult, Error>
+    where
+        F: FnOnce(&[&(dyn Any + Send + Sync)]) -> TResult,
+    {
+        let arcs: Vec<_> = {
+            // This can block this thread until read access is available.
+            let map = self
+                .handles
+                .read()
+                .map_err(|_e| Error::ConcurrencyProblem)?;
+            ids.iter()
+                .map(|id| map.get(id).cloned().ok_or(Error::InvalidHandle))
+                .collect::<Result<_, _>>()?
+        };
+        let mut guards: Vec<_> = arcs
+            .iter()
+            .map(|arc| arc.try_read().map_err(|_e| Error::ConcurrencyProblem))
+            .collect::<Result<_, _>>()?;
+        let references: Vec<&(dyn Any + Send + Sync)> = guards
+            .iter_mut()
+            .map(|guard| guard.as_ref() as &(dyn Any + Send + Sync))
+            .collect();
+        Ok(callback(&references))
+    }
+
+    pub fn count(&self) -> Result<usize, Error> {
+        self.handles
+            .read()
+            .map(|map| map.len())
+            .map_err(|_| Error::ConcurrencyProblem)
     }
 }
 
