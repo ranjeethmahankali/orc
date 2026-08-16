@@ -177,7 +177,7 @@ impl<'a> Clone for OrcHandleBorrowed<'a> {
                 dims: self.inner.dims,
                 free_fn: None,
             },
-            _borrow: self._borrow.clone(),
+            _borrow: self._borrow,
         }
     }
 }
