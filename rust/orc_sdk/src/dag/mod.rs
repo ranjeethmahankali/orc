@@ -10,8 +10,6 @@ pub use property::{
 mod workflow;
 pub use workflow::{NodeInfo, Workflow};
 
-mod run;
-
 /// Declarative macro for composing a DAG of plugin function calls.
 ///
 /// Takes a PluginSet, an `&AtomicU64` handle counter, a `&DeckRegistry`, and a

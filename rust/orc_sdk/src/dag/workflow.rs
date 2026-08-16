@@ -1,8 +1,10 @@
+use std::sync::atomic::{AtomicU64, Ordering};
+
 use super::{
     DagError, Graph, IH, InputProperty, LH, LinkProperty, NH, NodeProperty, OH, OutputProperty,
     Property,
 };
-use crate::{FuncInfo, OrcHandle};
+use crate::{FuncInfo, NodePropBuf, OrcHandle};
 
 pub enum NodeInfo {
     Parameter { name: String },
@@ -189,6 +191,117 @@ impl Workflow {
             Some(_) => None,
             None => Some(OH { idx: i }),
         })
+    }
+
+    pub fn run(
+        &self,
+        required_outputs: &[OH],
+        handle_counter: &AtomicU64,
+    ) -> Result<impl Iterator<Item = OrcHandle>, DagError> {
+        // For now, we're just doing a simple depth-first Euler tour of the graph, and running the
+        // functions that need to be run. We can do all sorts of fancy things, like running
+        // independent arms of the DAG on different threads concurrently, doing something equivalent
+        // to register allocation that finds the minimal number of threads required to run the DAG
+        // with maximal parallelism, etc. But those are not interesting problems to solve at this
+        // time. I will revisit those topics later when they become interesting.
+        let mut stack = Vec::<(NH, bool)>::new();
+        stack.extend(
+            required_outputs
+                .iter()
+                .map(|o| (self.graph.outputs[o.idx].node, false)),
+        );
+        stack.sort();
+        stack.dedup();
+        // Allocating temporary vectors like this is not idea. A host application will likely want
+        // thos to run more optimally, with cached resources. But that is not an interesting problem
+        // to solve at this time. I will come back to this later.
+        let mut finished = vec![false; self.graph.nodes.len()].into_boxed_slice();
+        let mut on_current_path = vec![false; self.graph.nodes.len()].into_boxed_slice();
+        let mut computed_outputs: Box<[OrcHandle]> = (0usize..self.graph.outputs.len())
+            .map(|_| OrcHandle::default())
+            .collect();
+        let empty_input: OrcHandle = OrcHandle::default();
+        let mut temp_outputs = Vec::<OrcHandle>::new();
+        let mut temp_output_handles = Vec::<OH>::new();
+        // Borrow the node infos for the duration of below eval-loop.
+        let node_infos = self.node_infos.try_borrow()?;
+        let node_infos: &NodePropBuf<_> = &node_infos;
+        while let Some((node, visited_children)) = stack.pop() {
+            if finished[node.idx] {
+                continue;
+            }
+            if visited_children {
+                // We want to run this block. So we will first gather its inputs into a local buffer.
+                let temp_inputs = self
+                    .graph
+                    .node_inputs(node)
+                    .map(|input| match self.graph.input_source(input) {
+                        Some(source) => match &node_infos[self.graph.outputs[source.idx].node] {
+                            NodeInfo::Parameter { name: _name } => {
+                                todo!("Parameters are not yet supported.")
+                            }
+                            NodeInfo::Constant { name: _name, data } => data.borrowed(),
+                            NodeInfo::Function(_) => computed_outputs[source.idx].borrowed(),
+                        },
+                        None => empty_input.borrowed(),
+                    })
+                    .collect::<Box<[_]>>();
+                temp_output_handles.clear();
+                temp_output_handles.extend(self.graph.node_outputs(node));
+                temp_outputs.clear(); // Should have moved the previous outputs out of here anyways,
+                // ========================================================================================
+                // but just in case.  We're naively just incrementing the handle counter, and
+                // assinging the handle values. This might be problematic in the long run, but not
+                // sure. Even if it is problematic, not a big deal to fix. A host application
+                // maintain its own handle-poop / handle-arena to reuse freed up handles.
+                temp_outputs.resize_with(temp_output_handles.len(), || {
+                    let mut out = OrcHandle::default();
+                    out.handle = handle_counter.fetch_add(1, Ordering::Relaxed);
+                    out
+                });
+                debug_assert_eq!(temp_outputs.len(), temp_output_handles.len());
+                match &node_infos[node] {
+                    NodeInfo::Parameter { name: _name } => {
+                        todo!("Parameters are not yet supported.")
+                    }
+                    NodeInfo::Constant { .. } => {} // Do nothing.
+                    NodeInfo::Function(func_info) => match func_info.func {
+                        Some(func) => unsafe {
+                            (func)(
+                                node.idx as u64,
+                                temp_inputs.as_ptr().cast(),
+                                temp_inputs.len() as u64,
+                                temp_outputs.as_mut_ptr(),
+                                temp_outputs.len() as u64,
+                            );
+                        },
+                        None => return Err(DagError::InvalidFunction),
+                    },
+                };
+                // Move the outputs into the outer buffer for later.
+                for (o, val) in temp_output_handles.drain(..).zip(temp_outputs.drain(..)) {
+                    computed_outputs[o.idx] = val;
+                }
+                // Mark this done.
+                finished[node.idx] = true;
+                on_current_path[node.idx] = false;
+            } else {
+                // Because we're doing an Euler tour, and we're visiting this node for the first
+                // time before visiting it's children, we push the node again before pushing its
+                // children.
+                stack.push((node, true));
+                on_current_path[node.idx] = true;
+                stack.extend(self.graph.node_inputs(node).filter_map(|input| {
+                    self.graph
+                        .input_source(input)
+                        .map(|src| (self.graph.outputs[src.idx].node, false))
+                }));
+            }
+        }
+        // Now return the final outputs.
+        Ok(required_outputs
+            .iter()
+            .map(move |ro| std::mem::take(&mut computed_outputs[ro.idx])))
     }
 }
 
