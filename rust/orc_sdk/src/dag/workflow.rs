@@ -261,10 +261,9 @@ impl Workflow {
                 // assinging the handle values. This might be problematic in the long run, but not
                 // sure. Even if it is problematic, not a big deal to fix. A host application
                 // maintain its own handle-poop / handle-arena to reuse freed up handles.
-                temp_outputs.resize_with(temp_output_handles.len(), || {
-                    let mut out = OrcHandle::default();
-                    out.handle = handle_counter.fetch_add(1, Ordering::Relaxed);
-                    out
+                temp_outputs.resize_with(temp_output_handles.len(), || OrcHandle {
+                    handle: handle_counter.fetch_add(1, Ordering::Relaxed),
+                    ..Default::default()
                 });
                 debug_assert_eq!(temp_outputs.len(), temp_output_handles.len());
                 match &node_infos[node] {

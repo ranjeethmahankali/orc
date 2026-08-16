@@ -3,7 +3,6 @@ use orc_sdk::{
     DagError, DagOutputData, Deck, DeckView, IH, OH, OrcHandle, Workflow, deck, orc_dag,
     orc_inline_dag, update_handle_from_deck,
 };
-
 use std::sync::atomic::Ordering;
 
 fn next_id() -> u64 {
