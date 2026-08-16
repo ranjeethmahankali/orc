@@ -90,14 +90,11 @@ impl Workflow {
         Ok(n)
     }
 
-    pub fn add_constant(
-        &mut self,
-        data: OrcHandle,
-        output_handle: &mut OH,
-    ) -> Result<NH, DagError> {
+    pub fn add_constant(&mut self, data: OrcHandle) -> Result<(NH, OH), DagError> {
+        let mut output_handle = OH { idx: 0 };
         let n = self
             .graph
-            .push_node(&mut [], std::slice::from_mut(output_handle))?;
+            .push_node(&mut [], std::slice::from_mut(&mut output_handle))?;
         {
             let mut node_infos = self
                 .node_infos
@@ -108,7 +105,7 @@ impl Workflow {
                 data,
             };
         }
-        Ok(n)
+        Ok((n, output_handle))
     }
 
     pub fn connect(&mut self, from: OH, to: IH) -> Result<LH, DagError> {
