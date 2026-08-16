@@ -55,6 +55,11 @@ impl Default for Workflow {
     }
 }
 
+pub enum DagOutputData {
+    Constant(u64),
+    Owned(OrcHandle),
+}
+
 impl Workflow {
     pub fn with_capacity(
         n_inputs: usize,
@@ -201,7 +206,7 @@ impl Workflow {
         &self,
         required_outputs: &[OH],
         handle_counter: &AtomicU64,
-    ) -> Result<impl Iterator<Item = OrcHandle>, DagError> {
+    ) -> Result<impl Iterator<Item = DagOutputData>, DagError> {
         // Remove duplicates from required_outputs.
         let mut required_outputs = required_outputs.to_vec();
         required_outputs.sort();
@@ -310,10 +315,10 @@ impl Workflow {
         Ok(required_outputs.into_iter().map(move |ro| {
             match &node_infos[self.graph.outputs[ro.idx].node] {
                 NodeInfo::Parameter { name: _ } => todo!("Parameters are not yet supported."),
-                NodeInfo::Constant { name: _, data: _ } => {
-                    todo!("I don't know what to do about this yet. Not important right now. Will revisit this later.")
+                NodeInfo::Constant { name: _, data } => DagOutputData::Constant(data.handle),
+                NodeInfo::Function(_) => {
+                    DagOutputData::Owned(std::mem::take(&mut computed_outputs[ro.idx]))
                 }
-                NodeInfo::Function(_) => std::mem::take(&mut computed_outputs[ro.idx]),
             }
         }))
     }
