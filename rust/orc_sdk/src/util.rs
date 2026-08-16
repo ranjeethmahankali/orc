@@ -201,6 +201,31 @@ impl DeckRegistry {
             .collect();
         Ok(callback(&mut references))
     }
+
+    pub fn with_refs<TResult, F>(&self, ids: &[u64], callback: F) -> Result<TResult, Error>
+    where
+        F: FnOnce(&[&(dyn Any + Send + Sync)]) -> TResult,
+    {
+        let arcs: Vec<_> = {
+            // This can block this thread until read access is available.
+            let map = self
+                .handles
+                .read()
+                .map_err(|_e| Error::ConcurrencyProblem)?;
+            ids.iter()
+                .map(|id| map.get(id).cloned().ok_or(Error::InvalidHandle))
+                .collect::<Result<_, _>>()?
+        };
+        let mut guards: Vec<_> = arcs
+            .iter()
+            .map(|arc| arc.try_read().map_err(|_e| Error::ConcurrencyProblem))
+            .collect::<Result<_, _>>()?;
+        let references: Vec<&(dyn Any + Send + Sync)> = guards
+            .iter_mut()
+            .map(|guard| guard.as_ref() as &(dyn Any + Send + Sync))
+            .collect();
+        Ok(callback(&references))
+    }
 }
 
 // ==================================================
