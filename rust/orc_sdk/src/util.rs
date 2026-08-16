@@ -226,6 +226,13 @@ impl DeckRegistry {
             .collect();
         Ok(callback(&references))
     }
+
+    pub fn count(&self) -> Result<usize, Error> {
+        self.handles
+            .read()
+            .map(|map| map.len())
+            .map_err(|_| Error::ConcurrencyProblem)
+    }
 }
 
 // ==================================================
