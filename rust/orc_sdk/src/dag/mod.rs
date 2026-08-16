@@ -225,8 +225,8 @@ macro_rules! orc_dag {
             .clone();
         const N_INS_: usize = orc_dag!(@count_tt $($arg)*);
         const N_OUTS_: usize = orc_dag!(@count $($name)+);
-        let mut ihs_: [$crate::IH; N_INS_] = std::array::from_fn(|_| $crate::IH { idx: 0 });
-        let mut ohs_: [$crate::OH; N_OUTS_] = std::array::from_fn(|_| $crate::OH { idx: 0 });
+        let mut ihs_: [$crate::IH; N_INS_] = std::array::from_fn(|_| $crate::IH::default());
+        let mut ohs_: [$crate::OH; N_OUTS_] = std::array::from_fn(|_| $crate::OH::default());
         $wf.add_function(func_info_, &mut ihs_, &mut ohs_)?;
         for (ih_, oh_) in ihs_.iter().zip(input_ohs_.iter()) {
             $wf.connect(*oh_, *ih_)?;
@@ -277,8 +277,7 @@ macro_rules! orc_dag {
         h_.handle = $hc.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         $reg.alloc_with_value($deck, &mut h_)
             .map_err(|e| $crate::DagError::from(e))?;
-        let mut oh_ = $crate::OH { idx: 0 };
-        $wf.add_constant(h_, &mut oh_)?;
+        let (_nh_, oh_) = $wf.add_constant(h_)?;
         Ok::<$crate::OH, $crate::DagError>(oh_)
     }};
 
@@ -289,8 +288,8 @@ macro_rules! orc_dag {
             .ok_or($crate::DagError::InvalidFunction)?
             .clone();
         const N_INS_: usize = orc_dag!(@count_tt $($arg)*);
-        let mut ihs_: [$crate::IH; N_INS_] = std::array::from_fn(|_| $crate::IH { idx: 0 });
-        let mut oh_ = $crate::OH { idx: 0 };
+        let mut ihs_: [$crate::IH; N_INS_] = std::array::from_fn(|_| $crate::IH::default());
+        let mut oh_ = $crate::OH::default();
         $wf.add_function(func_info_, &mut ihs_, std::slice::from_mut(&mut oh_))?;
         for (ih_, src_oh_) in ihs_.iter().zip(input_ohs_.iter()) {
             $wf.connect(*src_oh_, *ih_)?;
