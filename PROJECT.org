@@ -239,6 +239,12 @@
   rudimentary way to walk and evaluate the macro to start testing it. I could generate topological
   tests, but feels messy. Seems much better to just write an evaluator and run that.
 
+  <2026-08-16 Sun 16:25> Sketched out a depth first euler tour to walk and evaluate the DAG
+  serially. This is good enough for testing, for now. Starting to write tests now.
+
+  - [ ] Use the ~const~ syntax in all the existing orc_inline_dag tests, in kbb_cli_host/src/test.rs
+    instead of declaring the handles directly on the stack.
+
 ** TODO Constructing a DAG from Python
    :PROPERTIES:
    :CREATED:  2026-08-16 Sun 14:40
