@@ -193,6 +193,10 @@ impl Workflow {
         })
     }
 
+    /// This will run the DAG, and return an iterator over the required outputs. This is super
+    /// sketchy, and sub-optimal. Probably doesn't meet the performance and memory requirements of
+    /// any production quality host program. This is good enough for now, for testing as I continue
+    /// to develop this.
     pub fn run(
         &self,
         required_outputs: &[OH],
