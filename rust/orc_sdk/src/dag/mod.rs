@@ -243,14 +243,17 @@ macro_rules! orc_dag {
     }};
 
     // Return multiple (or single) named handles as a tuple.
-    (@stmts $ps:ident, $hc:ident, $reg:ident, $wf:ident, (return $($name:ident)+)) => {
+    (@stmts $ps:ident, $hc:ident, $reg:ident, $wf:ident, (return $($name:ident)+)) => {{
+        $wf.set_outputs(&[$($name),+])?;
         Ok(($($name),+))
-    };
+    }};
 
     // Trailing expression — bare function call as the block's return value
-    (@stmts $ps:ident, $hc:ident, $reg:ident, $wf:ident, ($func:ident $($arg:tt)*)) => {
-        orc_dag!(@call1 $ps, $hc, $reg, $wf, $func, $($arg)*)
-    };
+    (@stmts $ps:ident, $hc:ident, $reg:ident, $wf:ident, ($func:ident $($arg:tt)*)) => {{
+        let oh_ = orc_dag!(@call1 $ps, $hc, $reg, $wf, $func, $($arg)*)?;
+        $wf.set_outputs(&[oh_])?;
+        Ok::<$crate::OH, $crate::DagError>(oh_)
+    }};
 
     // Empty — end of statements
     (@stmts $ps:ident, $hc:ident, $reg:ident, $wf:ident,) => { Ok::<(), $crate::DagError>(()) };
@@ -314,7 +317,7 @@ pub enum DagError {
     MismatchedArrayLengths(usize, usize),
     CycleDetected,
     InvalidFunction,
-    MissingParameter(String),
+    MissingInput(String),
     SdkError(crate::Error),
 }
 

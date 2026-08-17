@@ -452,8 +452,7 @@ fn t_const_reused() {
 // orc_dag macro tests (build graph, then run).
 // ==================================================
 
-fn run_dag_single(wf: &mut Workflow, oh: OH) -> DagOutputData {
-    wf.set_outputs(&[oh]).unwrap();
+fn run_dag_single(wf: &mut Workflow) -> DagOutputData {
     let mut iter = wf.run(&[], &HANDLE_COUNTER).unwrap();
     iter.next().unwrap()
 }
@@ -482,18 +481,18 @@ fn assert_dag_output_f64(data: DagOutputData, expected: &[f64], expected_depth: 
 #[test]
 fn t_dag_single_call() {
     let mut wf = Workflow::default();
-    let oh = orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
+    let _oh = orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
         (add (const [1.0f64, 2.0, 3.0]) (const [10.0f64, 20.0, 30.0]))
     })
     .unwrap();
-    assert_dag_output_f64(run_dag_single(&mut wf, oh), &[11.0, 22.0, 33.0], 1);
+    assert_dag_output_f64(run_dag_single(&mut wf), &[11.0, 22.0, 33.0], 1);
 }
 
 // 2. let binding followed by trailing expression.
 #[test]
 fn t_dag_let_then_trailing() {
     let mut wf = Workflow::default();
-    let oh = orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
+    let _oh = orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
         (let a (const [1.0f64, 2.0, 3.0]))
         (let b (const [10.0f64, 20.0, 30.0]))
         (let c (const [100.0f64, 200.0, 300.0]))
@@ -501,148 +500,148 @@ fn t_dag_let_then_trailing() {
         (add ab c)
     })
     .unwrap();
-    assert_dag_output_f64(run_dag_single(&mut wf, oh), &[111.0, 222.0, 333.0], 1);
+    assert_dag_output_f64(run_dag_single(&mut wf), &[111.0, 222.0, 333.0], 1);
 }
 
 // 3. Multiple let bindings — shared subexpression.
 #[test]
 fn t_dag_multiple_lets() {
     let mut wf = Workflow::default();
-    let oh = orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
+    let _oh = orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
         (let a (const [2.0f64, 3.0]))
         (let b (const [5.0f64, 10.0]))
         (let sum (add a b))
         (mul sum sum)
     })
     .unwrap();
-    assert_dag_output_f64(run_dag_single(&mut wf, oh), &[49.0, 169.0], 1);
+    assert_dag_output_f64(run_dag_single(&mut wf), &[49.0, 169.0], 1);
 }
 
 // 4. Nested single-output call.
 #[test]
 fn t_dag_nested_call() {
     let mut wf = Workflow::default();
-    let oh = orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
+    let _oh = orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
         (add (mul (const [2.0f64, 3.0]) (const [5.0f64, 10.0])) (const [1.0f64, 1.0]))
     })
     .unwrap();
-    assert_dag_output_f64(run_dag_single(&mut wf, oh), &[11.0, 31.0], 1);
+    assert_dag_output_f64(run_dag_single(&mut wf), &[11.0, 31.0], 1);
 }
 
 // 5. Deeply nested calls.
 #[test]
 fn t_dag_deep_nesting() {
     let mut wf = Workflow::default();
-    let oh = orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
+    let _oh = orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
         (mul (add (const [1.0f64, 2.0]) (const [3.0f64, 4.0])) (const [10.0f64, 10.0]))
     })
     .unwrap();
-    assert_dag_output_f64(run_dag_single(&mut wf, oh), &[40.0, 60.0], 1);
+    assert_dag_output_f64(run_dag_single(&mut wf), &[40.0, 60.0], 1);
 }
 
 // 6. let binding with nested call in the body.
 #[test]
 fn t_dag_let_with_nested() {
     let mut wf = Workflow::default();
-    let oh = orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
+    let _oh = orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
         (let prod (mul (const 2.0f64) (const 3.0f64)))
         (sub (add prod (const 10.0f64)) prod)
     })
     .unwrap();
-    assert_dag_output_f64(run_dag_single(&mut wf, oh), &[10.0], 0);
+    assert_dag_output_f64(run_dag_single(&mut wf), &[10.0], 0);
 }
 
 // 9. Const scalars used as inputs.
 #[test]
 fn t_dag_const_inputs() {
     let mut wf = Workflow::default();
-    let oh = orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
+    let _oh = orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
         (sub (const 100.0f64) (const 1.0f64))
     })
     .unwrap();
-    assert_dag_output_f64(run_dag_single(&mut wf, oh), &[99.0], 0);
+    assert_dag_output_f64(run_dag_single(&mut wf), &[99.0], 0);
 }
 
 // 11. Const scalar via let binding.
 #[test]
 fn t_dag_const_scalar() {
     let mut wf = Workflow::default();
-    let oh = orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
+    let _oh = orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
         (let a (const 3.0f64))
         (let b (const 7.0f64))
         (add a b)
     })
     .unwrap();
-    assert_dag_output_f64(run_dag_single(&mut wf, oh), &[10.0], 0);
+    assert_dag_output_f64(run_dag_single(&mut wf), &[10.0], 0);
 }
 
 // 12. Const list via let binding.
 #[test]
 fn t_dag_const_list() {
     let mut wf = Workflow::default();
-    let oh = orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
+    let _oh = orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
         (let a (const [1.0f64, 2.0, 3.0]))
         (let b (const [10.0f64, 20.0, 30.0]))
         (add a b)
     })
     .unwrap();
-    assert_dag_output_f64(run_dag_single(&mut wf, oh), &[11.0, 22.0, 33.0], 1);
+    assert_dag_output_f64(run_dag_single(&mut wf), &[11.0, 22.0, 33.0], 1);
 }
 
 // 14. Const used inline as expression argument.
 #[test]
 fn t_dag_const_inline_expr() {
     let mut wf = Workflow::default();
-    let oh = orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
+    let _oh = orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
         (add (const [2.0f64, 4.0]) (const [10.0f64, 20.0]))
     })
     .unwrap();
-    assert_dag_output_f64(run_dag_single(&mut wf, oh), &[12.0, 24.0], 1);
+    assert_dag_output_f64(run_dag_single(&mut wf), &[12.0, 24.0], 1);
 }
 
 // 15. Const mixed with let-bound const.
 #[test]
 fn t_dag_const_mixed() {
     let mut wf = Workflow::default();
-    let oh = orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
+    let _oh = orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
         (let a (const [5.0f64, 10.0]))
         (add a (const [1.0f64, 2.0]))
     })
     .unwrap();
-    assert_dag_output_f64(run_dag_single(&mut wf, oh), &[6.0, 12.0], 1);
+    assert_dag_output_f64(run_dag_single(&mut wf), &[6.0, 12.0], 1);
 }
 
 // 16. Const depth 2: nested list added element-wise.
 #[test]
 fn t_dag_const_depth2() {
     let mut wf = Workflow::default();
-    let oh = orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
+    let _oh = orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
         (let a (const [[1.0f64, 2.0], [3.0]]))
         (let b (const [[10.0f64, 20.0], [30.0]]))
         (add a b)
     })
     .unwrap();
-    assert_dag_output_f64(run_dag_single(&mut wf, oh), &[11.0, 22.0, 33.0], 2);
+    assert_dag_output_f64(run_dag_single(&mut wf), &[11.0, 22.0, 33.0], 2);
 }
 
 // 17. Const depth 3.
 #[test]
 fn t_dag_const_depth3() {
     let mut wf = Workflow::default();
-    let oh = orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
+    let _oh = orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
         (let a (const [[[1.0f64, 2.0], [3.0]], [[4.0]]]))
         (let b (const [[[10.0f64, 20.0], [30.0]], [[40.0]]]))
         (add a b)
     })
     .unwrap();
-    assert_dag_output_f64(run_dag_single(&mut wf, oh), &[11.0, 22.0, 33.0, 44.0], 3);
+    assert_dag_output_f64(run_dag_single(&mut wf), &[11.0, 22.0, 33.0, 44.0], 3);
 }
 
 // 18. Return multiple outputs.
 #[test]
 fn t_dag_return_multiple() {
     let mut wf = Workflow::default();
-    let (s_oh, p_oh) = orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
+    let (_s_oh, _p_oh) = orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
         (let a (const [1.0f64, 2.0]))
         (let b (const [10.0f64, 20.0]))
         (let s (add a b))
@@ -650,7 +649,6 @@ fn t_dag_return_multiple() {
         (return s p)
     })
     .unwrap();
-    wf.set_outputs(&[s_oh, p_oh]).unwrap();
     let mut iter = wf.run(&[], &HANDLE_COUNTER).unwrap();
     assert_dag_output_f64(iter.next().unwrap(), &[11.0, 22.0], 1);
     assert_dag_output_f64(iter.next().unwrap(), &[10.0, 40.0], 1);
@@ -660,38 +658,38 @@ fn t_dag_return_multiple() {
 #[test]
 fn t_dag_return_single() {
     let mut wf = Workflow::default();
-    let s_oh = orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
+    let _s_oh = orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
         (let a (const [1.0f64, 2.0, 3.0]))
         (let b (const [10.0f64, 20.0, 30.0]))
         (let s (add a b))
         (return s)
     })
     .unwrap();
-    assert_dag_output_f64(run_dag_single(&mut wf, s_oh), &[11.0, 22.0, 33.0], 1);
+    assert_dag_output_f64(run_dag_single(&mut wf), &[11.0, 22.0, 33.0], 1);
 }
 
 // 20. Const reused in multiple expressions.
 #[test]
 fn t_dag_const_reused() {
     let mut wf = Workflow::default();
-    let oh = orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
+    let _oh = orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
         (let x (const [3.0f64, 4.0]))
         (mul x x)
     })
     .unwrap();
-    assert_dag_output_f64(run_dag_single(&mut wf, oh), &[9.0, 16.0], 1);
+    assert_dag_output_f64(run_dag_single(&mut wf), &[9.0, 16.0], 1);
 }
 
 // 13. Const nested list through flatten.
 #[test]
 fn t_dag_const_nested_list() {
     let mut wf = Workflow::default();
-    let oh = orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
+    let _oh = orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
         (let a (const [[1.0f64, 2.0], [3.0]]))
         (flatten_deck a)
     })
     .unwrap();
-    assert_dag_output_f64(run_dag_single(&mut wf, oh), &[1.0, 2.0, 3.0], 1);
+    assert_dag_output_f64(run_dag_single(&mut wf), &[1.0, 2.0, 3.0], 1);
 }
 
 // ==================================================
@@ -738,7 +736,7 @@ fn t_dag_cycle_self() {
 #[test]
 fn t_dag_diamond_no_cycle() {
     let mut wf = Workflow::default();
-    let oh = orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
+    let _oh = orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
         (let x (const [2.0f64, 3.0]))
         (let a (add x x))
         (let b (mul x x))
@@ -746,7 +744,7 @@ fn t_dag_diamond_no_cycle() {
     })
     .unwrap();
     // x = [2, 3], a = x+x = [4, 6], b = x*x = [4, 9], result = a+b = [8, 15]
-    assert_dag_output_f64(run_dag_single(&mut wf, oh), &[8.0, 15.0], 1);
+    assert_dag_output_f64(run_dag_single(&mut wf), &[8.0, 15.0], 1);
 }
 
 // ==================================================
