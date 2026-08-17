@@ -171,13 +171,6 @@
   Maybe I can write a rasterizer for my curve types, and somehow get the optimizer to export images
   of the sample points in the design space, so that I can visualize them when viewing the DOE.
 
-* TODO Parse a DAG from a kbb file
-  :PROPERTIES:
-  :CREATED:  2026-08-15 Sat 07:52
-  :END:
-
-  kbb file is a LISP
-
 * TODO Function metadata ABI improvements
   :PROPERTIES:
   :CREATED:  2026-08-15 Sat 13:54
@@ -202,21 +195,6 @@
   to this metadata to improve the overall experience. But no matter what, it should remain purely
   metadata. The actual function should still handle everything procedurally. Should be completely
   optional. Everything should still work without this metadata, albeit a more inconvenient manner.
-
-* TODO Functions and Scripts - a clear picture
-  :PROPERTIES:
-  :CREATED:  2026-08-16 Sun 14:36
-  :END:
-
-  Need a way to define incomplete fragments of a workflow DAG, and reuse those fragments by
-  partially or fully substituting the incomplete parts.
-
-  In a node editor UI app, this will map to something similar to Grasshopper's concept of
-  "cluster". In a Python script, this is equivalent to definng functions, and currying them. In
-  LISP, it is also equivalent to defining functions and currying them. I need to figure out a
-  complete picture of this concept that includes how it is represented in memory, how it is drawn on
-  screen in a UI app, and how it is stored on the disk in various formats, and make sure they all
-  integrate seamlessly.
 
 * TODO tjvt98 - Constructing a DAG from Python
   :PROPERTIES:
@@ -351,6 +329,31 @@
             # Serialize the entire DAG to the given file path.
             ...
     #+end_src
+
+* TODO Functions and Scripts - a clear picture
+  :PROPERTIES:
+  :CREATED:  2026-08-16 Sun 14:36
+  :END:
+
+  Need a way to define incomplete fragments of a workflow DAG, and reuse those fragments by
+  partially or fully substituting the incomplete parts.
+
+  In a node editor UI app, this will map to something similar to Grasshopper's concept of
+  "cluster". In a Python script, this is equivalent to definng functions, and currying them. In
+  LISP, it is also equivalent to defining functions and currying them. I need to figure out a
+  complete picture of this concept that includes how it is represented in memory, how it is drawn on
+  screen in a UI app, and how it is stored on the disk in various formats, and make sure they all
+  integrate seamlessly.
+
+* NEXT tjw1vf - Parse a DAG from a kbb file
+  :PROPERTIES:
+  :CREATED:  2026-08-15 Sat 07:52
+  :END:
+  :LOGBOOK:
+  - State "NEXT"       from "TODO"       [2026-08-16 Sun 20:50]
+  :END:
+
+  kbb file is a LISP
 
 * DONE tjtyz1 - Running a DAG workflow
   CLOSED: [2026-08-16 Sun 17:03]
