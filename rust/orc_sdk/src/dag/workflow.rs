@@ -44,13 +44,22 @@ impl NodeInfo {
 pub struct Workflow {
     graph: Graph,
     node_infos: NodeProperty<NodeInfo>,
+    input_labels: InputProperty<String>,
+    output_labels: OutputProperty<String>,
 }
 
 impl Default for Workflow {
     fn default() -> Self {
         let mut graph = Graph::default();
         let node_infos = graph.create_node_property(NodeInfo::default());
-        Self { graph, node_infos }
+        let input_labels = graph.create_input_property(String::default());
+        let output_labels = graph.create_output_property(String::default());
+        Self {
+            graph,
+            node_infos,
+            input_labels,
+            output_labels,
+        }
     }
 }
 
