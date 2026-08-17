@@ -314,6 +314,8 @@ pub enum DagError {
     MismatchedArrayLengths(usize, usize),
     CycleDetected,
     InvalidFunction,
+    MissingParameter(String),
+    InvalidOutput,
     SdkError(crate::Error),
 }
 

@@ -1,9 +1,9 @@
 use crate::{HANDLE_COUNTER, PLUGIN_SET, REGISTRY};
 use orc_sdk::{
-    DagError, DagOutputData, Deck, DeckView, IH, OH, OrcHandle, Workflow, deck, orc_dag,
-    orc_inline_dag, update_handle_from_deck,
+    DagError, DagOutputData, Deck, DeckView, IH, OH, OrcHandle, OrcHandleBorrowed, Workflow, deck,
+    orc_dag, orc_inline_dag, update_handle_from_deck,
 };
-use std::sync::atomic::Ordering;
+use std::{collections::HashMap, sync::atomic::Ordering};
 
 fn next_id() -> u64 {
     HANDLE_COUNTER.fetch_add(1, Ordering::Relaxed)
@@ -454,7 +454,8 @@ fn t_const_reused() {
 
 fn run_dag_single(wf: &Workflow, oh: OH) -> DagOutputData {
     let outputs = [oh];
-    let mut iter = wf.run(&outputs, &HANDLE_COUNTER).unwrap();
+    let params = HashMap::default();
+    let mut iter = wf.run(&outputs, &params, &HANDLE_COUNTER).unwrap();
     iter.next().unwrap()
 }
 
@@ -651,7 +652,8 @@ fn t_dag_return_multiple() {
     })
     .unwrap();
     let outputs = [s_oh, p_oh];
-    let mut iter = wf.run(&outputs, &HANDLE_COUNTER).unwrap();
+    let params = Default::default();
+    let mut iter = wf.run(&outputs, &params, &HANDLE_COUNTER).unwrap();
     assert_dag_output_f64(iter.next().unwrap(), &[11.0, 22.0], 1);
     assert_dag_output_f64(iter.next().unwrap(), &[10.0, 40.0], 1);
 }
@@ -715,7 +717,8 @@ fn t_dag_cycle_simple() {
     // B's output -> A's input (cycle!)
     wf.connect(b_out[0], a_in[0]).unwrap();
     let outputs = [b_out[0]];
-    let result = wf.run(&outputs, &HANDLE_COUNTER);
+    let params: HashMap<String, _> = Default::default();
+    let result = wf.run(&outputs, &params, &HANDLE_COUNTER);
     assert!(matches!(result, Err(DagError::CycleDetected)));
 }
 
@@ -730,7 +733,8 @@ fn t_dag_cycle_self() {
     // A's output -> A's input (self-cycle!)
     wf.connect(a_out[0], a_in[0]).unwrap();
     let outputs = [a_out[0]];
-    let result = wf.run(&outputs, &HANDLE_COUNTER);
+    let params: HashMap<String, _> = Default::default();
+    let result = wf.run(&outputs, &params, &HANDLE_COUNTER);
     assert!(matches!(result, Err(DagError::CycleDetected)));
 }
 
@@ -747,4 +751,120 @@ fn t_dag_diamond_no_cycle() {
     .unwrap();
     // x = [2, 3], a = x+x = [4, 6], b = x*x = [4, 9], result = a+b = [8, 15]
     assert_dag_output_f64(run_dag_single(&wf, oh), &[8.0, 15.0], 1);
+}
+
+// ==================================================
+// Parameter tests.
+// ==================================================
+
+// Parameter used as input to a function.
+#[test]
+fn t_dag_parameter_basic() {
+    let mut wf = Workflow::default();
+    let (_pn, p_oh) = wf.add_parameter("x").unwrap();
+    let func = PLUGIN_SET.get_function("add").unwrap().clone();
+    let mut f_in = [IH::default(); 2];
+    let mut f_out = [OH::default()];
+    wf.add_function(func, &mut f_in, &mut f_out).unwrap();
+    // Connect param "x" to the first input, and a constant to the second.
+    let c_oh = orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
+        (let c (const [10.0f64, 20.0, 30.0]))
+        (return c)
+    })
+    .unwrap();
+    wf.connect(p_oh, f_in[0]).unwrap();
+    wf.connect(c_oh, f_in[1]).unwrap();
+    // Run with parameter x = [1, 2, 3].
+    let x_handle = orc_inline_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, {
+        (let x (const [1.0f64, 2.0, 3.0]))
+        (return x)
+    })
+    .unwrap();
+    let params = HashMap::from([("x".to_string(), x_handle.borrowed())]);
+    let outputs = [f_out[0]];
+    let mut iter = wf.run(&outputs, &params, &HANDLE_COUNTER).unwrap();
+    match iter.next().unwrap() {
+        DagOutputData::Owned(h) => {
+            let view = DeckView::<f64>::from_handle(&h).unwrap();
+            assert_eq!(view.items(), &[11.0, 22.0, 33.0]);
+        }
+        _ => panic!("Expected owned output"),
+    }
+}
+
+// Re-run with different parameter values.
+#[test]
+fn t_dag_parameter_rerun() {
+    let mut wf = Workflow::default();
+    let (_pn, p_oh) = wf.add_parameter("x").unwrap();
+    let func = PLUGIN_SET.get_function("mul").unwrap().clone();
+    let mut f_in = [IH::default(); 2];
+    let mut f_out = [OH::default()];
+    wf.add_function(func, &mut f_in, &mut f_out).unwrap();
+    wf.connect(p_oh, f_in[0]).unwrap();
+    wf.connect(p_oh, f_in[1]).unwrap(); // x * x
+    let outputs = [f_out[0]];
+    // First run: x = [3, 4]
+    let h1 = orc_inline_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, {
+        (let v (const [3.0f64, 4.0]))
+        (return v)
+    })
+    .unwrap();
+    let params1 = HashMap::from([("x".to_string(), h1.borrowed())]);
+    let mut iter = wf.run(&outputs, &params1, &HANDLE_COUNTER).unwrap();
+    match iter.next().unwrap() {
+        DagOutputData::Owned(h) => {
+            let view = DeckView::<f64>::from_handle(&h).unwrap();
+            assert_eq!(view.items(), &[9.0, 16.0]);
+        }
+        _ => panic!("Expected owned output"),
+    }
+    // Second run: x = [5, 6]
+    let h2 = orc_inline_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, {
+        (let v (const [5.0f64, 6.0]))
+        (return v)
+    })
+    .unwrap();
+    let params2 = HashMap::from([("x".to_string(), h2.borrowed())]);
+    let mut iter = wf.run(&outputs, &params2, &HANDLE_COUNTER).unwrap();
+    match iter.next().unwrap() {
+        DagOutputData::Owned(h) => {
+            let view = DeckView::<f64>::from_handle(&h).unwrap();
+            assert_eq!(view.items(), &[25.0, 36.0]);
+        }
+        _ => panic!("Expected owned output"),
+    }
+}
+
+// Missing parameter returns MissingParameter error.
+#[test]
+fn t_dag_parameter_missing() {
+    let mut wf = Workflow::default();
+    let (_pn, p_oh) = wf.add_parameter("missing_param").unwrap();
+    let func = PLUGIN_SET.get_function("add").unwrap().clone();
+    let mut f_in = [IH::default(); 2];
+    let mut f_out = [OH::default()];
+    wf.add_function(func, &mut f_in, &mut f_out).unwrap();
+    wf.connect(p_oh, f_in[0]).unwrap();
+    // f_in[1] left disconnected (will get empty_input)
+    let outputs = [f_out[0]];
+    let params: HashMap<String, OrcHandleBorrowed<'_>> = Default::default();
+    let result = wf.run(&outputs, &params, &HANDLE_COUNTER);
+    assert!(matches!(result, Err(DagError::MissingParameter(ref name)) if name == "missing_param"));
+}
+
+// Requesting a parameter output directly returns InvalidOutput.
+#[test]
+fn t_dag_parameter_as_output() {
+    let mut wf = Workflow::default();
+    let (_pn, p_oh) = wf.add_parameter("x").unwrap();
+    let outputs = [p_oh];
+    let x_handle = orc_inline_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, {
+        (let v (const 1.0f64))
+        (return v)
+    })
+    .unwrap();
+    let params = HashMap::from([("x".to_string(), x_handle.borrowed())]);
+    let result = wf.run(&outputs, &params, &HANDLE_COUNTER);
+    assert!(matches!(result, Err(DagError::InvalidOutput)));
 }

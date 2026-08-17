@@ -2,8 +2,11 @@ use super::{
     DagError, Graph, IH, InputProperty, LH, LinkProperty, NH, NodeProperty, OH, OutputProperty,
     Property,
 };
-use crate::{FuncInfo, OrcHandle};
-use std::sync::atomic::{AtomicU64, Ordering};
+use crate::{FuncInfo, OrcHandle, OrcHandleBorrowed};
+use std::{
+    collections::HashMap,
+    sync::atomic::{AtomicU64, Ordering},
+};
 
 pub enum NodeInfo {
     Parameter { name: String },
@@ -78,7 +81,14 @@ impl Workflow {
         let mut graph = Graph::with_capacity(n_inputs, n_outputs, n_links, n_nodes);
         let node_infos =
             Property::with_capacity(n_nodes, &mut graph.node_props, NodeInfo::default());
-        Workflow { graph, node_infos }
+        let input_labels = graph.create_input_property(String::default());
+        let output_labels = graph.create_output_property(String::default());
+        Workflow {
+            graph,
+            node_infos,
+            input_labels,
+            output_labels,
+        }
     }
 
     pub fn add_function(
@@ -112,6 +122,21 @@ impl Workflow {
                 name: String::new(),
                 data,
             };
+        }
+        Ok((n, output_handle))
+    }
+
+    pub fn add_parameter(&mut self, name: impl Into<String>) -> Result<(NH, OH), DagError> {
+        let mut output_handle = OH { idx: 0 };
+        let n = self
+            .graph
+            .push_node(&mut [], std::slice::from_mut(&mut output_handle))?;
+        {
+            let mut node_infos = self
+                .node_infos
+                .try_borrow_mut()
+                .map_err(|_e| DagError::BorrowedPropertyAccess)?;
+            node_infos[n] = NodeInfo::Parameter { name: name.into() };
         }
         Ok((n, output_handle))
     }
@@ -210,6 +235,7 @@ impl Workflow {
     pub fn run(
         &self,
         required_outputs: &[OH],
+        parameters: &HashMap<String, OrcHandleBorrowed<'_>>,
         handle_counter: &AtomicU64,
     ) -> Result<impl Iterator<Item = DagOutputData>, DagError> {
         // Remove duplicates from required_outputs.
@@ -241,6 +267,17 @@ impl Workflow {
         let mut temp_output_handles = Vec::<OH>::new();
         // Borrow the node infos for the duration of below eval-loop.
         let node_infos = self.node_infos.try_borrow()?;
+        // Validate the required_outputs.
+        if required_outputs
+            .iter()
+            .any(|ro| match &node_infos[self.graph.outputs[ro.idx].node] {
+                NodeInfo::Parameter { .. } => true,
+                _ => false,
+            })
+        {
+            return Err(DagError::InvalidOutput);
+        }
+        // Walk the graph and evaluate functions.
         while let Some((node, visited_children)) = stack.pop() {
             if finished[node.idx] {
                 continue;
@@ -252,15 +289,16 @@ impl Workflow {
                     .node_inputs(node)
                     .map(|input| match self.graph.input_source(input) {
                         Some(source) => match &node_infos[self.graph.outputs[source.idx].node] {
-                            NodeInfo::Parameter { name: _name } => {
-                                todo!("Parameters are not yet supported.")
-                            }
-                            NodeInfo::Constant { name: _name, data } => data.borrowed(),
-                            NodeInfo::Function(_) => computed_outputs[source.idx].borrowed(),
+                            NodeInfo::Parameter { name } => match parameters.get(name) {
+                                Some(val) => Ok(val.clone()),
+                                None => return Err(DagError::MissingParameter(name.clone())),
+                            },
+                            NodeInfo::Constant { name: _name, data } => Ok(data.borrowed()),
+                            NodeInfo::Function(_) => Ok(computed_outputs[source.idx].borrowed()),
                         },
-                        None => empty_input.borrowed(),
+                        None => Ok(empty_input.borrowed()),
                     })
-                    .collect::<Box<[_]>>();
+                    .collect::<Result<Box<[_]>, DagError>>()?;
                 temp_output_handles.clear();
                 temp_output_handles.extend(self.graph.node_outputs(node));
                 temp_outputs.clear(); // Should have moved the previous outputs out of here anyways,
@@ -275,10 +313,8 @@ impl Workflow {
                 });
                 debug_assert_eq!(temp_outputs.len(), temp_output_handles.len());
                 match &node_infos[node] {
-                    NodeInfo::Parameter { name: _name } => {
-                        todo!("Parameters are not yet supported.")
-                    }
-                    NodeInfo::Constant { .. } => {} // Do nothing.
+                    NodeInfo::Parameter { .. } => {} // Do nothing.
+                    NodeInfo::Constant { .. } => {}  // Do nothing.
                     NodeInfo::Function(func_info) => match func_info.func {
                         Some(func) => unsafe {
                             (func)(
@@ -318,7 +354,9 @@ impl Workflow {
         // Now return the final outputs.
         Ok(required_outputs.into_iter().map(move |ro| {
             match &node_infos[self.graph.outputs[ro.idx].node] {
-                NodeInfo::Parameter { name: _ } => todo!("Parameters are not yet supported."),
+                NodeInfo::Parameter { name: _ } => {
+                    panic!("Should never happen, we already validated these at the start.")
+                }
                 NodeInfo::Constant { name: _, data } => DagOutputData::Constant(data.handle),
                 NodeInfo::Function(_) => {
                     DagOutputData::Owned(std::mem::take(&mut computed_outputs[ro.idx]))
