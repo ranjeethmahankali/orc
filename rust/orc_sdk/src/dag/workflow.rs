@@ -1,10 +1,9 @@
-use std::sync::atomic::{AtomicU64, Ordering};
-
 use super::{
     DagError, Graph, IH, InputProperty, LH, LinkProperty, NH, NodeProperty, OH, OutputProperty,
     Property,
 };
 use crate::{FuncInfo, OrcHandle};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 pub enum NodeInfo {
     Parameter { name: String },
