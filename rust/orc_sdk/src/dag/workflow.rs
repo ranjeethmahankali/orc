@@ -2,14 +2,10 @@ use super::{
     DagError, Graph, IH, InputProperty, LH, LinkProperty, NH, NodeProperty, OH, OutputProperty,
     Property,
 };
-use crate::{FuncInfo, OrcHandle, OrcHandleBorrowed};
-use std::{
-    collections::HashMap,
-    sync::atomic::{AtomicU64, Ordering},
-};
+use crate::{FuncInfo, InputPropBuf, OrcHandle, OrcHandleBorrowed, OutputPropBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 pub enum NodeInfo {
-    Parameter { name: String },
     Constant { name: String, data: OrcHandle },
     Function(FuncInfo),
 }
@@ -17,7 +13,6 @@ pub enum NodeInfo {
 impl Clone for NodeInfo {
     fn clone(&self) -> Self {
         match self {
-            Self::Parameter { name } => Self::Parameter { name: name.clone() },
             // The host application is responsible for allocating the variable data manually.
             Self::Constant { name, data: _data } => Self::Constant {
                 name: format!("{name}_copy"),
@@ -37,7 +32,6 @@ impl Default for NodeInfo {
 impl NodeInfo {
     pub fn name(&self) -> &str {
         match self {
-            NodeInfo::Parameter { name } => name,
             NodeInfo::Constant { name, .. } => name,
             NodeInfo::Function(func_info) => &func_info.name,
         }
@@ -49,6 +43,8 @@ pub struct Workflow {
     node_infos: NodeProperty<NodeInfo>,
     input_labels: InputProperty<String>,
     output_labels: OutputProperty<String>,
+    workflow_out_index: OutputProperty<Option<usize>>,
+    workflow_input_index: InputProperty<Option<usize>>,
 }
 
 impl Default for Workflow {
@@ -57,11 +53,15 @@ impl Default for Workflow {
         let node_infos = graph.create_node_property(NodeInfo::default());
         let input_labels = graph.create_input_property(String::default());
         let output_labels = graph.create_output_property(String::default());
+        let workflow_out_index = graph.create_output_property(None);
+        let workflow_input_index = graph.create_input_property(None);
         Self {
             graph,
             node_infos,
             input_labels,
             output_labels,
+            workflow_out_index,
+            workflow_input_index,
         }
     }
 }
@@ -83,12 +83,42 @@ impl Workflow {
             Property::with_capacity(n_nodes, &mut graph.node_props, NodeInfo::default());
         let input_labels = graph.create_input_property(String::default());
         let output_labels = graph.create_output_property(String::default());
+        let workflow_out_index = graph.create_output_property(None);
+        let workflow_input_index = graph.create_input_property(None);
         Workflow {
             graph,
             node_infos,
             input_labels,
             output_labels,
+            workflow_out_index,
+            workflow_input_index,
         }
+    }
+
+    pub fn set_outputs(&mut self, outputs: &[OH]) -> Result<(), DagError> {
+        let mut out_idx = self
+            .workflow_out_index
+            .try_borrow_mut()
+            .map_err(|_| DagError::BorrowedPropertyAccess)?;
+        let out_idx: &mut OutputPropBuf<_> = &mut out_idx;
+        out_idx.fill(None); // Remove any previously set outputs.
+        for (i, o) in outputs.iter().enumerate() {
+            out_idx[*o] = Some(i);
+        }
+        Ok(())
+    }
+
+    pub fn set_inputs(&mut self, inputs: &[IH]) -> Result<(), DagError> {
+        let mut input_idx = self
+            .workflow_input_index
+            .try_borrow_mut()
+            .map_err(|_| DagError::BorrowedPropertyAccess)?;
+        let input_idx: &mut InputPropBuf<_> = &mut input_idx;
+        input_idx.fill(None);
+        for (idx, input) in inputs.iter().enumerate() {
+            input_idx[*input] = Some(idx);
+        }
+        Ok(())
     }
 
     pub fn add_function(
@@ -122,21 +152,6 @@ impl Workflow {
                 name: String::new(),
                 data,
             };
-        }
-        Ok((n, output_handle))
-    }
-
-    pub fn add_parameter(&mut self, name: impl Into<String>) -> Result<(NH, OH), DagError> {
-        let mut output_handle = OH { idx: 0 };
-        let n = self
-            .graph
-            .push_node(&mut [], std::slice::from_mut(&mut output_handle))?;
-        {
-            let mut node_infos = self
-                .node_infos
-                .try_borrow_mut()
-                .map_err(|_e| DagError::BorrowedPropertyAccess)?;
-            node_infos[n] = NodeInfo::Parameter { name: name.into() };
         }
         Ok((n, output_handle))
     }
@@ -234,14 +249,25 @@ impl Workflow {
     /// to develop this.
     pub fn run(
         &self,
-        required_outputs: &[OH],
-        parameters: &HashMap<String, OrcHandleBorrowed<'_>>,
+        inputs: &[OrcHandleBorrowed<'_>],
         handle_counter: &AtomicU64,
     ) -> Result<impl Iterator<Item = DagOutputData>, DagError> {
         // Remove duplicates from required_outputs.
-        let mut required_outputs = required_outputs.to_vec();
-        required_outputs.sort();
-        required_outputs.dedup();
+        let workflow_outputs = {
+            let out_idx_prop = self
+                .workflow_out_index
+                .try_borrow()
+                .map_err(|_| DagError::BorrowedPropertyAccess)?;
+            let out_idx_prop: &[_] = &out_idx_prop;
+            let mut temp = (0usize..self.graph.outputs.len())
+                .filter_map(|o| out_idx_prop[o].map(|i| (i, o)))
+                .collect::<Vec<_>>();
+            temp.sort();
+            temp.dedup();
+            temp.into_iter()
+                .map(|(_i, o)| OH { idx: o })
+                .collect::<Vec<_>>()
+        };
         // For now, we're just doing a simple depth-first Euler tour of the graph, and running the
         // functions that need to be run. We can do all sorts of fancy things, like running
         // independent arms of the DAG on different threads concurrently, doing something equivalent
@@ -250,7 +276,7 @@ impl Workflow {
         // time. I will revisit those topics later when they become interesting.
         let mut stack = Vec::<(NH, bool)>::new();
         stack.extend(
-            required_outputs
+            workflow_outputs
                 .iter()
                 .map(|o| (self.graph.outputs[o.idx].node, false)),
         );
@@ -267,16 +293,7 @@ impl Workflow {
         let mut temp_output_handles = Vec::<OH>::new();
         // Borrow the node infos for the duration of below eval-loop.
         let node_infos = self.node_infos.try_borrow()?;
-        // Validate the required_outputs.
-        if required_outputs
-            .iter()
-            .any(|ro| match &node_infos[self.graph.outputs[ro.idx].node] {
-                NodeInfo::Parameter { .. } => true,
-                _ => false,
-            })
-        {
-            return Err(DagError::InvalidOutput);
-        }
+        let workflow_input_index = self.workflow_input_index.try_borrow()?;
         // Walk the graph and evaluate functions.
         while let Some((node, visited_children)) = stack.pop() {
             if finished[node.idx] {
@@ -289,14 +306,13 @@ impl Workflow {
                     .node_inputs(node)
                     .map(|input| match self.graph.input_source(input) {
                         Some(source) => match &node_infos[self.graph.outputs[source.idx].node] {
-                            NodeInfo::Parameter { name } => match parameters.get(name) {
-                                Some(val) => Ok(val.clone()),
-                                None => return Err(DagError::MissingParameter(name.clone())),
-                            },
                             NodeInfo::Constant { name: _name, data } => Ok(data.borrowed()),
                             NodeInfo::Function(_) => Ok(computed_outputs[source.idx].borrowed()),
                         },
-                        None => Ok(empty_input.borrowed()),
+                        None => match workflow_input_index[input] {
+                            Some(found) => Ok(inputs[found].clone()),
+                            None => Ok(empty_input.borrowed()),
+                        },
                     })
                     .collect::<Result<Box<[_]>, DagError>>()?;
                 temp_output_handles.clear();
@@ -313,8 +329,7 @@ impl Workflow {
                 });
                 debug_assert_eq!(temp_outputs.len(), temp_output_handles.len());
                 match &node_infos[node] {
-                    NodeInfo::Parameter { .. } => {} // Do nothing.
-                    NodeInfo::Constant { .. } => {}  // Do nothing.
+                    NodeInfo::Constant { .. } => {} // Do nothing.
                     NodeInfo::Function(func_info) => match func_info.func {
                         Some(func) => unsafe {
                             (func)(
@@ -352,11 +367,8 @@ impl Workflow {
             }
         }
         // Now return the final outputs.
-        Ok(required_outputs.into_iter().map(move |ro| {
+        Ok(workflow_outputs.into_iter().map(move |ro| {
             match &node_infos[self.graph.outputs[ro.idx].node] {
-                NodeInfo::Parameter { name: _ } => {
-                    panic!("Should never happen, we already validated these at the start.")
-                }
                 NodeInfo::Constant { name: _, data } => DagOutputData::Constant(data.handle),
                 NodeInfo::Function(_) => {
                     DagOutputData::Owned(std::mem::take(&mut computed_outputs[ro.idx]))

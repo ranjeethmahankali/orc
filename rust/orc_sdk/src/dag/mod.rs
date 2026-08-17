@@ -315,7 +315,6 @@ pub enum DagError {
     CycleDetected,
     InvalidFunction,
     MissingParameter(String),
-    InvalidOutput,
     SdkError(crate::Error),
 }
 
