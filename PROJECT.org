@@ -365,6 +365,25 @@
   defined [[file:rust/orc_sdk/src/dag/mod.rs::macro_rules! orc_inline_dag {][here]]. And the ~orc_dag~ macro defined [[file:rust/orc_sdk/src/dag/mod.rs::macro_rules! orc_dag {][here]]. This should work like ~orc_dag~, except it
   should parse the syntax from a file. Need to write a fast and efficient lexer.
 
+  Few ways in which this file format differs from the macros:
+
+  - Each argument of a function call can optionally be prefixed by a label such as:
+
+    #+begin_src lisp
+      (func :label arg1 arg2)
+    #+end_src
+
+    This is purely cosmetic, for readability. These labels should be parsed and stored in an input
+    property defined in the workflow. When a let binding is used for one or more outputs of a call,
+    that should be parsed and stored in the output_labels property. These properties are located [[file:rust/orc_sdk/src/dag/workflow.rs::input_labels:
+     InputProperty<String>,][here]].
+
+  - The datatypes of const literals needs to be parsed. If the literals mention it as 1.23f32, or
+    1.23f64, or 123u32, etc. They should be parsed to constants of that type. If the datatype is not
+    specified in this way, we should still support integers (i64 by default), floats (f64 by
+    default), and strings (u8 deck where each string is represented as a list of u8s). Strings will
+    be declared with quotes "my_string".
+
 * DONE tjtyz1 - Running a DAG workflow
   CLOSED: [2026-08-16 Sun 17:03]
   :PROPERTIES:
@@ -397,5 +416,6 @@
   <2026-08-16 Sun 16:43> All tests are passing. Now able to run DAGs, retrieve outputs, and test
   them. Checking a few more things, and ready to merge this soon.
 
-  <2026-08-16 Sun 17:02> Decided to do the Python DAG construction as a separate task. Ready to merge.
+  <2026-08-16 Sun 17:02> Decided to do the Python DAG construction as a separate task. Ready to
+  merge.
 
