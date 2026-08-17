@@ -345,6 +345,12 @@
   screen in a UI app, and how it is stored on the disk in various formats, and make sure they all
   integrate seamlessly.
 
+  <2026-08-16 Sun 22:46> For the Python part of the puzzle, using decorators to wrap Python
+  functions is an interesting idea. This will allow me to map Python functions, call structure and
+  nesting into the DAG representation. Going the other way is easy, it is just a code generation
+  problem. The Python function decorator receives the function name, signature, argument names
+  etc. All that can be transferred over into the DAG world and back.
+
 * NEXT tjw1vf - Parse a DAG from a kbb file
   :PROPERTIES:
   :CREATED:  2026-08-15 Sat 07:52
@@ -353,7 +359,11 @@
   - State "NEXT"       from "TODO"       [2026-08-16 Sun 20:50]
   :END:
 
-  kbb file is a LISP
+  kbb file is a LISP dialect. The implementation goes [[file:rust/orc_sdk/src/dag/io.rs::pub fn parse_from_orc_file<P: AsRef<Path>>(path: P) -> Result<Self, DagError> {][here]].
+
+  S-expressions represent a DAG. It should parse the same cases as the ~orc_inline_dag~ macro
+  defined [[file:rust/orc_sdk/src/dag/mod.rs::macro_rules! orc_inline_dag {][here]]. And the ~orc_dag~ macro defined [[file:rust/orc_sdk/src/dag/mod.rs::macro_rules! orc_dag {][here]]. This should work like ~orc_dag~, except it
+  should parse the syntax from a file. Need to write a fast and efficient lexer.
 
 * DONE tjtyz1 - Running a DAG workflow
   CLOSED: [2026-08-16 Sun 17:03]
