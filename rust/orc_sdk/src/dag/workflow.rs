@@ -382,6 +382,16 @@ impl Workflow {
         labels[output] = name;
         Ok(())
     }
+
+    pub fn input_label(&self, input: IH) -> Result<String, DagError> {
+        let labels = self.input_labels.try_borrow()?;
+        Ok(labels[input].clone())
+    }
+
+    pub fn output_label(&self, output: OH) -> Result<String, DagError> {
+        let labels = self.output_labels.try_borrow()?;
+        Ok(labels[output].clone())
+    }
 }
 
 #[cfg(test)]
