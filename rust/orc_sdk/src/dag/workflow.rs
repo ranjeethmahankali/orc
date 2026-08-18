@@ -224,6 +224,7 @@ impl Workflow {
     }
 
     pub fn garbage_collection(&mut self) -> Result<(), DagError> {
+        todo!("Properly carry the workflow outputs over.");
         self.graph.garbage_collection()
     }
 
