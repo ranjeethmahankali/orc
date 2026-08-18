@@ -115,7 +115,7 @@ impl Workflow {
                 return Err(DagError::InvalidOutputs);
             }
         }
-        self.workflow_outputs = outputs.iter().cloned().collect();
+        self.workflow_outputs = outputs.to_vec();
         Ok(())
     }
 
@@ -249,7 +249,7 @@ impl Workflow {
                 prop.map(|(order, name)| (order, OH { idx: handle_idx }, name))
             })
             .collect::<Vec<_>>();
-        temp.sort_by(|(a, ..), (b, ..)| a.cmp(&b));
+        temp.sort_by_key(|(a, ..)| *a);
         self.workflow_outputs
             .extend(temp.into_iter().map(|(_, handle, name)| (handle, name)));
         Ok(())
