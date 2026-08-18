@@ -755,20 +755,12 @@ fn t_dag_diamond_no_cycle() {
 #[test]
 fn t_dag_input_basic() {
     let mut wf = Workflow::default();
-    let func = PLUGIN_SET.get_function("add").unwrap().clone();
-    let mut f_in = [IH::default(); 2];
-    let mut f_out = [OH::default()];
-    wf.add_function(func, &mut f_in, &mut f_out).unwrap();
-    // Connect a constant to the second input; leave first disconnected as workflow input.
-    let c_oh = orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
-        (let c (const [10.0f64, 20.0, 30.0]))
-        (return c)
+    // 'lhs is a workflow input; rhs is a constant.
+    orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
+        (add 'lhs (const [10.0f64, 20.0, 30.0]))
     })
     .unwrap();
-    wf.connect(c_oh, f_in[1]).unwrap();
-    wf.set_inputs(&[f_in[0]]).unwrap();
-    wf.set_outputs(&[f_out[0]]).unwrap();
-    // Run with input x = [1, 2, 3].
+    // Run with lhs = [1, 2, 3].
     let x_handle = orc_inline_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, {
         (let x (const [1.0f64, 2.0, 3.0]))
         (return x)
@@ -785,24 +777,22 @@ fn t_dag_input_basic() {
     }
 }
 
-// Re-run with different input values.
+// Re-run with different input values. Both inputs share the same quoted symbol.
 #[test]
 fn t_dag_input_rerun() {
     let mut wf = Workflow::default();
-    let func = PLUGIN_SET.get_function("mul").unwrap().clone();
-    let mut f_in = [IH::default(); 2];
-    let mut f_out = [OH::default()];
-    wf.add_function(func, &mut f_in, &mut f_out).unwrap();
-    // Both inputs are the same workflow input (x * x).
-    wf.set_inputs(&[f_in[0], f_in[1]]).unwrap();
-    wf.set_outputs(&[f_out[0]]).unwrap();
+    // 'x used twice — both inputs of mul receive the same workflow input (x * x).
+    orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
+        (mul 'x 'x)
+    })
+    .unwrap();
     // First run: x = [3, 4]
     let h1 = orc_inline_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, {
         (let v (const [3.0f64, 4.0]))
         (return v)
     })
     .unwrap();
-    let inputs = [h1.borrowed(), h1.borrowed()];
+    let inputs = [h1.borrowed()];
     let mut iter = wf.run(&inputs, &HANDLE_COUNTER).unwrap();
     match iter.next().unwrap() {
         DagOutputData::Owned(h) => {
@@ -817,7 +807,7 @@ fn t_dag_input_rerun() {
         (return v)
     })
     .unwrap();
-    let inputs = [h2.borrowed(), h2.borrowed()];
+    let inputs = [h2.borrowed()];
     let mut iter = wf.run(&inputs, &HANDLE_COUNTER).unwrap();
     match iter.next().unwrap() {
         DagOutputData::Owned(h) => {

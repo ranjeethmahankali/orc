@@ -108,15 +108,24 @@ impl Workflow {
         Ok(())
     }
 
-    pub fn set_inputs(&mut self, inputs: &[IH]) -> Result<(), DagError> {
+    pub fn set_inputs(&mut self, inputs: &[(IH, usize)]) -> Result<(), DagError> {
+        {
+            // Validate the input indices. They must be sequential, and start from zero.
+            let mut unique_indices = inputs.iter().map(|(_, idx)| *idx).collect::<Vec<_>>();
+            unique_indices.sort();
+            unique_indices.dedup();
+            if unique_indices.iter().enumerate().any(|(i, val)| i != *val) {
+                return Err(DagError::InvalidInputs);
+            }
+        }
         let mut input_idx = self
             .workflow_input_index
             .try_borrow_mut()
             .map_err(|_| DagError::BorrowedPropertyAccess)?;
         let input_idx: &mut InputPropBuf<_> = &mut input_idx;
         input_idx.fill(None);
-        for (idx, input) in inputs.iter().enumerate() {
-            input_idx[*input] = Some(idx);
+        for (input, idx) in inputs.iter() {
+            input_idx[*input] = Some(*idx);
         }
         Ok(())
     }
