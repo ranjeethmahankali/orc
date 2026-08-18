@@ -46,7 +46,7 @@ pub struct Workflow {
     node_infos: NodeProperty<NodeInfo>,
     input_labels: InputProperty<String>,
     output_labels: OutputProperty<String>,
-    workflow_outputs: Box<[(OH, String)]>,
+    workflow_outputs: Vec<(OH, String)>,
     workflow_input_index: InputProperty<Option<(usize, String)>>,
 }
 
@@ -224,8 +224,27 @@ impl Workflow {
     }
 
     pub fn garbage_collection(&mut self) -> Result<(), DagError> {
-        todo!("Properly carry the workflow outputs over.");
-        self.graph.garbage_collection()
+        // Cache the workflow outputs in properties first. This will preserve them through the
+        // shuffling that happens in garbage collection.
+        let mut output_prop: OutputProperty<Option<(usize, String)>> =
+            self.create_output_property(None);
+        {
+            let mut temp = output_prop.try_borrow_mut()?;
+            for (i, (output, name)) in self.workflow_outputs.drain(..).enumerate() {
+                temp[output] = Some((i, name));
+            }
+        }
+        self.graph.garbage_collection()?;
+        // Repopulate the outputs again.
+        let output_prop = output_prop.take()?;
+        self.workflow_outputs.extend(
+            output_prop
+                .into_iter()
+                .filter_map(|prop| prop.map(|(index, name)| (OH { idx: index }, name))),
+        );
+        self.workflow_outputs
+            .sort_by(|(a_handle, _a_name), (b_handle, _b_name)| a_handle.cmp(&b_handle));
+        Ok(())
     }
 
     pub fn duplicate_node(&mut self, old: NH) -> Result<NH, DagError> {

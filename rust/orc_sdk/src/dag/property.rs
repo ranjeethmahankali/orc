@@ -435,6 +435,14 @@ where
         (*self.get_mut(h)?) = val;
         Ok(())
     }
+
+    /// Drop this property (if no one is currently borrowing it), and return the buffer within.
+    ///
+    /// If this property is currently borrowed, error is returned.
+    pub fn take(self) -> Result<Vec<T>, DagError> {
+        let inner = Rc::try_unwrap(self.data).map_err(|_| DagError::BorrowedPropertyAccess)?;
+        Ok(inner.into_inner().buf)
+    }
 }
 
 /// A mutable property buffer can be turned into a `&mut [T]` for conveninence.

@@ -487,6 +487,10 @@ fn t_dag_single_call() {
         (add (const [1.0f64, 2.0, 3.0]) (const [10.0f64, 20.0, 30.0]))
     })
     .unwrap();
+    // Trailing expression: unnamed output.
+    assert_eq!(wf.workflow_outputs().len(), 1);
+    assert_eq!(wf.workflow_outputs()[0].1, "");
+    assert!(wf.workflow_inputs().unwrap().is_empty());
     assert_dag_output_f64(run_dag_single(&mut wf), &[11.0, 22.0, 33.0], 1);
 }
 
@@ -651,6 +655,11 @@ fn t_dag_return_multiple() {
         (return s p)
     })
     .unwrap();
+    // Return names match the let-bound identifiers.
+    assert_eq!(wf.workflow_outputs().len(), 2);
+    assert_eq!(wf.workflow_outputs()[0].1, "s");
+    assert_eq!(wf.workflow_outputs()[1].1, "p");
+    assert!(wf.workflow_inputs().unwrap().is_empty());
     let mut out = [DagOutputData::Constant(0), DagOutputData::Constant(0)];
     wf.run(&[], &mut out, &HANDLE_COUNTER).unwrap();
     let [s_out, p_out] = out;
@@ -669,6 +678,8 @@ fn t_dag_return_single() {
         (return s)
     })
     .unwrap();
+    assert_eq!(wf.workflow_outputs().len(), 1);
+    assert_eq!(wf.workflow_outputs()[0].1, "s");
     assert_dag_output_f64(run_dag_single(&mut wf), &[11.0, 22.0, 33.0], 1);
 }
 
@@ -766,6 +777,13 @@ fn t_dag_input_basic() {
         (add 'lhs (const [10.0f64, 20.0, 30.0]))
     })
     .unwrap();
+    // One input named "lhs" at index 0, one unnamed output.
+    let wf_ins = wf.workflow_inputs().unwrap();
+    assert_eq!(wf_ins.len(), 1);
+    assert_eq!(wf_ins[0].1, 0);
+    assert_eq!(wf_ins[0].2, "lhs");
+    assert_eq!(wf.workflow_outputs().len(), 1);
+    assert_eq!(wf.workflow_outputs()[0].1, "");
     // Run with lhs = [1, 2, 3].
     let x_handle = orc_inline_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, {
         (let x (const [1.0f64, 2.0, 3.0]))
@@ -793,6 +811,14 @@ fn t_dag_input_rerun() {
         (mul 'x 'x)
     })
     .unwrap();
+    // Two IHs both named "x" at index 0 (deduped). One unnamed output.
+    let wf_ins = wf.workflow_inputs().unwrap();
+    assert_eq!(wf_ins.len(), 2);
+    assert_eq!(wf_ins[0].1, 0);
+    assert_eq!(wf_ins[0].2, "x");
+    assert_eq!(wf_ins[1].1, 0);
+    assert_eq!(wf_ins[1].2, "x");
+    assert_eq!(wf.workflow_outputs().len(), 1);
     // First run: x = [3, 4]
     let h1 = orc_inline_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, {
         (let v (const [3.0f64, 4.0]))
