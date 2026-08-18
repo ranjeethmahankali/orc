@@ -405,6 +405,24 @@ impl Workflow {
         let labels = self.output_labels.try_borrow()?;
         Ok(labels[output].clone())
     }
+
+    /// Returns the workflow inputs as (IH, index, name) triples.
+    pub fn workflow_inputs(&self) -> Result<Vec<(IH, usize, String)>, DagError> {
+        let idx = self.workflow_input_index.try_borrow()?;
+        let mut result = Vec::new();
+        for i in 0..self.graph.inputs.len() {
+            let ih = IH { idx: i };
+            if let Some((index, name)) = &idx[ih] {
+                result.push((ih, *index, name.clone()));
+            }
+        }
+        Ok(result)
+    }
+
+    /// Returns the workflow outputs as (OH, name) pairs, in order.
+    pub fn workflow_outputs(&self) -> &[(OH, String)] {
+        &self.workflow_outputs
+    }
 }
 
 #[cfg(test)]
