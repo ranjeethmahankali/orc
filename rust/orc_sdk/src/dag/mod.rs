@@ -366,6 +366,7 @@ pub enum DagError {
     InvalidFunction,
     MissingInput(String),
     InvalidInputs,
+    InvalidOutputs,
     SdkError(crate::Error),
 }
 

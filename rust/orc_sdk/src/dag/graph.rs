@@ -510,6 +510,10 @@ impl Graph {
     pub fn input_source(&self, i: IH) -> Option<OH> {
         self.inputs[i.idx].link.map(|l| self.links[l.idx].start)
     }
+
+    pub fn is_valid_output(&self, output: OH) -> bool {
+        output.idx < self.outputs.len()
+    }
 }
 
 #[cfg(test)]

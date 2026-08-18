@@ -2,8 +2,11 @@ use super::{
     DagError, Graph, IH, InputProperty, LH, LinkProperty, NH, NodeProperty, OH, OutputProperty,
     Property,
 };
-use crate::{FuncInfo, InputPropBuf, OrcHandle, OrcHandleBorrowed, OutputPropBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
+use crate::{FuncInfo, InputPropBuf, OrcHandle, OrcHandleBorrowed};
+use std::{
+    collections::HashSet,
+    sync::atomic::{AtomicU64, Ordering},
+};
 
 pub enum NodeInfo {
     Constant { name: String, data: OrcHandle },
@@ -43,8 +46,8 @@ pub struct Workflow {
     node_infos: NodeProperty<NodeInfo>,
     input_labels: InputProperty<String>,
     output_labels: OutputProperty<String>,
-    workflow_out_index: OutputProperty<Option<usize>>,
-    workflow_input_index: InputProperty<Option<usize>>,
+    workflow_outputs: Box<[(OH, String)]>,
+    workflow_input_index: InputProperty<Option<(usize, String)>>,
 }
 
 impl Default for Workflow {
@@ -53,14 +56,13 @@ impl Default for Workflow {
         let node_infos = graph.create_node_property(NodeInfo::default());
         let input_labels = graph.create_input_property(String::default());
         let output_labels = graph.create_output_property(String::default());
-        let workflow_out_index = graph.create_output_property(None);
         let workflow_input_index = graph.create_input_property(None);
         Self {
             graph,
             node_infos,
             input_labels,
             output_labels,
-            workflow_out_index,
+            workflow_outputs: Default::default(),
             workflow_input_index,
         }
     }
@@ -83,32 +85,42 @@ impl Workflow {
             Property::with_capacity(n_nodes, &mut graph.node_props, NodeInfo::default());
         let input_labels = graph.create_input_property(String::default());
         let output_labels = graph.create_output_property(String::default());
-        let workflow_out_index = graph.create_output_property(None);
         let workflow_input_index = graph.create_input_property(None);
         Workflow {
             graph,
             node_infos,
             input_labels,
             output_labels,
-            workflow_out_index,
+            workflow_outputs: Default::default(),
             workflow_input_index,
         }
     }
 
-    pub fn set_outputs(&mut self, outputs: &[OH]) -> Result<(), DagError> {
-        let mut out_idx = self.workflow_out_index.try_borrow_mut()?;
-        let out_idx: &mut OutputPropBuf<_> = &mut out_idx;
-        out_idx.fill(None); // Remove any previously set outputs.
-        for (i, o) in outputs.iter().enumerate() {
-            out_idx[*o] = Some(i);
+    pub fn set_outputs(&mut self, outputs: &[(OH, String)]) -> Result<(), DagError> {
+        if outputs
+            .iter()
+            .any(|(o, _name)| !self.graph.is_valid_output(*o))
+        {
+            return Err(DagError::InvalidOutputs);
         }
+        {
+            // Ensure the outputs are unique.
+            let hset: HashSet<usize> = HashSet::from_iter(outputs.iter().map(|(o, _name)| o.idx));
+            if hset.len() != outputs.len() {
+                return Err(DagError::InvalidOutputs);
+            }
+        }
+        self.workflow_outputs = outputs.iter().cloned().collect();
         Ok(())
     }
 
-    pub fn set_inputs(&mut self, inputs: &[(IH, usize)]) -> Result<(), DagError> {
+    pub fn set_inputs(&mut self, inputs: &[(IH, usize, &str)]) -> Result<(), DagError> {
         {
             // Validate the input indices. They must be sequential, and start from zero.
-            let mut unique_indices = inputs.iter().map(|(_, idx)| *idx).collect::<Vec<_>>();
+            let mut unique_indices = inputs
+                .iter()
+                .map(|(_input, idx, _name)| *idx)
+                .collect::<Vec<_>>();
             unique_indices.sort();
             unique_indices.dedup();
             if unique_indices.iter().enumerate().any(|(i, val)| i != *val) {
@@ -118,8 +130,8 @@ impl Workflow {
         let mut input_idx = self.workflow_input_index.try_borrow_mut()?;
         let input_idx: &mut InputPropBuf<_> = &mut input_idx;
         input_idx.fill(None);
-        for (input, idx) in inputs.iter() {
-            input_idx[*input] = Some(*idx);
+        for (input, idx, name) in inputs.iter() {
+            input_idx[*input] = Some((*idx, name.to_string()));
         }
         Ok(())
     }
@@ -247,21 +259,18 @@ impl Workflow {
     pub fn run(
         &self,
         inputs: &[OrcHandleBorrowed<'_>],
+        outputs: &mut [DagOutputData],
         handle_counter: &AtomicU64,
-    ) -> Result<impl Iterator<Item = DagOutputData>, DagError> {
-        // Remove duplicates from required_outputs.
-        let workflow_outputs = {
-            let out_idx_prop = self.workflow_out_index.try_borrow()?;
-            let out_idx_prop: &[_] = &out_idx_prop;
-            let mut temp = (0usize..self.graph.outputs.len())
-                .filter_map(|o| out_idx_prop[o].map(|i| (i, o)))
-                .collect::<Vec<_>>();
-            temp.sort();
-            temp.dedup();
-            temp.into_iter()
-                .map(|(_i, o)| OH { idx: o })
-                .collect::<Vec<_>>()
-        };
+    ) -> Result<(), DagError> {
+        // Make sure the number of outputs is what we're expecting. Inputs is a bit more flexible,
+        // we don't have to check it, because there is a chance some of the functions in this
+        // workflow can run without some inputs. But the outputs are not flexible.
+        if outputs.len() != self.workflow_outputs.len() {
+            return Err(DagError::MismatchedArrayLengths(
+                outputs.len(),
+                self.workflow_outputs.len(),
+            ));
+        }
         // For now, we're just doing a simple depth-first Euler tour of the graph, and running the
         // functions that need to be run. We can do all sorts of fancy things, like running
         // independent arms of the DAG on different threads concurrently, doing something equivalent
@@ -270,9 +279,9 @@ impl Workflow {
         // time. I will revisit those topics later when they become interesting.
         let mut stack = Vec::<(NH, bool)>::new();
         stack.extend(
-            workflow_outputs
+            self.workflow_outputs
                 .iter()
-                .map(|o| (self.graph.outputs[o.idx].node, false)),
+                .map(|(o, _name)| (self.graph.outputs[o.idx].node, false)),
         );
         // Allocating temporary vectors like this is not idea. A host application will likely want
         // thos to run more optimally, with cached resources. But that is not an interesting problem
@@ -303,8 +312,8 @@ impl Workflow {
                             NodeInfo::Constant { name: _name, data } => Ok(data.borrowed()),
                             NodeInfo::Function(_) => Ok(computed_outputs[source.idx].borrowed()),
                         },
-                        None => match workflow_input_index[input] {
-                            Some(found) => Ok(inputs[found].clone()),
+                        None => match &workflow_input_index[input] {
+                            Some((index, _name)) => Ok(inputs[*index].clone()),
                             None => Ok(empty_input.borrowed()),
                         },
                     })
@@ -360,15 +369,16 @@ impl Workflow {
                 }));
             }
         }
-        // Now return the final outputs.
-        Ok(workflow_outputs.into_iter().map(move |ro| {
-            match &node_infos[self.graph.outputs[ro.idx].node] {
+        // Now copy the final outputs of the workflow.
+        for ((src, _name), dst) in self.workflow_outputs.iter().zip(outputs.iter_mut()) {
+            *dst = match &node_infos[self.graph.outputs[src.idx].node] {
                 NodeInfo::Constant { name: _, data } => DagOutputData::Constant(data.handle),
                 NodeInfo::Function(_) => {
-                    DagOutputData::Owned(std::mem::take(&mut computed_outputs[ro.idx]))
+                    DagOutputData::Owned(std::mem::take(&mut computed_outputs[src.idx]))
                 }
-            }
-        }))
+            };
+        }
+        Ok(())
     }
 
     pub fn set_input_label(&mut self, input: IH, name: String) -> Result<(), DagError> {
