@@ -46,6 +46,7 @@ pub struct Workflow {
     node_infos: NodeProperty<NodeInfo>,
     input_labels: InputProperty<String>,
     output_labels: OutputProperty<String>,
+    node_comments: NodeProperty<String>,
     workflow_outputs: Vec<(OH, String)>,
     workflow_input_index: InputProperty<Option<(usize, String)>>,
 }
@@ -56,12 +57,14 @@ impl Default for Workflow {
         let node_infos = graph.create_node_property(NodeInfo::default());
         let input_labels = graph.create_input_property(String::default());
         let output_labels = graph.create_output_property(String::default());
+        let node_comments = graph.create_node_property(String::default());
         let workflow_input_index = graph.create_input_property(None);
         Self {
             graph,
             node_infos,
             input_labels,
             output_labels,
+            node_comments,
             workflow_outputs: Default::default(),
             workflow_input_index,
         }
@@ -85,12 +88,14 @@ impl Workflow {
             Property::with_capacity(n_nodes, &mut graph.node_props, NodeInfo::default());
         let input_labels = graph.create_input_property(String::default());
         let output_labels = graph.create_output_property(String::default());
+        let node_comments = graph.create_node_property(String::default());
         let workflow_input_index = graph.create_input_property(None);
         Workflow {
             graph,
             node_infos,
             input_labels,
             output_labels,
+            node_comments,
             workflow_outputs: Default::default(),
             workflow_input_index,
         }
@@ -426,6 +431,25 @@ impl Workflow {
     pub fn output_label(&self, output: OH) -> Result<String, DagError> {
         let labels = self.output_labels.try_borrow()?;
         Ok(labels[output].clone())
+    }
+
+    pub fn set_node_comment(&mut self, node: NH, comment: &str) -> Result<(), DagError> {
+        let mut comments = self.node_comments.try_borrow_mut()?;
+        comments[node] = comment.to_string();
+        Ok(())
+    }
+
+    pub fn append_node_comment(&mut self, node: NH, comment: &str) -> Result<(), DagError> {
+        let mut comments = self.node_comments.try_borrow_mut()?;
+        let dst = &mut comments[node];
+        dst.push('\n');
+        dst.push_str(comment);
+        Ok(())
+    }
+
+    pub fn node_comment(&mut self, node: NH) -> Result<String, DagError> {
+        let comments = self.node_comments.try_borrow()?;
+        Ok(comments[node].clone())
     }
 
     /// Returns the workflow inputs as (IH, index, name) triples.
