@@ -852,3 +852,117 @@ fn t_dag_input_rerun() {
         _ => panic!("Expected owned output"),
     }
 }
+
+// ==================================================
+// Garbage collection tests.
+// ==================================================
+
+// Workflow outputs survive GC and the workflow still runs correctly.
+#[test]
+fn t_dag_gc_outputs_preserved() {
+    let mut wf = Workflow::default();
+    let (_s_oh, _p_oh) = orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
+        (let a (const [1.0f64, 2.0]))
+        (let b (const [10.0f64, 20.0]))
+        (let s (add a b))
+        (let p (mul a b))
+        (return s p)
+    })
+    .unwrap();
+    // Verify outputs before GC.
+    assert_eq!(wf.workflow_outputs().len(), 2);
+    assert_eq!(wf.workflow_outputs()[0].1, "s");
+    assert_eq!(wf.workflow_outputs()[1].1, "p");
+    // Run GC.
+    wf.garbage_collection().unwrap();
+    // Outputs preserved: same count, same names, same order.
+    assert_eq!(wf.workflow_outputs().len(), 2);
+    assert_eq!(wf.workflow_outputs()[0].1, "s");
+    assert_eq!(wf.workflow_outputs()[1].1, "p");
+    // Workflow still produces correct results.
+    let mut out = [DagOutputData::Constant(0), DagOutputData::Constant(0)];
+    wf.run(&[], &mut out, &HANDLE_COUNTER).unwrap();
+    let [s_out, p_out] = out;
+    assert_dag_output_f64(s_out, &[11.0, 22.0], 1);
+    assert_dag_output_f64(p_out, &[10.0, 40.0], 1);
+}
+
+// Workflow inputs survive GC and the workflow still runs correctly.
+#[test]
+fn t_dag_gc_inputs_preserved() {
+    let mut wf = Workflow::default();
+    orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
+        (add 'lhs (const [10.0f64, 20.0, 30.0]))
+    })
+    .unwrap();
+    // Verify inputs before GC.
+    let wf_ins = wf.workflow_inputs().unwrap();
+    assert_eq!(wf_ins.len(), 1);
+    assert_eq!(wf_ins[0].1, 0);
+    assert_eq!(wf_ins[0].2, "lhs");
+    // Run GC.
+    wf.garbage_collection().unwrap();
+    // Inputs preserved.
+    let wf_ins = wf.workflow_inputs().unwrap();
+    assert_eq!(wf_ins.len(), 1);
+    assert_eq!(wf_ins[0].1, 0);
+    assert_eq!(wf_ins[0].2, "lhs");
+    // Workflow still runs correctly.
+    let x_handle = orc_inline_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, {
+        (let x (const [1.0f64, 2.0, 3.0]))
+        (return x)
+    })
+    .unwrap();
+    let inputs = [x_handle.borrowed()];
+    let mut out = [DagOutputData::Constant(0)];
+    wf.run(&inputs, &mut out, &HANDLE_COUNTER).unwrap();
+    match &out[0] {
+        DagOutputData::Owned(h) => {
+            let view = DeckView::<f64>::from_handle(h).unwrap();
+            assert_eq!(view.items(), &[11.0, 22.0, 33.0]);
+        }
+        _ => panic!("Expected owned output"),
+    }
+}
+
+// Deduped inputs ('x 'x) survive GC with correct shared index.
+#[test]
+fn t_dag_gc_dedup_inputs_preserved() {
+    let mut wf = Workflow::default();
+    orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
+        (mul 'x 'x)
+    })
+    .unwrap();
+    // Verify before GC.
+    let wf_ins = wf.workflow_inputs().unwrap();
+    assert_eq!(wf_ins.len(), 2);
+    assert_eq!(wf_ins[0].1, 0);
+    assert_eq!(wf_ins[0].2, "x");
+    assert_eq!(wf_ins[1].1, 0);
+    assert_eq!(wf_ins[1].2, "x");
+    // Run GC.
+    wf.garbage_collection().unwrap();
+    // Inputs preserved with shared index.
+    let wf_ins = wf.workflow_inputs().unwrap();
+    assert_eq!(wf_ins.len(), 2);
+    assert_eq!(wf_ins[0].1, 0);
+    assert_eq!(wf_ins[0].2, "x");
+    assert_eq!(wf_ins[1].1, 0);
+    assert_eq!(wf_ins[1].2, "x");
+    // Still runs correctly: x = [3, 4], x*x = [9, 16].
+    let h = orc_inline_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, {
+        (let v (const [3.0f64, 4.0]))
+        (return v)
+    })
+    .unwrap();
+    let inputs = [h.borrowed()];
+    let mut out = [DagOutputData::Constant(0)];
+    wf.run(&inputs, &mut out, &HANDLE_COUNTER).unwrap();
+    match &out[0] {
+        DagOutputData::Owned(h) => {
+            let view = DeckView::<f64>::from_handle(h).unwrap();
+            assert_eq!(view.items(), &[9.0, 16.0]);
+        }
+        _ => panic!("Expected owned output"),
+    }
+}
