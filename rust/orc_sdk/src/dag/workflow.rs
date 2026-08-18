@@ -469,6 +469,22 @@ impl Workflow {
     pub fn workflow_outputs(&self) -> &[(OH, String)] {
         &self.workflow_outputs
     }
+
+    pub fn num_total_inputs(&self) -> usize {
+        self.graph.inputs.len()
+    }
+
+    pub fn num_total_outputs(&self) -> usize {
+        self.graph.outputs.len()
+    }
+
+    pub fn num_nodes(&self) -> usize {
+        self.graph.nodes.len()
+    }
+
+    pub fn num_links(&self) -> usize {
+        self.graph.links.len()
+    }
 }
 
 #[cfg(test)]
