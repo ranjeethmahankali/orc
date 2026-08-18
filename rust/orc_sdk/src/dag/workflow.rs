@@ -237,13 +237,16 @@ impl Workflow {
         self.graph.garbage_collection()?;
         // Repopulate the outputs again.
         let output_prop = output_prop.take()?;
-        self.workflow_outputs.extend(
-            output_prop
-                .into_iter()
-                .filter_map(|prop| prop.map(|(index, name)| (OH { idx: index }, name))),
-        );
+        let mut temp = output_prop
+            .into_iter()
+            .enumerate()
+            .filter_map(|(handle_idx, prop)| {
+                prop.map(|(order, name)| (order, OH { idx: handle_idx }, name))
+            })
+            .collect::<Vec<_>>();
+        temp.sort_by(|(a, ..), (b, ..)| a.cmp(&b));
         self.workflow_outputs
-            .sort_by(|(a_handle, _a_name), (b_handle, _b_name)| a_handle.cmp(&b_handle));
+            .extend(temp.into_iter().map(|(_, handle, name)| (handle, name)));
         Ok(())
     }
 
