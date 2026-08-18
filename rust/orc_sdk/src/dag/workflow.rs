@@ -314,8 +314,10 @@ impl Workflow {
                             NodeInfo::Function(_) => Ok(computed_outputs[source.idx].borrowed()),
                         },
                         None => match &workflow_input_index[input] {
-                            Some((index, _name)) => Ok(inputs[*index].clone()),
-                            None => Ok(empty_input.borrowed()),
+                            Some((index, _name)) if *index < inputs.len() => {
+                                Ok(inputs[*index].clone())
+                            }
+                            _ => Ok(empty_input.borrowed()),
                         },
                     })
                     .collect::<Result<Box<[_]>, DagError>>()?;
