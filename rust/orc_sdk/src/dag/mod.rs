@@ -198,7 +198,7 @@ macro_rules! orc_dag {
             // Workflow inputs accumulated during expansion.
             // Quoted symbols ('name) use Rust lifetime syntax to denote workflow inputs.
             #[allow(unused_mut)]
-            let mut wf_ins_: Vec<($crate::IH, usize)> = Vec::new();
+            let mut wf_ins_: Vec<($crate::IH, usize, &str)> = Vec::new();
             #[allow(unused_mut)]
             let mut wf_in_names_: Vec<&str> = Vec::new();
             let result_ = orc_dag!(@stmts ps_ref_, hc_ref_, reg_ref_, wf_ref_, wf_ins_, wf_in_names_, $($body)*);
@@ -256,14 +256,14 @@ macro_rules! orc_dag {
 
     // Return multiple (or single) named handles as a tuple.
     (@stmts $ps:ident, $hc:ident, $reg:ident, $wf:ident, $ins:ident, $names:ident, (return $($name:ident)+)) => {{
-        $wf.set_outputs(&[$($name),+])?;
+        $wf.set_outputs(&[$(($name, stringify!($name).to_string())),+])?;
         Ok(($($name),+))
     }};
 
     // Trailing expression — bare function call as the block's return value
     (@stmts $ps:ident, $hc:ident, $reg:ident, $wf:ident, $ins:ident, $names:ident, ($func:ident $($arg:tt)*)) => {{
         let oh_ = orc_dag!(@call1 $ps, $hc, $reg, $wf, $ins, $names, $func, $($arg)*)?;
-        $wf.set_outputs(&[oh_])?;
+        $wf.set_outputs(&[(oh_, String::new())])?;
         Ok::<$crate::OH, $crate::DagError>(oh_)
     }};
 
@@ -284,7 +284,7 @@ macro_rules! orc_dag {
                     p
                 }
             };
-            $ins.push(($ihs[$idx], pos_));
+            $ins.push(($ihs[$idx], pos_, &name_[1..]));
         }
     };
 

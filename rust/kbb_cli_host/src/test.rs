@@ -452,9 +452,11 @@ fn t_const_reused() {
 // orc_dag macro tests (build graph, then run).
 // ==================================================
 
-fn run_dag_single(wf: &mut Workflow) -> DagOutputData {
-    let mut iter = wf.run(&[], &HANDLE_COUNTER).unwrap();
-    iter.next().unwrap()
+fn run_dag_single(wf: &Workflow) -> DagOutputData {
+    let mut out = [DagOutputData::Constant(0)];
+    wf.run(&[], &mut out, &HANDLE_COUNTER).unwrap();
+    let [o] = out;
+    o
 }
 
 fn assert_dag_output_f64(data: DagOutputData, expected: &[f64], expected_depth: u8) {
@@ -649,9 +651,11 @@ fn t_dag_return_multiple() {
         (return s p)
     })
     .unwrap();
-    let mut iter = wf.run(&[], &HANDLE_COUNTER).unwrap();
-    assert_dag_output_f64(iter.next().unwrap(), &[11.0, 22.0], 1);
-    assert_dag_output_f64(iter.next().unwrap(), &[10.0, 40.0], 1);
+    let mut out = [DagOutputData::Constant(0), DagOutputData::Constant(0)];
+    wf.run(&[], &mut out, &HANDLE_COUNTER).unwrap();
+    let [s_out, p_out] = out;
+    assert_dag_output_f64(s_out, &[11.0, 22.0], 1);
+    assert_dag_output_f64(p_out, &[10.0, 40.0], 1);
 }
 
 // 19. Return single output (explicit).
@@ -712,8 +716,9 @@ fn t_dag_cycle_simple() {
     wf.connect(a_out[0], b_in[0]).unwrap();
     // B's output -> A's input (cycle!)
     wf.connect(b_out[0], a_in[0]).unwrap();
-    wf.set_outputs(&[b_out[0]]).unwrap();
-    let result = wf.run(&[], &HANDLE_COUNTER);
+    wf.set_outputs(&[(b_out[0], String::new())]).unwrap();
+    let mut out = [DagOutputData::Constant(0)];
+    let result = wf.run(&[], &mut out, &HANDLE_COUNTER);
     assert!(matches!(result, Err(DagError::CycleDetected)));
 }
 
@@ -727,8 +732,9 @@ fn t_dag_cycle_self() {
     wf.add_function(func, &mut a_in, &mut a_out).unwrap();
     // A's output -> A's input (self-cycle!)
     wf.connect(a_out[0], a_in[0]).unwrap();
-    wf.set_outputs(&[a_out[0]]).unwrap();
-    let result = wf.run(&[], &HANDLE_COUNTER);
+    wf.set_outputs(&[(a_out[0], String::new())]).unwrap();
+    let mut out = [DagOutputData::Constant(0)];
+    let result = wf.run(&[], &mut out, &HANDLE_COUNTER);
     assert!(matches!(result, Err(DagError::CycleDetected)));
 }
 
@@ -767,10 +773,11 @@ fn t_dag_input_basic() {
     })
     .unwrap();
     let inputs = [x_handle.borrowed()];
-    let mut iter = wf.run(&inputs, &HANDLE_COUNTER).unwrap();
-    match iter.next().unwrap() {
+    let mut out = [DagOutputData::Constant(0)];
+    wf.run(&inputs, &mut out, &HANDLE_COUNTER).unwrap();
+    match &out[0] {
         DagOutputData::Owned(h) => {
-            let view = DeckView::<f64>::from_handle(&h).unwrap();
+            let view = DeckView::<f64>::from_handle(h).unwrap();
             assert_eq!(view.items(), &[11.0, 22.0, 33.0]);
         }
         _ => panic!("Expected owned output"),
@@ -793,10 +800,11 @@ fn t_dag_input_rerun() {
     })
     .unwrap();
     let inputs = [h1.borrowed()];
-    let mut iter = wf.run(&inputs, &HANDLE_COUNTER).unwrap();
-    match iter.next().unwrap() {
+    let mut out = [DagOutputData::Constant(0)];
+    wf.run(&inputs, &mut out, &HANDLE_COUNTER).unwrap();
+    match &out[0] {
         DagOutputData::Owned(h) => {
-            let view = DeckView::<f64>::from_handle(&h).unwrap();
+            let view = DeckView::<f64>::from_handle(h).unwrap();
             assert_eq!(view.items(), &[9.0, 16.0]);
         }
         _ => panic!("Expected owned output"),
@@ -808,10 +816,11 @@ fn t_dag_input_rerun() {
     })
     .unwrap();
     let inputs = [h2.borrowed()];
-    let mut iter = wf.run(&inputs, &HANDLE_COUNTER).unwrap();
-    match iter.next().unwrap() {
+    let mut out = [DagOutputData::Constant(0)];
+    wf.run(&inputs, &mut out, &HANDLE_COUNTER).unwrap();
+    match &out[0] {
         DagOutputData::Owned(h) => {
-            let view = DeckView::<f64>::from_handle(&h).unwrap();
+            let view = DeckView::<f64>::from_handle(h).unwrap();
             assert_eq!(view.items(), &[25.0, 36.0]);
         }
         _ => panic!("Expected owned output"),
