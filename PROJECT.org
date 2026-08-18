@@ -384,6 +384,11 @@
     default), and strings (u8 deck where each string is represented as a list of u8s). Strings will
     be declared with quotes "my_string".
 
+  <2026-08-18 Tue 18:19> I am not sure if parsing a LISP syntax is the way to go. I am using this
+  task to answer other, related, and more important questions. Those answers are making the permise
+  of this task a bit redundant. I will still try to get this new stuff merged, but maybe as a
+  different task, and close this task.
+
 * DONE tjtyz1 - Running a DAG workflow
   CLOSED: [2026-08-16 Sun 17:03]
   :PROPERTIES:
