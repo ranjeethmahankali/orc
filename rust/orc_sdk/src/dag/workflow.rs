@@ -96,10 +96,7 @@ impl Workflow {
     }
 
     pub fn set_outputs(&mut self, outputs: &[OH]) -> Result<(), DagError> {
-        let mut out_idx = self
-            .workflow_out_index
-            .try_borrow_mut()
-            .map_err(|_| DagError::BorrowedPropertyAccess)?;
+        let mut out_idx = self.workflow_out_index.try_borrow_mut()?;
         let out_idx: &mut OutputPropBuf<_> = &mut out_idx;
         out_idx.fill(None); // Remove any previously set outputs.
         for (i, o) in outputs.iter().enumerate() {
@@ -118,10 +115,7 @@ impl Workflow {
                 return Err(DagError::InvalidInputs);
             }
         }
-        let mut input_idx = self
-            .workflow_input_index
-            .try_borrow_mut()
-            .map_err(|_| DagError::BorrowedPropertyAccess)?;
+        let mut input_idx = self.workflow_input_index.try_borrow_mut()?;
         let input_idx: &mut InputPropBuf<_> = &mut input_idx;
         input_idx.fill(None);
         for (input, idx) in inputs.iter() {
@@ -138,10 +132,7 @@ impl Workflow {
     ) -> Result<NH, DagError> {
         let n = self.graph.push_node(input_handles, output_handles)?;
         {
-            let mut node_infos = self
-                .node_infos
-                .try_borrow_mut()
-                .map_err(|_e| DagError::BorrowedPropertyAccess)?;
+            let mut node_infos = self.node_infos.try_borrow_mut()?;
             node_infos[n] = NodeInfo::Function(info);
         }
         Ok(n)
@@ -153,10 +144,7 @@ impl Workflow {
             .graph
             .push_node(&mut [], std::slice::from_mut(&mut output_handle))?;
         {
-            let mut node_infos = self
-                .node_infos
-                .try_borrow_mut()
-                .map_err(|_e| DagError::BorrowedPropertyAccess)?;
+            let mut node_infos = self.node_infos.try_borrow_mut()?;
             node_infos[n] = NodeInfo::Constant {
                 name: String::new(),
                 data,
@@ -263,10 +251,7 @@ impl Workflow {
     ) -> Result<impl Iterator<Item = DagOutputData>, DagError> {
         // Remove duplicates from required_outputs.
         let workflow_outputs = {
-            let out_idx_prop = self
-                .workflow_out_index
-                .try_borrow()
-                .map_err(|_| DagError::BorrowedPropertyAccess)?;
+            let out_idx_prop = self.workflow_out_index.try_borrow()?;
             let out_idx_prop: &[_] = &out_idx_prop;
             let mut temp = (0usize..self.graph.outputs.len())
                 .filter_map(|o| out_idx_prop[o].map(|i| (i, o)))
@@ -384,6 +369,18 @@ impl Workflow {
                 }
             }
         }))
+    }
+
+    pub fn set_input_label(&mut self, input: IH, name: String) -> Result<(), DagError> {
+        let mut labels = self.input_labels.try_borrow_mut()?;
+        labels[input] = name;
+        Ok(())
+    }
+
+    pub fn set_output_label(&mut self, output: OH, name: String) -> Result<(), DagError> {
+        let mut labels = self.output_labels.try_borrow_mut()?;
+        labels[output] = name;
+        Ok(())
     }
 }
 
