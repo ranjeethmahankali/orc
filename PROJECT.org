@@ -351,7 +351,7 @@
   problem. The Python function decorator receives the function name, signature, argument names
   etc. All that can be transferred over into the DAG world and back.
 
-* NEXT tjw1vf - Parse a DAG from a kbb file
+* NEXT tjw1vf - DAG details and serialization
   :PROPERTIES:
   :CREATED:  2026-08-15 Sat 07:52
   :END:
@@ -388,6 +388,9 @@
   task to answer other, related, and more important questions. Those answers are making the permise
   of this task a bit redundant. I will still try to get this new stuff merged, but maybe as a
   different task, and close this task.
+
+  <2026-08-18 Tue 19:33> Repurposing this task to flesh out the details of the DAG, including nested
+  DAGs, and serialization of the DAG.
 
 * DONE tjtyz1 - Running a DAG workflow
   CLOSED: [2026-08-16 Sun 17:03]
