@@ -401,6 +401,11 @@
   DAGs, and serialization of the DAG. Next I want to figure out representing and running nested
   workflows.
 
+  <2026-08-19 Wed 16:04> Tried out the named arguments idea. Didn't like it. It was throwing off the
+  Rust's syntax highlighting. Now, I almost have nested workflows working. Adding tests for
+  that. Once the nested workflows are fully working, I will be in a position to serialize a
+  hierarchy of workflows.
+
 * DONE tjtyz1 - Running a DAG workflow
   CLOSED: [2026-08-16 Sun 17:03]
   :PROPERTIES:
