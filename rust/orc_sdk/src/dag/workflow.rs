@@ -164,6 +164,22 @@ impl Workflow {
         self.nested_workflows.contains_key(name)
     }
 
+    pub fn add_nested_workflow_call(
+        &mut self,
+        name: &str,
+        input_handles: &mut [IH],
+        output_handles: &mut [OH],
+    ) -> Result<NH, DagError> {
+        let n = self.graph.push_node(input_handles, output_handles)?;
+        {
+            let mut node_infos = self.node_infos.try_borrow_mut()?;
+            node_infos[n] = NodeInfo::NestedCall {
+                workflow_name: name.to_string(),
+            };
+        }
+        Ok(n)
+    }
+
     pub fn add_function(
         &mut self,
         info: FuncInfo,
