@@ -479,12 +479,14 @@ impl Workflow {
     pub fn append_node_comment(&mut self, node: NH, comment: &str) -> Result<(), DagError> {
         let mut comments = self.node_comments.try_borrow_mut()?;
         let dst = &mut comments[node];
-        dst.push('\n');
+        if !dst.is_empty() {
+            dst.push('\n');
+        }
         dst.push_str(comment);
         Ok(())
     }
 
-    pub fn node_comment(&mut self, node: NH) -> Result<String, DagError> {
+    pub fn node_comment(&self, node: NH) -> Result<String, DagError> {
         let comments = self.node_comments.try_borrow()?;
         Ok(comments[node].clone())
     }
