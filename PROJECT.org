@@ -351,6 +351,14 @@
   problem. The Python function decorator receives the function name, signature, argument names
   etc. All that can be transferred over into the DAG world and back.
 
+* TODO Return error codes from plugin functions
+  :PROPERTIES:
+  :CREATED:  2026-08-19 Wed 08:39
+  :END:
+
+  This allows the host program to handle known error scenarios in addition to just reporting strings
+  to the user.
+
 * NEXT tjw1vf - DAG details and serialization
   :PROPERTIES:
   :CREATED:  2026-08-15 Sat 07:52
@@ -427,4 +435,3 @@
 
   <2026-08-16 Sun 17:02> Decided to do the Python DAG construction as a separate task. Ready to
   merge.
-
