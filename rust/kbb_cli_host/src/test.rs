@@ -454,7 +454,7 @@ fn t_const_reused() {
 
 fn run_dag_single(wf: &Workflow) -> OrcHandle {
     let mut out = [OrcHandle::default()];
-    wf.run(&[], &mut out, host_clone_orc_handle, &HANDLE_COUNTER)
+    wf.run(&[], &mut out, &host_clone_orc_handle, &HANDLE_COUNTER)
         .unwrap();
     let [o] = out;
     o
@@ -648,7 +648,7 @@ fn t_dag_return_multiple() {
     assert_eq!(wf.workflow_outputs()[1].1, "p");
     assert!(wf.workflow_inputs().unwrap().is_empty());
     let mut out = [OrcHandle::default(), OrcHandle::default()];
-    wf.run(&[], &mut out, host_clone_orc_handle, &HANDLE_COUNTER)
+    wf.run(&[], &mut out, &host_clone_orc_handle, &HANDLE_COUNTER)
         .unwrap();
     let [s_out, p_out] = out;
     assert_dag_output_f64(s_out, &[11.0, 22.0], 1);
@@ -717,7 +717,7 @@ fn t_dag_cycle_simple() {
     wf.connect(b_out[0], a_in[0]).unwrap();
     wf.set_outputs(&[(b_out[0], String::new())]).unwrap();
     let mut out = [OrcHandle::default()];
-    let result = wf.run(&[], &mut out, host_clone_orc_handle, &HANDLE_COUNTER);
+    let result = wf.run(&[], &mut out, &host_clone_orc_handle, &HANDLE_COUNTER);
     assert!(matches!(result, Err(DagError::CycleDetected)));
 }
 
@@ -733,7 +733,7 @@ fn t_dag_cycle_self() {
     wf.connect(a_out[0], a_in[0]).unwrap();
     wf.set_outputs(&[(a_out[0], String::new())]).unwrap();
     let mut out = [OrcHandle::default()];
-    let result = wf.run(&[], &mut out, host_clone_orc_handle, &HANDLE_COUNTER);
+    let result = wf.run(&[], &mut out, &host_clone_orc_handle, &HANDLE_COUNTER);
     assert!(matches!(result, Err(DagError::CycleDetected)));
 }
 
@@ -780,7 +780,7 @@ fn t_dag_input_basic() {
     .unwrap();
     let inputs = [x_handle.borrowed()];
     let mut out = [OrcHandle::default()];
-    wf.run(&inputs, &mut out, host_clone_orc_handle, &HANDLE_COUNTER)
+    wf.run(&inputs, &mut out, &host_clone_orc_handle, &HANDLE_COUNTER)
         .unwrap();
     let view = DeckView::<f64>::from_handle(&out[0]).unwrap();
     assert_eq!(view.items(), &[11.0, 22.0, 33.0]);
@@ -811,14 +811,10 @@ fn t_dag_input_rerun() {
     .unwrap();
     let inputs = [h1.borrowed()];
     let mut out = [OrcHandle::default()];
-    wf.run(&inputs, &mut out, &HANDLE_COUNTER).unwrap();
-    match &out[0] {
-        DagOutputData::Owned(h) => {
-            let view = DeckView::<f64>::from_handle(h).unwrap();
-            assert_eq!(view.items(), &[9.0, 16.0]);
-        }
-        _ => panic!("Expected owned output"),
-    }
+    wf.run(&inputs, &mut out, &host_clone_orc_handle, &HANDLE_COUNTER)
+        .unwrap();
+    let view = DeckView::<f64>::from_handle(&out[0]).unwrap();
+    assert_eq!(view.items(), &[9.0, 16.0]);
     // Second run: x = [5, 6]
     let h2 = orc_inline_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, {
         (let v (const [5.0f64, 6.0]))
@@ -827,14 +823,10 @@ fn t_dag_input_rerun() {
     .unwrap();
     let inputs = [h2.borrowed()];
     let mut out = [OrcHandle::default()];
-    wf.run(&inputs, &mut out, &HANDLE_COUNTER).unwrap();
-    match &out[0] {
-        DagOutputData::Owned(h) => {
-            let view = DeckView::<f64>::from_handle(h).unwrap();
-            assert_eq!(view.items(), &[25.0, 36.0]);
-        }
-        _ => panic!("Expected owned output"),
-    }
+    wf.run(&inputs, &mut out, &host_clone_orc_handle, &HANDLE_COUNTER)
+        .unwrap();
+    let view = DeckView::<f64>::from_handle(&out[0]).unwrap();
+    assert_eq!(view.items(), &[25.0, 36.0]);
 }
 
 // ==================================================
@@ -865,7 +857,8 @@ fn t_dag_gc_outputs_preserved() {
     assert_eq!(wf.workflow_outputs()[1].1, "p");
     // Workflow still produces correct results.
     let mut out = [OrcHandle::default(), OrcHandle::default()];
-    wf.run(&[], &mut out, &HANDLE_COUNTER).unwrap();
+    wf.run(&[], &mut out, &host_clone_orc_handle, &HANDLE_COUNTER)
+        .unwrap();
     let [s_out, p_out] = out;
     assert_dag_output_f64(s_out, &[11.0, 22.0], 1);
     assert_dag_output_f64(p_out, &[10.0, 40.0], 1);
@@ -899,14 +892,10 @@ fn t_dag_gc_inputs_preserved() {
     .unwrap();
     let inputs = [x_handle.borrowed()];
     let mut out = [OrcHandle::default()];
-    wf.run(&inputs, &mut out, &HANDLE_COUNTER).unwrap();
-    match &out[0] {
-        DagOutputData::Owned(h) => {
-            let view = DeckView::<f64>::from_handle(h).unwrap();
-            assert_eq!(view.items(), &[11.0, 22.0, 33.0]);
-        }
-        _ => panic!("Expected owned output"),
-    }
+    wf.run(&inputs, &mut out, &host_clone_orc_handle, &HANDLE_COUNTER)
+        .unwrap();
+    let view = DeckView::<f64>::from_handle(&out[0]).unwrap();
+    assert_eq!(view.items(), &[11.0, 22.0, 33.0]);
 }
 
 // Deduped inputs ('x 'x) survive GC with correct shared index.
@@ -941,12 +930,8 @@ fn t_dag_gc_dedup_inputs_preserved() {
     .unwrap();
     let inputs = [h.borrowed()];
     let mut out = [OrcHandle::default()];
-    wf.run(&inputs, &mut out, &HANDLE_COUNTER).unwrap();
-    match &out[0] {
-        DagOutputData::Owned(h) => {
-            let view = DeckView::<f64>::from_handle(h).unwrap();
-            assert_eq!(view.items(), &[9.0, 16.0]);
-        }
-        _ => panic!("Expected owned output"),
-    }
+    wf.run(&inputs, &mut out, &host_clone_orc_handle, &HANDLE_COUNTER)
+        .unwrap();
+    let view = DeckView::<f64>::from_handle(&out[0]).unwrap();
+    assert_eq!(view.items(), &[9.0, 16.0]);
 }

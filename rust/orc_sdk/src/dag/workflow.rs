@@ -307,7 +307,7 @@ impl Workflow {
         &self,
         inputs: &[OrcHandleBorrowed<'_>],
         outputs: &mut [OrcHandle],
-        clone_fn: impl Fn(OrcHandleBorrowed) -> Result<OrcHandle, crate::Error>,
+        clone_fn: &dyn Fn(OrcHandleBorrowed) -> Result<OrcHandle, crate::Error>,
         handle_counter: &AtomicU64,
     ) -> Result<(), DagError> {
         // Make sure the number of outputs is what we're expecting. Inputs is a bit more flexible,
@@ -405,7 +405,7 @@ impl Workflow {
                                 workflow.run(
                                     &temp_inputs,
                                     &mut temp_outputs,
-                                    &clone_fn,
+                                    clone_fn,
                                     handle_counter,
                                 )?;
                             }
