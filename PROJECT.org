@@ -390,7 +390,8 @@
   different task, and close this task.
 
   <2026-08-18 Tue 19:33> Repurposing this task to flesh out the details of the DAG, including nested
-  DAGs, and serialization of the DAG.
+  DAGs, and serialization of the DAG. Next I want to figure out representing and running nested
+  workflows.
 
 * DONE tjtyz1 - Running a DAG workflow
   CLOSED: [2026-08-16 Sun 17:03]
