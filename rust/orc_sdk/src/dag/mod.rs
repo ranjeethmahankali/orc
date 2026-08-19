@@ -8,7 +8,7 @@ pub use property::{
 };
 
 mod workflow;
-pub use workflow::{DagOutputData, NodeInfo, Workflow};
+pub use workflow::{NodeInfo, Workflow};
 
 mod io;
 
@@ -367,6 +367,7 @@ pub enum DagError {
     MissingInput(String),
     InvalidInputs,
     InvalidOutputs,
+    NamingConflict,
     SdkError(crate::Error),
 }
 

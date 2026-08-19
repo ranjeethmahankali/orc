@@ -2,15 +2,16 @@ use super::{
     DagError, Graph, IH, InputProperty, LH, LinkProperty, NH, NodeProperty, OH, OutputProperty,
     Property,
 };
-use crate::{FuncInfo, InputPropBuf, OrcHandle, OrcHandleBorrowed};
+use crate::{FuncInfo, InputPropBuf, OrcHandle, OrcHandleBorrowed, PluginSet};
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet, hash_map::Entry},
     sync::atomic::{AtomicU64, Ordering},
 };
 
 pub enum NodeInfo {
     Constant { name: String, data: OrcHandle },
     Function(FuncInfo),
+    NestedCall { workflow_name: String },
 }
 
 impl Clone for NodeInfo {
@@ -22,6 +23,9 @@ impl Clone for NodeInfo {
                 data: OrcHandle::default(),
             },
             Self::Function(arg0) => Self::Function(arg0.clone()),
+            Self::NestedCall { workflow_name } => Self::NestedCall {
+                workflow_name: workflow_name.clone(),
+            },
         }
     }
 }
@@ -37,6 +41,7 @@ impl NodeInfo {
         match self {
             NodeInfo::Constant { name, .. } => name,
             NodeInfo::Function(func_info) => &func_info.name,
+            NodeInfo::NestedCall { workflow_name } => &workflow_name,
         }
     }
 }
@@ -49,6 +54,7 @@ pub struct Workflow {
     node_comments: NodeProperty<String>,
     workflow_outputs: Vec<(OH, String)>,
     workflow_input_index: InputProperty<Option<(usize, String)>>,
+    nested_workflows: HashMap<String, Workflow>,
 }
 
 impl Default for Workflow {
@@ -67,13 +73,9 @@ impl Default for Workflow {
             node_comments,
             workflow_outputs: Default::default(),
             workflow_input_index,
+            nested_workflows: Default::default(),
         }
     }
-}
-
-pub enum DagOutputData {
-    Constant(u64),
-    Owned(OrcHandle),
 }
 
 impl Workflow {
@@ -98,7 +100,24 @@ impl Workflow {
             node_comments,
             workflow_outputs: Default::default(),
             workflow_input_index,
+            nested_workflows: Default::default(),
         }
+    }
+
+    pub fn push_nested_workflow(
+        &mut self,
+        name: String,
+        workflow: Workflow,
+        plugin_set: &PluginSet,
+    ) -> Result<(), DagError> {
+        if let Some(_) = plugin_set.get_function(&name) {
+            return Err(DagError::NamingConflict);
+        }
+        match self.nested_workflows.entry(name) {
+            Entry::Occupied(_occupied) => return Err(DagError::NamingConflict),
+            Entry::Vacant(vacant) => vacant.insert(workflow),
+        };
+        Ok(())
     }
 
     pub fn set_outputs(&mut self, outputs: &[(OH, String)]) -> Result<(), DagError> {
@@ -287,7 +306,8 @@ impl Workflow {
     pub fn run(
         &self,
         inputs: &[OrcHandleBorrowed<'_>],
-        outputs: &mut [DagOutputData],
+        outputs: &mut [OrcHandle],
+        clone_fn: impl Fn(OrcHandleBorrowed) -> OrcHandle,
         handle_counter: &AtomicU64,
     ) -> Result<(), DagError> {
         // Make sure the number of outputs is what we're expecting. Inputs is a bit more flexible,
@@ -336,9 +356,12 @@ impl Workflow {
                     .graph
                     .node_inputs(node)
                     .map(|input| match self.graph.input_source(input) {
+                        // If it is a constant, we just borrow it's value. Otherwise we get the value associated with the upstream output.
                         Some(source) => match &node_infos[self.graph.outputs[source.idx].node] {
                             NodeInfo::Constant { name: _name, data } => Ok(data.borrowed()),
-                            NodeInfo::Function(_) => Ok(computed_outputs[source.idx].borrowed()),
+                            NodeInfo::Function(_) | NodeInfo::NestedCall { .. } => {
+                                Ok(computed_outputs[source.idx].borrowed())
+                            }
                         },
                         None => match &workflow_input_index[input] {
                             Some((index, _name)) if *index < inputs.len() => {
@@ -361,6 +384,7 @@ impl Workflow {
                     ..Default::default()
                 });
                 debug_assert_eq!(temp_outputs.len(), temp_output_handles.len());
+                // Run this node.
                 match &node_infos[node] {
                     NodeInfo::Constant { .. } => {} // Do nothing.
                     NodeInfo::Function(func_info) => match func_info.func {
@@ -375,6 +399,19 @@ impl Workflow {
                         },
                         None => return Err(DagError::InvalidFunction),
                     },
+                    NodeInfo::NestedCall { workflow_name } => {
+                        match self.nested_workflows.get(workflow_name) {
+                            Some(workflow) => {
+                                workflow.run(
+                                    &temp_inputs,
+                                    &mut temp_outputs,
+                                    clone_fn,
+                                    handle_counter,
+                                )?;
+                            }
+                            None => return Err(DagError::InvalidFunction),
+                        }
+                    }
                 };
                 // Move the outputs into the outer buffer for later.
                 for (o, val) in temp_output_handles.drain(..).zip(temp_outputs.drain(..)) {
@@ -402,9 +439,9 @@ impl Workflow {
         // Now copy the final outputs of the workflow.
         for ((src, _name), dst) in self.workflow_outputs.iter().zip(outputs.iter_mut()) {
             *dst = match &node_infos[self.graph.outputs[src.idx].node] {
-                NodeInfo::Constant { name: _, data } => DagOutputData::Constant(data.handle),
-                NodeInfo::Function(_) => {
-                    DagOutputData::Owned(std::mem::take(&mut computed_outputs[src.idx]))
+                NodeInfo::Constant { name: _, data } => clone_fn(data.borrowed()),
+                NodeInfo::Function(_) | NodeInfo::NestedCall { .. } => {
+                    std::mem::take(&mut computed_outputs[src.idx])
                 }
             };
         }
