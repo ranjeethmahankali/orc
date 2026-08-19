@@ -474,14 +474,14 @@ impl HostCallbacks {
 }
 
 /// This is meant to be used by the plugin function to check for invariants, report them to the host
-/// if they're not met, and return immediately.
+/// if they're not met, and return the given error code immediately.
 #[macro_export]
 macro_rules! orc_check_return {
-    ($host:expr, $cond:expr, $($fmt:tt)+) => {{
+    ($host:expr, $err:expr, $cond:expr, $($fmt:tt)+) => {{
         if !($cond) {
             let message = ::std::format!($($fmt)+);
             $host.error(&message);
-            return;
+            return $err;
         }
     }};
 }

@@ -61,36 +61,32 @@ static bool is_type_known(OrcTypeId const type_id, size_t *item_size_out)
   return is_known;
 }
 
-static void list_length(uint64_t         ctx,
-                        OrcHandle const *input,
-                        uint64_t         n_inputs,
-                        OrcHandle       *output,
-                        uint64_t         n_outputs)
+static OrcError list_length(uint64_t         ctx,
+                            OrcHandle const *input,
+                            uint64_t         n_inputs,
+                            OrcHandle       *output,
+                            uint64_t         n_outputs)
 {
   // Validate inputs.
   if (n_inputs != 1 || n_outputs != 1) {
     orc_sdk_report_message(
       ctx, ORC_MSG_LEVEL_ERROR, "This function expects 1 input, and produces 1 output.");
-    return;
+    return ORC_ERROR_INVALID_ARGUMENTS;
   }
   if (input == NULL) {
     orc_sdk_report_message(ctx, ORC_MSG_LEVEL_ERROR, "Input handle is a null pointer.");
-    return;
+    return ORC_ERROR_INVALID_ARGUMENTS;
   }
   if (output == NULL) {
     orc_sdk_report_message(ctx, ORC_MSG_LEVEL_ERROR, "Output handle is a null pointer.");
-    return;
+    return ORC_ERROR_INVALID_ARGUMENTS;
   }
   {  // Allocate outputs.
     OrcError const err = orc_sdk_handle_alloc(ORC_TYPE_U64, output);
     if (err != ORC_ERROR_NONE) {
-      // TODO: Currently we're not telling the host what exactly went wrong. This is not
-      // ideal. We should check against, known, expected error values and report that
-      // error to the host. SDK should have a helper function that matches against all
-      // possible errors and reports an error.
       orc_sdk_report_message(
         ctx, ORC_MSG_LEVEL_ERROR, "Unable to allocate the output deck.");
-      return;
+      return err;
     }
   }  // Initialize list processing.
   void *combinations = orc_sdk_comb_init(
@@ -98,7 +94,7 @@ static void list_length(uint64_t         ctx,
   if (combinations == NULL) {
     orc_sdk_report_message(
       ctx, ORC_MSG_LEVEL_ERROR, "Unable to iterate over the input data.");
-    return;
+    return ORC_ERROR_INVALID_COMBINATIONS;
   }
   while (combinations) {
     OrcSdk_DeckView    in_list    = orc_sdk_comb_get_input(combinations, 0);
@@ -113,6 +109,7 @@ static void list_length(uint64_t         ctx,
   }
   orc_sdk_comb_free(combinations);
   orc_sdk_oh_update(output);
+  return ORC_ERROR_NONE;
 }
 
 OrcFuncInfo const LIST_LENGTH_INFO = {.name         = "list_length",
@@ -123,25 +120,25 @@ OrcFuncInfo const LIST_LENGTH_INFO = {.name         = "list_length",
                                       .output_types = NULL,  // Any type is allowed.
                                       .func         = list_length};
 
-static void flatten_deck(uint64_t         ctx,
-                         OrcHandle const *inputs,
-                         uint64_t         n_inputs,
-                         OrcHandle       *outputs,
-                         uint64_t         n_outputs)
+static OrcError flatten_deck(uint64_t         ctx,
+                             OrcHandle const *inputs,
+                             uint64_t         n_inputs,
+                             OrcHandle       *outputs,
+                             uint64_t         n_outputs)
 {
   // Validate inputs.
   if (n_inputs != n_outputs) {
     orc_sdk_report_message(
       ctx, ORC_MSG_LEVEL_ERROR, "The number of inputs and outputs must be the same.");
-    return;
+    return ORC_ERROR_INVALID_ARGUMENTS;
   }
   if (inputs == NULL) {
     orc_sdk_report_message(ctx, ORC_MSG_LEVEL_ERROR, "Input handle is a null pointer.");
-    return;
+    return ORC_ERROR_INVALID_ARGUMENTS;
   }
   if (outputs == NULL) {
     orc_sdk_report_message(ctx, ORC_MSG_LEVEL_ERROR, "Output handle is a null pointer.");
-    return;
+    return ORC_ERROR_INVALID_ARGUMENTS;
   }
   OrcHandle const *input  = inputs;
   OrcHandle       *output = outputs;
@@ -168,7 +165,7 @@ static void flatten_deck(uint64_t         ctx,
       if (err != ORC_ERROR_NONE) {
         orc_sdk_report_message(
           ctx, ORC_MSG_LEVEL_ERROR, "Unable to create a flattened deck.");
-        return;
+        return err;
       }
     }
     else {
@@ -177,12 +174,13 @@ static void flatten_deck(uint64_t         ctx,
       if (err != ORC_ERROR_NONE) {
         orc_sdk_report_message(
           ctx, ORC_MSG_LEVEL_ERROR, "Unable to create a flattened deck.");
-        return;
+        return err;
       }
     }
     ++input;
     ++output;
   }
+  return ORC_ERROR_NONE;
 }
 
 OrcFuncInfo const FLATTEN_DECK_INFO = {

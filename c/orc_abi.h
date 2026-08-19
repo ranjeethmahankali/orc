@@ -68,11 +68,11 @@ typedef struct
 #define ORC_ARGS_VARIADIC 0xffffffffffffffff
 #define ORC_TYPE_ANY 0xffffffffffffffff
 
-typedef void (*OrcPluginFunction)(uint64_t const   ctx,
-                                  OrcHandle const *inputs,
-                                  uint64_t const   n_inputs,
-                                  OrcHandle       *outputs,
-                                  uint64_t const   n_outputs);
+typedef OrcError (*OrcPluginFunction)(uint64_t const   ctx,
+                                      OrcHandle const *inputs,
+                                      uint64_t const   n_inputs,
+                                      OrcHandle       *outputs,
+                                      uint64_t const   n_outputs);
 
 /**
 Metadata for a function exposed by the plugin. All plugin functions have the same
@@ -229,6 +229,7 @@ typedef struct
 #define ORC_ERROR_NULL_PTR 0xff0cu
 #define ORC_ERROR_MISSING_CAPABILITY 0xff0du
 #define ORC_ERROR_INVALID_FUNCTION 0xff0eu
+#define ORC_ERROR_INVALID_ARGUMENTS 0xff0fu
 #define ORC_ERROR_UNKNOWN 0xffffu
 
 /**
