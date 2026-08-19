@@ -551,9 +551,12 @@
     - ~OrcHandle.free_fn~ — destructor, set by the allocating plugin at runtime.
     - ~OrcHandle.dims~ — units metadata. TODO: decide if this should be serialized.
 
-* TODO ABI - Serializing OrcHandle
+* NEXT tk1ji0 - ABI - Serializing OrcHandle
   :PROPERTIES:
   :CREATED:  2026-08-19 Wed 18:38
+  :END:
+  :LOGBOOK:
+  - State "NEXT"       from "TODO"       [2026-08-19 Wed 19:52]
   :END:
 
   For types that are owned by the plugin, the plugin alone can serialize and deserialize. The ABI
