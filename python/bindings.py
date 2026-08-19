@@ -98,6 +98,7 @@ OrcDims = ctypes.c_int32 * 7
 
 OrcPluginFunction = ctypes.CFUNCTYPE(ctypes.c_uint32, ctypes.c_uint64, ctypes.POINTER(OrcHandle), ctypes.c_uint64, ctypes.POINTER(OrcHandle), ctypes.c_uint64)
 OrcDeckFreeFn = ctypes.CFUNCTYPE(ctypes.c_uint32, ctypes.POINTER(OrcHandle))
+OrcSerializeWriteFn = ctypes.CFUNCTYPE(ctypes.c_uint32, ctypes.c_uint64, ctypes.c_void_p, ctypes.c_uint64)
 
 OrcAllocFn = ctypes.CFUNCTYPE(ctypes.c_void_p, ctypes.c_uint64, ctypes.c_uint64)
 OrcDeallocFn = ctypes.CFUNCTYPE(None, ctypes.c_void_p, ctypes.c_uint64, ctypes.c_uint64)

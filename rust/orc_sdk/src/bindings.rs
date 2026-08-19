@@ -326,3 +326,22 @@ unsafe extern "C" {
         out: *mut OrcHandle,
     ) -> OrcError;
 }
+pub type OrcSerializeWriteFn = ::std::option::Option<
+    unsafe extern "C" fn(ctx: u64, data: *const ::std::os::raw::c_void, len: u64) -> OrcError,
+>;
+unsafe extern "C" {
+    pub fn orc_handle_serialize(
+        ctx: u64,
+        handle: *const OrcHandle,
+        write_fn: OrcSerializeWriteFn,
+    ) -> OrcError;
+}
+unsafe extern "C" {
+    pub fn orc_handle_deserialize(
+        ctx: u64,
+        type_id: OrcTypeId,
+        buf: *const ::std::os::raw::c_void,
+        buf_len: u64,
+        out: *mut OrcHandle,
+    ) -> OrcError;
+}

@@ -338,3 +338,17 @@ ORC_PLUGIN_EXPORT OrcError orc_deck_from_proxy(OrcHandle const   *inputs,
                                                OrcProxyType const proxy_type,
                                                OrcHandle const   *proxy,
                                                OrcHandle         *out);
+
+typedef OrcError (*OrcSerializeWriteFn)(uint64_t const ctx,
+                                        void const    *data,
+                                        uint64_t const len);
+
+ORC_PLUGIN_EXPORT OrcError orc_handle_serialize(uint64_t const      ctx,
+                                                OrcHandle const    *handle,
+                                                OrcSerializeWriteFn write_fn);
+
+ORC_PLUGIN_EXPORT OrcError orc_handle_deserialize(uint64_t const  ctx,
+                                                  OrcTypeId const type_id,
+                                                  void const     *buf,
+                                                  uint64_t const  buf_len,
+                                                  OrcHandle      *out);
