@@ -16,6 +16,7 @@ pub enum Error {
     NullPointer,
     MissingCapability,
     InvalidFunction,
+    InvalidArguments,
     Unknown,
 }
 
@@ -37,6 +38,7 @@ impl Error {
             crate::ORC_ERROR_NULL_PTR => Err(Error::NullPointer),
             crate::ORC_ERROR_MISSING_CAPABILITY => Err(Error::MissingCapability),
             crate::ORC_ERROR_INVALID_FUNCTION => Err(Error::InvalidFunction),
+            crate::ORC_ERROR_INVALID_ARGUMENTS => Err(Error::InvalidArguments),
             _ => Err(Error::Unknown),
         }
     }
@@ -61,6 +63,10 @@ impl std::fmt::Display for Error {
             Error::InvalidFunction => write!(
                 f,
                 "The function is not valid, or not properly loaded from a plugin."
+            ),
+            Error::InvalidArguments => write!(
+                f,
+                "The input/output arguments to this function are not valid."
             ),
             Error::Unknown => write!(f, "Unknown error"),
         }
@@ -87,6 +93,7 @@ impl From<Error> for OrcError {
             Error::MissingCapability => crate::ORC_ERROR_MISSING_CAPABILITY,
             Error::InvalidFunction => crate::ORC_ERROR_INVALID_FUNCTION,
             Error::Unknown => crate::ORC_ERROR_UNKNOWN,
+            Error::InvalidArguments => crate::ORC_ERROR_INVALID_ARGUMENTS,
         }
     }
 }
