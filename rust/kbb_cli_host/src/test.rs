@@ -935,3 +935,96 @@ fn t_dag_gc_dedup_inputs_preserved() {
     let view = DeckView::<f64>::from_handle(&out[0]).unwrap();
     assert_eq!(view.items(), &[9.0, 16.0]);
 }
+
+// ==================================================
+// Nested workflow tests.
+// ==================================================
+
+// Define a nested function and call it.
+#[test]
+fn t_dag_nested_fn_basic() {
+    let mut wf = Workflow::default();
+    orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
+        (fn double
+            (add 'x 'x))
+        (double (const [3.0f64, 5.0]))
+    })
+    .unwrap();
+    assert_dag_output_f64(run_dag_single(&wf), &[6.0, 10.0], 1);
+}
+
+// Nested function with multiple statements in its body.
+#[test]
+fn t_dag_nested_fn_multi_stmt() {
+    let mut wf = Workflow::default();
+    orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
+        (fn sum_of_squares
+            (let a (mul 'x 'x))
+            (let b (mul 'y 'y))
+            (add a b))
+        (sum_of_squares (const [3.0f64]) (const [4.0f64]))
+    })
+    .unwrap();
+    // 3^2 + 4^2 = 9 + 16 = 25
+    assert_dag_output_f64(run_dag_single(&wf), &[25.0], 1);
+}
+
+// Nested function called multiple times with different arguments.
+#[test]
+fn t_dag_nested_fn_reuse() {
+    let mut wf = Workflow::default();
+    orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
+        (fn double
+            (add 'x 'x))
+        (let a (double (const [1.0f64, 2.0])))
+        (let b (double (const [10.0f64, 20.0])))
+        (add a b)
+    })
+    .unwrap();
+    // double([1,2]) = [2,4], double([10,20]) = [20,40], sum = [22,44]
+    assert_dag_output_f64(run_dag_single(&wf), &[22.0, 44.0], 1);
+}
+
+// Nested function with multiple outputs.
+#[test]
+fn t_dag_nested_fn_multi_output() {
+    let mut wf = Workflow::default();
+    orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
+        (fn sum_and_product
+            (let s (add 'a 'b))
+            (let p (mul 'a 'b))
+            (return s p))
+        (let (s p) (sum_and_product (const [3.0f64]) (const [4.0f64])))
+        (add s p)
+    })
+    .unwrap();
+    // s = 3+4 = 7, p = 3*4 = 12, result = 7+12 = 19
+    assert_dag_output_f64(run_dag_single(&wf), &[19.0], 1);
+}
+
+// Nested function mixed with outer workflow inputs.
+#[test]
+fn t_dag_nested_fn_with_outer_input() {
+    let mut wf = Workflow::default();
+    orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
+        (fn double
+            (add 'x 'x))
+        (double 'val)
+    })
+    .unwrap();
+    // Outer workflow has input 'val. Nested fn doubles it.
+    let wf_ins = wf.workflow_inputs().unwrap();
+    assert_eq!(wf_ins.len(), 1);
+    assert_eq!(wf_ins[0].2, "val");
+    let h = orc_inline_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, {
+        (let v (const [5.0f64, 7.0]))
+        (return v)
+    })
+    .unwrap();
+    let inputs = [h.borrowed()];
+    let mut out = [OrcHandle::default()];
+    wf.run(&inputs, &mut out, &host_clone_orc_handle, &HANDLE_COUNTER)
+        .unwrap();
+    let view = DeckView::<f64>::from_handle(&out[0]).unwrap();
+    assert_eq!(view.items(), &[10.0, 14.0]);
+}

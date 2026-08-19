@@ -231,14 +231,17 @@ macro_rules! orc_dag {
 
     // let multiple outputs, more statements follow
     (@stmts $ps:ident, $hc:ident, $reg:ident, $wf:ident, $ins:ident, $names:ident, (let ($($name:ident)+) ($func:ident $($arg:tt)*)) $($rest:tt)*) => {{
-        let func_info_ = $ps.get_function(stringify!($func))
-            .ok_or($crate::DagError::InvalidFunction)?
-            .clone();
         const N_INS_: usize = orc_dag!(@count_tt $($arg)*);
         const N_OUTS_: usize = orc_dag!(@count $($name)+);
         let mut ihs_: [$crate::IH; N_INS_] = std::array::from_fn(|_| $crate::IH::default());
         let mut ohs_: [$crate::OH; N_OUTS_] = std::array::from_fn(|_| $crate::OH::default());
-        $wf.add_function(func_info_, &mut ihs_, &mut ohs_)?;
+        if let Some(func_info_) = $ps.get_function(stringify!($func)) {
+            $wf.add_function(func_info_.clone(), &mut ihs_, &mut ohs_)?;
+        } else if $wf.has_nested_workflow(stringify!($func)) {
+            $wf.add_nested_workflow_call(stringify!($func), &mut ihs_, &mut ohs_)?;
+        } else {
+            return Err($crate::DagError::InvalidFunction);
+        }
         let mut arg_idx_: usize = 0;
         $(
             orc_dag!(@connect_arg $ps, $hc, $reg, $wf, $ins, $names, ihs_, arg_idx_, $arg);
@@ -251,6 +254,29 @@ macro_rules! orc_dag {
             out_idx_ += 1;
         )+
         let _ = out_idx_;
+        orc_dag!(@stmts $ps, $hc, $reg, $wf, $ins, $names, $($rest)*)
+    }};
+
+    // Define a nested workflow: (fn name body...)
+    // The body follows the same rules as the outer orc_dag. Quoted symbols become the nested
+    // workflow's inputs, and the trailing expression or (return ...) becomes its outputs.
+    (@stmts $ps:ident, $hc:ident, $reg:ident, $wf:ident, $ins:ident, $names:ident, (fn $fname:ident $($body:tt)*) $($rest:tt)*) => {{
+        {
+            let mut nested_wf_ = $crate::Workflow::default();
+            #[allow(unused_mut)]
+            let mut nested_ins_: Vec<($crate::IH, usize, &str)> = Vec::new();
+            #[allow(unused_mut)]
+            let mut nested_names_: Vec<&str> = Vec::new();
+            {
+                let nested_wf_ref_ = &mut nested_wf_;
+                let _: _ = orc_dag!(@stmts $ps, $hc, $reg, nested_wf_ref_, nested_ins_, nested_names_, $($body)*)
+                    .map_err(|e: $crate::DagError| e)?;
+                if !nested_ins_.is_empty() {
+                    nested_wf_ref_.set_inputs(&nested_ins_)?;
+                }
+            }
+            $wf.push_nested_workflow(stringify!($fname).to_string(), nested_wf_, $ps)?;
+        }
         orc_dag!(@stmts $ps, $hc, $reg, $wf, $ins, $names, $($rest)*)
     }};
 
@@ -332,14 +358,18 @@ macro_rules! orc_dag {
     }};
 
     // --- Single-output function call ---
+    // Tries plugin function first, then falls back to nested workflow call.
     (@call1 $ps:ident, $hc:ident, $reg:ident, $wf:ident, $ins:ident, $names:ident, $func:ident, $($arg:tt)*) => {{
-        let func_info_ = $ps.get_function(stringify!($func))
-            .ok_or($crate::DagError::InvalidFunction)?
-            .clone();
         const N_INS_: usize = orc_dag!(@count_tt $($arg)*);
         let mut ihs_: [$crate::IH; N_INS_] = std::array::from_fn(|_| $crate::IH::default());
         let mut oh_ = $crate::OH::default();
-        $wf.add_function(func_info_, &mut ihs_, std::slice::from_mut(&mut oh_))?;
+        if let Some(func_info_) = $ps.get_function(stringify!($func)) {
+            $wf.add_function(func_info_.clone(), &mut ihs_, std::slice::from_mut(&mut oh_))?;
+        } else if $wf.has_nested_workflow(stringify!($func)) {
+            $wf.add_nested_workflow_call(stringify!($func), &mut ihs_, std::slice::from_mut(&mut oh_))?;
+        } else {
+            return Err($crate::DagError::InvalidFunction);
+        }
         let mut arg_idx_: usize = 0;
         $(
             orc_dag!(@connect_arg $ps, $hc, $reg, $wf, $ins, $names, ihs_, arg_idx_, $arg);
@@ -354,6 +384,7 @@ macro_rules! orc_dag {
     (@count $x:ident $($rest:ident)+) => { 1usize + orc_dag!(@count $($rest)+) };
 
     // Count token trees (for counting arguments which may be tt groups or idents)
+    (@count_tt) => { 0usize };
     (@count_tt $x:tt) => { 1usize };
     (@count_tt $x:tt $($rest:tt)+) => { 1usize + orc_dag!(@count_tt $($rest)+) };
 }
