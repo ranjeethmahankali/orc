@@ -359,11 +359,34 @@
   This allows the host program to handle known error scenarios in addition to just reporting strings
   to the user.
 
-* NEXT tjw1vf - DAG details and serialization
+* TODO Serializing workflows
+  :PROPERTIES:
+  :CREATED:  2026-08-19 Wed 18:54
+  :END:
+
+  [[*Serializing OrcHandle][Serializing OrcHandle]] needs to be solved before this can be properly executed. I workshopped a
+  vague, obviously untested plan with the LLM's help. Just reprsents a vague direction.
+
+** Vague Plan
+   :PROPERTIES:
+   :CREATED:  2026-08-19 Wed 18:55
+   :END:
+
+* TODO Serializing OrcHandle
+  :PROPERTIES:
+  :CREATED:  2026-08-19 Wed 18:38
+  :END:
+
+  For types that are owned by the plugin, the plugin alone can serialize and deserialize. The ABI
+  needs to be extended to add support for this.
+
+* DONE tjw1vf - Nested DAG support
+  CLOSED: [2026-08-19 Wed 18:54]
   :PROPERTIES:
   :CREATED:  2026-08-15 Sat 07:52
   :END:
   :LOGBOOK:
+  - State "DONE"       from "NEXT"       [2026-08-19 Wed 18:54]
   - State "NEXT"       from "TODO"       [2026-08-16 Sun 20:50]
   :END:
 
@@ -405,6 +428,10 @@
   Rust's syntax highlighting. Now, I almost have nested workflows working. Adding tests for
   that. Once the nested workflows are fully working, I will be in a position to serialize a
   hierarchy of workflows.
+
+  <2026-08-19 Wed 18:51> Repurposed this task yet again. Nested DAGs are working, and I want to get
+  this merged, and deal with serialization in a different task. Marking this done and getting it
+  merged.
 
 * DONE tjtyz1 - Running a DAG workflow
   CLOSED: [2026-08-16 Sun 17:03]
