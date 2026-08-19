@@ -994,6 +994,7 @@ fn t_dag_nested_fn_multi_output() {
             (let s (add 'a 'b))
             (let p (mul 'a 'b))
             (return s p))
+        // Now call the nested workflow.
         (let (s p) (sum_and_product (const [3.0f64]) (const [4.0f64])))
         (add s p)
     })
