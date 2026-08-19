@@ -171,13 +171,6 @@
   Maybe I can write a rasterizer for my curve types, and somehow get the optimizer to export images
   of the sample points in the design space, so that I can visualize them when viewing the DOE.
 
-* TODO Parse a DAG from a kbb file
-  :PROPERTIES:
-  :CREATED:  2026-08-15 Sat 07:52
-  :END:
-
-  kbb file is a LISP
-
 * TODO Function metadata ABI improvements
   :PROPERTIES:
   :CREATED:  2026-08-15 Sat 13:54
@@ -202,21 +195,6 @@
   to this metadata to improve the overall experience. But no matter what, it should remain purely
   metadata. The actual function should still handle everything procedurally. Should be completely
   optional. Everything should still work without this metadata, albeit a more inconvenient manner.
-
-* TODO Functions and Scripts - a clear picture
-  :PROPERTIES:
-  :CREATED:  2026-08-16 Sun 14:36
-  :END:
-
-  Need a way to define incomplete fragments of a workflow DAG, and reuse those fragments by
-  partially or fully substituting the incomplete parts.
-
-  In a node editor UI app, this will map to something similar to Grasshopper's concept of
-  "cluster". In a Python script, this is equivalent to definng functions, and currying them. In
-  LISP, it is also equivalent to defining functions and currying them. I need to figure out a
-  complete picture of this concept that includes how it is represented in memory, how it is drawn on
-  screen in a UI app, and how it is stored on the disk in various formats, and make sure they all
-  integrate seamlessly.
 
 * TODO tjvt98 - Constructing a DAG from Python
   :PROPERTIES:
@@ -352,6 +330,291 @@
             ...
     #+end_src
 
+* TODO Functions and Scripts - a clear picture
+  :PROPERTIES:
+  :CREATED:  2026-08-16 Sun 14:36
+  :END:
+
+  Need a way to define incomplete fragments of a workflow DAG, and reuse those fragments by
+  partially or fully substituting the incomplete parts.
+
+  In a node editor UI app, this will map to something similar to Grasshopper's concept of
+  "cluster". In a Python script, this is equivalent to definng functions, and currying them. In
+  LISP, it is also equivalent to defining functions and currying them. I need to figure out a
+  complete picture of this concept that includes how it is represented in memory, how it is drawn on
+  screen in a UI app, and how it is stored on the disk in various formats, and make sure they all
+  integrate seamlessly.
+
+  <2026-08-16 Sun 22:46> For the Python part of the puzzle, using decorators to wrap Python
+  functions is an interesting idea. This will allow me to map Python functions, call structure and
+  nesting into the DAG representation. Going the other way is easy, it is just a code generation
+  problem. The Python function decorator receives the function name, signature, argument names
+  etc. All that can be transferred over into the DAG world and back.
+
+* TODO Return error codes from plugin functions
+  :PROPERTIES:
+  :CREATED:  2026-08-19 Wed 08:39
+  :END:
+
+  This allows the host program to handle known error scenarios in addition to just reporting strings
+  to the user.
+
+* TODO Serializing workflows
+  :PROPERTIES:
+  :CREATED:  2026-08-19 Wed 18:54
+  :END:
+
+  [[*Serializing OrcHandle][Serializing OrcHandle]] needs to be solved before this can be properly executed. I workshopped a
+  vague, obviously untested plan with the LLM's help. Just reprsents a vague direction.
+
+** Vague Plan
+   :PROPERTIES:
+   :CREATED:  2026-08-19 Wed 18:55
+   :END:
+
+*** Overview
+
+    Plain text, SSA-style pseudocode format. No external dependencies. The file is human readable and
+    editable. A loaded ~PluginSet~ is required at parse time to resolve function names to
+    ~FuncInfo~. Fields like ~FuncInfo.desc~, ~FuncInfo.func~, ~FuncInfo.n_inputs~, ~FuncInfo.n_outputs~
+    are all recovered from the ~PluginSet~ — they are not serialized.
+
+*** Reserved Words
+
+    All keywords are prefixed with a dot: ~.workflow~, ~.const~, ~.return~. Property kind tags are
+    also dot-prefixed: ~.input~, ~.output~, ~.node~, ~.link~. User-supplied names (function names,
+    labels, workflow names, parameter names) must not start with a period. This avoids any collision
+    between keywords and identifiers.
+
+*** Workflow Declaration
+
+    #+begin_example
+    .workflow main(x, y):
+      ...
+    #+end_example
+
+    - ~.workflow~ keyword, followed by the workflow name, followed by input parameter names in
+      parentheses, followed by a colon.
+    - Input parameter order in the signature is preserved across round trips.
+    - Empty parentheses ~()~ for workflows with no inputs.
+    - Everything inside a workflow is indented relative to the ~.workflow~ line.
+
+*** Node Lines
+
+    Nodes are listed one per line inside a workflow. Node indices are implicit from position (first
+    line is node 0, second is node 1, etc.), like OBJ vertex indices.
+
+    Output indices are global across all nodes within a workflow, assigned implicitly in declaration
+    order.
+
+    **** Function nodes
+
+    #+begin_example
+    2 = add $x 0
+    3 4 = sum_prod 1 2
+    #+end_example
+
+    - LHS lists the global output indices produced by this node.
+    - RHS is the function name followed by arguments.
+    - Arguments are either global output indices (bare integers) or workflow input references
+      (~$name~).
+    - ~_~ means an unconnected input.
+
+    **** Constant nodes
+
+    #+begin_example
+    0 = .const [3.0f64]
+    1 = .const "offset" [[3u8, 2], [3, 4, 4]]
+    #+end_example
+
+    - ~.const~ keyword followed by optional name string, then the data in brackets.
+    - The type suffix (e.g., ~f64~, ~u8~) appears on the first leaf value. Subsequent values in
+      the same constant can omit the suffix.
+    - Bracket nesting encodes the deck's mark/stride structure (depth).
+    - Supported builtin types: ~u8~, ~u16~, ~u32~, ~u64~, ~f32~, ~f64~, ~i8~, ~i16~, ~i32~, ~i64~.
+    - ~ORC_TYPE_PROXY~ is excluded from serialization.
+    - The optional name string corresponds to the ~name~ field of ~NodeInfo::Constant~. It is
+      only written when non-empty.
+
+    **** Nested workflow calls
+
+    #+begin_example
+    5 = double 2
+    #+end_example
+
+    Syntactically identical to function calls. The parser disambiguates by checking the
+    ~PluginSet~ first; if no function matches, it checks the workflow's nested workflows. This
+    mirrors the runtime behavior and the ~orc_dag!~ macro's fallback logic.
+
+    **** Nodes with zero outputs
+
+    #+begin_example
+    fire_missiles 3
+    #+end_example
+
+    No LHS, no ~=~ sign. Just the function name and its arguments.
+
+*** Return Statement
+
+    #+begin_example
+    .return 4 "result"
+    .return 3 "sum" 4 "product"
+    #+end_example
+
+    - Lists the workflow's output(s) by global output index, optionally followed by a name string.
+    - Names correspond to the ~String~ in ~workflow_outputs: Vec<(OH, String)>~.
+    - Names are only written when non-empty.
+    - Omit ~.return~ entirely for workflows with no outputs.
+
+*** Properties
+
+    Properties are nested inside each workflow, after the ~.return~ line. Each property block is a
+    contiguous section. All values of one property are written together — they are not scattered as
+    inline annotations on node lines.
+
+    #+begin_example
+    input_labels .input
+      2:0 "lhs"
+      2:1 "rhs"
+
+    output_labels .output
+      0 "sum"
+
+    comments .node
+      2 "add the constants"
+    #+end_example
+
+    - The property name comes first, then the property kind tag (~.input~, ~.output~, ~.node~,
+      ~.link~).
+    - Input properties are keyed by ~node_index:input_index~ (per-node input index, zero-based).
+    - Output properties are keyed by global output index.
+    - Node properties are keyed by node index.
+    - Link properties are keyed by ~output_index input_node:input_index~.
+    - Only non-default values are written. Default values (empty strings) are omitted.
+
+*** String Escaping
+
+    - Bare strings (identifiers like function names, workflow names, parameter names) are literal.
+      They must not contain whitespace or special characters, and must not start with a period.
+    - Quoted strings (labels, comments, names) use backslash escaping: ~\"~ for a literal quote,
+      ~\\~ for a literal backslash, ~\n~ for newline.
+
+*** Nested Workflows
+
+    Nested workflows are indented inside their parent workflow, after the ~.return~ statement and
+    properties, separated by an empty line for legibility.
+
+    #+begin_example
+    .workflow main(x):
+      0 = .const [3.0f64]
+      1 = add $x 0
+      .return 1
+
+      comments .node
+        1 "offset by input"
+
+      .workflow double(x):
+        0 = mul $x $x
+        .return 0
+
+      .workflow triple(x):
+        0 = mul $x $x
+        1 = mul 0 $x
+        .return 1
+
+        .workflow helper(a):
+          0 = add $a $a
+          .return 0
+    #+end_example
+
+    - Nesting is conveyed by indentation level, mirroring the ~nested_workflows: HashMap<String,
+      Workflow>~ hierarchy in the Rust struct.
+    - Two workflows at different hierarchical paths can share the same name without conflict.
+    - A workflow must be defined before it is called (definition appears before the call site in
+      the node list, or as a nested workflow of an ancestor).
+
+*** Constant Data for Plugin-Owned Types
+
+    Not yet supported. Planned approach:
+
+    #+begin_example
+    0 = .const <0xABCD1234> data/node2.bin
+    #+end_example
+
+    - ~<type_id>~ is the integer type ID that identifies which plugin owns this type.
+    - The path points to a file in a companion data folder.
+    - The plugin provides serialize/deserialize over FFI (ABI extension needed).
+
+*** What Is NOT Serialized
+
+    - ~FuncInfo.func~ — function pointer, resolved from ~PluginSet~ at load time.
+    - ~FuncInfo.desc~ — recovered from ~PluginSet~.
+    - ~FuncInfo.n_inputs~ / ~FuncInfo.n_outputs~ — recovered from ~PluginSet~.
+    - ~OrcHandle.handle~ — runtime handle ID, reassigned by host at load time.
+    - ~OrcHandle.free_fn~ — destructor, set by the allocating plugin at runtime.
+    - ~OrcHandle.dims~ — units metadata. TODO: decide if this should be serialized.
+
+* TODO Serializing OrcHandle
+  :PROPERTIES:
+  :CREATED:  2026-08-19 Wed 18:38
+  :END:
+
+  For types that are owned by the plugin, the plugin alone can serialize and deserialize. The ABI
+  needs to be extended to add support for this.
+
+* DONE tjw1vf - Nested DAG support
+  CLOSED: [2026-08-19 Wed 18:54]
+  :PROPERTIES:
+  :CREATED:  2026-08-15 Sat 07:52
+  :END:
+  :LOGBOOK:
+  - State "DONE"       from "NEXT"       [2026-08-19 Wed 18:54]
+  - State "NEXT"       from "TODO"       [2026-08-16 Sun 20:50]
+  :END:
+
+  kbb file is a LISP dialect. The implementation goes [[file:rust/orc_sdk/src/dag/io.rs::pub fn parse_from_orc_file<P: AsRef<Path>>(path: P) -> Result<Self, DagError> {][here]].
+
+  S-expressions represent a DAG. It should parse the same cases as the ~orc_inline_dag~ macro
+  defined [[file:rust/orc_sdk/src/dag/mod.rs::macro_rules! orc_inline_dag {][here]]. And the ~orc_dag~ macro defined [[file:rust/orc_sdk/src/dag/mod.rs::macro_rules! orc_dag {][here]]. This should work like ~orc_dag~, except it
+  should parse the syntax from a file. Need to write a fast and efficient lexer.
+
+  Few ways in which this file format differs from the macros:
+
+  - Each argument of a function call can optionally be prefixed by a label such as:
+
+    #+begin_src lisp
+      (func :label arg1 arg2)
+    #+end_src
+
+    This is purely cosmetic, for readability. These labels should be parsed and stored in an input
+    property defined in the workflow. When a let binding is used for one or more outputs of a call,
+    that should be parsed and stored in the output_labels property. These properties are located [[file:rust/orc_sdk/src/dag/workflow.rs::input_labels:
+     InputProperty<String>,][here]].
+
+  - The datatypes of const literals needs to be parsed. If the literals mention it as 1.23f32, or
+    1.23f64, or 123u32, etc. They should be parsed to constants of that type. If the datatype is not
+    specified in this way, we should still support integers (i64 by default), floats (f64 by
+    default), and strings (u8 deck where each string is represented as a list of u8s). Strings will
+    be declared with quotes "my_string".
+
+  <2026-08-18 Tue 18:19> I am not sure if parsing a LISP syntax is the way to go. I am using this
+  task to answer other, related, and more important questions. Those answers are making the permise
+  of this task a bit redundant. I will still try to get this new stuff merged, but maybe as a
+  different task, and close this task.
+
+  <2026-08-18 Tue 19:33> Repurposing this task to flesh out the details of the DAG, including nested
+  DAGs, and serialization of the DAG. Next I want to figure out representing and running nested
+  workflows.
+
+  <2026-08-19 Wed 16:04> Tried out the named arguments idea. Didn't like it. It was throwing off the
+  Rust's syntax highlighting. Now, I almost have nested workflows working. Adding tests for
+  that. Once the nested workflows are fully working, I will be in a position to serialize a
+  hierarchy of workflows.
+
+  <2026-08-19 Wed 18:51> Repurposed this task yet again. Nested DAGs are working, and I want to get
+  this merged, and deal with serialization in a different task. Marking this done and getting it
+  merged.
+
 * DONE tjtyz1 - Running a DAG workflow
   CLOSED: [2026-08-16 Sun 17:03]
   :PROPERTIES:
@@ -384,145 +647,5 @@
   <2026-08-16 Sun 16:43> All tests are passing. Now able to run DAGs, retrieve outputs, and test
   them. Checking a few more things, and ready to merge this soon.
 
-  <2026-08-16 Sun 17:02> Decided to do the Python DAG construction as a separate task. Ready to merge.
-
-* DONE tjtsc1 - OrcHandle ownership in Rust
-  CLOSED: [2026-08-15 Sat 17:37]
-  :PROPERTIES:
-  :CREATED:  2026-08-15 Sat 14:21
-  :END:
-  :LOGBOOK:
-  - State "DONE"       from "NEXT"       [2026-08-15 Sat 17:37]
-  - State "NEXT"       from "TODO"       [2026-08-15 Sat 15:19]
-  :END:
-
-  Currently, I am trying to do RAII for these handles. But at the same time, I need to make copies
-  of these handles to pass as inputs to other functions. So right now I have a hacky
-  ~non_owning_clone~ letting me do that. This is not good, and is causing more problems as I flesh
-  out the details of the DAG implementation. I need something better. Ideally, I can just clone the
-  handles as I wish, and they are automatically reference counted in the background for me. Or maybe
-  I shouldn't use RAII at all for these handles, and have the host manually free them, and implement
-  clone on them. This requires a lot more thought, and this needs to be figured out soon, before I
-  can make more progress on other tasks.
-
-  <2026-08-15 Sat 17:29> Got rid of the unsafe non_owning_clone. Now, a bitwise identical non
-  owning, borrow checked wrapper class is used in its place. Tested it. Borrow checking
-  works. Passing a pointer to the wrapper across the FFI boundary also works. Also implemented
-  contant node type, unused, untested.
-
-  <2026-08-15 Sat 17:37> Renamed variable to 'parameter' to make it less confusing. Getting this
-  merged.
-
-* DONE tjockq - DAG capability inside Rust SDK
-  CLOSED: [2026-08-15 Sat 14:28]
-  :PROPERTIES:
-  :CREATED:  2026-08-12 Wed 16:50
-  :END:
-  :LOGBOOK:
-  - State "DONE"       from "NEXT"       [2026-08-15 Sat 14:28]
-  - State "NEXT"       from "TODO"       [2026-08-12 Wed 16:50]
-  :END:
-
-  Currently inside kbb_cli_host. But more general DAG capabilities are useful in many plugins and
-  host apps.
-
-  <2026-08-12 Wed 18:33>  Moved the dag helper macro into the SDK. A DAG datastructure inside the
-  SDK will require some more thought. It needs to be a generic graph to allow for cheap and
-  arbitrary edits. A flat tape is not good for arbitrary edits. I want to resurrect the halfedge
-  style graph structure I used in ~galproject~ many years ago.
-
-  The datastructure should have a property system. A node editor might use it to save user assigned
-  aliases / names for nodes. Another UI app might choose to store colors, render settings etc. This
-  information should be stored in the file, as generic properties. The properties that one UI app
-  cares about should not step on the toes of other UI apps. They should coexist with unique property
-  identifiers.
-
-  <2026-08-13 Thu 13:45> Trying to get the current state merged to pivot to a different task. Will
-  return to this task later.
-
-  <2026-08-13 Thu 19:26> Added a lot of untesed, unused boiler plate. The property system stuff is
-  copied over from the alum project, with slight changes. Don't yet know what the outward facing API
-  of a workflow will be. I need to think about how this will be used, and come up with something.
-
-  <2026-08-15 Sat 08:02> Finalized the DAG implementation, with a property system and all, with a
-  bit of testing. Next: parse kbb file into this DAG, and sketch out a way to run it in topological
-  order.
-
-  <2026-08-15 Sat 11:16> On second thought, I will defer the parsing from a file to a later task. I
-  will just focus on running the DAG now.
-
-  <2026-08-15 Sat 14:27> Running into lots of small road blocks. Trying to get the current state
-  merged. Created separate tasks for everything else.
-
-** CLOSED Check for cycles when adding new links
-   CLOSED: [2026-08-14 Fri 14:12]
-   :PROPERTIES:
-   :CREATED:  2026-08-13 Thu 17:07
-   :END:
-   :LOGBOOK:
-   - State "CLOSED"     from "TODO"       [2026-08-14 Fri 14:12]
-   :END:
-
-   The check should go [[file:rust/orc_sdk/src/dag.rs::pub fn push_link(&mut self, from: OH, to: IH) -> Option<LH> {][here]].
-
-   <2026-08-14 Fri 13:32> I decided against doing this at this time. I will do what Grasshopper
-   does, and allow the creation of graphs with cycles, and only perform the check once just before I
-   have to run the graph.
-
-   I think that would be way better than checking each link. Checking each link will make parsing
-   a file and constructing a graph slow. Checking for one or more cycles in a complete graph is much
-   cheaper than checking before each edit. So it makes sense to keep the cycle checking a concept
-   associated with running the graph. When not running the graph, it is allowed to exist with cycles
-   in an error state. This also allows the user to work save, reopen and edit files that may have
-   turned cyclic by accident.
-
-   Just a note for future development: I probably need some sort of "plan" step, that walks the DAG,
-   determines what needs to be computed, and in what order. This phase might also do some sort of
-   thread allocation, to figure out what parts of the DAG can be run concurrently. This phase should
-   support a fully unevaluated DAG (e.g. after loading a new file), or a partially evaluated DAG
-   (e.g. when making incremental edits to an active DAG, or loading cached outputs from disk). This
-   "plan" phase takes on the responsibility of checking for cycles. It is also probably a good idea
-   to run the garbage collection on the graph just before the plan phase. It seems like the best
-   time to clean up after the user makes a long series of edits, and now wants to run the graph.
-
-   In light of this insight, closing this task.
-
-* DONE tjrpd8 - Support const generics in orc_fn macro
-  CLOSED: [2026-08-14 Fri 12:25]
-  :PROPERTIES:
-  :CREATED:  2026-08-14 Fri 12:19
-  :END:
-  :LOGBOOK:
-  - State "DONE"       from "NEXT"       [2026-08-14 Fri 12:25]
-  - State "NEXT"       from "TODO"       [2026-08-14 Fri 12:20]
-  :END:
-
-  This was supposed to work. But turns out the generated code doesn't specify all the generics
-  explicitly, and that is an issue. It needs to.
-
-  <2026-08-14 Fri 12:24> LLM fixed it. The function below now compiles and runs without issues:
-  #+begin_src rust
-    #[orc_fn]
-    fn sub() {
-        let host_callbacks = host_callbacks();
-        let registry: &ObjectRegistry = registry();
-        let types = (run::<4, f32>, run::<8, f64>);
-
-        /// Subtracts the second operand from the first, and assigns to the output. The input types must
-        /// be the same, matching the output type. This function supports floating point scalar types.
-        fn run<const N: usize, T>(lhs: &T, rhs: &T, out: &mut T)
-        where
-            T: TOrcData + Sub<Output = T> + Copy,
-        {
-            const {
-                assert!(
-                    N == std::mem::size_of::<T>(),
-                    "Forcing the caller to pass in the size of the type T as a generic, to demonstrate the use of const generics."
-                )
-            };
-            ,*out = *lhs - *rhs;
-        }
-    }
-  #+end_src
-
-  Read to merge.
+  <2026-08-16 Sun 17:02> Decided to do the Python DAG construction as a separate task. Ready to
+  merge.

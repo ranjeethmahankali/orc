@@ -8,7 +8,9 @@ pub use property::{
 };
 
 mod workflow;
-pub use workflow::{DagOutputData, NodeInfo, Workflow};
+pub use workflow::{NodeInfo, Workflow};
+
+mod io;
 
 /// Declarative macro for composing a DAG of plugin function calls.
 ///
@@ -193,81 +195,155 @@ macro_rules! orc_dag {
             let reg_ref_: &$crate::DeckRegistry = $reg;
             #[allow(unused_variables)]
             let wf_ref_: &mut $crate::Workflow = $wf;
-            orc_dag!(@stmts ps_ref_, hc_ref_, reg_ref_, wf_ref_, $($body)*)
+            // Workflow inputs accumulated during expansion.
+            // Quoted symbols ('name) use Rust lifetime syntax to denote workflow inputs.
+            #[allow(unused_mut)]
+            let mut wf_ins_: Vec<($crate::IH, usize, &str)> = Vec::new();
+            #[allow(unused_mut)]
+            let mut wf_in_names_: Vec<&str> = Vec::new();
+            let result_ = orc_dag!(@stmts ps_ref_, hc_ref_, reg_ref_, wf_ref_, wf_ins_, wf_in_names_, $($body)*);
+            if !wf_ins_.is_empty() {
+                wf_ref_.set_inputs(&wf_ins_)?;
+            }
+            result_
         })()
     };
 
     // --- Statements ---
 
     // let const with list literal: (let x (const [1, 2, 3]))
-    (@stmts $ps:ident, $hc:ident, $reg:ident, $wf:ident, (let $name:ident (const [$($tt:tt)*])) $($rest:tt)*) => {{
+    (@stmts $ps:ident, $hc:ident, $reg:ident, $wf:ident, $ins:ident, $names:ident, (let $name:ident (const [$($tt:tt)*])) $($rest:tt)*) => {{
         let $name = orc_dag!(@const_node $hc, $reg, $wf, $crate::deck![$($tt)*])?;
-        orc_dag!(@stmts $ps, $hc, $reg, $wf, $($rest)*)
+        orc_dag!(@stmts $ps, $hc, $reg, $wf, $ins, $names, $($rest)*)
     }};
 
     // let const with scalar: (let x (const 42.0f64))
-    (@stmts $ps:ident, $hc:ident, $reg:ident, $wf:ident, (let $name:ident (const $val:expr)) $($rest:tt)*) => {{
+    (@stmts $ps:ident, $hc:ident, $reg:ident, $wf:ident, $ins:ident, $names:ident, (let $name:ident (const $val:expr)) $($rest:tt)*) => {{
         let $name = orc_dag!(@const_node $hc, $reg, $wf, $crate::Deck::from_value($val))?;
-        orc_dag!(@stmts $ps, $hc, $reg, $wf, $($rest)*)
+        orc_dag!(@stmts $ps, $hc, $reg, $wf, $ins, $names, $($rest)*)
     }};
 
     // let single output, more statements follow
-    (@stmts $ps:ident, $hc:ident, $reg:ident, $wf:ident, (let $name:ident ($func:ident $($arg:tt)*)) $($rest:tt)*) => {{
-        let $name = orc_dag!(@call1 $ps, $hc, $reg, $wf, $func, $($arg)*)?;
-        orc_dag!(@stmts $ps, $hc, $reg, $wf, $($rest)*)
+    (@stmts $ps:ident, $hc:ident, $reg:ident, $wf:ident, $ins:ident, $names:ident, (let $name:ident ($func:ident $($arg:tt)*)) $($rest:tt)*) => {{
+        let $name = orc_dag!(@call1 $ps, $hc, $reg, $wf, $ins, $names, $func, $($arg)*)?;
+        orc_dag!(@stmts $ps, $hc, $reg, $wf, $ins, $names, $($rest)*)
     }};
 
     // let multiple outputs, more statements follow
-    (@stmts $ps:ident, $hc:ident, $reg:ident, $wf:ident, (let ($($name:ident)+) ($func:ident $($arg:tt)*)) $($rest:tt)*) => {{
-        let input_ohs_ = [$(orc_dag!(@expr $ps, $hc, $reg, $wf, $arg)),*];
-        let func_info_ = $ps.get_function(stringify!($func))
-            .ok_or($crate::DagError::InvalidFunction)?
-            .clone();
+    (@stmts $ps:ident, $hc:ident, $reg:ident, $wf:ident, $ins:ident, $names:ident, (let ($($name:ident)+) ($func:ident $($arg:tt)*)) $($rest:tt)*) => {{
         const N_INS_: usize = orc_dag!(@count_tt $($arg)*);
         const N_OUTS_: usize = orc_dag!(@count $($name)+);
         let mut ihs_: [$crate::IH; N_INS_] = std::array::from_fn(|_| $crate::IH::default());
         let mut ohs_: [$crate::OH; N_OUTS_] = std::array::from_fn(|_| $crate::OH::default());
-        $wf.add_function(func_info_, &mut ihs_, &mut ohs_)?;
-        for (ih_, oh_) in ihs_.iter().zip(input_ohs_.iter()) {
-            $wf.connect(*oh_, *ih_)?;
+        if let Some(func_info_) = $ps.get_function(stringify!($func)) {
+            $wf.add_function(func_info_.clone(), &mut ihs_, &mut ohs_)?;
+        } else if $wf.has_nested_workflow(stringify!($func)) {
+            $wf.add_nested_workflow_call(stringify!($func), &mut ihs_, &mut ohs_)?;
+        } else {
+            return Err($crate::DagError::InvalidFunction);
         }
-        let mut idx_ = 0usize;
+        let mut arg_idx_: usize = 0;
         $(
-            let $name = ohs_[idx_];
-            idx_ += 1;
+            orc_dag!(@connect_arg $ps, $hc, $reg, $wf, $ins, $names, ihs_, arg_idx_, $arg);
+            arg_idx_ += 1;
+        )*
+        let _ = arg_idx_;
+        let mut out_idx_ = 0usize;
+        $(
+            let $name = ohs_[out_idx_];
+            out_idx_ += 1;
         )+
-        let _ = idx_;
-        orc_dag!(@stmts $ps, $hc, $reg, $wf, $($rest)*)
+        let _ = out_idx_;
+        orc_dag!(@stmts $ps, $hc, $reg, $wf, $ins, $names, $($rest)*)
+    }};
+
+    // Define a nested workflow: (fn name body...)
+    // The body follows the same rules as the outer orc_dag. Quoted symbols become the nested
+    // workflow's inputs, and the trailing expression or (return ...) becomes its outputs.
+    (@stmts $ps:ident, $hc:ident, $reg:ident, $wf:ident, $ins:ident, $names:ident, (fn $fname:ident $($body:tt)*) $($rest:tt)*) => {{
+        {
+            let mut nested_wf_ = $crate::Workflow::default();
+            #[allow(unused_mut)]
+            let mut nested_ins_: Vec<($crate::IH, usize, &str)> = Vec::new();
+            #[allow(unused_mut)]
+            let mut nested_names_: Vec<&str> = Vec::new();
+            {
+                let nested_wf_ref_ = &mut nested_wf_;
+                let _: _ = orc_dag!(@stmts $ps, $hc, $reg, nested_wf_ref_, nested_ins_, nested_names_, $($body)*)
+                    .map_err(|e: $crate::DagError| e)?;
+                if !nested_ins_.is_empty() {
+                    nested_wf_ref_.set_inputs(&nested_ins_)?;
+                }
+            }
+            $wf.push_nested_workflow(stringify!($fname).to_string(), nested_wf_, $ps)?;
+        }
+        orc_dag!(@stmts $ps, $hc, $reg, $wf, $ins, $names, $($rest)*)
     }};
 
     // Return multiple (or single) named handles as a tuple.
-    (@stmts $ps:ident, $hc:ident, $reg:ident, $wf:ident, (return $($name:ident)+)) => {
+    (@stmts $ps:ident, $hc:ident, $reg:ident, $wf:ident, $ins:ident, $names:ident, (return $($name:ident)+)) => {{
+        $wf.set_outputs(&[$(($name, stringify!($name).to_string())),+])?;
         Ok(($($name),+))
-    };
+    }};
 
     // Trailing expression — bare function call as the block's return value
-    (@stmts $ps:ident, $hc:ident, $reg:ident, $wf:ident, ($func:ident $($arg:tt)*)) => {
-        orc_dag!(@call1 $ps, $hc, $reg, $wf, $func, $($arg)*)
-    };
+    (@stmts $ps:ident, $hc:ident, $reg:ident, $wf:ident, $ins:ident, $names:ident, ($func:ident $($arg:tt)*)) => {{
+        let oh_ = orc_dag!(@call1 $ps, $hc, $reg, $wf, $ins, $names, $func, $($arg)*)?;
+        $wf.set_outputs(&[(oh_, String::new())])?;
+        Ok::<$crate::OH, $crate::DagError>(oh_)
+    }};
 
     // Empty — end of statements
-    (@stmts $ps:ident, $hc:ident, $reg:ident, $wf:ident,) => { Ok::<(), $crate::DagError>(()) };
+    (@stmts $ps:ident, $hc:ident, $reg:ident, $wf:ident, $ins:ident, $names:ident,) => { Ok::<(), $crate::DagError>(()) };
+
+    // --- Connect one argument of a function call ---
+
+    // Quoted input (lifetime syntax) — record as workflow input, leave disconnected.
+    (@connect_arg $ps:ident, $hc:ident, $reg:ident, $wf:ident, $ins:ident, $names:ident, $ihs:ident, $idx:ident, $input:lifetime) => {
+        {
+            let name_ = stringify!($input);
+            let pos_ = match $names.iter().position(|n| *n == name_) {
+                Some(p) => p,
+                None => {
+                    let p = $names.len();
+                    $names.push(name_);
+                    p
+                }
+            };
+            $ins.push(($ihs[$idx], pos_, &name_[1..]));
+        }
+    };
+
+    // Grouped expression (nested call, const, etc.) — evaluate and connect.
+    (@connect_arg $ps:ident, $hc:ident, $reg:ident, $wf:ident, $ins:ident, $names:ident, $ihs:ident, $idx:ident, ($($inner:tt)*)) => {
+        {
+            let oh_ = orc_dag!(@expr $ps, $hc, $reg, $wf, $ins, $names, ($($inner)*));
+            $wf.connect(oh_, $ihs[$idx])?;
+        }
+    };
+
+    // Variable reference — connect directly.
+    (@connect_arg $ps:ident, $hc:ident, $reg:ident, $wf:ident, $ins:ident, $names:ident, $ihs:ident, $idx:ident, $var:ident) => {
+        {
+            $wf.connect($var, $ihs[$idx])?;
+        }
+    };
 
     // --- Expression: either a variable reference, a nested function call, or const ---
     // Const list: (const [1, 2, 3])
-    (@expr $ps:ident, $hc:ident, $reg:ident, $wf:ident, (const [$($tt:tt)*])) => {
+    (@expr $ps:ident, $hc:ident, $reg:ident, $wf:ident, $ins:ident, $names:ident, (const [$($tt:tt)*])) => {
         orc_dag!(@const_node $hc, $reg, $wf, $crate::deck![$($tt)*])?
     };
     // Const scalar: (const 42.0f64)
-    (@expr $ps:ident, $hc:ident, $reg:ident, $wf:ident, (const $val:expr)) => {
+    (@expr $ps:ident, $hc:ident, $reg:ident, $wf:ident, $ins:ident, $names:ident, (const $val:expr)) => {
         orc_dag!(@const_node $hc, $reg, $wf, $crate::Deck::from_value($val))?
     };
     // Nested call: (func args...)
-    (@expr $ps:ident, $hc:ident, $reg:ident, $wf:ident, ($func:ident $($arg:tt)*)) => {
-        orc_dag!(@call1 $ps, $hc, $reg, $wf, $func, $($arg)*)?
+    (@expr $ps:ident, $hc:ident, $reg:ident, $wf:ident, $ins:ident, $names:ident, ($func:ident $($arg:tt)*)) => {
+        orc_dag!(@call1 $ps, $hc, $reg, $wf, $ins, $names, $func, $($arg)*)?
     };
     // Variable reference
-    (@expr $ps:ident, $hc:ident, $reg:ident, $wf:ident, $var:ident) => {
+    (@expr $ps:ident, $hc:ident, $reg:ident, $wf:ident, $ins:ident, $names:ident, $var:ident) => {
         $var
     };
 
@@ -282,18 +358,24 @@ macro_rules! orc_dag {
     }};
 
     // --- Single-output function call ---
-    (@call1 $ps:ident, $hc:ident, $reg:ident, $wf:ident, $func:ident, $($arg:tt)*) => {{
-        let input_ohs_ = [$(orc_dag!(@expr $ps, $hc, $reg, $wf, $arg)),*];
-        let func_info_ = $ps.get_function(stringify!($func))
-            .ok_or($crate::DagError::InvalidFunction)?
-            .clone();
+    // Tries plugin function first, then falls back to nested workflow call.
+    (@call1 $ps:ident, $hc:ident, $reg:ident, $wf:ident, $ins:ident, $names:ident, $func:ident, $($arg:tt)*) => {{
         const N_INS_: usize = orc_dag!(@count_tt $($arg)*);
         let mut ihs_: [$crate::IH; N_INS_] = std::array::from_fn(|_| $crate::IH::default());
         let mut oh_ = $crate::OH::default();
-        $wf.add_function(func_info_, &mut ihs_, std::slice::from_mut(&mut oh_))?;
-        for (ih_, src_oh_) in ihs_.iter().zip(input_ohs_.iter()) {
-            $wf.connect(*src_oh_, *ih_)?;
+        if let Some(func_info_) = $ps.get_function(stringify!($func)) {
+            $wf.add_function(func_info_.clone(), &mut ihs_, std::slice::from_mut(&mut oh_))?;
+        } else if $wf.has_nested_workflow(stringify!($func)) {
+            $wf.add_nested_workflow_call(stringify!($func), &mut ihs_, std::slice::from_mut(&mut oh_))?;
+        } else {
+            return Err($crate::DagError::InvalidFunction);
         }
+        let mut arg_idx_: usize = 0;
+        $(
+            orc_dag!(@connect_arg $ps, $hc, $reg, $wf, $ins, $names, ihs_, arg_idx_, $arg);
+            arg_idx_ += 1;
+        )*
+        let _ = arg_idx_;
         Ok::<$crate::OH, $crate::DagError>(oh_)
     }};
 
@@ -302,6 +384,7 @@ macro_rules! orc_dag {
     (@count $x:ident $($rest:ident)+) => { 1usize + orc_dag!(@count $($rest)+) };
 
     // Count token trees (for counting arguments which may be tt groups or idents)
+    (@count_tt) => { 0usize };
     (@count_tt $x:tt) => { 1usize };
     (@count_tt $x:tt $($rest:tt)+) => { 1usize + orc_dag!(@count_tt $($rest)+) };
 }
@@ -312,6 +395,10 @@ pub enum DagError {
     MismatchedArrayLengths(usize, usize),
     CycleDetected,
     InvalidFunction,
+    MissingInput(String),
+    InvalidInputs,
+    InvalidOutputs,
+    NamingConflict,
     SdkError(crate::Error),
 }
 

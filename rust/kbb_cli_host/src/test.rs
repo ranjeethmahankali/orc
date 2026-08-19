@@ -1,7 +1,7 @@
-use crate::{HANDLE_COUNTER, PLUGIN_SET, REGISTRY};
+use crate::{HANDLE_COUNTER, PLUGIN_SET, REGISTRY, host_clone_orc_handle};
 use orc_sdk::{
-    DagError, DagOutputData, Deck, DeckView, IH, OH, OrcHandle, Workflow, deck, orc_dag,
-    orc_inline_dag, update_handle_from_deck,
+    DagError, Deck, DeckView, IH, OH, OrcHandle, Workflow, deck, orc_dag, orc_inline_dag,
+    update_handle_from_deck,
 };
 use std::sync::atomic::Ordering;
 
@@ -452,48 +452,40 @@ fn t_const_reused() {
 // orc_dag macro tests (build graph, then run).
 // ==================================================
 
-fn run_dag_single(wf: &Workflow, oh: OH) -> DagOutputData {
-    let outputs = [oh];
-    let mut iter = wf.run(&outputs, &HANDLE_COUNTER).unwrap();
-    iter.next().unwrap()
+fn run_dag_single(wf: &Workflow) -> OrcHandle {
+    let mut out = [OrcHandle::default()];
+    wf.run(&[], &mut out, &host_clone_orc_handle, &HANDLE_COUNTER)
+        .unwrap();
+    let [o] = out;
+    o
 }
 
-fn assert_dag_output_f64(data: DagOutputData, expected: &[f64], expected_depth: u8) {
-    match data {
-        DagOutputData::Owned(h) => {
-            let view = DeckView::<f64>::from_handle(&h).unwrap();
-            assert_eq!(view.items(), expected);
-            assert_eq!(view.depth(), expected_depth);
-        }
-        DagOutputData::Constant(id) => {
-            REGISTRY
-                .with_refs(&[id], |refs| {
-                    let deck = refs[0].downcast_ref::<Deck<f64>>().unwrap();
-                    let view = deck.view(deck.max_depth());
-                    assert_eq!(view.items(), expected);
-                    assert_eq!(view.depth(), expected_depth);
-                })
-                .unwrap();
-        }
-    }
+fn assert_dag_output_f64(data: OrcHandle, expected: &[f64], expected_depth: u8) {
+    let view = DeckView::<f64>::from_handle(&data).unwrap();
+    assert_eq!(view.items(), expected);
+    assert_eq!(view.depth(), expected_depth);
 }
 
 // 1. Single function call as trailing expression.
 #[test]
 fn t_dag_single_call() {
     let mut wf = Workflow::default();
-    let oh = orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
+    let _oh = orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
         (add (const [1.0f64, 2.0, 3.0]) (const [10.0f64, 20.0, 30.0]))
     })
     .unwrap();
-    assert_dag_output_f64(run_dag_single(&wf, oh), &[11.0, 22.0, 33.0], 1);
+    // Trailing expression: unnamed output.
+    assert_eq!(wf.workflow_outputs().len(), 1);
+    assert_eq!(wf.workflow_outputs()[0].1, "");
+    assert!(wf.workflow_inputs().unwrap().is_empty());
+    assert_dag_output_f64(run_dag_single(&wf), &[11.0, 22.0, 33.0], 1);
 }
 
 // 2. let binding followed by trailing expression.
 #[test]
 fn t_dag_let_then_trailing() {
     let mut wf = Workflow::default();
-    let oh = orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
+    let _oh = orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
         (let a (const [1.0f64, 2.0, 3.0]))
         (let b (const [10.0f64, 20.0, 30.0]))
         (let c (const [100.0f64, 200.0, 300.0]))
@@ -501,148 +493,148 @@ fn t_dag_let_then_trailing() {
         (add ab c)
     })
     .unwrap();
-    assert_dag_output_f64(run_dag_single(&wf, oh), &[111.0, 222.0, 333.0], 1);
+    assert_dag_output_f64(run_dag_single(&wf), &[111.0, 222.0, 333.0], 1);
 }
 
 // 3. Multiple let bindings — shared subexpression.
 #[test]
 fn t_dag_multiple_lets() {
     let mut wf = Workflow::default();
-    let oh = orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
+    let _oh = orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
         (let a (const [2.0f64, 3.0]))
         (let b (const [5.0f64, 10.0]))
         (let sum (add a b))
         (mul sum sum)
     })
     .unwrap();
-    assert_dag_output_f64(run_dag_single(&wf, oh), &[49.0, 169.0], 1);
+    assert_dag_output_f64(run_dag_single(&wf), &[49.0, 169.0], 1);
 }
 
 // 4. Nested single-output call.
 #[test]
 fn t_dag_nested_call() {
     let mut wf = Workflow::default();
-    let oh = orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
+    let _oh = orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
         (add (mul (const [2.0f64, 3.0]) (const [5.0f64, 10.0])) (const [1.0f64, 1.0]))
     })
     .unwrap();
-    assert_dag_output_f64(run_dag_single(&wf, oh), &[11.0, 31.0], 1);
+    assert_dag_output_f64(run_dag_single(&wf), &[11.0, 31.0], 1);
 }
 
 // 5. Deeply nested calls.
 #[test]
 fn t_dag_deep_nesting() {
     let mut wf = Workflow::default();
-    let oh = orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
+    let _oh = orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
         (mul (add (const [1.0f64, 2.0]) (const [3.0f64, 4.0])) (const [10.0f64, 10.0]))
     })
     .unwrap();
-    assert_dag_output_f64(run_dag_single(&wf, oh), &[40.0, 60.0], 1);
+    assert_dag_output_f64(run_dag_single(&wf), &[40.0, 60.0], 1);
 }
 
 // 6. let binding with nested call in the body.
 #[test]
 fn t_dag_let_with_nested() {
     let mut wf = Workflow::default();
-    let oh = orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
+    let _oh = orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
         (let prod (mul (const 2.0f64) (const 3.0f64)))
         (sub (add prod (const 10.0f64)) prod)
     })
     .unwrap();
-    assert_dag_output_f64(run_dag_single(&wf, oh), &[10.0], 0);
+    assert_dag_output_f64(run_dag_single(&wf), &[10.0], 0);
 }
 
 // 9. Const scalars used as inputs.
 #[test]
 fn t_dag_const_inputs() {
     let mut wf = Workflow::default();
-    let oh = orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
+    let _oh = orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
         (sub (const 100.0f64) (const 1.0f64))
     })
     .unwrap();
-    assert_dag_output_f64(run_dag_single(&wf, oh), &[99.0], 0);
+    assert_dag_output_f64(run_dag_single(&wf), &[99.0], 0);
 }
 
 // 11. Const scalar via let binding.
 #[test]
 fn t_dag_const_scalar() {
     let mut wf = Workflow::default();
-    let oh = orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
+    let _oh = orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
         (let a (const 3.0f64))
         (let b (const 7.0f64))
         (add a b)
     })
     .unwrap();
-    assert_dag_output_f64(run_dag_single(&wf, oh), &[10.0], 0);
+    assert_dag_output_f64(run_dag_single(&wf), &[10.0], 0);
 }
 
 // 12. Const list via let binding.
 #[test]
 fn t_dag_const_list() {
     let mut wf = Workflow::default();
-    let oh = orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
+    let _oh = orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
         (let a (const [1.0f64, 2.0, 3.0]))
         (let b (const [10.0f64, 20.0, 30.0]))
         (add a b)
     })
     .unwrap();
-    assert_dag_output_f64(run_dag_single(&wf, oh), &[11.0, 22.0, 33.0], 1);
+    assert_dag_output_f64(run_dag_single(&wf), &[11.0, 22.0, 33.0], 1);
 }
 
 // 14. Const used inline as expression argument.
 #[test]
 fn t_dag_const_inline_expr() {
     let mut wf = Workflow::default();
-    let oh = orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
+    let _oh = orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
         (add (const [2.0f64, 4.0]) (const [10.0f64, 20.0]))
     })
     .unwrap();
-    assert_dag_output_f64(run_dag_single(&wf, oh), &[12.0, 24.0], 1);
+    assert_dag_output_f64(run_dag_single(&wf), &[12.0, 24.0], 1);
 }
 
 // 15. Const mixed with let-bound const.
 #[test]
 fn t_dag_const_mixed() {
     let mut wf = Workflow::default();
-    let oh = orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
+    let _oh = orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
         (let a (const [5.0f64, 10.0]))
         (add a (const [1.0f64, 2.0]))
     })
     .unwrap();
-    assert_dag_output_f64(run_dag_single(&wf, oh), &[6.0, 12.0], 1);
+    assert_dag_output_f64(run_dag_single(&wf), &[6.0, 12.0], 1);
 }
 
 // 16. Const depth 2: nested list added element-wise.
 #[test]
 fn t_dag_const_depth2() {
     let mut wf = Workflow::default();
-    let oh = orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
+    let _oh = orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
         (let a (const [[1.0f64, 2.0], [3.0]]))
         (let b (const [[10.0f64, 20.0], [30.0]]))
         (add a b)
     })
     .unwrap();
-    assert_dag_output_f64(run_dag_single(&wf, oh), &[11.0, 22.0, 33.0], 2);
+    assert_dag_output_f64(run_dag_single(&wf), &[11.0, 22.0, 33.0], 2);
 }
 
 // 17. Const depth 3.
 #[test]
 fn t_dag_const_depth3() {
     let mut wf = Workflow::default();
-    let oh = orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
+    let _oh = orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
         (let a (const [[[1.0f64, 2.0], [3.0]], [[4.0]]]))
         (let b (const [[[10.0f64, 20.0], [30.0]], [[40.0]]]))
         (add a b)
     })
     .unwrap();
-    assert_dag_output_f64(run_dag_single(&wf, oh), &[11.0, 22.0, 33.0, 44.0], 3);
+    assert_dag_output_f64(run_dag_single(&wf), &[11.0, 22.0, 33.0, 44.0], 3);
 }
 
 // 18. Return multiple outputs.
 #[test]
 fn t_dag_return_multiple() {
     let mut wf = Workflow::default();
-    let (s_oh, p_oh) = orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
+    let (_s_oh, _p_oh) = orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
         (let a (const [1.0f64, 2.0]))
         (let b (const [10.0f64, 20.0]))
         (let s (add a b))
@@ -650,48 +642,57 @@ fn t_dag_return_multiple() {
         (return s p)
     })
     .unwrap();
-    let outputs = [s_oh, p_oh];
-    let mut iter = wf.run(&outputs, &HANDLE_COUNTER).unwrap();
-    assert_dag_output_f64(iter.next().unwrap(), &[11.0, 22.0], 1);
-    assert_dag_output_f64(iter.next().unwrap(), &[10.0, 40.0], 1);
+    // Return names match the let-bound identifiers.
+    assert_eq!(wf.workflow_outputs().len(), 2);
+    assert_eq!(wf.workflow_outputs()[0].1, "s");
+    assert_eq!(wf.workflow_outputs()[1].1, "p");
+    assert!(wf.workflow_inputs().unwrap().is_empty());
+    let mut out = [OrcHandle::default(), OrcHandle::default()];
+    wf.run(&[], &mut out, &host_clone_orc_handle, &HANDLE_COUNTER)
+        .unwrap();
+    let [s_out, p_out] = out;
+    assert_dag_output_f64(s_out, &[11.0, 22.0], 1);
+    assert_dag_output_f64(p_out, &[10.0, 40.0], 1);
 }
 
 // 19. Return single output (explicit).
 #[test]
 fn t_dag_return_single() {
     let mut wf = Workflow::default();
-    let s_oh = orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
+    let _s_oh = orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
         (let a (const [1.0f64, 2.0, 3.0]))
         (let b (const [10.0f64, 20.0, 30.0]))
         (let s (add a b))
         (return s)
     })
     .unwrap();
-    assert_dag_output_f64(run_dag_single(&wf, s_oh), &[11.0, 22.0, 33.0], 1);
+    assert_eq!(wf.workflow_outputs().len(), 1);
+    assert_eq!(wf.workflow_outputs()[0].1, "s");
+    assert_dag_output_f64(run_dag_single(&wf), &[11.0, 22.0, 33.0], 1);
 }
 
 // 20. Const reused in multiple expressions.
 #[test]
 fn t_dag_const_reused() {
     let mut wf = Workflow::default();
-    let oh = orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
+    let _oh = orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
         (let x (const [3.0f64, 4.0]))
         (mul x x)
     })
     .unwrap();
-    assert_dag_output_f64(run_dag_single(&wf, oh), &[9.0, 16.0], 1);
+    assert_dag_output_f64(run_dag_single(&wf), &[9.0, 16.0], 1);
 }
 
 // 13. Const nested list through flatten.
 #[test]
 fn t_dag_const_nested_list() {
     let mut wf = Workflow::default();
-    let oh = orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
+    let _oh = orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
         (let a (const [[1.0f64, 2.0], [3.0]]))
         (flatten_deck a)
     })
     .unwrap();
-    assert_dag_output_f64(run_dag_single(&wf, oh), &[1.0, 2.0, 3.0], 1);
+    assert_dag_output_f64(run_dag_single(&wf), &[1.0, 2.0, 3.0], 1);
 }
 
 // ==================================================
@@ -714,8 +715,9 @@ fn t_dag_cycle_simple() {
     wf.connect(a_out[0], b_in[0]).unwrap();
     // B's output -> A's input (cycle!)
     wf.connect(b_out[0], a_in[0]).unwrap();
-    let outputs = [b_out[0]];
-    let result = wf.run(&outputs, &HANDLE_COUNTER);
+    wf.set_outputs(&[(b_out[0], String::new())]).unwrap();
+    let mut out = [OrcHandle::default()];
+    let result = wf.run(&[], &mut out, &host_clone_orc_handle, &HANDLE_COUNTER);
     assert!(matches!(result, Err(DagError::CycleDetected)));
 }
 
@@ -729,8 +731,9 @@ fn t_dag_cycle_self() {
     wf.add_function(func, &mut a_in, &mut a_out).unwrap();
     // A's output -> A's input (self-cycle!)
     wf.connect(a_out[0], a_in[0]).unwrap();
-    let outputs = [a_out[0]];
-    let result = wf.run(&outputs, &HANDLE_COUNTER);
+    wf.set_outputs(&[(a_out[0], String::new())]).unwrap();
+    let mut out = [OrcHandle::default()];
+    let result = wf.run(&[], &mut out, &host_clone_orc_handle, &HANDLE_COUNTER);
     assert!(matches!(result, Err(DagError::CycleDetected)));
 }
 
@@ -738,7 +741,7 @@ fn t_dag_cycle_self() {
 #[test]
 fn t_dag_diamond_no_cycle() {
     let mut wf = Workflow::default();
-    let oh = orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
+    let _oh = orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
         (let x (const [2.0f64, 3.0]))
         (let a (add x x))
         (let b (mul x x))
@@ -746,5 +749,283 @@ fn t_dag_diamond_no_cycle() {
     })
     .unwrap();
     // x = [2, 3], a = x+x = [4, 6], b = x*x = [4, 9], result = a+b = [8, 15]
-    assert_dag_output_f64(run_dag_single(&wf, oh), &[8.0, 15.0], 1);
+    assert_dag_output_f64(run_dag_single(&wf), &[8.0, 15.0], 1);
+}
+
+// ==================================================
+// Workflow input tests.
+// ==================================================
+
+// Workflow input used as input to a function.
+#[test]
+fn t_dag_input_basic() {
+    let mut wf = Workflow::default();
+    // 'lhs is a workflow input; rhs is a constant.
+    orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
+        (add 'lhs (const [10.0f64, 20.0, 30.0]))
+    })
+    .unwrap();
+    // One input named "lhs" at index 0, one unnamed output.
+    let wf_ins = wf.workflow_inputs().unwrap();
+    assert_eq!(wf_ins.len(), 1);
+    assert_eq!(wf_ins[0].1, 0);
+    assert_eq!(wf_ins[0].2, "lhs");
+    assert_eq!(wf.workflow_outputs().len(), 1);
+    assert_eq!(wf.workflow_outputs()[0].1, "");
+    // Run with lhs = [1, 2, 3].
+    let x_handle = orc_inline_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, {
+        (let x (const [1.0f64, 2.0, 3.0]))
+        (return x)
+    })
+    .unwrap();
+    let inputs = [x_handle.borrowed()];
+    let mut out = [OrcHandle::default()];
+    wf.run(&inputs, &mut out, &host_clone_orc_handle, &HANDLE_COUNTER)
+        .unwrap();
+    let view = DeckView::<f64>::from_handle(&out[0]).unwrap();
+    assert_eq!(view.items(), &[11.0, 22.0, 33.0]);
+}
+
+// Re-run with different input values. Both inputs share the same quoted symbol.
+#[test]
+fn t_dag_input_rerun() {
+    let mut wf = Workflow::default();
+    // 'x used twice — both inputs of mul receive the same workflow input (x * x).
+    orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
+        (mul 'x 'x)
+    })
+    .unwrap();
+    // Two IHs both named "x" at index 0 (deduped). One unnamed output.
+    let wf_ins = wf.workflow_inputs().unwrap();
+    assert_eq!(wf_ins.len(), 2);
+    assert_eq!(wf_ins[0].1, 0);
+    assert_eq!(wf_ins[0].2, "x");
+    assert_eq!(wf_ins[1].1, 0);
+    assert_eq!(wf_ins[1].2, "x");
+    assert_eq!(wf.workflow_outputs().len(), 1);
+    // First run: x = [3, 4]
+    let h1 = orc_inline_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, {
+        (let v (const [3.0f64, 4.0]))
+        (return v)
+    })
+    .unwrap();
+    let inputs = [h1.borrowed()];
+    let mut out = [OrcHandle::default()];
+    wf.run(&inputs, &mut out, &host_clone_orc_handle, &HANDLE_COUNTER)
+        .unwrap();
+    let view = DeckView::<f64>::from_handle(&out[0]).unwrap();
+    assert_eq!(view.items(), &[9.0, 16.0]);
+    // Second run: x = [5, 6]
+    let h2 = orc_inline_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, {
+        (let v (const [5.0f64, 6.0]))
+        (return v)
+    })
+    .unwrap();
+    let inputs = [h2.borrowed()];
+    let mut out = [OrcHandle::default()];
+    wf.run(&inputs, &mut out, &host_clone_orc_handle, &HANDLE_COUNTER)
+        .unwrap();
+    let view = DeckView::<f64>::from_handle(&out[0]).unwrap();
+    assert_eq!(view.items(), &[25.0, 36.0]);
+}
+
+// ==================================================
+// Garbage collection tests.
+// ==================================================
+
+// Workflow outputs survive GC and the workflow still runs correctly.
+#[test]
+fn t_dag_gc_outputs_preserved() {
+    let mut wf = Workflow::default();
+    let (_s_oh, _p_oh) = orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
+        (let a (const [1.0f64, 2.0]))
+        (let b (const [10.0f64, 20.0]))
+        (let s (add a b))
+        (let p (mul a b))
+        (return s p)
+    })
+    .unwrap();
+    // Verify outputs before GC.
+    assert_eq!(wf.workflow_outputs().len(), 2);
+    assert_eq!(wf.workflow_outputs()[0].1, "s");
+    assert_eq!(wf.workflow_outputs()[1].1, "p");
+    // Run GC.
+    wf.garbage_collection().unwrap();
+    // Outputs preserved: same count, same names, same order.
+    assert_eq!(wf.workflow_outputs().len(), 2);
+    assert_eq!(wf.workflow_outputs()[0].1, "s");
+    assert_eq!(wf.workflow_outputs()[1].1, "p");
+    // Workflow still produces correct results.
+    let mut out = [OrcHandle::default(), OrcHandle::default()];
+    wf.run(&[], &mut out, &host_clone_orc_handle, &HANDLE_COUNTER)
+        .unwrap();
+    let [s_out, p_out] = out;
+    assert_dag_output_f64(s_out, &[11.0, 22.0], 1);
+    assert_dag_output_f64(p_out, &[10.0, 40.0], 1);
+}
+
+// Workflow inputs survive GC and the workflow still runs correctly.
+#[test]
+fn t_dag_gc_inputs_preserved() {
+    let mut wf = Workflow::default();
+    orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
+        (add 'lhs (const [10.0f64, 20.0, 30.0]))
+    })
+    .unwrap();
+    // Verify inputs before GC.
+    let wf_ins = wf.workflow_inputs().unwrap();
+    assert_eq!(wf_ins.len(), 1);
+    assert_eq!(wf_ins[0].1, 0);
+    assert_eq!(wf_ins[0].2, "lhs");
+    // Run GC.
+    wf.garbage_collection().unwrap();
+    // Inputs preserved.
+    let wf_ins = wf.workflow_inputs().unwrap();
+    assert_eq!(wf_ins.len(), 1);
+    assert_eq!(wf_ins[0].1, 0);
+    assert_eq!(wf_ins[0].2, "lhs");
+    // Workflow still runs correctly.
+    let x_handle = orc_inline_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, {
+        (let x (const [1.0f64, 2.0, 3.0]))
+        (return x)
+    })
+    .unwrap();
+    let inputs = [x_handle.borrowed()];
+    let mut out = [OrcHandle::default()];
+    wf.run(&inputs, &mut out, &host_clone_orc_handle, &HANDLE_COUNTER)
+        .unwrap();
+    let view = DeckView::<f64>::from_handle(&out[0]).unwrap();
+    assert_eq!(view.items(), &[11.0, 22.0, 33.0]);
+}
+
+// Deduped inputs ('x 'x) survive GC with correct shared index.
+#[test]
+fn t_dag_gc_dedup_inputs_preserved() {
+    let mut wf = Workflow::default();
+    orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
+        (mul 'x 'x)
+    })
+    .unwrap();
+    // Verify before GC.
+    let wf_ins = wf.workflow_inputs().unwrap();
+    assert_eq!(wf_ins.len(), 2);
+    assert_eq!(wf_ins[0].1, 0);
+    assert_eq!(wf_ins[0].2, "x");
+    assert_eq!(wf_ins[1].1, 0);
+    assert_eq!(wf_ins[1].2, "x");
+    // Run GC.
+    wf.garbage_collection().unwrap();
+    // Inputs preserved with shared index.
+    let wf_ins = wf.workflow_inputs().unwrap();
+    assert_eq!(wf_ins.len(), 2);
+    assert_eq!(wf_ins[0].1, 0);
+    assert_eq!(wf_ins[0].2, "x");
+    assert_eq!(wf_ins[1].1, 0);
+    assert_eq!(wf_ins[1].2, "x");
+    // Still runs correctly: x = [3, 4], x*x = [9, 16].
+    let h = orc_inline_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, {
+        (let v (const [3.0f64, 4.0]))
+        (return v)
+    })
+    .unwrap();
+    let inputs = [h.borrowed()];
+    let mut out = [OrcHandle::default()];
+    wf.run(&inputs, &mut out, &host_clone_orc_handle, &HANDLE_COUNTER)
+        .unwrap();
+    let view = DeckView::<f64>::from_handle(&out[0]).unwrap();
+    assert_eq!(view.items(), &[9.0, 16.0]);
+}
+
+// ==================================================
+// Nested workflow tests.
+// ==================================================
+
+// Define a nested function and call it.
+#[test]
+fn t_dag_nested_fn_basic() {
+    let mut wf = Workflow::default();
+    orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
+        (fn double
+            (add 'x 'x))
+        (double (const [3.0f64, 5.0]))
+    })
+    .unwrap();
+    assert_dag_output_f64(run_dag_single(&wf), &[6.0, 10.0], 1);
+}
+
+// Nested function with multiple statements in its body.
+#[test]
+fn t_dag_nested_fn_multi_stmt() {
+    let mut wf = Workflow::default();
+    orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
+        (fn sum_of_squares
+            (let a (mul 'x 'x))
+            (let b (mul 'y 'y))
+            (add a b))
+        (sum_of_squares (const [3.0f64]) (const [4.0f64]))
+    })
+    .unwrap();
+    // 3^2 + 4^2 = 9 + 16 = 25
+    assert_dag_output_f64(run_dag_single(&wf), &[25.0], 1);
+}
+
+// Nested function called multiple times with different arguments.
+#[test]
+fn t_dag_nested_fn_reuse() {
+    let mut wf = Workflow::default();
+    orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
+        (fn double
+            (add 'x 'x))
+        (let a (double (const [1.0f64, 2.0])))
+        (let b (double (const [10.0f64, 20.0])))
+        (add a b)
+    })
+    .unwrap();
+    // double([1,2]) = [2,4], double([10,20]) = [20,40], sum = [22,44]
+    assert_dag_output_f64(run_dag_single(&wf), &[22.0, 44.0], 1);
+}
+
+// Nested function with multiple outputs.
+#[test]
+fn t_dag_nested_fn_multi_output() {
+    let mut wf = Workflow::default();
+    orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
+        (fn sum_and_product
+            (let s (add 'a 'b))
+            (let p (mul 'a 'b))
+            (return s p))
+        // Now call the nested workflow.
+        (let (s p) (sum_and_product (const [3.0f64]) (const [4.0f64])))
+        (add s p)
+    })
+    .unwrap();
+    // s = 3+4 = 7, p = 3*4 = 12, result = 7+12 = 19
+    assert_dag_output_f64(run_dag_single(&wf), &[19.0], 1);
+}
+
+// Nested function mixed with outer workflow inputs.
+#[test]
+fn t_dag_nested_fn_with_outer_input() {
+    let mut wf = Workflow::default();
+    orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
+        (fn double
+            (add 'x 'x))
+        (double 'val)
+    })
+    .unwrap();
+    // Outer workflow has input 'val. Nested fn doubles it.
+    let wf_ins = wf.workflow_inputs().unwrap();
+    assert_eq!(wf_ins.len(), 1);
+    assert_eq!(wf_ins[0].2, "val");
+    let h = orc_inline_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, {
+        (let v (const [5.0f64, 7.0]))
+        (return v)
+    })
+    .unwrap();
+    let inputs = [h.borrowed()];
+    let mut out = [OrcHandle::default()];
+    wf.run(&inputs, &mut out, &host_clone_orc_handle, &HANDLE_COUNTER)
+        .unwrap();
+    let view = DeckView::<f64>::from_handle(&out[0]).unwrap();
+    assert_eq!(view.items(), &[10.0, 14.0]);
 }
