@@ -491,7 +491,7 @@ fn t_dag_single_call() {
     assert_eq!(wf.workflow_outputs().len(), 1);
     assert_eq!(wf.workflow_outputs()[0].1, "");
     assert!(wf.workflow_inputs().unwrap().is_empty());
-    assert_dag_output_f64(run_dag_single(&mut wf), &[11.0, 22.0, 33.0], 1);
+    assert_dag_output_f64(run_dag_single(&wf), &[11.0, 22.0, 33.0], 1);
 }
 
 // 2. let binding followed by trailing expression.
@@ -506,7 +506,7 @@ fn t_dag_let_then_trailing() {
         (add ab c)
     })
     .unwrap();
-    assert_dag_output_f64(run_dag_single(&mut wf), &[111.0, 222.0, 333.0], 1);
+    assert_dag_output_f64(run_dag_single(&wf), &[111.0, 222.0, 333.0], 1);
 }
 
 // 3. Multiple let bindings — shared subexpression.
@@ -520,7 +520,7 @@ fn t_dag_multiple_lets() {
         (mul sum sum)
     })
     .unwrap();
-    assert_dag_output_f64(run_dag_single(&mut wf), &[49.0, 169.0], 1);
+    assert_dag_output_f64(run_dag_single(&wf), &[49.0, 169.0], 1);
 }
 
 // 4. Nested single-output call.
@@ -531,7 +531,7 @@ fn t_dag_nested_call() {
         (add (mul (const [2.0f64, 3.0]) (const [5.0f64, 10.0])) (const [1.0f64, 1.0]))
     })
     .unwrap();
-    assert_dag_output_f64(run_dag_single(&mut wf), &[11.0, 31.0], 1);
+    assert_dag_output_f64(run_dag_single(&wf), &[11.0, 31.0], 1);
 }
 
 // 5. Deeply nested calls.
@@ -542,7 +542,7 @@ fn t_dag_deep_nesting() {
         (mul (add (const [1.0f64, 2.0]) (const [3.0f64, 4.0])) (const [10.0f64, 10.0]))
     })
     .unwrap();
-    assert_dag_output_f64(run_dag_single(&mut wf), &[40.0, 60.0], 1);
+    assert_dag_output_f64(run_dag_single(&wf), &[40.0, 60.0], 1);
 }
 
 // 6. let binding with nested call in the body.
@@ -554,7 +554,7 @@ fn t_dag_let_with_nested() {
         (sub (add prod (const 10.0f64)) prod)
     })
     .unwrap();
-    assert_dag_output_f64(run_dag_single(&mut wf), &[10.0], 0);
+    assert_dag_output_f64(run_dag_single(&wf), &[10.0], 0);
 }
 
 // 9. Const scalars used as inputs.
@@ -565,7 +565,7 @@ fn t_dag_const_inputs() {
         (sub (const 100.0f64) (const 1.0f64))
     })
     .unwrap();
-    assert_dag_output_f64(run_dag_single(&mut wf), &[99.0], 0);
+    assert_dag_output_f64(run_dag_single(&wf), &[99.0], 0);
 }
 
 // 11. Const scalar via let binding.
@@ -578,7 +578,7 @@ fn t_dag_const_scalar() {
         (add a b)
     })
     .unwrap();
-    assert_dag_output_f64(run_dag_single(&mut wf), &[10.0], 0);
+    assert_dag_output_f64(run_dag_single(&wf), &[10.0], 0);
 }
 
 // 12. Const list via let binding.
@@ -591,7 +591,7 @@ fn t_dag_const_list() {
         (add a b)
     })
     .unwrap();
-    assert_dag_output_f64(run_dag_single(&mut wf), &[11.0, 22.0, 33.0], 1);
+    assert_dag_output_f64(run_dag_single(&wf), &[11.0, 22.0, 33.0], 1);
 }
 
 // 14. Const used inline as expression argument.
@@ -602,7 +602,7 @@ fn t_dag_const_inline_expr() {
         (add (const [2.0f64, 4.0]) (const [10.0f64, 20.0]))
     })
     .unwrap();
-    assert_dag_output_f64(run_dag_single(&mut wf), &[12.0, 24.0], 1);
+    assert_dag_output_f64(run_dag_single(&wf), &[12.0, 24.0], 1);
 }
 
 // 15. Const mixed with let-bound const.
@@ -614,7 +614,7 @@ fn t_dag_const_mixed() {
         (add a (const [1.0f64, 2.0]))
     })
     .unwrap();
-    assert_dag_output_f64(run_dag_single(&mut wf), &[6.0, 12.0], 1);
+    assert_dag_output_f64(run_dag_single(&wf), &[6.0, 12.0], 1);
 }
 
 // 16. Const depth 2: nested list added element-wise.
@@ -627,7 +627,7 @@ fn t_dag_const_depth2() {
         (add a b)
     })
     .unwrap();
-    assert_dag_output_f64(run_dag_single(&mut wf), &[11.0, 22.0, 33.0], 2);
+    assert_dag_output_f64(run_dag_single(&wf), &[11.0, 22.0, 33.0], 2);
 }
 
 // 17. Const depth 3.
@@ -640,7 +640,7 @@ fn t_dag_const_depth3() {
         (add a b)
     })
     .unwrap();
-    assert_dag_output_f64(run_dag_single(&mut wf), &[11.0, 22.0, 33.0, 44.0], 3);
+    assert_dag_output_f64(run_dag_single(&wf), &[11.0, 22.0, 33.0, 44.0], 3);
 }
 
 // 18. Return multiple outputs.
@@ -680,7 +680,7 @@ fn t_dag_return_single() {
     .unwrap();
     assert_eq!(wf.workflow_outputs().len(), 1);
     assert_eq!(wf.workflow_outputs()[0].1, "s");
-    assert_dag_output_f64(run_dag_single(&mut wf), &[11.0, 22.0, 33.0], 1);
+    assert_dag_output_f64(run_dag_single(&wf), &[11.0, 22.0, 33.0], 1);
 }
 
 // 20. Const reused in multiple expressions.
@@ -692,7 +692,7 @@ fn t_dag_const_reused() {
         (mul x x)
     })
     .unwrap();
-    assert_dag_output_f64(run_dag_single(&mut wf), &[9.0, 16.0], 1);
+    assert_dag_output_f64(run_dag_single(&wf), &[9.0, 16.0], 1);
 }
 
 // 13. Const nested list through flatten.
@@ -704,7 +704,7 @@ fn t_dag_const_nested_list() {
         (flatten_deck a)
     })
     .unwrap();
-    assert_dag_output_f64(run_dag_single(&mut wf), &[1.0, 2.0, 3.0], 1);
+    assert_dag_output_f64(run_dag_single(&wf), &[1.0, 2.0, 3.0], 1);
 }
 
 // ==================================================
@@ -761,7 +761,7 @@ fn t_dag_diamond_no_cycle() {
     })
     .unwrap();
     // x = [2, 3], a = x+x = [4, 6], b = x*x = [4, 9], result = a+b = [8, 15]
-    assert_dag_output_f64(run_dag_single(&mut wf), &[8.0, 15.0], 1);
+    assert_dag_output_f64(run_dag_single(&wf), &[8.0, 15.0], 1);
 }
 
 // ==================================================
