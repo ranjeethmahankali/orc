@@ -160,6 +160,10 @@ impl Workflow {
         Ok(())
     }
 
+    pub fn has_nested_workflow(&self, name: &str) -> bool {
+        self.nested_workflows.contains_key(name)
+    }
+
     pub fn add_function(
         &mut self,
         info: FuncInfo,
