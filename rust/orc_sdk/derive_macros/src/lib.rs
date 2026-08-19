@@ -599,8 +599,12 @@ fn generate_type_dispatch(
             #(#arms)*
             _ => Err(orc_sdk::Error::DeckTypeMismatch),
         };
-        if let Err(e) = result_ {
-            host_.error(&::std::format!("Failed to run: {e:?}"));
+        match result_ {
+            Ok(()) => orc_sdk::ORC_ERROR_NONE,
+            Err(e) => {
+                host_.error(&::std::format!("Failed to run: {e:?}"));
+                orc_sdk::OrcError::from(e)
+            }
         }
     }
 }
@@ -860,6 +864,7 @@ fn generate_orc_fn(cfg: FnConfig<'_>) -> proc_macro2::TokenStream {
                 quote! {
                     orc_sdk::orc_check_return!(
                         host_,
+                        orc_sdk::ORC_ERROR_INVALID_DIMENSIONS,
                         dims(#(#in_args,)* #(#out_args),*).is_ok(),
                         "dims computation failed"
                     );
@@ -929,7 +934,7 @@ fn generate_orc_fn(cfg: FnConfig<'_>) -> proc_macro2::TokenStream {
             n_inputs_: u64,
             outputs_ptr_: *mut orc_sdk::OrcHandle,
             n_outputs_: u64,
-        ) {
+        ) -> orc_sdk::OrcError {
             let orc_hc_ref_: &orc_sdk::OrcHostCallbackAPI = #host_callbacks_expr;
             let host_ = orc_sdk::HostCallbacks {
                 inner: *orc_hc_ref_,
@@ -941,6 +946,7 @@ fn generate_orc_fn(cfg: FnConfig<'_>) -> proc_macro2::TokenStream {
             // Check the number of inputs.
             orc_sdk::orc_check_return!(
                 host_,
+                orc_sdk::ORC_ERROR_INVALID_ARGUMENTS,
                 n_inputs_ == #n_inputs as u64,
                 "Expected {} inputs, got {}",
                 #n_inputs,
@@ -949,6 +955,7 @@ fn generate_orc_fn(cfg: FnConfig<'_>) -> proc_macro2::TokenStream {
             // Check the number of outputs.
             orc_sdk::orc_check_return!(
                 host_,
+                orc_sdk::ORC_ERROR_INVALID_ARGUMENTS,
                 n_outputs_ == #n_outputs as u64,
                 "Expected {} outputs, got {}",
                 #n_outputs,
@@ -1386,6 +1393,7 @@ fn generate_orc_map_fn(cfg: FnConfig<'_>) -> proc_macro2::TokenStream {
                 quote! {
                     orc_sdk::orc_check_return!(
                         host_,
+                        orc_sdk::ORC_ERROR_INVALID_DIMENSIONS,
                         dims(&inputs_[0].dims, &mut outputs_[0].dims).is_ok(),
                         "dims computation failed"
                     );
@@ -1434,7 +1442,7 @@ fn generate_orc_map_fn(cfg: FnConfig<'_>) -> proc_macro2::TokenStream {
             n_inputs_: u64,
             outputs_ptr_: *mut orc_sdk::OrcHandle,
             n_outputs_: u64,
-        ) {
+        ) -> orc_sdk::OrcError {
             let orc_hc_ref_: &orc_sdk::OrcHostCallbackAPI = #host_callbacks_expr;
             let host_ = orc_sdk::HostCallbacks {
                 inner: *orc_hc_ref_,
@@ -1445,12 +1453,14 @@ fn generate_orc_map_fn(cfg: FnConfig<'_>) -> proc_macro2::TokenStream {
             #dims_fn_tokens
             orc_sdk::orc_check_return!(
                 host_,
+                orc_sdk::ORC_ERROR_INVALID_ARGUMENTS,
                 n_inputs_ == 1u64,
                 "Expected 1 input, got {}",
                 n_inputs_
             );
             orc_sdk::orc_check_return!(
                 host_,
+                orc_sdk::ORC_ERROR_INVALID_ARGUMENTS,
                 n_outputs_ == 1u64,
                 "Expected 1 output, got {}",
                 n_outputs_
