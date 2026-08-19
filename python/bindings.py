@@ -95,7 +95,7 @@ class OrcItemProxy(ctypes.Structure):
 
 OrcDims = ctypes.c_int32 * 7
 
-OrcPluginFunction = ctypes.CFUNCTYPE(None, ctypes.c_uint64, ctypes.POINTER(OrcHandle), ctypes.c_uint64, ctypes.POINTER(OrcHandle), ctypes.c_uint64)
+OrcPluginFunction = ctypes.CFUNCTYPE(ctypes.c_uint32, ctypes.c_uint64, ctypes.POINTER(OrcHandle), ctypes.c_uint64, ctypes.POINTER(OrcHandle), ctypes.c_uint64)
 OrcDeckFreeFn = ctypes.CFUNCTYPE(ctypes.c_uint32, ctypes.POINTER(OrcHandle))
 
 OrcAllocFn = ctypes.CFUNCTYPE(ctypes.c_void_p, ctypes.c_uint64, ctypes.c_uint64)
