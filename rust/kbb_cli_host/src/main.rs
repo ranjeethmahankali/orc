@@ -4,10 +4,11 @@ mod macros;
 mod test;
 
 use orc_sdk::{
-    DeckRegistry, Error, ORC_ABI_VERSION, ORC_ERROR_INVALID_PROXY, ORC_ERROR_NONE, ORC_TYPE_F32,
-    ORC_TYPE_F64, ORC_TYPE_I8, ORC_TYPE_I16, ORC_TYPE_I32, ORC_TYPE_I64, ORC_TYPE_U8, ORC_TYPE_U16,
-    ORC_TYPE_U32, ORC_TYPE_U64, OrcError, OrcHandle, OrcHost, OrcHostCallbackAPI, OrcHostMemoryAPI,
-    OrcProxyType, PluginSet, ProxyType, TypeOwner, orc_inline_dag, reset_handle,
+    DeckRegistry, Error, ORC_ABI_VERSION, ORC_DECK_PROXY_COPY_ALL, ORC_ERROR_INVALID_PROXY,
+    ORC_ERROR_NONE, ORC_TYPE_F32, ORC_TYPE_F64, ORC_TYPE_I8, ORC_TYPE_I16, ORC_TYPE_I32,
+    ORC_TYPE_I64, ORC_TYPE_U8, ORC_TYPE_U16, ORC_TYPE_U32, ORC_TYPE_U64, OrcError, OrcHandle,
+    OrcHandleBorrowed, OrcHost, OrcHostCallbackAPI, OrcHostMemoryAPI, OrcProxyType, PluginSet,
+    ProxyType, TypeOwner, orc_inline_dag, reset_handle,
 };
 use std::alloc::{Layout, alloc, dealloc};
 use std::ffi::{CStr, c_void};
@@ -49,6 +50,21 @@ pub static PLUGIN_SET: LazyLock<PluginSet> = LazyLock::new(|| {
     };
     orc_sdk::load_plugins(plugin_dir, &HOST).expect("Failed to load plugins")
 });
+
+/// Helper function to requrest the global host to clone an OrcHandle, by deferring the cloning logic to the appropriate plugin.
+pub fn host_clone_orc_handle(src: OrcHandleBorrowed) -> Result<OrcHandle, Error> {
+    let mut out = OrcHandle::default();
+    let err = unsafe {
+        host_create_proxy_deck(
+            src.inner(),
+            1,
+            ORC_DECK_PROXY_COPY_ALL,
+            &OrcHandle::default(),
+            &mut out,
+        )
+    };
+    Error::from_raw(err).map(|()| out)
+}
 
 // The host can allocate it's own decks, this registry is for that.
 static REGISTRY: LazyLock<DeckRegistry> = LazyLock::new(DeckRegistry::new);

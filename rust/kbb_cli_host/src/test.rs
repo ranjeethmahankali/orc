@@ -1,7 +1,7 @@
-use crate::{HANDLE_COUNTER, PLUGIN_SET, REGISTRY};
+use crate::{HANDLE_COUNTER, PLUGIN_SET, REGISTRY, host_clone_orc_handle};
 use orc_sdk::{
-    DagError, DagOutputData, Deck, DeckView, IH, OH, OrcHandle, Workflow, deck, orc_dag,
-    orc_inline_dag, update_handle_from_deck,
+    DagError, Deck, DeckView, IH, OH, OrcHandle, Workflow, deck, orc_dag, orc_inline_dag,
+    update_handle_from_deck,
 };
 use std::sync::atomic::Ordering;
 
@@ -452,31 +452,18 @@ fn t_const_reused() {
 // orc_dag macro tests (build graph, then run).
 // ==================================================
 
-fn run_dag_single(wf: &Workflow) -> DagOutputData {
-    let mut out = [DagOutputData::Constant(0)];
-    wf.run(&[], &mut out, &HANDLE_COUNTER).unwrap();
+fn run_dag_single(wf: &Workflow) -> OrcHandle {
+    let mut out = [OrcHandle::default()];
+    wf.run(&[], &mut out, host_clone_orc_handle, &HANDLE_COUNTER)
+        .unwrap();
     let [o] = out;
     o
 }
 
-fn assert_dag_output_f64(data: DagOutputData, expected: &[f64], expected_depth: u8) {
-    match data {
-        DagOutputData::Owned(h) => {
-            let view = DeckView::<f64>::from_handle(&h).unwrap();
-            assert_eq!(view.items(), expected);
-            assert_eq!(view.depth(), expected_depth);
-        }
-        DagOutputData::Constant(id) => {
-            REGISTRY
-                .with_refs(&[id], |refs| {
-                    let deck = refs[0].downcast_ref::<Deck<f64>>().unwrap();
-                    let view = deck.view(deck.max_depth());
-                    assert_eq!(view.items(), expected);
-                    assert_eq!(view.depth(), expected_depth);
-                })
-                .unwrap();
-        }
-    }
+fn assert_dag_output_f64(data: OrcHandle, expected: &[f64], expected_depth: u8) {
+    let view = DeckView::<f64>::from_handle(&data).unwrap();
+    assert_eq!(view.items(), expected);
+    assert_eq!(view.depth(), expected_depth);
 }
 
 // 1. Single function call as trailing expression.
@@ -660,8 +647,9 @@ fn t_dag_return_multiple() {
     assert_eq!(wf.workflow_outputs()[0].1, "s");
     assert_eq!(wf.workflow_outputs()[1].1, "p");
     assert!(wf.workflow_inputs().unwrap().is_empty());
-    let mut out = [DagOutputData::Constant(0), DagOutputData::Constant(0)];
-    wf.run(&[], &mut out, &HANDLE_COUNTER).unwrap();
+    let mut out = [OrcHandle::default(), OrcHandle::default()];
+    wf.run(&[], &mut out, host_clone_orc_handle, &HANDLE_COUNTER)
+        .unwrap();
     let [s_out, p_out] = out;
     assert_dag_output_f64(s_out, &[11.0, 22.0], 1);
     assert_dag_output_f64(p_out, &[10.0, 40.0], 1);
@@ -728,8 +716,8 @@ fn t_dag_cycle_simple() {
     // B's output -> A's input (cycle!)
     wf.connect(b_out[0], a_in[0]).unwrap();
     wf.set_outputs(&[(b_out[0], String::new())]).unwrap();
-    let mut out = [DagOutputData::Constant(0)];
-    let result = wf.run(&[], &mut out, &HANDLE_COUNTER);
+    let mut out = [OrcHandle::default()];
+    let result = wf.run(&[], &mut out, host_clone_orc_handle, &HANDLE_COUNTER);
     assert!(matches!(result, Err(DagError::CycleDetected)));
 }
 
@@ -744,8 +732,8 @@ fn t_dag_cycle_self() {
     // A's output -> A's input (self-cycle!)
     wf.connect(a_out[0], a_in[0]).unwrap();
     wf.set_outputs(&[(a_out[0], String::new())]).unwrap();
-    let mut out = [DagOutputData::Constant(0)];
-    let result = wf.run(&[], &mut out, &HANDLE_COUNTER);
+    let mut out = [OrcHandle::default()];
+    let result = wf.run(&[], &mut out, host_clone_orc_handle, &HANDLE_COUNTER);
     assert!(matches!(result, Err(DagError::CycleDetected)));
 }
 
@@ -791,15 +779,11 @@ fn t_dag_input_basic() {
     })
     .unwrap();
     let inputs = [x_handle.borrowed()];
-    let mut out = [DagOutputData::Constant(0)];
-    wf.run(&inputs, &mut out, &HANDLE_COUNTER).unwrap();
-    match &out[0] {
-        DagOutputData::Owned(h) => {
-            let view = DeckView::<f64>::from_handle(h).unwrap();
-            assert_eq!(view.items(), &[11.0, 22.0, 33.0]);
-        }
-        _ => panic!("Expected owned output"),
-    }
+    let mut out = [OrcHandle::default()];
+    wf.run(&inputs, &mut out, host_clone_orc_handle, &HANDLE_COUNTER)
+        .unwrap();
+    let view = DeckView::<f64>::from_handle(&out[0]).unwrap();
+    assert_eq!(view.items(), &[11.0, 22.0, 33.0]);
 }
 
 // Re-run with different input values. Both inputs share the same quoted symbol.
@@ -826,7 +810,7 @@ fn t_dag_input_rerun() {
     })
     .unwrap();
     let inputs = [h1.borrowed()];
-    let mut out = [DagOutputData::Constant(0)];
+    let mut out = [OrcHandle::default()];
     wf.run(&inputs, &mut out, &HANDLE_COUNTER).unwrap();
     match &out[0] {
         DagOutputData::Owned(h) => {
@@ -842,7 +826,7 @@ fn t_dag_input_rerun() {
     })
     .unwrap();
     let inputs = [h2.borrowed()];
-    let mut out = [DagOutputData::Constant(0)];
+    let mut out = [OrcHandle::default()];
     wf.run(&inputs, &mut out, &HANDLE_COUNTER).unwrap();
     match &out[0] {
         DagOutputData::Owned(h) => {
@@ -880,7 +864,7 @@ fn t_dag_gc_outputs_preserved() {
     assert_eq!(wf.workflow_outputs()[0].1, "s");
     assert_eq!(wf.workflow_outputs()[1].1, "p");
     // Workflow still produces correct results.
-    let mut out = [DagOutputData::Constant(0), DagOutputData::Constant(0)];
+    let mut out = [OrcHandle::default(), OrcHandle::default()];
     wf.run(&[], &mut out, &HANDLE_COUNTER).unwrap();
     let [s_out, p_out] = out;
     assert_dag_output_f64(s_out, &[11.0, 22.0], 1);
@@ -914,7 +898,7 @@ fn t_dag_gc_inputs_preserved() {
     })
     .unwrap();
     let inputs = [x_handle.borrowed()];
-    let mut out = [DagOutputData::Constant(0)];
+    let mut out = [OrcHandle::default()];
     wf.run(&inputs, &mut out, &HANDLE_COUNTER).unwrap();
     match &out[0] {
         DagOutputData::Owned(h) => {
@@ -956,7 +940,7 @@ fn t_dag_gc_dedup_inputs_preserved() {
     })
     .unwrap();
     let inputs = [h.borrowed()];
-    let mut out = [DagOutputData::Constant(0)];
+    let mut out = [OrcHandle::default()];
     wf.run(&inputs, &mut out, &HANDLE_COUNTER).unwrap();
     match &out[0] {
         DagOutputData::Owned(h) => {

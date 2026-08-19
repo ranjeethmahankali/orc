@@ -307,7 +307,7 @@ impl Workflow {
         &self,
         inputs: &[OrcHandleBorrowed<'_>],
         outputs: &mut [OrcHandle],
-        clone_fn: impl Fn(OrcHandleBorrowed) -> OrcHandle,
+        clone_fn: impl Fn(OrcHandleBorrowed) -> Result<OrcHandle, crate::Error>,
         handle_counter: &AtomicU64,
     ) -> Result<(), DagError> {
         // Make sure the number of outputs is what we're expecting. Inputs is a bit more flexible,
@@ -405,7 +405,7 @@ impl Workflow {
                                 workflow.run(
                                     &temp_inputs,
                                     &mut temp_outputs,
-                                    clone_fn,
+                                    &clone_fn,
                                     handle_counter,
                                 )?;
                             }
@@ -439,7 +439,7 @@ impl Workflow {
         // Now copy the final outputs of the workflow.
         for ((src, _name), dst) in self.workflow_outputs.iter().zip(outputs.iter_mut()) {
             *dst = match &node_infos[self.graph.outputs[src.idx].node] {
-                NodeInfo::Constant { name: _, data } => clone_fn(data.borrowed()),
+                NodeInfo::Constant { name: _, data } => clone_fn(data.borrowed())?,
                 NodeInfo::Function(_) | NodeInfo::NestedCall { .. } => {
                     std::mem::take(&mut computed_outputs[src.idx])
                 }

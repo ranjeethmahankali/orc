@@ -182,6 +182,12 @@ impl<'a> Clone for OrcHandleBorrowed<'a> {
     }
 }
 
+impl<'a> OrcHandleBorrowed<'a> {
+    pub fn inner(&self) -> &OrcHandle {
+        &self.inner
+    }
+}
+
 pub type PluginInitFn = unsafe extern "C" fn(*const OrcHost, *mut OrcPlugin) -> OrcError;
 pub type DeckAllocFn = unsafe extern "C" fn(OrcTypeId, *mut OrcHandle) -> OrcError;
 pub type DeckFreeFn = unsafe extern "C" fn(*mut OrcHandle) -> OrcError;
