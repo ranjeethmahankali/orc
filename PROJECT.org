@@ -559,16 +559,21 @@
   For types that are owned by the plugin, the plugin alone can serialize and deserialize. The ABI
   needs to be extended to add support for this.
 
-* NEXT tk1hl6 - ABI - Return error codes from plugin functions
+* DONE tk1hl6 - ABI - Return error codes from plugin functions
+  CLOSED: [2026-08-19 Wed 19:38]
   :PROPERTIES:
   :CREATED:  2026-08-19 Wed 08:39
   :END:
   :LOGBOOK:
+  - State "DONE"       from "NEXT"       [2026-08-19 Wed 19:38]
   - State "NEXT"       from "TODO"       [2026-08-19 Wed 19:09]
   :END:
 
   This allows the host program to handle known error scenarios in addition to just reporting strings
   to the user.
+
+  <2026-08-19 Wed 19:37> Quite straight forward refactor. All the tests are passing. Getting this
+  merged.
 
 * DONE tjw1vf - Nested DAG support
   CLOSED: [2026-08-19 Wed 18:54]
