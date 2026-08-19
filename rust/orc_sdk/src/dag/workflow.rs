@@ -41,7 +41,7 @@ impl NodeInfo {
         match self {
             NodeInfo::Constant { name, .. } => name,
             NodeInfo::Function(func_info) => &func_info.name,
-            NodeInfo::NestedCall { workflow_name } => &workflow_name,
+            NodeInfo::NestedCall { workflow_name } => workflow_name,
         }
     }
 }
@@ -110,7 +110,7 @@ impl Workflow {
         workflow: Workflow,
         plugin_set: &PluginSet,
     ) -> Result<(), DagError> {
-        if let Some(_) = plugin_set.get_function(&name) {
+        if plugin_set.get_function(&name).is_some() {
             return Err(DagError::NamingConflict);
         }
         match self.nested_workflows.entry(name) {
