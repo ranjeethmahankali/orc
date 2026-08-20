@@ -1,7 +1,7 @@
 use crate::{
     Deck, DeckView, Error, ORC_ARGS_VARIADIC, ORC_MSG_LEVEL_DEBUG, ORC_MSG_LEVEL_ERROR,
     ORC_MSG_LEVEL_FATAL, ORC_MSG_LEVEL_INFO, ORC_MSG_LEVEL_WARN, ORC_NUM_DIMS, OrcFuncInfo,
-    OrcHandle, OrcHost, OrcHostCallbackAPI, OrcItemProxy, OrcPluginFunction, OrcTypeId,
+    OrcHandle, OrcHost, OrcHostCallbackAPI, OrcItemProxy, OrcMark, OrcPluginFunction, OrcTypeId,
     OrcTypeInfo, ProxyType, deck::fmt_raw_deck, ffi::TOrcData,
 };
 use std::{
@@ -665,6 +665,69 @@ pub fn write_orc_handle_structure(
         }
     }
     Ok(())
+}
+
+pub fn read_orc_handle_structure(
+    handle: &mut OrcHandle,
+    r: &mut impl std::io::BufRead,
+) -> std::io::Result<Vec<OrcMark>> {
+    let err_fn = || std::io::Error::from(std::io::ErrorKind::InvalidData);
+    let mut marks = Vec::new();
+    let mut in_marks = false;
+    let mut line = String::new();
+    while r.read_line(&mut line)? > 0 {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            line.clear();
+            continue;
+        }
+        if in_marks {
+            // Mark lines are indented: "    pos depth"
+            if trimmed.starts_with(|c: char| c.is_ascii_digit()) {
+                let mut parts = trimmed.split_whitespace();
+                let pos: u64 = parts
+                    .next()
+                    .ok_or_else(err_fn)?
+                    .parse()
+                    .map_err(|_| err_fn())?;
+                let depth: u8 = parts
+                    .next()
+                    .ok_or_else(err_fn)?
+                    .parse()
+                    .map_err(|_| err_fn())?;
+                marks.push(OrcMark { depth, pos });
+                line.clear();
+                continue;
+            }
+            in_marks = false;
+        }
+        if let Some(val) = trimmed.strip_prefix("type_id:") {
+            handle.type_id = val.trim().parse().map_err(|_| err_fn())?;
+        } else if let Some(val) = trimmed.strip_prefix("n_items:") {
+            handle.n_items = val.trim().parse().map_err(|_| err_fn())?;
+        } else if let Some(val) = trimmed.strip_prefix("item_size:") {
+            handle.item_size = val.trim().parse().map_err(|_| err_fn())?;
+        } else if let Some(val) = trimmed.strip_prefix("n_marks:") {
+            handle.n_marks = val.trim().parse().map_err(|_| err_fn())?;
+        } else if let Some(val) = trimmed.strip_prefix("dims:") {
+            let nums: Vec<i32> = val
+                .split_whitespace()
+                .map(|s| s.parse().map_err(|_| err_fn()))
+                .collect::<std::io::Result<_>>()?;
+            if nums.len() != crate::ORC_NUM_DIMS as usize {
+                return Err(err_fn());
+            }
+            handle.dims.copy_from_slice(&nums);
+        } else if trimmed == "marks:" {
+            in_marks = true;
+        } else {
+            return Err(err_fn());
+        }
+        line.clear();
+    }
+    handle.n_marks = marks.len() as u64;
+    handle.marks = ptr_from_slice(&marks);
+    Ok(marks)
 }
 
 #[cfg(test)]
