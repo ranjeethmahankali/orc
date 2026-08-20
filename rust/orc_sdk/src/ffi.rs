@@ -97,6 +97,7 @@ macro_rules! orc_plugin {
         ) -> orc_sdk::OrcError {
             let mut writer = orc_sdk::SerialWrite::new(ctx, write_fn);
             match <$plugin as orc_sdk::TOrcPluginAdaptor>::deck_serialize(
+                ctx,
                 unsafe { &*handle },
                 &mut writer,
             ) {
@@ -111,7 +112,6 @@ macro_rules! orc_plugin {
         #[unsafe(no_mangle)]
         pub unsafe extern "C" fn orc_deck_deserialize(
             ctx: u64,
-            type_id: OrcTypeId,
             buf: *const ::std::os::raw::c_void,
             buf_len: u64,
             out: *mut OrcHandle,
@@ -119,7 +119,7 @@ macro_rules! orc_plugin {
             let bytes = unsafe { orc_sdk::slice_from_ptr(buf.cast::<u8>(), buf_len as usize) };
             let mut reader = std::io::Cursor::new(bytes);
             let out = unsafe { &mut *out };
-            match <$plugin as orc_sdk::TOrcPluginAdaptor>::deck_deserialize(&mut reader, out) {
+            match <$plugin as orc_sdk::TOrcPluginAdaptor>::deck_deserialize(ctx, &mut reader, out) {
                 Ok(_) => orc_sdk::ORC_ERROR_NONE,
                 Err(e) => e.into(),
             }
@@ -160,6 +160,11 @@ impl OrcHandle {
     pub fn items<T: TOrcData>(&self) -> &[T] {
         // SAFETY; We're using the pointer and the length from the same pointer.
         unsafe { slice_from_ptr(self.items.cast(), self.n_items as usize) }
+    }
+
+    pub fn items_as_bytes(&self) -> &[u8] {
+        // SAFETY; We're using the pointer and the length from the same pointer.
+        unsafe { slice_from_ptr(self.items.cast(), (self.n_items * self.item_size) as usize) }
     }
 }
 
@@ -241,7 +246,6 @@ pub type DeckSerializeFn = unsafe extern "C" fn(
 ) -> OrcError;
 pub type DeckDeserializeFn = unsafe extern "C" fn(
     ctx: u64,
-    type_id: OrcTypeId,
     buf: *const ::std::os::raw::c_void,
     buf_len: u64,
     out: *mut OrcHandle,
@@ -271,8 +275,16 @@ pub trait TOrcPluginAdaptor {
         proxy: &OrcHandle,
         out: &mut OrcHandle,
     ) -> Result<(), Error>;
-    fn deck_serialize(handle: &OrcHandle, write: &mut impl std::io::Write) -> Result<(), Error>;
-    fn deck_deserialize(read: &mut impl std::io::Read, out: &mut OrcHandle) -> Result<(), Error>;
+    fn deck_serialize(
+        ctx: u64,
+        handle: &OrcHandle,
+        write: &mut impl std::io::Write,
+    ) -> Result<(), Error>;
+    fn deck_deserialize(
+        ctx: u64,
+        read: &mut impl std::io::Read,
+        out: &mut OrcHandle,
+    ) -> Result<(), Error>;
 }
 
 pub trait TOrcData: Default + Clone + Send + Sync + 'static {

@@ -340,7 +340,6 @@ unsafe extern "C" {
 unsafe extern "C" {
     pub fn orc_deck_deserialize(
         ctx: u64,
-        type_id: OrcTypeId,
         buf: *const ::std::os::raw::c_void,
         buf_len: u64,
         out: *mut OrcHandle,

@@ -102,23 +102,17 @@ impl TOrcPluginAdaptor for Adaptor {
         }
     }
 
-    fn deck_serialize(handle: &OrcHandle, write: &mut impl std::io::Write) -> Result<(), Error> {
-        fn as_bytes<T>(slice: &[T]) -> &[u8] {
-            unsafe { std::slice::from_raw_parts(slice.as_ptr().cast(), size_of_val(slice)) }
-        }
-
+    fn deck_serialize(
+        _ctx: u64,
+        handle: &OrcHandle,
+        write: &mut impl std::io::Write,
+    ) -> Result<(), Error> {
         orc_sdk::write_orc_handle_header(handle, write).map_err(|_| Error::SerializationError)?;
         let result = match handle.type_id {
-            ORC_TYPE_U8 => write.write_all(as_bytes(handle.items::<u8>())),
-            ORC_TYPE_U16 => write.write_all(as_bytes(handle.items::<u16>())),
-            ORC_TYPE_U32 => write.write_all(as_bytes(handle.items::<u32>())),
-            ORC_TYPE_U64 => write.write_all(as_bytes(handle.items::<u64>())),
-            ORC_TYPE_I8 => write.write_all(as_bytes(handle.items::<i8>())),
-            ORC_TYPE_I16 => write.write_all(as_bytes(handle.items::<i16>())),
-            ORC_TYPE_I32 => write.write_all(as_bytes(handle.items::<i32>())),
-            ORC_TYPE_I64 => write.write_all(as_bytes(handle.items::<i64>())),
-            ORC_TYPE_F32 => write.write_all(as_bytes(handle.items::<f32>())),
-            ORC_TYPE_F64 => write.write_all(as_bytes(handle.items::<f64>())),
+            ORC_TYPE_U8 | ORC_TYPE_U16 | ORC_TYPE_U32 | ORC_TYPE_U64 | ORC_TYPE_I8
+            | ORC_TYPE_I16 | ORC_TYPE_I32 | ORC_TYPE_I64 | ORC_TYPE_F32 | ORC_TYPE_F64 => {
+                write.write_all(handle.items_as_bytes())
+            }
             complex::COMPLEX_NUM_TYPE_ID => {
                 let items = handle.items::<Complex>();
                 let n_serialized =
@@ -133,7 +127,11 @@ impl TOrcPluginAdaptor for Adaptor {
         result.map_err(|_| Error::SerializationError)
     }
 
-    fn deck_deserialize(read: &mut impl std::io::Read, out: &mut OrcHandle) -> Result<(), Error> {
+    fn deck_deserialize(
+        _ctx: u64,
+        read: &mut impl std::io::Read,
+        out: &mut OrcHandle,
+    ) -> Result<(), Error> {
         fn read_primitive_items<T: TOrcData + Default + Sized + Copy>(
             read: &mut impl std::io::Read,
             marks: Vec<OrcMark>,

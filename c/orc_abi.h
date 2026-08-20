@@ -348,8 +348,7 @@ ORC_PLUGIN_EXPORT OrcError orc_deck_serialize(uint64_t const      ctx,
                                               OrcHandle const    *handle,
                                               OrcSerializeWriteFn write_fn);
 
-ORC_PLUGIN_EXPORT OrcError orc_deck_deserialize(uint64_t const  ctx,
-                                                OrcTypeId const type_id,
-                                                void const     *buf,
-                                                uint64_t const  buf_len,
-                                                OrcHandle      *out);
+ORC_PLUGIN_EXPORT OrcError orc_deck_deserialize(uint64_t const ctx,
+                                                void const    *buf,
+                                                uint64_t const buf_len,
+                                                OrcHandle     *out);
