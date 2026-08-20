@@ -344,12 +344,12 @@ typedef OrcError (*OrcSerializeWriteFn)(uint64_t const ctx,
                                         void const    *data,
                                         uint64_t const len);
 
-ORC_PLUGIN_EXPORT OrcError orc_deck_serialize(uint64_t const      ctx,
-                                              OrcHandle const    *handle,
-                                              OrcSerializeWriteFn write_fn);
+ORC_PLUGIN_EXPORT OrcError orc_deck_serialize_items(uint64_t const      ctx,
+                                                    OrcHandle const    *handle,
+                                                    OrcSerializeWriteFn write_fn);
 
-ORC_PLUGIN_EXPORT OrcError orc_deck_deserialize(uint64_t const  ctx,
-                                                OrcTypeId const type_id,
-                                                void const     *buf,
-                                                uint64_t const  buf_len,
-                                                OrcHandle      *out);
+ORC_PLUGIN_EXPORT OrcError orc_deck_deserialize_items(uint64_t const  ctx,
+                                                      OrcTypeId const type_id,
+                                                      void const     *buf,
+                                                      uint64_t const  buf_len,
+                                                      OrcHandle      *out);
