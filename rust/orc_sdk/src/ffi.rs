@@ -96,12 +96,15 @@ macro_rules! orc_plugin {
             write_fn: orc_sdk::OrcSerializeWriteFn,
         ) -> orc_sdk::OrcError {
             let mut writer = orc_sdk::SerialWrite::new(ctx, write_fn);
-            match <$plugin as orc_sdk::TOrcPluginAdaptor>::deck_serialize(&*handle, &mut writer) {
-                Ok(_) => {
-                    std::io::Write::flush(&mut writer);
-                    orc_sdk::ORC_ERROR_NONE
-                }
-                Err(_) => orc_sdk::ORC_ERROR_SERIALIZATION_ERROR,
+            match <$plugin as orc_sdk::TOrcPluginAdaptor>::deck_serialize(
+                unsafe { &*handle },
+                &mut writer,
+            ) {
+                Ok(_) => match std::io::Write::flush(&mut writer) {
+                    Ok(_) => orc_sdk::ORC_ERROR_NONE,
+                    Err(_) => orc_sdk::ORC_ERROR_SERIALIZATION_ERROR,
+                },
+                Err(e) => e.into(),
             }
         }
 
@@ -247,8 +250,8 @@ pub trait TOrcPluginAdaptor {
         proxy: &OrcHandle,
         out: &mut OrcHandle,
     ) -> Result<(), Error>;
-    fn deck_serialize(handle: &OrcHandle, write: &mut impl std::io::Write) -> std::io::Result<()>;
-    fn deck_deserialize(read: impl std::io::Read, out: &mut OrcHandle) -> std::io::Result<()>;
+    fn deck_serialize(handle: &OrcHandle, write: &mut impl std::io::Write) -> Result<(), Error>;
+    fn deck_deserialize(read: &mut impl std::io::Read, out: &mut OrcHandle) -> Result<(), Error>;
 }
 
 pub trait TOrcData: Default + Clone + Send + Sync + 'static {

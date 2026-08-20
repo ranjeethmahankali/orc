@@ -1,9 +1,10 @@
+use complex::Complex;
 use orc_sdk::{
-    DeckRegistry, Error, HostCallbacks, ORC_ABI_VERSION, ORC_TYPE_F32, ORC_TYPE_F64, ORC_TYPE_I8,
-    ORC_TYPE_I16, ORC_TYPE_I32, ORC_TYPE_I64, ORC_TYPE_U8, ORC_TYPE_U16, ORC_TYPE_U32,
-    ORC_TYPE_U64, OrcFuncInfo, OrcHandle, OrcHost, OrcHostCallbackAPI, OrcPlugin, OrcTypeId,
-    OrcTypeInfo, ProxyType, TOrcData, TOrcPluginAdaptor, deck_from_proxy, orc_fn_info, orc_plugin,
-    reset_handle,
+    Deck, DeckRegistry, Error, HostCallbacks, ORC_ABI_VERSION, ORC_TYPE_F32, ORC_TYPE_F64,
+    ORC_TYPE_I8, ORC_TYPE_I16, ORC_TYPE_I32, ORC_TYPE_I64, ORC_TYPE_U8, ORC_TYPE_U16, ORC_TYPE_U32,
+    ORC_TYPE_U64, OrcFuncInfo, OrcHandle, OrcHost, OrcHostCallbackAPI, OrcMark, OrcPlugin,
+    OrcTypeId, OrcTypeInfo, ProxyType, TOrcData, TOrcPluginAdaptor, deck_from_proxy, orc_fn_info,
+    orc_plugin, reset_handle,
 };
 use std::sync::{LazyLock, OnceLock};
 
@@ -101,12 +102,80 @@ impl TOrcPluginAdaptor for Adaptor {
         }
     }
 
-    fn deck_serialize(handle: &OrcHandle, write: &mut impl std::io::Write) -> std::io::Result<()> {
-        todo!()
+    fn deck_serialize(handle: &OrcHandle, write: &mut impl std::io::Write) -> Result<(), Error> {
+        fn as_bytes<T>(slice: &[T]) -> &[u8] {
+            unsafe { std::slice::from_raw_parts(slice.as_ptr().cast(), size_of_val(slice)) }
+        }
+
+        orc_sdk::write_orc_handle_header(handle, write).map_err(|_| Error::SerializationError)?;
+        let result = match handle.type_id {
+            ORC_TYPE_U8 => write.write_all(as_bytes(handle.items::<u8>())),
+            ORC_TYPE_U16 => write.write_all(as_bytes(handle.items::<u16>())),
+            ORC_TYPE_U32 => write.write_all(as_bytes(handle.items::<u32>())),
+            ORC_TYPE_U64 => write.write_all(as_bytes(handle.items::<u64>())),
+            ORC_TYPE_I8 => write.write_all(as_bytes(handle.items::<i8>())),
+            ORC_TYPE_I16 => write.write_all(as_bytes(handle.items::<i16>())),
+            ORC_TYPE_I32 => write.write_all(as_bytes(handle.items::<i32>())),
+            ORC_TYPE_I64 => write.write_all(as_bytes(handle.items::<i64>())),
+            ORC_TYPE_F32 => write.write_all(as_bytes(handle.items::<f32>())),
+            ORC_TYPE_F64 => write.write_all(as_bytes(handle.items::<f64>())),
+            complex::COMPLEX_NUM_TYPE_ID => {
+                let items = handle.items::<Complex>();
+                let n_serialized =
+                    Complex::serialize(items, write).map_err(|_| Error::SerializationError)?;
+                if n_serialized != items.len() {
+                    return Err(Error::SerializationError);
+                }
+                Ok(())
+            }
+            _ => return Err(Error::DeckTypeMismatch),
+        };
+        result.map_err(|_| Error::SerializationError)
     }
 
-    fn deck_deserialize(read: impl std::io::Read, out: &mut OrcHandle) -> std::io::Result<()> {
-        todo!()
+    fn deck_deserialize(read: &mut impl std::io::Read, out: &mut OrcHandle) -> Result<(), Error> {
+        fn read_primitive_items<T: TOrcData + Default + Sized + Copy>(
+            read: &mut impl std::io::Read,
+            marks: Vec<OrcMark>,
+            n_items: usize,
+            handle: &mut OrcHandle,
+        ) -> Result<(), Error> {
+            let mut items = vec![T::default(); n_items];
+            let bytes = unsafe {
+                orc_sdk::slice_from_ptr_mut(
+                    items.as_mut_ptr().cast::<u8>(),
+                    n_items * size_of::<T>(),
+                )
+            };
+            read.read_exact(bytes)
+                .map_err(|_| Error::SerializationError)?;
+            let items = items;
+            let mut deck = Deck::<T>::default();
+            deck.assign_from_raw_data(items, marks);
+            REGISTRY.alloc_with_value(deck, handle)
+        }
+        let marks =
+            orc_sdk::read_orc_handle_header(out, read).map_err(|_| Error::SerializationError)?;
+        match out.type_id {
+            ORC_TYPE_U8 => read_primitive_items::<u8>(read, marks, out.n_items as usize, out),
+            ORC_TYPE_U16 => read_primitive_items::<u16>(read, marks, out.n_items as usize, out),
+            ORC_TYPE_U32 => read_primitive_items::<u32>(read, marks, out.n_items as usize, out),
+            ORC_TYPE_U64 => read_primitive_items::<u64>(read, marks, out.n_items as usize, out),
+            ORC_TYPE_I8 => read_primitive_items::<i8>(read, marks, out.n_items as usize, out),
+            ORC_TYPE_I16 => read_primitive_items::<i16>(read, marks, out.n_items as usize, out),
+            ORC_TYPE_I32 => read_primitive_items::<i32>(read, marks, out.n_items as usize, out),
+            ORC_TYPE_I64 => read_primitive_items::<i64>(read, marks, out.n_items as usize, out),
+            ORC_TYPE_F32 => read_primitive_items::<f32>(read, marks, out.n_items as usize, out),
+            ORC_TYPE_F64 => read_primitive_items::<f64>(read, marks, out.n_items as usize, out),
+            complex::COMPLEX_NUM_TYPE_ID => {
+                let items = Complex::deserialize(read, out.n_items as usize)
+                    .map_err(|_| Error::SerializationError)?;
+                let mut deck = Deck::<Complex>::default();
+                deck.assign_from_raw_data(items, marks);
+                REGISTRY.alloc_with_value(deck, out)
+            }
+            _ => return Err(Error::DeckTypeMismatch),
+        }
     }
 }
 
@@ -129,4 +198,4 @@ const ORC_EXPORTED_FUNCTIONS: &[OrcFuncInfo] = &[
     orc_fn_info!(complex::complex_get_parts),
 ];
 
-const ORC_EXPORTED_TYPES: &[OrcTypeInfo] = &[complex::Complex::TYPE_INFO];
+const ORC_EXPORTED_TYPES: &[OrcTypeInfo] = &[Complex::TYPE_INFO];

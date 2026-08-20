@@ -667,12 +667,11 @@ pub fn read_orc_handle_header(
     handle: &mut OrcHandle,
     r: &mut impl std::io::Read,
 ) -> std::io::Result<Vec<OrcMark>> {
-    let invalid = || std::io::Error::from(std::io::ErrorKind::InvalidData);
     let mut buf8 = [0u8; 8];
     r.read_exact(&mut buf8)?;
     let version = u64::from_ne_bytes(buf8);
     if version != crate::ORC_ABI_VERSION {
-        return Err(invalid());
+        return Err(std::io::Error::from(std::io::ErrorKind::InvalidData));
     }
     r.read_exact(&mut buf8)?;
     handle.type_id = u64::from_ne_bytes(buf8);

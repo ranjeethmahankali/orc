@@ -7,6 +7,37 @@ pub struct Complex {
     imag: f64,
 }
 
+impl Complex {
+    pub fn serialize(items: &[Self], write: &mut impl std::io::Write) -> std::io::Result<usize> {
+        for Complex { real, imag } in items {
+            write.write_all(&real.to_ne_bytes())?;
+            write.write_all(&imag.to_ne_bytes())?;
+        }
+        Ok(items.len())
+    }
+
+    pub fn deserialize(
+        read: &mut impl std::io::Read,
+        n_items: usize,
+    ) -> std::io::Result<Vec<Self>> {
+        let mut out = Vec::with_capacity(n_items);
+        for _ in 0..n_items {
+            let real = {
+                let mut buf = [0u8; size_of::<f64>()];
+                read.read_exact(&mut buf)?;
+                f64::from_ne_bytes(buf)
+            };
+            let imag = {
+                let mut buf = [0u8; size_of::<f64>()];
+                read.read_exact(&mut buf)?;
+                f64::from_ne_bytes(buf)
+            };
+            out.push(Complex { real, imag });
+        }
+        Ok(out)
+    }
+}
+
 pub const COMPLEX_NUM_TYPE_ID: OrcTypeId = 0xd17d7399a9b11a54;
 
 impl TOrcData for Complex {
