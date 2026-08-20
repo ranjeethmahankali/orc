@@ -57,6 +57,9 @@ OrcError orc_deck_serialize(uint64_t const      ctx,
                             OrcHandle const    *handle,
                             OrcSerializeWriteFn write_fn)
 {
+  (void)ctx;
+  (void)handle;
+  (void)write_fn;
   ORC_SDK_TODO("Not implemented");
 }
 
@@ -65,5 +68,9 @@ OrcError orc_deck_deserialize(uint64_t const ctx,
                               uint64_t const buf_len,
                               OrcHandle     *out)
 {
+  (void)ctx;
+  (void)buf;
+  (void)buf_len;
+  (void)out;
   ORC_SDK_TODO("Not implemented");
 }
