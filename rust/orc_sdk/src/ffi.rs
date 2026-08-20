@@ -395,3 +395,46 @@ pub fn dims_divide(dims: &OrcDims, other: &OrcDims) -> OrcDims {
 pub fn dims_pow(dims: &OrcDims, exponent: i32) -> OrcDims {
     dims.map(|d| d * exponent)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::update_handle_from_deck;
+
+    #[test]
+    fn t_items_as_bytes_round_trip() {
+        let data: [f32; 3] = [1.0, 2.5, -3.0];
+        let mut deck = crate::Deck::<f32>::default();
+        for &v in &data {
+            deck.push(v, 0);
+        }
+        let mut h = OrcHandle::default();
+        unsafe { update_handle_from_deck(&deck, &mut h) };
+        let bytes = h.items_as_bytes();
+        assert_eq!(bytes.len(), 3 * size_of::<f32>());
+        // Re-interpret the bytes back to f32s.
+        let (chunks, remainder) = bytes.as_chunks::<{ size_of::<f32>() }>();
+        assert!(remainder.is_empty());
+        let reconstructed: Vec<f32> = chunks.iter().map(|c| f32::from_ne_bytes(*c)).collect();
+        assert_eq!(reconstructed, &data);
+    }
+
+    #[test]
+    fn t_items_as_bytes_empty() {
+        let h = OrcHandle::default();
+        assert!(h.items_as_bytes().is_empty());
+    }
+
+    #[test]
+    fn t_items_as_bytes_length_matches_n_items_times_item_size() {
+        let mut deck = crate::Deck::<u64>::default();
+        deck.push(42, 1);
+        deck.push(99, 0);
+        let mut h = OrcHandle::default();
+        unsafe { update_handle_from_deck(&deck, &mut h) };
+        assert_eq!(
+            h.items_as_bytes().len(),
+            h.n_items as usize * h.item_size as usize
+        );
+    }
+}

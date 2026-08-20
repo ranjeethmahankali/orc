@@ -377,4 +377,69 @@ mod tests {
         unsafe { mul_complex(0, inputs.as_ptr(), 2, &mut out, 1) };
         assert!(out.free_fn.is_some());
     }
+
+    // ==================== Complex serialization ====================
+
+    #[test]
+    fn t_complex_serialize_round_trip() {
+        let items = vec![
+            Complex {
+                real: 1.0,
+                imag: 2.0,
+            },
+            Complex {
+                real: -3.5,
+                imag: 0.0,
+            },
+            Complex {
+                real: 0.0,
+                imag: -7.25,
+            },
+        ];
+        let mut buf = Vec::new();
+        let n = Complex::serialize(&items, &mut buf).unwrap();
+        assert_eq!(n, items.len());
+        let mut cursor = std::io::Cursor::new(&buf);
+        let out = Complex::deserialize(&mut cursor, items.len()).unwrap();
+        assert_eq!(out, items);
+    }
+
+    #[test]
+    fn t_complex_serialize_empty() {
+        let items: Vec<Complex> = vec![];
+        let mut buf = Vec::new();
+        let n = Complex::serialize(&items, &mut buf).unwrap();
+        assert_eq!(n, 0);
+        assert!(buf.is_empty());
+        let mut cursor = std::io::Cursor::new(&buf);
+        let out = Complex::deserialize(&mut cursor, 0).unwrap();
+        assert!(out.is_empty());
+    }
+
+    #[test]
+    fn t_complex_serialize_single() {
+        let items = vec![Complex {
+            real: std::f64::consts::PI,
+            imag: std::f64::consts::E,
+        }];
+        let mut buf = Vec::new();
+        Complex::serialize(&items, &mut buf).unwrap();
+        assert_eq!(buf.len(), 2 * size_of::<f64>());
+        let mut cursor = std::io::Cursor::new(&buf);
+        let out = Complex::deserialize(&mut cursor, 1).unwrap();
+        assert_eq!(out, items);
+    }
+
+    #[test]
+    fn t_complex_deserialize_truncated_fails() {
+        let items = vec![Complex {
+            real: 1.0,
+            imag: 2.0,
+        }];
+        let mut buf = Vec::new();
+        Complex::serialize(&items, &mut buf).unwrap();
+        buf.truncate(buf.len() - 1);
+        let mut cursor = std::io::Cursor::new(&buf);
+        assert!(Complex::deserialize(&mut cursor, 1).is_err());
+    }
 }

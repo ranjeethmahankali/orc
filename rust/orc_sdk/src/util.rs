@@ -1167,4 +1167,128 @@ mod tests {
         assert_eq!(out.handle, 999);
         assert!(out.free_fn.is_none());
     }
+
+    // ==================== SerialWrite ====================
+
+    use std::sync::Mutex;
+
+    // Collects bytes written via the FFI callback.
+    static MOCK_SINK: Mutex<Vec<u8>> = Mutex::new(Vec::new());
+
+    unsafe extern "C" fn mock_write_ok(
+        _ctx: u64,
+        data: *const std::ffi::c_void,
+        len: u64,
+    ) -> OrcError {
+        let bytes = unsafe { std::slice::from_raw_parts(data.cast::<u8>(), len as usize) };
+        MOCK_SINK.lock().unwrap().extend_from_slice(bytes);
+        ORC_ERROR_NONE
+    }
+
+    unsafe extern "C" fn mock_write_fail(
+        _ctx: u64,
+        _data: *const std::ffi::c_void,
+        _len: u64,
+    ) -> OrcError {
+        crate::ORC_ERROR_SERIALIZATION_ERROR
+    }
+
+    #[test]
+    fn t_serial_write_buffers_until_flush() {
+        use std::io::Write;
+        MOCK_SINK.lock().unwrap().clear();
+        let mut w = SerialWrite::new(0, Some(mock_write_ok));
+        w.write_all(b"hello").unwrap();
+        w.write_all(b" world").unwrap();
+        // Nothing sent yet.
+        assert!(MOCK_SINK.lock().unwrap().is_empty());
+        w.flush().unwrap();
+        assert_eq!(&*MOCK_SINK.lock().unwrap(), b"hello world");
+    }
+
+    #[test]
+    fn t_serial_write_clears_buffer_after_flush() {
+        use std::io::Write;
+        MOCK_SINK.lock().unwrap().clear();
+        let mut w = SerialWrite::new(0, Some(mock_write_ok));
+        w.write_all(b"first").unwrap();
+        w.flush().unwrap();
+        MOCK_SINK.lock().unwrap().clear();
+        w.write_all(b"second").unwrap();
+        w.flush().unwrap();
+        // Only "second" should appear — no leftover from "first".
+        assert_eq!(&*MOCK_SINK.lock().unwrap(), b"second");
+    }
+
+    #[test]
+    fn t_serial_write_none_callback_errors() {
+        use std::io::Write;
+        let mut w = SerialWrite::new(0, None);
+        w.write_all(b"data").unwrap();
+        let err = w.flush().unwrap_err();
+        assert_eq!(err.kind(), std::io::ErrorKind::NotFound);
+    }
+
+    #[test]
+    fn t_serial_write_callback_error_propagates() {
+        use std::io::Write;
+        let mut w = SerialWrite::new(0, Some(mock_write_fail));
+        w.write_all(b"data").unwrap();
+        assert!(w.flush().is_err());
+    }
+
+    #[test]
+    fn t_serial_write_clears_buffer_even_on_error() {
+        use std::io::Write;
+        let mut w = SerialWrite::new(0, Some(mock_write_fail));
+        w.write_all(b"data").unwrap();
+        let _ = w.flush();
+        // Buffer should be cleared even though callback failed,
+        // so a subsequent flush with a working callback sends nothing.
+        w.write_func = Some(mock_write_ok);
+        MOCK_SINK.lock().unwrap().clear();
+        w.flush().unwrap();
+        assert!(MOCK_SINK.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn t_serial_write_passes_ctx() {
+        use std::sync::atomic::{AtomicU64, Ordering as AOrdering};
+        static SEEN_CTX: AtomicU64 = AtomicU64::new(0);
+        unsafe extern "C" fn capture_ctx(
+            ctx: u64,
+            _data: *const std::ffi::c_void,
+            _len: u64,
+        ) -> OrcError {
+            SEEN_CTX.store(ctx, AOrdering::Relaxed);
+            ORC_ERROR_NONE
+        }
+        use std::io::Write;
+        let mut w = SerialWrite::new(0xDEAD, Some(capture_ctx));
+        w.write_all(b"x").unwrap();
+        w.flush().unwrap();
+        assert_eq!(SEEN_CTX.load(AOrdering::Relaxed), 0xDEAD);
+    }
+
+    // ==================== alloc_with_value ====================
+
+    #[test]
+    fn t_alloc_with_value_replaces_same_type() {
+        let reg = DeckRegistry::new();
+        let mut h = fresh_handle(200);
+        // First alloc with default (empty) deck.
+        reg.alloc::<f64>(&mut h).unwrap();
+        assert_eq!(h.n_items, 0);
+        // Now alloc_with_value with a populated deck of the same type.
+        let mut deck = Deck::<f64>::default();
+        deck.push(1.0, 1);
+        deck.push(2.0, 0);
+        deck.push(3.0, 0);
+        reg.alloc_with_value(deck, &mut h).unwrap();
+        // The handle should reflect the new data, not be cleared.
+        assert_eq!(h.n_items, 3);
+        let items = h.items::<f64>();
+        assert_eq!(items, &[1.0, 2.0, 3.0]);
+        disarm(&mut h);
+    }
 }
