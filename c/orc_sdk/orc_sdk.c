@@ -2342,9 +2342,12 @@ OrcError orc_sdk_serialize_handle_header(uint64_t const      ctx,
 
 static OrcError _sv_read_bytes(OrcStrView *sv, void *dst, size_t const count)
 {
+  if (sv->start + count > sv->end) {
+    return ORC_ERROR_SERIALIZATION_ERROR;
+  }
   memcpy(dst, sv->start, count);
   sv->start += count;
-  return sv->start <= sv->end ? ORC_ERROR_NONE : ORC_ERROR_SERIALIZATION_ERROR;
+  return ORC_ERROR_NONE;
 }
 
 OrcError orc_sdk_deserialize_handle_header(uint64_t const ctx,
@@ -2365,9 +2368,6 @@ OrcError orc_sdk_deserialize_handle_header(uint64_t const ctx,
   err = _sv_read_bytes(src, &(out->type_id), sizeof(out->type_id));
   if (err != ORC_ERROR_NONE)
     return err;
-  err = _sv_read_bytes(src, &(out->type_id), sizeof(out->type_id));
-  if (err != ORC_ERROR_NONE)
-    return err;
   err = _sv_read_bytes(src, out->dims, sizeof(OrcDims));
   if (err != ORC_ERROR_NONE)
     return err;
@@ -2384,8 +2384,10 @@ OrcError orc_sdk_deserialize_handle_header(uint64_t const ctx,
   OrcMark *marks = NULL;
   orc_sdk_arr_resize(marks, out->n_marks);
   err = _sv_read_bytes(src, marks, sizeof(OrcMark) * out->n_marks);
-  if (err != ORC_ERROR_NONE)
+  if (err != ORC_ERROR_NONE) {
+    orc_sdk_arr_free(marks);
     return err;
+  }
   *out_marks = marks;
   return ORC_ERROR_NONE;
 }
