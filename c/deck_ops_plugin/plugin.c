@@ -57,10 +57,18 @@ OrcError orc_deck_serialize(uint64_t const      ctx,
                             OrcHandle const    *handle,
                             OrcSerializeWriteFn write_fn)
 {
-  (void)ctx;
-  (void)handle;
-  (void)write_fn;
-  ORC_SDK_TODO("Not implemented");
+  OrcError err = orc_sdk_serialize_handle_header(ctx, handle, write_fn);
+  if (err != ORC_ERROR_NONE) {
+    return err;
+  }
+  ORC_SDK_REQUIRE(handle->item_size > 0);
+  // IMPORTANT: This only works because this plugin doesn't define custom types with any
+  // pointer indirection. All the builtin types are value types.
+  err = write_fn(ctx, handle->items, handle->item_size * handle->n_items);
+  if (err != ORC_ERROR_NONE) {
+    return err;
+  }
+  return ORC_ERROR_NONE;
 }
 
 OrcError orc_deck_deserialize(uint64_t const ctx,
@@ -68,7 +76,12 @@ OrcError orc_deck_deserialize(uint64_t const ctx,
                               uint64_t const buf_len,
                               OrcHandle     *out)
 {
-  OrcStrView src = {.start = (char *)buf, .end = (char *)buf + buf_len};
+  OrcStrView src   = {.start = (char *)buf, .end = (char *)buf + buf_len};
+  OrcMark   *marks = NULL;
+  OrcError   err   = orc_sdk_deserialize_handle_header(ctx, &src, out, &marks);
+  if (err != ORC_ERROR_NONE) {
+    return err;
+  }
 
   (void)src;
   (void)ctx;
