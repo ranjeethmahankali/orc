@@ -1022,4 +1022,149 @@ mod tests {
         let s: &[u32] = unsafe { slice_from_ptr(data.as_ptr(), 0) };
         assert!(s.is_empty());
     }
+
+    // ==================== serialization header ====================
+
+    fn make_handle_with_marks(marks: &[OrcMark]) -> OrcHandle {
+        OrcHandle {
+            handle: 42,
+            type_id: crate::ORC_TYPE_F64,
+            dims: [1, 0, -2, 0, 0, 0, 0],
+            n_items: 5,
+            item_size: 8,
+            n_marks: marks.len() as u64,
+            marks: ptr_from_slice(marks),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn t_header_round_trip_no_marks() {
+        let h = make_handle_with_marks(&[]);
+        let mut buf = Vec::new();
+        write_orc_handle_header(&h, &mut buf).unwrap();
+
+        let mut out = OrcHandle::default();
+        let mut cursor = std::io::Cursor::new(&buf);
+        let marks = read_orc_handle_header(&mut out, &mut cursor).unwrap();
+
+        assert_eq!(out.type_id, h.type_id);
+        assert_eq!(out.dims, h.dims);
+        assert_eq!(out.n_items, h.n_items);
+        assert_eq!(out.item_size, h.item_size);
+        assert_eq!(out.n_marks, 0);
+        assert!(marks.is_empty());
+    }
+
+    #[test]
+    fn t_header_round_trip_with_marks() {
+        let src_marks = [
+            OrcMark { depth: 1, pos: 0 },
+            OrcMark { depth: 1, pos: 3 },
+            OrcMark { depth: 2, pos: 0 },
+        ];
+        let h = make_handle_with_marks(&src_marks);
+        let mut buf = Vec::new();
+        write_orc_handle_header(&h, &mut buf).unwrap();
+
+        let mut out = OrcHandle::default();
+        let mut cursor = std::io::Cursor::new(&buf);
+        let marks = read_orc_handle_header(&mut out, &mut cursor).unwrap();
+
+        assert_eq!(out.type_id, h.type_id);
+        assert_eq!(out.dims, h.dims);
+        assert_eq!(out.n_items, h.n_items);
+        assert_eq!(out.item_size, h.item_size);
+        assert_eq!(marks, src_marks);
+    }
+
+    #[test]
+    fn t_header_round_trip_preserves_dims() {
+        let h = OrcHandle {
+            type_id: crate::ORC_TYPE_I32,
+            dims: [-3, 7, 0, 1, -1, 2, 0],
+            n_items: 10,
+            item_size: 4,
+            ..Default::default()
+        };
+        let mut buf = Vec::new();
+        write_orc_handle_header(&h, &mut buf).unwrap();
+
+        let mut out = OrcHandle::default();
+        let mut cursor = std::io::Cursor::new(&buf);
+        read_orc_handle_header(&mut out, &mut cursor).unwrap();
+
+        assert_eq!(out.dims, h.dims);
+    }
+
+    #[test]
+    fn t_header_wrong_version_rejected() {
+        let h = make_handle_with_marks(&[]);
+        let mut buf = Vec::new();
+        write_orc_handle_header(&h, &mut buf).unwrap();
+
+        // Corrupt the version (first 8 bytes).
+        buf[0] = 0xff;
+
+        let mut out = OrcHandle::default();
+        let mut cursor = std::io::Cursor::new(&buf);
+        let err = read_orc_handle_header(&mut out, &mut cursor).unwrap_err();
+        assert_eq!(err.kind(), std::io::ErrorKind::InvalidData);
+    }
+
+    #[test]
+    fn t_header_truncated_input_fails() {
+        let h = make_handle_with_marks(&[]);
+        let mut buf = Vec::new();
+        write_orc_handle_header(&h, &mut buf).unwrap();
+
+        // Chop the buffer short.
+        buf.truncate(10);
+
+        let mut out = OrcHandle::default();
+        let mut cursor = std::io::Cursor::new(&buf);
+        assert!(read_orc_handle_header(&mut out, &mut cursor).is_err());
+    }
+
+    #[test]
+    fn t_header_cursor_positioned_after_marks() {
+        let src_marks = [OrcMark { depth: 1, pos: 0 }];
+        let h = make_handle_with_marks(&src_marks);
+
+        // Write header + some trailing "item" bytes.
+        let mut buf = Vec::new();
+        write_orc_handle_header(&h, &mut buf).unwrap();
+        let header_len = buf.len();
+        buf.extend_from_slice(&[0xAA, 0xBB, 0xCC, 0xDD]);
+
+        let mut out = OrcHandle::default();
+        let mut cursor = std::io::Cursor::new(&buf);
+        read_orc_handle_header(&mut out, &mut cursor).unwrap();
+
+        // Cursor should be right after the header, ready to read items.
+        assert_eq!(cursor.position() as usize, header_len);
+
+        // Read the trailing bytes to confirm.
+        let mut trail = [0u8; 4];
+        std::io::Read::read_exact(&mut cursor, &mut trail).unwrap();
+        assert_eq!(trail, [0xAA, 0xBB, 0xCC, 0xDD]);
+    }
+
+    #[test]
+    fn t_header_does_not_touch_handle_id_or_free_fn() {
+        let h = make_handle_with_marks(&[]);
+        let mut buf = Vec::new();
+        write_orc_handle_header(&h, &mut buf).unwrap();
+
+        let mut out = OrcHandle {
+            handle: 999,
+            ..Default::default()
+        };
+        let mut cursor = std::io::Cursor::new(&buf);
+        read_orc_handle_header(&mut out, &mut cursor).unwrap();
+
+        // read should not clobber handle or free_fn.
+        assert_eq!(out.handle, 999);
+        assert!(out.free_fn.is_none());
+    }
 }
