@@ -2,10 +2,10 @@ use libloading::Library;
 use std::{collections::HashMap, collections::hash_map::Entry, path::Path};
 
 use crate::{
-    DeckAllocFn, DeckFreeFn, DeckFromProxyFn, Error, FuncInfo, HostCallbacks, ORC_ABI_VERSION,
-    ORC_DECK_PROXY_COPY_ALL, ORC_DECK_PROXY_COPY_ITEMS, ORC_DECK_PROXY_SHUFFLE, OrcHandle, OrcHost,
-    OrcPlugin, OrcTypeId, PRIMITIVE_TYPES, PluginInitFn, ProxyType, TypeInfo, slice_from_ptr,
-    util::string_from_ffi,
+    DeckAllocFn, DeckDeserializeFn, DeckFreeFn, DeckFromProxyFn, DeckSerializeFn, Error, FuncInfo,
+    HostCallbacks, ORC_ABI_VERSION, ORC_DECK_PROXY_COPY_ALL, ORC_DECK_PROXY_COPY_ITEMS,
+    ORC_DECK_PROXY_SHUFFLE, OrcHandle, OrcHost, OrcPlugin, OrcTypeId, PRIMITIVE_TYPES,
+    PluginInitFn, ProxyType, TypeInfo, slice_from_ptr, util::string_from_ffi,
 };
 
 /// This is to store the info, handles etc. for a loaded plugin.
@@ -19,6 +19,8 @@ pub struct Plugin {
     deck_alloc: DeckAllocFn,
     deck_free: DeckFreeFn,
     deck_from_proxy: DeckFromProxyFn,
+    deck_serialize: DeckSerializeFn,
+    deck_deserialize: DeckDeserializeFn,
 }
 
 impl Plugin {
@@ -26,14 +28,18 @@ impl Plugin {
     const DECK_ALLOC_FN_NAME: &str = "orc_deck_alloc";
     const DECK_FREE_FN_NAME: &str = "orc_deck_free";
     const DECK_FROM_PROXY_FN_NAME: &str = "orc_deck_from_proxy";
+    const DECK_SERIALIZE_FN_NAME: &str = "orc_deck_serialize";
+    const DECK_DESERIALIZE_FN_NAME: &str = "orc_deck_deserialize";
 
     pub fn load(path: &Path, host: &OrcHost) -> Result<Self, String> {
         let lib = unsafe { Library::new(path) }.map_err(|e| format!("cannot load library: {e}"))?;
-        let (init, deck_alloc, deck_free, deck_from_proxy): (
+        let (init, deck_alloc, deck_free, deck_from_proxy, deck_serialize, deck_deserialize): (
             PluginInitFn,
             DeckAllocFn,
             DeckFreeFn,
             DeckFromProxyFn,
+            DeckSerializeFn,
+            DeckDeserializeFn,
         ) = unsafe {
             (
                 lib.get(Self::PLUGIN_INIT_FN_NAME.as_bytes())
@@ -48,6 +54,12 @@ impl Plugin {
                 lib.get(Self::DECK_FROM_PROXY_FN_NAME.as_bytes())
                     .map(|s| *s)
                     .map_err(|_| format!("missing symbol '{}'", Self::DECK_FROM_PROXY_FN_NAME))?,
+                lib.get(Self::DECK_SERIALIZE_FN_NAME.as_bytes())
+                    .map(|s| *s)
+                    .map_err(|_| format!("missing symbol '{}'", Self::DECK_SERIALIZE_FN_NAME))?,
+                lib.get(Self::DECK_DESERIALIZE_FN_NAME.as_bytes())
+                    .map(|s| *s)
+                    .map_err(|_| format!("missing symbol '{}'", Self::DECK_DESERIALIZE_FN_NAME))?,
             )
         };
         let mut plugin_data = OrcPlugin::default();
@@ -78,6 +90,8 @@ impl Plugin {
             deck_alloc,
             deck_free,
             deck_from_proxy,
+            deck_serialize,
+            deck_deserialize,
         })
     }
 
@@ -116,6 +130,18 @@ impl Plugin {
             (self.deck_from_proxy)(inputs.as_ptr(), inputs.len() as u64, ptype, proxy, &mut out)
         };
         Error::from_raw(err).map(|_| out)
+    }
+
+    pub fn serialize_deck(&self, _ctx: u64, _handle: &OrcHandle) -> Result<(), Error> {
+        todo!(
+            "
+I need a global registry of buffers, that I can serialize into, and thread the ctx
+through the FFI call, to have the plugin write into the correct buffer"
+        );
+    }
+
+    pub fn deserialize_deck(&self, _ctx: u64, _buf: &[u8]) -> Result<OrcHandle, Error> {
+        todo!()
     }
 
     pub fn name(&self) -> &str {

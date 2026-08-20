@@ -234,11 +234,26 @@ pub type DeckFromProxyFn = unsafe extern "C" fn(
     proxy: *const OrcHandle,
     out: *mut OrcHandle,
 ) -> OrcError;
+pub type DeckSerializeFn = unsafe extern "C" fn(
+    ctx: u64,
+    handle: *const OrcHandle,
+    write_fn: OrcSerializeWriteFn,
+) -> OrcError;
+pub type DeckDeserializeFn = unsafe extern "C" fn(
+    ctx: u64,
+    type_id: OrcTypeId,
+    buf: *const ::std::os::raw::c_void,
+    buf_len: u64,
+    out: *mut OrcHandle,
+) -> OrcError;
 
 // Compile-time checks to keep these type aliases in sync with the bindings.
 const _: PluginInitFn = orc_plugin_init;
 const _: DeckAllocFn = orc_deck_alloc;
+const _: DeckFreeFn = orc_deck_free;
 const _: DeckFromProxyFn = orc_deck_from_proxy;
+const _: DeckSerializeFn = orc_deck_serialize;
+const _: DeckDeserializeFn = orc_deck_deserialize;
 
 pub enum ProxyType {
     CopyAll,
