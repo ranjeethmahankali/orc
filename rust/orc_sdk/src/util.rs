@@ -579,6 +579,60 @@ pub fn deck_from_proxy<T: TOrcData>(
         .flatten()
 }
 
+// ==================== Serialization ====================
+
+pub struct SerialWrite {
+    ctx: u64,
+    write_func: crate::OrcSerializeWriteFn,
+    buf: Vec<u8>,
+}
+
+impl SerialWrite {
+    pub fn new(ctx: u64, write_func: crate::OrcSerializeWriteFn) -> Self {
+        Self {
+            ctx,
+            write_func,
+            buf: Default::default(),
+        }
+    }
+}
+
+impl std::io::Write for SerialWrite {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.buf.extend_from_slice(buf);
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        let func = self
+            .write_func
+            .ok_or(std::io::Error::from(std::io::ErrorKind::NotFound))?;
+        let err_kind =
+            match unsafe { (func)(self.ctx, self.buf.as_ptr().cast(), self.buf.len() as u64) } {
+                crate::ORC_ERROR_NONE => return Ok(()),
+                crate::ORC_ERROR_ABI_VERSION_MISMATCH | crate::ORC_ERROR_MISSING_CAPABILITY => {
+                    std::io::ErrorKind::Unsupported
+                }
+                crate::ORC_ERROR_INVALID_HANDLE
+                | crate::ORC_ERROR_INVALID_DIMENSIONS
+                | crate::ORC_ERROR_TYPE_MISMATCH
+                | crate::ORC_ERROR_INVALID_COMBINATIONS
+                | crate::ORC_ERROR_INVALID_PROXY
+                | crate::ORC_ERROR_INVALID_FUNCTION
+                | crate::ORC_ERROR_INVALID_ARGUMENTS => std::io::ErrorKind::InvalidData,
+                crate::ORC_ERROR_PLUGIN_ALREADY_INITIALIZED => std::io::ErrorKind::AlreadyExists,
+                crate::ORC_ERROR_CONCURRENCY_PROBLEM => std::io::ErrorKind::Other,
+                crate::ORC_ERROR_CANNOT_LOAD_PLUGINS | crate::ORC_ERROR_NULL_PTR => {
+                    std::io::ErrorKind::NotFound
+                }
+                crate::ORC_ERROR_OUT_OF_BOUNDS => std::io::ErrorKind::FileTooLarge,
+                crate::ORC_ERROR_ALLOC_FAILED => std::io::ErrorKind::OutOfMemory,
+                _ => std::io::ErrorKind::Other,
+            };
+        Err(std::io::Error::from(err_kind))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

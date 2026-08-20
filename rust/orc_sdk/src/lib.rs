@@ -19,8 +19,8 @@ pub use orc_sdk_derive::{orc_fn, orc_fn_info, orc_map_fn};
 mod util;
 pub use util::{
     DeckRegistry, FuncInfo, HandleDisplayWrapper, HostCallbacks, PRIMITIVE_TYPES, PluginAllocator,
-    TypeInfo, deck_from_proxy, ptr_from_slice, reset_handle, slice_from_ptr, slice_from_ptr_mut,
-    update_handle_from_deck,
+    SerialWrite, TypeInfo, deck_from_proxy, ptr_from_slice, reset_handle, slice_from_ptr,
+    slice_from_ptr_mut, update_handle_from_deck,
 };
 
 mod dag;

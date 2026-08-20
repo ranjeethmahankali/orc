@@ -101,7 +101,7 @@ impl TOrcPluginAdaptor for Adaptor {
         }
     }
 
-    fn deck_serialize(handle: &OrcHandle, write: impl std::io::Write) -> std::io::Result<()> {
+    fn deck_serialize(handle: &OrcHandle, write: &mut impl std::io::Write) -> std::io::Result<()> {
         todo!()
     }
 
