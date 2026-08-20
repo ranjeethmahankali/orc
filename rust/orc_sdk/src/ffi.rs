@@ -116,7 +116,13 @@ macro_rules! orc_plugin {
             buf_len: u64,
             out: *mut OrcHandle,
         ) -> orc_sdk::OrcError {
-            todo!()
+            let bytes = unsafe { orc_sdk::slice_from_ptr(buf.cast::<u8>(), buf_len as usize) };
+            let mut reader = std::io::Cursor::new(bytes);
+            let out = unsafe { &mut *out };
+            match <$plugin as orc_sdk::TOrcPluginAdaptor>::deck_deserialize(&mut reader, out) {
+                Ok(_) => orc_sdk::ORC_ERROR_NONE,
+                Err(e) => e.into(),
+            }
         }
     };
 }
