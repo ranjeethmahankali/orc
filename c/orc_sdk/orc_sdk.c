@@ -2340,14 +2340,52 @@ OrcError orc_sdk_serialize_handle_header(uint64_t const      ctx,
   return err;
 }
 
-OrcError orc_sdk_deserialize_handle_header(uint64_t const ctx,
-                                           void const    *buf,
-                                           uint64_t const buf_len,
-                                           OrcHandle     *out)
+static OrcError _sv_read_bytes(OrcStrView *sv, void *dst, size_t const count)
 {
-  (void)ctx;
-  (void)buf;
-  (void)buf_len;
-  (void)out;
-  ORC_SDK_TODO("Not implemented");
+  memcpy(dst, sv->start, count);
+  sv->start += count;
+  return sv->start <= sv->end ? ORC_ERROR_NONE : ORC_ERROR_SERIALIZATION_ERROR;
+}
+
+OrcError orc_sdk_deserialize_handle_header(uint64_t const ctx,
+                                           OrcStrView    *src,
+                                           OrcHandle     *out,
+                                           OrcMark      **out_marks)
+{
+  // We're going to wrap the received buffer in a string view, and consume bytes from it.
+  uint64_t abi_version = 0;
+  OrcError err         = _sv_read_bytes(src, &abi_version, sizeof(abi_version));
+  if (err != ORC_ERROR_NONE)
+    return err;
+  if (abi_version != ORC_ABI_VERSION) {
+    orc_sdk_report_message(
+      ctx, ORC_MSG_LEVEL_ERROR, "Cannot deserialize data due to version mismatch");
+    return ORC_ERROR_ABI_VERSION_MISMATCH;
+  }
+  err = _sv_read_bytes(src, &(out->type_id), sizeof(out->type_id));
+  if (err != ORC_ERROR_NONE)
+    return err;
+  err = _sv_read_bytes(src, &(out->type_id), sizeof(out->type_id));
+  if (err != ORC_ERROR_NONE)
+    return err;
+  err = _sv_read_bytes(src, out->dims, sizeof(OrcDims));
+  if (err != ORC_ERROR_NONE)
+    return err;
+  err = _sv_read_bytes(src, &(out->n_items), sizeof(out->n_items));
+  if (err != ORC_ERROR_NONE)
+    return err;
+  err = _sv_read_bytes(src, &(out->item_size), sizeof(out->item_size));
+  if (err != ORC_ERROR_NONE)
+    return err;
+  err = _sv_read_bytes(src, &(out->n_marks), sizeof(out->n_marks));
+  if (err != ORC_ERROR_NONE)
+    return err;
+  // Now deserialize the marks.
+  OrcMark *marks = NULL;
+  orc_sdk_arr_resize(marks, out->n_marks);
+  err = _sv_read_bytes(src, marks, sizeof(OrcMark) * out->n_marks);
+  if (err != ORC_ERROR_NONE)
+    return err;
+  *out_marks = marks;
+  return ORC_ERROR_NONE;
 }

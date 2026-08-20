@@ -68,9 +68,10 @@ OrcError orc_deck_deserialize(uint64_t const ctx,
                               uint64_t const buf_len,
                               OrcHandle     *out)
 {
+  OrcStrView src = {.start = (char *)buf, .end = (char *)buf + buf_len};
+
+  (void)src;
   (void)ctx;
-  (void)buf;
-  (void)buf_len;
   (void)out;
   ORC_SDK_TODO("Not implemented");
 }

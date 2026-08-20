@@ -857,6 +857,6 @@ OrcError orc_sdk_serialize_handle_header(uint64_t const      ctx,
                                          OrcSerializeWriteFn write_fn);
 
 OrcError orc_sdk_deserialize_handle_header(uint64_t const ctx,
-                                           void const    *buf,
-                                           uint64_t const buf_len,
-                                           OrcHandle     *out);
+                                           OrcStrView    *src,
+                                           OrcHandle     *out,
+                                           OrcMark      **out_marks);
