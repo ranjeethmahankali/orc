@@ -2307,3 +2307,16 @@ OrcError orc_sdk_deck_from_proxy(OrcHandle const   *inputs,
   }
   return ORC_ERROR_NONE;
 }
+
+OrcError orc_sdk_serialize_handle_header(OrcHandle const    *handle,
+                                         OrcSerializeWriteFn write_fn)
+{
+  ORC_SDK_TODO("Not implemented");
+}
+
+OrcError orc_sdk_deserialize_handle_header(void const    *buf,
+                                           uint64_t const buf_len,
+                                           OrcHandle     *out)
+{
+  ORC_SDK_TODO("Not implemented");
+}
