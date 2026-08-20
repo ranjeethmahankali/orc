@@ -735,7 +735,7 @@ mod tests {
     // ==================== DeckRegistry ====================
 
     #[test]
-    fn alloc_fresh() {
+    fn t_alloc_fresh() {
         let reg = DeckRegistry::new();
         let mut h = fresh_handle(1);
         reg.alloc::<f32>(&mut h).unwrap();
@@ -746,7 +746,7 @@ mod tests {
     }
 
     #[test]
-    fn alloc_reuse_same_type() {
+    fn t_alloc_reuse_same_type() {
         // Second alloc with the same type should be a no-op: no error, type and ID unchanged.
         // We verify the old free_fn is NOT called by checking the handle still has a valid entry
         // in the registry after the second alloc.
@@ -763,7 +763,7 @@ mod tests {
     }
 
     #[test]
-    fn alloc_type_change() {
+    fn t_alloc_type_change() {
         // Second alloc with a different type: old deck replaced, new type reflected in handle.
         let reg = DeckRegistry::new();
         let mut h = fresh_handle(3);
@@ -781,7 +781,7 @@ mod tests {
     }
 
     #[test]
-    fn alloc_eviction_foreign() {
+    fn t_alloc_eviction_foreign() {
         // A handle whose free_fn belongs to a foreign plugin: alloc must evict it first.
         static FOREIGN_CALLED: AtomicUsize = AtomicUsize::new(0);
         unsafe extern "C" fn mock_foreign(_handle: *mut OrcHandle) -> OrcError {
@@ -803,7 +803,7 @@ mod tests {
     }
 
     #[test]
-    fn free_success() {
+    fn t_free_success() {
         let reg = DeckRegistry::new();
         let mut h = fresh_handle(5);
         reg.alloc::<f32>(&mut h).unwrap();
@@ -816,13 +816,13 @@ mod tests {
     }
 
     #[test]
-    fn free_unregistered() {
+    fn t_free_unregistered() {
         let reg = DeckRegistry::new();
         assert!(matches!(reg.free(999), Err(Error::InvalidHandle)));
     }
 
     #[test]
-    fn free_does_not_clear_handle_id() {
+    fn t_free_does_not_clear_handle_id() {
         let reg = DeckRegistry::new();
         let mut h = fresh_handle(6);
         reg.alloc::<u8>(&mut h).unwrap();
@@ -832,7 +832,7 @@ mod tests {
     }
 
     #[test]
-    fn with_mut_borrows_and_mutates() {
+    fn t_with_mut_borrows_and_mutates() {
         let reg = DeckRegistry::new();
         let mut h = fresh_handle(10);
         reg.alloc::<f64>(&mut h).unwrap();
@@ -850,7 +850,7 @@ mod tests {
     }
 
     #[test]
-    fn with_mut_missing_id() {
+    fn t_with_mut_missing_id() {
         let reg = DeckRegistry::new();
         assert!(matches!(
             reg.with_mut::<(), _>(&[42], |_| ()),
@@ -859,7 +859,7 @@ mod tests {
     }
 
     #[test]
-    fn concurrent_alloc_free() {
+    fn t_concurrent_alloc_free() {
         use std::thread;
         let reg = Arc::new(DeckRegistry::new());
         let threads: Vec<_> = (0u64..16)
@@ -901,7 +901,7 @@ mod tests {
     // ==================== update_handle_from_deck ====================
 
     #[test]
-    fn fields_populated() {
+    fn t_fields_populated() {
         let mut deck: Deck<f32> = Deck::default();
         deck.push(1.0, 1);
         deck.push(2.0, 0);
@@ -920,7 +920,7 @@ mod tests {
     }
 
     #[test]
-    fn empty_deck_gives_null_items() {
+    fn t_empty_deck_gives_null_items() {
         let deck: Deck<u64> = Deck::default();
         let mut h = OrcHandle {
             handle: 55,
@@ -933,7 +933,7 @@ mod tests {
     }
 
     #[test]
-    fn preserves_handle_id() {
+    fn t_preserves_handle_id() {
         let mut deck: Deck<i32> = Deck::default();
         deck.push(42, 1);
         let mut h = OrcHandle {
@@ -945,7 +945,7 @@ mod tests {
     }
 
     #[test]
-    fn preserves_free_fn() {
+    fn t_preserves_free_fn() {
         let deck: Deck<i32> = Deck::default();
         let mut h = OrcHandle {
             handle: 88,
@@ -959,7 +959,7 @@ mod tests {
     // ==================== reset_handle ====================
 
     #[test]
-    fn clears_data_fields_not_id() {
+    fn t_clears_data_fields_not_id() {
         let mut h = OrcHandle {
             handle: 42,
             n_items: 5,
@@ -980,7 +980,7 @@ mod tests {
     }
 
     #[test]
-    fn reset_idempotent() {
+    fn t_reset_idempotent() {
         let mut h = OrcHandle {
             handle: 11,
             n_items: 3,
@@ -996,13 +996,13 @@ mod tests {
     // ==================== ptr helpers ====================
 
     #[test]
-    fn empty_slice_gives_null() {
+    fn t_empty_slice_gives_null() {
         let empty: &[u32] = &[];
         assert!(ptr_from_slice(empty).is_null());
     }
 
     #[test]
-    fn nonempty_round_trips() {
+    fn t_nonempty_round_trips() {
         let data = [1u32, 2, 3];
         let ptr = ptr_from_slice(&data);
         assert!(!ptr.is_null());
@@ -1011,13 +1011,13 @@ mod tests {
     }
 
     #[test]
-    fn null_ptr_gives_empty_slice() {
+    fn t_null_ptr_gives_empty_slice() {
         let s: &[u32] = unsafe { slice_from_ptr(std::ptr::null(), 5) };
         assert!(s.is_empty());
     }
 
     #[test]
-    fn zero_len_gives_empty_slice() {
+    fn t_zero_len_gives_empty_slice() {
         let data = [42u32];
         let s: &[u32] = unsafe { slice_from_ptr(data.as_ptr(), 0) };
         assert!(s.is_empty());
