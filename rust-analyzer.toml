@@ -1,4 +1,0 @@
-# Exclude the build directory (custom target-dir from .cargo/config.toml)
-# to prevent rust-analyzer from watching transient build artifacts.
-[files]
-excludeDirs = ["build"]
