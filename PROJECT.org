@@ -564,6 +564,16 @@
 
   <2026-08-19 Wed 20:02> Have the basic ABI in place. The design feels solid.
 
+  <2026-08-20 Thu 17:00> Started implementing the serialization. Experimented with some weird plain
+  text file formats for storing the OrcHandle's header (all the structural and metadata) in a format
+  that all hosts and plugins can read and write. But then realized I don't need yet another format
+  that everyone agrees on. I already have the ABI, so I can just write out the bytes compatible with
+  the ABI, for the structural information. For the actual data:
+  - Primitive types are just raw byte dumps. This is safe since the entire run time data sharing
+    across hosts and plugins already relies on this being stable, and it is stable.
+  - Custom types are deferred to the plugin that owns them, they are serialized to the end of the
+    binary, after all the metadata in the header.
+
 ** Ideas for host side context handling
    :PROPERTIES:
    :CREATED:  2026-08-19 Wed 20:05
