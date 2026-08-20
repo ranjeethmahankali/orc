@@ -52,3 +52,19 @@ OrcError orc_deck_from_proxy(OrcHandle const   *inputs,
 {
   return orc_sdk_deck_from_proxy(inputs, n_inputs, proxy_type, proxy, out);
 }
+
+OrcError orc_deck_serialize(uint64_t const      ctx,
+                            OrcHandle const    *handle,
+                            OrcSerializeWriteFn write_fn)
+{
+  ORC_SDK_TODO("Not implemented");
+}
+
+OrcError orc_deck_deserialize(uint64_t const  ctx,
+                              OrcTypeId const type_id,
+                              void const     *buf,
+                              uint64_t const  buf_len,
+                              OrcHandle      *out)
+{
+  ORC_SDK_TODO("Not implemented");
+}
