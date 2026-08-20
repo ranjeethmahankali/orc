@@ -1043,11 +1043,9 @@ mod tests {
         let h = make_handle_with_marks(&[]);
         let mut buf = Vec::new();
         write_orc_handle_header(&h, &mut buf).unwrap();
-
         let mut out = OrcHandle::default();
         let mut cursor = std::io::Cursor::new(&buf);
         let marks = read_orc_handle_header(&mut out, &mut cursor).unwrap();
-
         assert_eq!(out.type_id, h.type_id);
         assert_eq!(out.dims, h.dims);
         assert_eq!(out.n_items, h.n_items);
@@ -1066,11 +1064,9 @@ mod tests {
         let h = make_handle_with_marks(&src_marks);
         let mut buf = Vec::new();
         write_orc_handle_header(&h, &mut buf).unwrap();
-
         let mut out = OrcHandle::default();
         let mut cursor = std::io::Cursor::new(&buf);
         let marks = read_orc_handle_header(&mut out, &mut cursor).unwrap();
-
         assert_eq!(out.type_id, h.type_id);
         assert_eq!(out.dims, h.dims);
         assert_eq!(out.n_items, h.n_items);
@@ -1089,11 +1085,9 @@ mod tests {
         };
         let mut buf = Vec::new();
         write_orc_handle_header(&h, &mut buf).unwrap();
-
         let mut out = OrcHandle::default();
         let mut cursor = std::io::Cursor::new(&buf);
         read_orc_handle_header(&mut out, &mut cursor).unwrap();
-
         assert_eq!(out.dims, h.dims);
     }
 
@@ -1102,10 +1096,8 @@ mod tests {
         let h = make_handle_with_marks(&[]);
         let mut buf = Vec::new();
         write_orc_handle_header(&h, &mut buf).unwrap();
-
         // Corrupt the version (first 8 bytes).
         buf[0] = 0xff;
-
         let mut out = OrcHandle::default();
         let mut cursor = std::io::Cursor::new(&buf);
         let err = read_orc_handle_header(&mut out, &mut cursor).unwrap_err();
@@ -1117,10 +1109,8 @@ mod tests {
         let h = make_handle_with_marks(&[]);
         let mut buf = Vec::new();
         write_orc_handle_header(&h, &mut buf).unwrap();
-
         // Chop the buffer short.
         buf.truncate(10);
-
         let mut out = OrcHandle::default();
         let mut cursor = std::io::Cursor::new(&buf);
         assert!(read_orc_handle_header(&mut out, &mut cursor).is_err());
@@ -1129,22 +1119,15 @@ mod tests {
     #[test]
     fn t_header_cursor_positioned_after_marks() {
         let src_marks = [OrcMark { depth: 1, pos: 0 }];
-        let h = make_handle_with_marks(&src_marks);
-
-        // Write header + some trailing "item" bytes.
+        let h = make_handle_with_marks(&src_marks); // Write header + some trailing "item" bytes.
         let mut buf = Vec::new();
         write_orc_handle_header(&h, &mut buf).unwrap();
         let header_len = buf.len();
         buf.extend_from_slice(&[0xAA, 0xBB, 0xCC, 0xDD]);
-
         let mut out = OrcHandle::default();
         let mut cursor = std::io::Cursor::new(&buf);
-        read_orc_handle_header(&mut out, &mut cursor).unwrap();
-
-        // Cursor should be right after the header, ready to read items.
-        assert_eq!(cursor.position() as usize, header_len);
-
-        // Read the trailing bytes to confirm.
+        read_orc_handle_header(&mut out, &mut cursor).unwrap(); // Cursor should be right after the header, ready to read items.
+        assert_eq!(cursor.position() as usize, header_len); // Read the trailing bytes to confirm.
         let mut trail = [0u8; 4];
         std::io::Read::read_exact(&mut cursor, &mut trail).unwrap();
         assert_eq!(trail, [0xAA, 0xBB, 0xCC, 0xDD]);
@@ -1155,15 +1138,12 @@ mod tests {
         let h = make_handle_with_marks(&[]);
         let mut buf = Vec::new();
         write_orc_handle_header(&h, &mut buf).unwrap();
-
         let mut out = OrcHandle {
             handle: 999,
             ..Default::default()
         };
         let mut cursor = std::io::Cursor::new(&buf);
-        read_orc_handle_header(&mut out, &mut cursor).unwrap();
-
-        // read should not clobber handle or free_fn.
+        read_orc_handle_header(&mut out, &mut cursor).unwrap(); // read should not clobber handle or free_fn.
         assert_eq!(out.handle, 999);
         assert!(out.free_fn.is_none());
     }
