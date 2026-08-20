@@ -633,6 +633,40 @@ impl std::io::Write for SerialWrite {
     }
 }
 
+// Helper functions to serialize the structure of an OrcHandle, without the data. All SDKs that want
+// to work with the same data must comply with this plain text format.
+
+pub fn write_orc_handle_structure(
+    handle: &OrcHandle,
+    f: &mut impl std::io::Write,
+) -> std::io::Result<()> {
+    writeln!(
+        f,
+        "type_id: {}\nn_items: {}\nitem_size: {}",
+        handle.type_id, handle.n_items, handle.item_size
+    )?;
+    writeln!(
+        f,
+        "dims: {} {} {} {} {} {} {}",
+        handle.dims[0],
+        handle.dims[1],
+        handle.dims[2],
+        handle.dims[3],
+        handle.dims[4],
+        handle.dims[5],
+        handle.dims[6]
+    )?;
+    writeln!(f, "n_marks: {}", handle.n_marks)?;
+    let marks = unsafe { slice_from_ptr(handle.marks, handle.n_marks as usize) };
+    if !marks.is_empty() {
+        writeln!(f, "marks:")?;
+        for m in marks {
+            writeln!(f, "    {} {}", m.pos, m.depth)?;
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

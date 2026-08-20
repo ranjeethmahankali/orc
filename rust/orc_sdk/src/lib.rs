@@ -20,7 +20,7 @@ mod util;
 pub use util::{
     DeckRegistry, FuncInfo, HandleDisplayWrapper, HostCallbacks, PRIMITIVE_TYPES, PluginAllocator,
     SerialWrite, TypeInfo, deck_from_proxy, ptr_from_slice, reset_handle, slice_from_ptr,
-    slice_from_ptr_mut, update_handle_from_deck,
+    slice_from_ptr_mut, update_handle_from_deck, write_orc_handle_structure,
 };
 
 mod dag;
