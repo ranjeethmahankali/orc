@@ -100,6 +100,14 @@ impl TOrcPluginAdaptor for Adaptor {
             _ => Err(Error::DeckTypeMismatch),
         }
     }
+
+    fn deck_serialize(handle: &OrcHandle, write: impl std::io::Write) -> std::io::Result<()> {
+        todo!()
+    }
+
+    fn deck_deserialize(read: impl std::io::Read, out: &mut OrcHandle) -> std::io::Result<()> {
+        todo!()
+    }
 }
 
 orc_plugin!(Adaptor);

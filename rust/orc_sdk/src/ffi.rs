@@ -240,6 +240,8 @@ pub trait TOrcPluginAdaptor {
         proxy: &OrcHandle,
         out: &mut OrcHandle,
     ) -> Result<(), Error>;
+    fn deck_serialize(handle: &OrcHandle, write: impl std::io::Write) -> std::io::Result<()>;
+    fn deck_deserialize(read: impl std::io::Read, out: &mut OrcHandle) -> std::io::Result<()>;
 }
 
 pub trait TOrcData: Default + Clone + Send + Sync + 'static {
