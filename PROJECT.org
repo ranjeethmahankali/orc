@@ -562,6 +562,28 @@
   For types that are owned by the plugin, the plugin alone can serialize and deserialize. The ABI
   needs to be extended to add support for this.
 
+  <2026-08-19 Wed 20:02> Have the basic ABI in place. The design feels solid.
+
+** Ideas for host side context handling
+   :PROPERTIES:
+   :CREATED:  2026-08-19 Wed 20:05
+   :END:
+
+   The host needs to maintain per-call state (e.g. serialize buffers, progress tracking) that
+   callbacks can access using the =ctx= token. Use a global concurrent registry keyed by =ctx=, same
+   pattern as =DeckRegistry= (Rust) and the C SDK's handle registry. Each callback looks up =ctx= in
+   the map to find its associated state.
+
+   Thread-local storage is tempting but breaks under re-entrancy (=create_deck_from_proxy=
+   dispatches host -> plugin A -> host -> plugin B) and plugin-spawned worker threads calling
+   callbacks from threads the host didn't set up. A global map keyed by =ctx= handles both cases.
+
+   Lock overhead per callback is negligible (~25ns uncontended). Plugins should batch writes into
+   larger chunks anyway to minimize FFI crossings.
+
+   This should also be the general pattern for how the host handles other callbacks such as progress
+   reporting, etc.
+
 * DONE tk1hl6 - ABI - Return error codes from plugin functions
   CLOSED: [2026-08-19 Wed 19:38]
   :PROPERTIES:
