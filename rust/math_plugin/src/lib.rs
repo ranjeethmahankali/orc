@@ -150,7 +150,7 @@ impl TOrcPluginAdaptor for Adaptor {
             let items = items;
             let mut deck = Deck::<T>::default();
             deck.assign_from_raw_data(items, marks);
-            REGISTRY.alloc_with_value(deck, handle)
+            REGISTRY.alloc_with_value(Some(deck), handle)
         }
         let marks =
             orc_sdk::read_orc_handle_header(out, read).map_err(|_| Error::SerializationError)?;
@@ -170,7 +170,7 @@ impl TOrcPluginAdaptor for Adaptor {
                     .map_err(|_| Error::SerializationError)?;
                 let mut deck = Deck::<Complex>::default();
                 deck.assign_from_raw_data(items, marks);
-                REGISTRY.alloc_with_value(deck, out)
+                REGISTRY.alloc_with_value(Some(deck), out)
             }
             _ => Err(Error::DeckTypeMismatch),
         }

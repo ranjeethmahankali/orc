@@ -114,12 +114,12 @@ impl DeckRegistry {
         &self,
         handle: &mut OrcHandle,
     ) -> Result<(), Error> {
-        self.alloc_with_value(Deck::<T>::default(), handle)
+        self.alloc_with_value::<T>(None, handle)
     }
 
     pub fn alloc_with_value<T: TOrcData + Any + Send + Sync>(
         &self,
-        value: Deck<T>,
+        value: Option<Deck<T>>,
         handle: &mut OrcHandle,
     ) -> Result<(), Error> {
         // Here, the id is valid, so we try to find the previous allocation and reuse it. If it
@@ -148,10 +148,14 @@ impl DeckRegistry {
                     let deck = write_lock
                         .downcast_mut::<Deck<T>>()
                         .ok_or(Error::DeckTypeMismatch)?;
-                    *deck = value;
+                    match value {
+                        Some(value) => *deck = value,
+                        None => deck.clear(),
+                    }
                     unsafe { update_handle_from_deck(deck, handle) };
                 } else {
                     // Different type — drop the old deck and insert a fresh one.
+                    let value = value.unwrap_or_default();
                     unsafe { update_handle_from_deck(&value, handle) };
                     occupied.insert(Arc::new(RwLock::new(Box::new(value))));
                 }
@@ -160,6 +164,7 @@ impl DeckRegistry {
             Entry::Vacant(vacant) => {
                 // This handle could be pointing to data inside another plugin. So we have to free that data first, before reassigning.
                 handle.free();
+                let value = value.unwrap_or_default();
                 unsafe { update_handle_from_deck(&value, handle) };
                 vacant.insert(Arc::new(RwLock::new(Box::new(value))));
                 handle.free_fn = Some(crate::orc_deck_free);
@@ -1264,7 +1269,7 @@ mod tests {
         deck.push(1.0, 1);
         deck.push(2.0, 0);
         deck.push(3.0, 0);
-        reg.alloc_with_value(deck, &mut h).unwrap();
+        reg.alloc_with_value(Some(deck), &mut h).unwrap();
         // The handle should reflect the new data, not be cleared.
         assert_eq!(h.n_items, 3);
         let items = h.items::<f64>();
