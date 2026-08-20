@@ -172,7 +172,7 @@ impl TOrcPluginAdaptor for Adaptor {
                 deck.assign_from_raw_data(items, marks);
                 REGISTRY.alloc_with_value(deck, out)
             }
-            _ => return Err(Error::DeckTypeMismatch),
+            _ => Err(Error::DeckTypeMismatch),
         }
     }
 }
