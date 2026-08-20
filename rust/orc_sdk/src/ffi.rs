@@ -90,7 +90,7 @@ macro_rules! orc_plugin {
         }
 
         #[unsafe(no_mangle)]
-        pub unsafe extern "C" fn orc_deck_serialize_items(
+        pub unsafe extern "C" fn orc_deck_serialize(
             ctx: u64,
             handle: *const OrcHandle,
             write_fn: orc_sdk::OrcSerializeWriteFn,
@@ -106,7 +106,7 @@ macro_rules! orc_plugin {
         }
 
         #[unsafe(no_mangle)]
-        pub unsafe extern "C" fn orc_deck_deserialize_items(
+        pub unsafe extern "C" fn orc_deck_deserialize(
             ctx: u64,
             type_id: OrcTypeId,
             buf: *const ::std::os::raw::c_void,

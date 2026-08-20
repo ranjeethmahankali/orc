@@ -331,14 +331,14 @@ pub type OrcSerializeWriteFn = ::std::option::Option<
     unsafe extern "C" fn(ctx: u64, data: *const ::std::os::raw::c_void, len: u64) -> OrcError,
 >;
 unsafe extern "C" {
-    pub fn orc_deck_serialize_items(
+    pub fn orc_deck_serialize(
         ctx: u64,
         handle: *const OrcHandle,
         write_fn: OrcSerializeWriteFn,
     ) -> OrcError;
 }
 unsafe extern "C" {
-    pub fn orc_deck_deserialize_items(
+    pub fn orc_deck_deserialize(
         ctx: u64,
         type_id: OrcTypeId,
         buf: *const ::std::os::raw::c_void,
