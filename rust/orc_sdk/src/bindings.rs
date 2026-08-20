@@ -255,34 +255,34 @@ pub type OrcDeckFreeFn =
 #[derive(Debug)]
 pub struct OrcHandle {
     pub handle: u64,
-    pub items: *const ::std::os::raw::c_void,
-    pub n_items: u64,
-    pub item_size: u64,
-    pub marks: *const OrcMark,
-    pub stride_offset: *const u64,
-    pub n_marks: u64,
-    pub strides: *const u64,
     pub type_id: OrcTypeId,
     pub dims: OrcDims,
+    pub n_items: u64,
+    pub item_size: u64,
+    pub n_marks: u64,
     pub free_fn: OrcDeckFreeFn,
+    pub marks: *const OrcMark,
+    pub stride_offset: *const u64,
+    pub strides: *const u64,
+    pub items: *const ::std::os::raw::c_void,
 }
 #[allow(clippy::unnecessary_operation, clippy::identity_op)]
 const _: () = {
     ["Size of OrcHandle"][::std::mem::size_of::<OrcHandle>() - 112usize];
     ["Alignment of OrcHandle"][::std::mem::align_of::<OrcHandle>() - 8usize];
     ["Offset of field: OrcHandle::handle"][::std::mem::offset_of!(OrcHandle, handle) - 0usize];
-    ["Offset of field: OrcHandle::items"][::std::mem::offset_of!(OrcHandle, items) - 8usize];
-    ["Offset of field: OrcHandle::n_items"][::std::mem::offset_of!(OrcHandle, n_items) - 16usize];
+    ["Offset of field: OrcHandle::type_id"][::std::mem::offset_of!(OrcHandle, type_id) - 8usize];
+    ["Offset of field: OrcHandle::dims"][::std::mem::offset_of!(OrcHandle, dims) - 16usize];
+    ["Offset of field: OrcHandle::n_items"][::std::mem::offset_of!(OrcHandle, n_items) - 48usize];
     ["Offset of field: OrcHandle::item_size"]
-        [::std::mem::offset_of!(OrcHandle, item_size) - 24usize];
-    ["Offset of field: OrcHandle::marks"][::std::mem::offset_of!(OrcHandle, marks) - 32usize];
+        [::std::mem::offset_of!(OrcHandle, item_size) - 56usize];
+    ["Offset of field: OrcHandle::n_marks"][::std::mem::offset_of!(OrcHandle, n_marks) - 64usize];
+    ["Offset of field: OrcHandle::free_fn"][::std::mem::offset_of!(OrcHandle, free_fn) - 72usize];
+    ["Offset of field: OrcHandle::marks"][::std::mem::offset_of!(OrcHandle, marks) - 80usize];
     ["Offset of field: OrcHandle::stride_offset"]
-        [::std::mem::offset_of!(OrcHandle, stride_offset) - 40usize];
-    ["Offset of field: OrcHandle::n_marks"][::std::mem::offset_of!(OrcHandle, n_marks) - 48usize];
-    ["Offset of field: OrcHandle::strides"][::std::mem::offset_of!(OrcHandle, strides) - 56usize];
-    ["Offset of field: OrcHandle::type_id"][::std::mem::offset_of!(OrcHandle, type_id) - 64usize];
-    ["Offset of field: OrcHandle::dims"][::std::mem::offset_of!(OrcHandle, dims) - 72usize];
-    ["Offset of field: OrcHandle::free_fn"][::std::mem::offset_of!(OrcHandle, free_fn) - 104usize];
+        [::std::mem::offset_of!(OrcHandle, stride_offset) - 88usize];
+    ["Offset of field: OrcHandle::strides"][::std::mem::offset_of!(OrcHandle, strides) - 96usize];
+    ["Offset of field: OrcHandle::items"][::std::mem::offset_of!(OrcHandle, items) - 104usize];
 };
 impl Default for OrcHandle {
     fn default() -> Self {

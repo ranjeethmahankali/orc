@@ -111,16 +111,16 @@ OrcCreateDeckFromProxyFn = ctypes.CFUNCTYPE(ctypes.c_uint32, ctypes.POINTER(OrcH
 
 OrcHandle._fields_ = [
     ("handle", ctypes.c_uint64),
-    ("items", ctypes.c_void_p),
-    ("n_items", ctypes.c_uint64),
-    ("item_size", ctypes.c_uint64),
-    ("marks", ctypes.POINTER(OrcMark)),
-    ("stride_offset", ctypes.POINTER(ctypes.c_uint64)),
-    ("n_marks", ctypes.c_uint64),
-    ("strides", ctypes.POINTER(ctypes.c_uint64)),
     ("type_id", OrcTypeId),
     ("dims", OrcDims),
+    ("n_items", ctypes.c_uint64),
+    ("item_size", ctypes.c_uint64),
+    ("n_marks", ctypes.c_uint64),
     ("free_fn", OrcDeckFreeFn),
+    ("marks", ctypes.POINTER(OrcMark)),
+    ("stride_offset", ctypes.POINTER(ctypes.c_uint64)),
+    ("strides", ctypes.POINTER(ctypes.c_uint64)),
+    ("items", ctypes.c_void_p),
 ]
 
 OrcTypeInfo._fields_ = [

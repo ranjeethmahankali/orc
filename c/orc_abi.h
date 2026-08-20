@@ -289,16 +289,16 @@ struct OrcHandle
   // assignment, even when the backing data is freed.  Plugins use this as the key into
   // their internal registry.
   uint64_t        handle;
-  void const     *items;
-  uint64_t        n_items;
-  uint64_t        item_size;
-  OrcMark const  *marks;
-  uint64_t const *stride_offset;
-  uint64_t        n_marks;
-  uint64_t const *strides;
   OrcTypeId       type_id;
   OrcDims         dims;
+  uint64_t        n_items;
+  uint64_t        item_size;
+  uint64_t        n_marks;
   OrcDeckFreeFn   free_fn;
+  OrcMark const  *marks;
+  uint64_t const *stride_offset;
+  uint64_t const *strides;
+  void const     *items;
 };
 
 /**
