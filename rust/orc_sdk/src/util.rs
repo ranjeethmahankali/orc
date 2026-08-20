@@ -148,7 +148,7 @@ impl DeckRegistry {
                     let deck = write_lock
                         .downcast_mut::<Deck<T>>()
                         .ok_or(Error::DeckTypeMismatch)?;
-                    deck.clear();
+                    *deck = value;
                     unsafe { update_handle_from_deck(deck, handle) };
                 } else {
                     // Different type — drop the old deck and insert a fresh one.
@@ -648,18 +648,24 @@ pub fn write_orc_handle_header(
     handle: &OrcHandle,
     w: &mut impl std::io::Write,
 ) -> std::io::Result<()> {
-    fn as_bytes<T>(slice: &[T]) -> &[u8] {
-        unsafe { std::slice::from_raw_parts(slice.as_ptr().cast(), size_of_val(slice)) }
-    }
-
     w.write_all(&crate::ORC_ABI_VERSION.to_ne_bytes())?;
     w.write_all(&handle.type_id.to_ne_bytes())?;
-    w.write_all(as_bytes(&handle.dims))?;
+    {
+        let dims_bytes = unsafe {
+            std::slice::from_raw_parts(handle.dims.as_ptr().cast(), size_of_val(&handle.dims))
+        };
+        w.write_all(dims_bytes)?;
+    }
     w.write_all(&handle.n_items.to_ne_bytes())?;
     w.write_all(&handle.item_size.to_ne_bytes())?;
     w.write_all(&handle.n_marks.to_ne_bytes())?;
-    let marks = unsafe { slice_from_ptr(handle.marks, handle.n_marks as usize) };
-    w.write_all(as_bytes(marks))?;
+    let marks_bytes = unsafe {
+        slice_from_ptr(
+            handle.marks.cast(),
+            (handle.n_marks as usize) * size_of::<OrcMark>(),
+        )
+    };
+    w.write_all(marks_bytes)?;
     Ok(())
 }
 

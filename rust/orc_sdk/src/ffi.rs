@@ -166,6 +166,11 @@ impl OrcHandle {
         // SAFETY; We're using the pointer and the length from the same pointer.
         unsafe { slice_from_ptr(self.items.cast(), (self.n_items * self.item_size) as usize) }
     }
+
+    pub fn marks(&self) -> &[OrcMark] {
+        // SAFETY: We're using the pointer and the length from the same handle.
+        unsafe { slice_from_ptr(self.marks, self.n_marks as usize) }
+    }
 }
 
 impl Drop for OrcHandle {
