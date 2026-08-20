@@ -633,99 +633,68 @@ impl std::io::Write for SerialWrite {
     }
 }
 
-// Helper functions to serialize the structure of an OrcHandle, without the data. All SDKs that want
-// to work with the same data must comply with this plain text format.
-
-pub fn write_orc_handle_structure(
+/// Binary serialization of an OrcHandle. The format follows the ABI layout directly:
+///   ORC_ABI_VERSION : u64
+///   type_id         : u64
+///   dims            : [i32; ORC_NUM_DIMS]
+///   n_items         : u64
+///   item_size       : u64
+///   n_marks         : u64
+///   marks           : [OrcMark; n_marks]  (each 16 bytes, ABI layout)
+///   items           : remaining bytes (n_items * item_size for primitives, plugin-defined otherwise)
+/// Write the handle header (everything before items) into `w`.
+pub fn write_orc_handle_header(
     handle: &OrcHandle,
-    f: &mut impl std::io::Write,
+    w: &mut impl std::io::Write,
 ) -> std::io::Result<()> {
-    writeln!(
-        f,
-        "type_id: {}\nn_items: {}\nitem_size: {}",
-        handle.type_id, handle.n_items, handle.item_size
-    )?;
-    writeln!(
-        f,
-        "dims: {} {} {} {} {} {} {}",
-        handle.dims[0],
-        handle.dims[1],
-        handle.dims[2],
-        handle.dims[3],
-        handle.dims[4],
-        handle.dims[5],
-        handle.dims[6]
-    )?;
-    writeln!(f, "n_marks: {}", handle.n_marks)?;
-    let marks = unsafe { slice_from_ptr(handle.marks, handle.n_marks as usize) };
-    if !marks.is_empty() {
-        writeln!(f, "marks:")?;
-        for m in marks {
-            writeln!(f, "    {} {}", m.pos, m.depth)?;
-        }
+    fn as_bytes<T>(slice: &[T]) -> &[u8] {
+        unsafe { std::slice::from_raw_parts(slice.as_ptr().cast(), size_of_val(slice)) }
     }
+
+    w.write_all(&crate::ORC_ABI_VERSION.to_ne_bytes())?;
+    w.write_all(&handle.type_id.to_ne_bytes())?;
+    w.write_all(as_bytes(&handle.dims))?;
+    w.write_all(&handle.n_items.to_ne_bytes())?;
+    w.write_all(&handle.item_size.to_ne_bytes())?;
+    w.write_all(&handle.n_marks.to_ne_bytes())?;
+    let marks = unsafe { slice_from_ptr(handle.marks, handle.n_marks as usize) };
+    w.write_all(as_bytes(marks))?;
     Ok(())
 }
 
-pub fn read_orc_handle_structure(
+/// Read the handle header. Returns the marks `Vec` whose memory backs `handle.marks`.
+pub fn read_orc_handle_header(
     handle: &mut OrcHandle,
-    r: &mut impl std::io::BufRead,
+    r: &mut impl std::io::Read,
 ) -> std::io::Result<Vec<OrcMark>> {
-    let err_fn = || std::io::Error::from(std::io::ErrorKind::InvalidData);
-    let mut marks = Vec::new();
-    let mut in_marks = false;
-    let mut line = String::new();
-    while r.read_line(&mut line)? > 0 {
-        let trimmed = line.trim();
-        if trimmed.is_empty() {
-            line.clear();
-            continue;
-        }
-        if in_marks {
-            // Mark lines are indented: "    pos depth"
-            if trimmed.starts_with(|c: char| c.is_ascii_digit()) {
-                let mut parts = trimmed.split_whitespace();
-                let pos: u64 = parts
-                    .next()
-                    .ok_or_else(err_fn)?
-                    .parse()
-                    .map_err(|_| err_fn())?;
-                let depth: u8 = parts
-                    .next()
-                    .ok_or_else(err_fn)?
-                    .parse()
-                    .map_err(|_| err_fn())?;
-                marks.push(OrcMark { depth, pos });
-                line.clear();
-                continue;
-            }
-            in_marks = false;
-        }
-        if let Some(val) = trimmed.strip_prefix("type_id:") {
-            handle.type_id = val.trim().parse().map_err(|_| err_fn())?;
-        } else if let Some(val) = trimmed.strip_prefix("n_items:") {
-            handle.n_items = val.trim().parse().map_err(|_| err_fn())?;
-        } else if let Some(val) = trimmed.strip_prefix("item_size:") {
-            handle.item_size = val.trim().parse().map_err(|_| err_fn())?;
-        } else if let Some(val) = trimmed.strip_prefix("n_marks:") {
-            handle.n_marks = val.trim().parse().map_err(|_| err_fn())?;
-        } else if let Some(val) = trimmed.strip_prefix("dims:") {
-            let nums: Vec<i32> = val
-                .split_whitespace()
-                .map(|s| s.parse().map_err(|_| err_fn()))
-                .collect::<std::io::Result<_>>()?;
-            if nums.len() != crate::ORC_NUM_DIMS as usize {
-                return Err(err_fn());
-            }
-            handle.dims.copy_from_slice(&nums);
-        } else if trimmed == "marks:" {
-            in_marks = true;
-        } else {
-            return Err(err_fn());
-        }
-        line.clear();
+    let invalid = || std::io::Error::from(std::io::ErrorKind::InvalidData);
+    let mut buf8 = [0u8; 8];
+    r.read_exact(&mut buf8)?;
+    let version = u64::from_ne_bytes(buf8);
+    if version != crate::ORC_ABI_VERSION {
+        return Err(invalid());
     }
-    handle.n_marks = marks.len() as u64;
+    r.read_exact(&mut buf8)?;
+    handle.type_id = u64::from_ne_bytes(buf8);
+    let mut dims_buf = [0u8; size_of::<crate::OrcDims>()];
+    r.read_exact(&mut dims_buf)?;
+    handle.dims = unsafe { std::ptr::read_unaligned(dims_buf.as_ptr().cast()) };
+    r.read_exact(&mut buf8)?;
+    handle.n_items = u64::from_ne_bytes(buf8);
+    r.read_exact(&mut buf8)?;
+    handle.item_size = u64::from_ne_bytes(buf8);
+    r.read_exact(&mut buf8)?;
+    handle.n_marks = u64::from_ne_bytes(buf8);
+    let mut marks = vec![OrcMark { depth: 0, pos: 0 }; handle.n_marks as usize];
+    if !marks.is_empty() {
+        let marks_bytes = unsafe {
+            std::slice::from_raw_parts_mut(
+                marks.as_mut_ptr().cast::<u8>(),
+                size_of_val(marks.as_slice()),
+            )
+        };
+        r.read_exact(marks_bytes)?;
+    }
     handle.marks = ptr_from_slice(&marks);
     Ok(marks)
 }
