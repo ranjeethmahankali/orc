@@ -88,6 +88,26 @@ macro_rules! orc_plugin {
                 Err(e) => e.into(),
             }
         }
+
+        #[unsafe(no_mangle)]
+        pub unsafe extern "C" fn orc_handle_serialize(
+            ctx: u64,
+            handle: *const OrcHandle,
+            write_fn: orc_sdk::OrcSerializeWriteFn,
+        ) -> orc_sdk::OrcError {
+            todo!();
+        }
+
+        #[unsafe(no_mangle)]
+        pub unsafe extern "C" fn orc_handle_deserialize(
+            ctx: u64,
+            type_id: OrcTypeId,
+            buf: *const ::std::os::raw::c_void,
+            buf_len: u64,
+            out: *mut OrcHandle,
+        ) -> orc_sdk::OrcError {
+            todo!()
+        }
     };
 }
 
