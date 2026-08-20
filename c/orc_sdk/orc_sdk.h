@@ -852,9 +852,11 @@ OrcError orc_sdk_deck_from_proxy(OrcHandle const   *inputs,
 
 // ==================== Serialization Helpers ====================
 
-OrcError orc_sdk_serialize_handle_header(OrcHandle const    *handle,
+OrcError orc_sdk_serialize_handle_header(uint64_t const      ctx,
+                                         OrcHandle const    *handle,
                                          OrcSerializeWriteFn write_fn);
 
-OrcError orc_sdk_deserialize_handle_header(void const    *buf,
+OrcError orc_sdk_deserialize_handle_header(uint64_t const ctx,
+                                           void const    *buf,
                                            uint64_t const buf_len,
                                            OrcHandle     *out);

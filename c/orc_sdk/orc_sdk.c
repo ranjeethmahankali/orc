@@ -2308,18 +2308,44 @@ OrcError orc_sdk_deck_from_proxy(OrcHandle const   *inputs,
   return ORC_ERROR_NONE;
 }
 
-OrcError orc_sdk_serialize_handle_header(OrcHandle const    *handle,
-                                         OrcSerializeWriteFn write_fn)
+static char *_bytes_append(char *dst, char const *src, size_t const count)
 {
-  (void)handle;
-  (void)write_fn;
-  ORC_SDK_TODO("Not implemented");
+  size_t const current_size = orc_sdk_arr_len(dst);
+  orc_sdk_arr_resize(dst, current_size + count);
+  char *ptr = orc_sdk_arr_end(dst) - count;
+  memcpy(ptr, src, count);
+  return dst;
 }
 
-OrcError orc_sdk_deserialize_handle_header(void const    *buf,
+OrcError orc_sdk_serialize_handle_header(uint64_t const      ctx,
+                                         OrcHandle const    *handle,
+                                         OrcSerializeWriteFn write_fn)
+{
+  char    *buf = NULL;
+  OrcError err =
+    orc_sdk_arr_reserve(buf, sizeof(OrcHandle) + handle->n_marks * sizeof(OrcMark));
+  if (ORC_ERROR_NONE != err) {
+    return err;
+  }
+  ORC_SDK_REQUIRE(orc_sdk_arr_len(buf) == 0);
+  buf = _bytes_append(buf, (char *)&ORC_ABI_VERSION, sizeof(ORC_ABI_VERSION));
+  buf = _bytes_append(buf, (char *)&(handle->type_id), sizeof(handle->type_id));
+  buf = _bytes_append(buf, (char *)handle->dims, sizeof(OrcDims));
+  buf = _bytes_append(buf, (char *)&(handle->n_items), sizeof(handle->n_items));
+  buf = _bytes_append(buf, (char *)&(handle->item_size), sizeof(handle->item_size));
+  buf = _bytes_append(buf, (char *)&(handle->n_marks), sizeof(handle->n_marks));
+  buf = _bytes_append(buf, (char *)handle->marks, handle->n_marks * sizeof(OrcMark));
+  err = write_fn(ctx, buf, orc_sdk_arr_len(buf));
+  orc_sdk_arr_free(buf);
+  return err;
+}
+
+OrcError orc_sdk_deserialize_handle_header(uint64_t const ctx,
+                                           void const    *buf,
                                            uint64_t const buf_len,
                                            OrcHandle     *out)
 {
+  (void)ctx;
   (void)buf;
   (void)buf_len;
   (void)out;
