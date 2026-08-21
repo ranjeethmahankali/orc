@@ -1332,4 +1332,95 @@ mod tests {
         assert_eq!(items, &[1.0, 2.0, 3.0]);
         disarm(&mut h);
     }
+
+    // ==================== ContextArena ====================
+
+    #[test]
+    fn t_arena_insert_and_visit() {
+        let arena = ContextArena::<Vec<u8>>::default();
+        let ctx = arena.insert(|v| v.extend_from_slice(b"hello")).unwrap();
+        let result = arena.visit_mut(ctx, |v| v.clone()).unwrap();
+        assert_eq!(result, b"hello");
+    }
+
+    #[test]
+    fn t_arena_insert_returns_sequential_ids() {
+        let arena = ContextArena::<Vec<u8>>::default();
+        let a = arena.insert(|_| {}).unwrap();
+        let b = arena.insert(|_| {}).unwrap();
+        let c = arena.insert(|_| {}).unwrap();
+        assert_eq!(a, 0);
+        assert_eq!(b, 1);
+        assert_eq!(c, 2);
+    }
+
+    #[test]
+    fn t_arena_consume_returns_data_and_frees_slot() {
+        let arena = ContextArena::<Vec<u8>>::default();
+        let ctx = arena.insert(|v| v.extend_from_slice(b"data")).unwrap();
+        let data = arena.consume(ctx, std::mem::take).unwrap();
+        assert_eq!(data, b"data");
+        // Slot should be reused on next insert.
+        let ctx2 = arena.insert(|_| {}).unwrap();
+        assert_eq!(ctx2, ctx);
+    }
+
+    #[test]
+    fn t_arena_slot_reuse_preserves_capacity() {
+        let arena = ContextArena::<Vec<u8>>::default();
+        let ctx = arena.insert(|v| v.extend_from_slice(&[0u8; 1024])).unwrap();
+        // Consume but don't take — just clear.
+        arena.consume(ctx, |v| v.clear()).unwrap();
+        // Reuse the slot and check the vec still has capacity.
+        let ctx2 = arena.insert(|_| {}).unwrap();
+        assert_eq!(ctx2, ctx);
+        let cap = arena.visit_mut(ctx2, |v| v.capacity()).unwrap();
+        assert!(cap >= 1024);
+    }
+
+    #[test]
+    fn t_arena_visit_invalid_ctx() {
+        let arena = ContextArena::<Vec<u8>>::default();
+        let result = arena.visit_mut(999, |_| {});
+        assert!(matches!(result, Err(Error::InvalidContext)));
+    }
+
+    #[test]
+    fn t_arena_multiple_appends() {
+        let arena = ContextArena::<Vec<u8>>::default();
+        let ctx = arena.insert(|_| {}).unwrap();
+        arena
+            .visit_mut(ctx, |v| v.extend_from_slice(b"aaa"))
+            .unwrap();
+        arena
+            .visit_mut(ctx, |v| v.extend_from_slice(b"bbb"))
+            .unwrap();
+        arena
+            .visit_mut(ctx, |v| v.extend_from_slice(b"ccc"))
+            .unwrap();
+        let result = arena.consume(ctx, std::mem::take).unwrap();
+        assert_eq!(result, b"aaabbbccc");
+    }
+
+    #[test]
+    fn t_arena_concurrent_visits() {
+        use std::sync::Arc;
+        let arena = Arc::new(ContextArena::<Vec<u8>>::default());
+        let ctx_a = arena.insert(|_| {}).unwrap();
+        let ctx_b = arena.insert(|_| {}).unwrap();
+        let arena2 = Arc::clone(&arena);
+        let handle = std::thread::spawn(move || {
+            for i in 0u8..100 {
+                arena2.visit_mut(ctx_b, |v| v.push(i)).unwrap();
+            }
+        });
+        for i in 0u8..100 {
+            arena.visit_mut(ctx_a, |v| v.push(i)).unwrap();
+        }
+        handle.join().unwrap();
+        let a = arena.visit_mut(ctx_a, |v| v.len()).unwrap();
+        let b = arena.visit_mut(ctx_b, |v| v.len()).unwrap();
+        assert_eq!(a, 100);
+        assert_eq!(b, 100);
+    }
 }
