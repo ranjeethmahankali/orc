@@ -93,7 +93,6 @@ macro_rules! orc_plugin {
         pub unsafe extern "C" fn orc_deck_serialize(
             ctx: u64,
             handle: *const OrcHandle,
-            write_fn: orc_sdk::OrcSerializeWriteFn,
         ) -> orc_sdk::OrcError {
             let callbacks = <$plugin as orc_sdk::TOrcPluginAdaptor>::host_callbacks();
             let mut writer = orc_sdk::SerialWrite::new(ctx, callbacks.serial_write);
