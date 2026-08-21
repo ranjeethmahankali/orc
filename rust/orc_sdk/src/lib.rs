@@ -32,3 +32,6 @@ pub use dag::{
 
 mod host;
 pub use host::{Plugin, PluginSet, TypeOwner, load_plugins};
+
+mod context;
+pub use context::Arena;
