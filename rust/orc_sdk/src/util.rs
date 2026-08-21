@@ -386,13 +386,13 @@ unsafe impl Sync for PluginAllocator {}
 
 unsafe impl GlobalAlloc for PluginAllocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        let f: HostAllocFn = unsafe { std::mem::transmute(self.alloc_fn.load(Ordering::Relaxed)) };
+        let f: HostAllocFn = unsafe { std::mem::transmute(self.alloc_fn.load(Ordering::Acquire)) };
         unsafe { f(layout.size() as u64, layout.align() as u64) as *mut u8 }
     }
 
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
         let f: HostDeallocFn =
-            unsafe { std::mem::transmute(self.dealloc_fn.load(Ordering::Relaxed)) };
+            unsafe { std::mem::transmute(self.dealloc_fn.load(Ordering::Acquire)) };
         unsafe {
             f(
                 ptr as *mut c_void,
@@ -1318,17 +1318,17 @@ mod tests {
     }
 
     #[test]
-    fn t_serial_write_clears_buffer_even_on_error() {
+    fn t_serial_write_preserves_buffer_on_error() {
         use std::io::Write;
         let mut w = SerialWrite::new(0, Some(mock_write_fail));
         w.write_all(b"data").unwrap();
         let _ = w.flush();
-        // Buffer should be cleared even though callback failed,
-        // so a subsequent flush with a working callback sends nothing.
+        // Buffer is preserved on error, so a subsequent flush with a
+        // working callback should send the data that failed before.
         w.write_func = Some(mock_write_ok);
         MOCK_SINK.lock().unwrap().clear();
         w.flush().unwrap();
-        assert!(MOCK_SINK.lock().unwrap().is_empty());
+        assert_eq!(&*MOCK_SINK.lock().unwrap(), b"data");
     }
 
     #[test]
