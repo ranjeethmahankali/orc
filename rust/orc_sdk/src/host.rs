@@ -2,10 +2,10 @@ use libloading::Library;
 use std::{collections::HashMap, collections::hash_map::Entry, path::Path};
 
 use crate::{
-    DeckAllocFn, DeckDeserializeFn, DeckFreeFn, DeckFromProxyFn, DeckSerializeFn, Error, FuncInfo,
-    HostCallbacks, ORC_ABI_VERSION, ORC_DECK_PROXY_COPY_ALL, ORC_DECK_PROXY_COPY_ITEMS,
-    ORC_DECK_PROXY_SHUFFLE, OrcHandle, OrcHost, OrcPlugin, OrcTypeId, PRIMITIVE_TYPES,
-    PluginInitFn, ProxyType, TypeInfo, slice_from_ptr, util::string_from_ffi,
+    ContextArena, DeckAllocFn, DeckDeserializeFn, DeckFreeFn, DeckFromProxyFn, DeckSerializeFn,
+    Error, FuncInfo, HostCallbacks, ORC_ABI_VERSION, ORC_DECK_PROXY_COPY_ALL,
+    ORC_DECK_PROXY_COPY_ITEMS, ORC_DECK_PROXY_SHUFFLE, OrcHandle, OrcHost, OrcPlugin, OrcTypeId,
+    PRIMITIVE_TYPES, PluginInitFn, ProxyType, TypeInfo, slice_from_ptr, util::string_from_ffi,
 };
 
 /// This is to store the info, handles etc. for a loaded plugin.
@@ -132,12 +132,16 @@ impl Plugin {
         Error::from_raw(err).map(|_| out)
     }
 
-    pub fn serialize_deck(&self, _ctx: u64, _handle: &OrcHandle) -> Result<(), Error> {
-        todo!(
-            "
-I need a global registry of buffers, that I can serialize into, and thread the ctx
-through the FFI call, to have the plugin write into the correct buffer"
-        );
+    pub fn serialize_deck<R>(
+        &self,
+        arena: &ContextArena<Vec<u8>>,
+        handle: &OrcHandle,
+        vis: impl Fn(&mut Vec<u8>) -> R,
+    ) -> Result<R, Error> {
+        let ctx = arena.insert(|buf| buf.clear())?;
+        let err = unsafe { (self.deck_serialize)(ctx, handle) };
+        Error::from_raw(err)?;
+        arena.consume(ctx, vis)
     }
 
     pub fn deserialize_deck(&self, _ctx: u64, _buf: &[u8]) -> Result<OrcHandle, Error> {

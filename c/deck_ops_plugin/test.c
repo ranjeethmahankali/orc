@@ -579,11 +579,19 @@ static OrcError _test_write_fn(uint64_t const ctx, void const *data, uint64_t co
   return ORC_ERROR_NONE;
 }
 
+static void _init_sdk_with_serial_write(void)
+{
+  static OrcHost host         = {0};
+  host.abi_version            = ORC_ABI_VERSION;
+  host.callbacks.serial_write = _test_write_fn;
+  orc_sdk_init(&host, NULL);
+}
+
 static char *_serialize_handle(OrcHandle const *h)
 {
   char    *buf = NULL;
   _SerCtx  sc  = {&buf};
-  OrcError err = orc_deck_serialize((uint64_t)(uintptr_t)&sc, h, _test_write_fn);
+  OrcError err = orc_deck_serialize((uint64_t)(uintptr_t)&sc, h);
   TEST_ASSERT_EQUAL_UINT64(ORC_ERROR_NONE, err);
   return buf;
 }
@@ -603,7 +611,7 @@ static OrcHandle _deserialize_handle(char const *buf, size_t len, uint64_t handl
 
 static void test_serialize_round_trip_f64_flat(void)
 {
-  orc_sdk_init(NULL, NULL);
+  _init_sdk_with_serial_write();
   OrcHandle h = {0};
   h.handle    = 1;
   orc_sdk_handle_alloc(ORC_TYPE_F64, &h);
@@ -624,7 +632,7 @@ static void test_serialize_round_trip_f64_flat(void)
 
 static void test_serialize_round_trip_i32_flat(void)
 {
-  orc_sdk_init(NULL, NULL);
+  _init_sdk_with_serial_write();
   OrcHandle h = {0};
   h.handle    = 1;
   orc_sdk_handle_alloc(ORC_TYPE_I32, &h);
@@ -646,7 +654,7 @@ static void test_serialize_round_trip_i32_flat(void)
 
 static void test_serialize_round_trip_u8_flat(void)
 {
-  orc_sdk_init(NULL, NULL);
+  _init_sdk_with_serial_write();
   OrcHandle h = {0};
   h.handle    = 1;
   orc_sdk_handle_alloc(ORC_TYPE_U8, &h);
@@ -667,7 +675,7 @@ static void test_serialize_round_trip_u8_flat(void)
 
 static void test_serialize_round_trip_f64_nested(void)
 {
-  orc_sdk_init(NULL, NULL);
+  _init_sdk_with_serial_write();
   OrcHandle h = {0};
   h.handle    = 1;
   orc_sdk_handle_alloc(ORC_TYPE_F64, &h);
@@ -694,7 +702,7 @@ static void test_serialize_round_trip_f64_nested(void)
 
 static void test_serialize_round_trip_empty_deck(void)
 {
-  orc_sdk_init(NULL, NULL);
+  _init_sdk_with_serial_write();
   OrcHandle h = {0};
   h.handle    = 1;
   orc_sdk_handle_alloc(ORC_TYPE_F32, &h);
@@ -711,7 +719,7 @@ static void test_serialize_round_trip_empty_deck(void)
 
 static void test_serialize_preserves_dims(void)
 {
-  orc_sdk_init(NULL, NULL);
+  _init_sdk_with_serial_write();
   OrcHandle h = {0};
   h.handle    = 1;
   orc_sdk_handle_alloc(ORC_TYPE_F64, &h);
@@ -730,7 +738,7 @@ static void test_serialize_preserves_dims(void)
 
 static void test_deserialize_trailing_bytes_fails(void)
 {
-  orc_sdk_init(NULL, NULL);
+  _init_sdk_with_serial_write();
   OrcHandle h = {0};
   h.handle    = 1;
   orc_sdk_handle_alloc(ORC_TYPE_I64, &h);
@@ -748,7 +756,7 @@ static void test_deserialize_trailing_bytes_fails(void)
 
 static void test_deserialize_truncated_fails(void)
 {
-  orc_sdk_init(NULL, NULL);
+  _init_sdk_with_serial_write();
   OrcHandle h = {0};
   h.handle    = 1;
   orc_sdk_handle_alloc(ORC_TYPE_F64, &h);
@@ -775,7 +783,7 @@ static void test_deserialize_empty_buffer_fails(void)
 
 static void test_serialize_round_trip_all_primitive_types(void)
 {
-  orc_sdk_init(NULL, NULL);
+  _init_sdk_with_serial_write();
   /* u16 */
   {
     OrcHandle h = {.handle = 2};

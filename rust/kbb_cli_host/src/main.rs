@@ -4,15 +4,20 @@ mod macros;
 mod test;
 
 use orc_sdk::{
-    DeckRegistry, Error, ORC_ABI_VERSION, ORC_DECK_PROXY_COPY_ALL, ORC_ERROR_INVALID_PROXY,
-    ORC_ERROR_NONE, ORC_TYPE_F32, ORC_TYPE_F64, ORC_TYPE_I8, ORC_TYPE_I16, ORC_TYPE_I32,
-    ORC_TYPE_I64, ORC_TYPE_U8, ORC_TYPE_U16, ORC_TYPE_U32, ORC_TYPE_U64, OrcError, OrcHandle,
-    OrcHandleBorrowed, OrcHost, OrcHostCallbackAPI, OrcHostMemoryAPI, OrcProxyType, PluginSet,
-    ProxyType, TypeOwner, orc_inline_dag, reset_handle,
+    ContextArena, DeckRegistry, Error, ORC_ABI_VERSION, ORC_DECK_PROXY_COPY_ALL,
+    ORC_ERROR_INVALID_PROXY, ORC_ERROR_NONE, ORC_TYPE_F32, ORC_TYPE_F64, ORC_TYPE_I8, ORC_TYPE_I16,
+    ORC_TYPE_I32, ORC_TYPE_I64, ORC_TYPE_U8, ORC_TYPE_U16, ORC_TYPE_U32, ORC_TYPE_U64, OrcError,
+    OrcHandle, OrcHandleBorrowed, OrcHost, OrcHostCallbackAPI, OrcHostMemoryAPI, OrcProxyType,
+    PluginSet, ProxyType, TypeOwner, orc_inline_dag, reset_handle, slice_from_ptr,
 };
 use std::alloc::{Layout, alloc, dealloc};
 use std::ffi::{CStr, c_void};
 use std::sync::{LazyLock, atomic::AtomicU64};
+
+// The host can allocate it's own decks, this registry is for that.
+static REGISTRY: LazyLock<DeckRegistry> = LazyLock::new(DeckRegistry::new);
+pub static HANDLE_COUNTER: AtomicU64 = AtomicU64::new(0);
+static SERIAL_CONTEXT_ARENA: LazyLock<ContextArena<Vec<u8>>> = LazyLock::new(ContextArena::default);
 
 unsafe extern "C" fn host_alloc(size: u64, alignment: u64) -> *mut c_void {
     let layout = Layout::from_size_align(size as usize, alignment as usize).unwrap();
@@ -24,52 +29,17 @@ unsafe extern "C" fn host_dealloc(ptr: *mut c_void, size: u64, alignment: u64) {
     unsafe { dealloc(ptr as *mut u8, layout) }
 }
 
-pub const HOST: OrcHost = OrcHost {
-    abi_version: ORC_ABI_VERSION,
-    memory_api: OrcHostMemoryAPI {
-        alloc: Some(host_alloc),
-        dealloc: Some(host_dealloc),
-    },
-    callbacks: OrcHostCallbackAPI {
-        report_progress: None,
-        report_message: Some(report_message),
-        check_cancellation: None,
-        report_intermediate_output: None,
-    },
-    create_deck_from_proxy: Some(host_create_proxy_deck),
-};
-
-pub static PLUGIN_SET: LazyLock<PluginSet> = LazyLock::new(|| {
-    let exe = std::env::current_exe().expect("Cannot determine executable path");
-    let exe_dir = exe.parent().expect("Executable has no parent directory");
-    let plugin_dir = if exe_dir.ends_with("deps") {
-        // This is necessary to find the plugins from a test binary.
-        exe_dir.parent().unwrap()
-    } else {
-        exe_dir
-    };
-    orc_sdk::load_plugins(plugin_dir, &HOST).expect("Failed to load plugins")
-});
-
-/// Helper function to requrest the global host to clone an OrcHandle, by deferring the cloning logic to the appropriate plugin.
-pub fn host_clone_orc_handle(src: OrcHandleBorrowed) -> Result<OrcHandle, Error> {
-    let mut out = OrcHandle::default();
-    let err = unsafe {
-        host_create_proxy_deck(
-            src.inner(),
-            1,
-            ORC_DECK_PROXY_COPY_ALL,
-            &OrcHandle::default(),
-            &mut out,
-        )
-    };
-    Error::from_raw(err).map(|()| out)
+unsafe extern "C" fn serial_write_callback(
+    ctx: u64,
+    data: *const std::ffi::c_void,
+    len: u64,
+) -> OrcError {
+    let incoming_slice: &[u8] = unsafe { slice_from_ptr(data.cast(), len as usize) };
+    match SERIAL_CONTEXT_ARENA.visit_mut(ctx, |buf| buf.extend_from_slice(incoming_slice)) {
+        Ok(_) => ORC_ERROR_NONE,
+        Err(e) => e.into(),
+    }
 }
-
-// The host can allocate it's own decks, this registry is for that.
-static REGISTRY: LazyLock<DeckRegistry> = LazyLock::new(DeckRegistry::new);
-
-pub static HANDLE_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 unsafe extern "C" fn host_create_proxy_deck(
     inputs: *const OrcHandle,
@@ -105,7 +75,6 @@ unsafe extern "C" fn host_create_proxy_deck(
         orc_sdk::ORC_DECK_PROXY_SHUFFLE => ProxyType::Shuffle,
         _ => return orc_sdk::ORC_ERROR_INVALID_PROXY,
     };
-
     let result = match plugin_set.get_type_owner(type_id) {
         Some(type_owner) => match type_owner {
             TypeOwner::BuiltIn(_) => match type_id {
@@ -201,6 +170,49 @@ unsafe extern "C" fn report_message(
         ctx,
         msg
     );
+}
+
+pub const HOST: OrcHost = OrcHost {
+    abi_version: ORC_ABI_VERSION,
+    memory_api: OrcHostMemoryAPI {
+        alloc: Some(host_alloc),
+        dealloc: Some(host_dealloc),
+    },
+    callbacks: OrcHostCallbackAPI {
+        report_progress: None,
+        report_message: Some(report_message),
+        check_cancellation: None,
+        report_intermediate_output: None,
+        serial_write: Some(serial_write_callback),
+    },
+    create_deck_from_proxy: Some(host_create_proxy_deck),
+};
+
+pub static PLUGIN_SET: LazyLock<PluginSet> = LazyLock::new(|| {
+    let exe = std::env::current_exe().expect("Cannot determine executable path");
+    let exe_dir = exe.parent().expect("Executable has no parent directory");
+    let plugin_dir = if exe_dir.ends_with("deps") {
+        // This is necessary to find the plugins from a test binary.
+        exe_dir.parent().unwrap()
+    } else {
+        exe_dir
+    };
+    orc_sdk::load_plugins(plugin_dir, &HOST).expect("Failed to load plugins")
+});
+
+/// Helper function to requrest the global host to clone an OrcHandle, by deferring the cloning logic to the appropriate plugin.
+pub fn host_clone_orc_handle(src: OrcHandleBorrowed) -> Result<OrcHandle, Error> {
+    let mut out = OrcHandle::default();
+    let err = unsafe {
+        host_create_proxy_deck(
+            src.inner(),
+            1,
+            ORC_DECK_PROXY_COPY_ALL,
+            &OrcHandle::default(),
+            &mut out,
+        )
+    };
+    Error::from_raw(err).map(|()| out)
 }
 
 fn main() -> Result<(), Error> {

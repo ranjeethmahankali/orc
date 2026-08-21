@@ -6151,8 +6151,17 @@ static OrcError _test_write_fn(uint64_t const ctx, void const *data, uint64_t co
   return ORC_ERROR_NONE;
 }
 
+static void _init_sdk_with_serial_write(void)
+{
+  static OrcHost host = {0};
+  host.abi_version            = ORC_ABI_VERSION;
+  host.callbacks.serial_write = _test_write_fn;
+  orc_sdk_init(&host, NULL);
+}
+
 static void test_serialize_header_round_trip_no_marks(void)
 {
+  _init_sdk_with_serial_write();
   OrcHandle h = {0};
   h.handle    = 42;
   h.type_id   = ORC_TYPE_F64;
@@ -6166,7 +6175,7 @@ static void test_serialize_header_round_trip_no_marks(void)
   char   *buf = NULL;
   _SerCtx sc  = {&buf};
   TEST_ASSERT_TRUE(orc_sdk_serialize_handle_header(
-                     (uint64_t)(uintptr_t)&sc, &h, _test_write_fn) == ORC_ERROR_NONE);
+                     (uint64_t)(uintptr_t)&sc, &h) == ORC_ERROR_NONE);
   TEST_ASSERT_TRUE(orc_sdk_arr_len(buf) > 0);
 
   OrcStrView sv    = {.start = buf, .end = buf + orc_sdk_arr_len(buf)};
@@ -6188,6 +6197,7 @@ static void test_serialize_header_round_trip_no_marks(void)
 
 static void test_serialize_header_round_trip_with_marks(void)
 {
+  _init_sdk_with_serial_write();
   OrcMark test_marks[] = {
     {.depth = 0, .pos = 0}, {.depth = 0, .pos = 3}, {.depth = 1, .pos = 0}};
   OrcHandle h = {0};
@@ -6202,7 +6212,7 @@ static void test_serialize_header_round_trip_with_marks(void)
   char   *buf = NULL;
   _SerCtx sc  = {&buf};
   TEST_ASSERT_TRUE(orc_sdk_serialize_handle_header(
-                     (uint64_t)(uintptr_t)&sc, &h, _test_write_fn) == ORC_ERROR_NONE);
+                     (uint64_t)(uintptr_t)&sc, &h) == ORC_ERROR_NONE);
 
   OrcStrView sv    = {.start = buf, .end = buf + orc_sdk_arr_len(buf)};
   OrcHandle  out   = {0};
@@ -6228,6 +6238,7 @@ static void test_serialize_header_round_trip_with_marks(void)
 
 static void test_serialize_header_all_dims_set(void)
 {
+  _init_sdk_with_serial_write();
   OrcHandle h = {0};
   h.type_id   = ORC_TYPE_U8;
   h.n_items   = 1;
@@ -6241,7 +6252,7 @@ static void test_serialize_header_all_dims_set(void)
   char   *buf = NULL;
   _SerCtx sc  = {&buf};
   TEST_ASSERT_TRUE(orc_sdk_serialize_handle_header(
-                     (uint64_t)(uintptr_t)&sc, &h, _test_write_fn) == ORC_ERROR_NONE);
+                     (uint64_t)(uintptr_t)&sc, &h) == ORC_ERROR_NONE);
 
   OrcStrView sv    = {.start = buf, .end = buf + orc_sdk_arr_len(buf)};
   OrcHandle  out   = {0};
@@ -6256,6 +6267,7 @@ static void test_serialize_header_all_dims_set(void)
 
 static void test_deserialize_header_truncated_buffer(void)
 {
+  _init_sdk_with_serial_write();
   OrcHandle h = {0};
   h.type_id   = ORC_TYPE_F32;
   h.n_items   = 2;
@@ -6266,7 +6278,7 @@ static void test_deserialize_header_truncated_buffer(void)
   char   *buf = NULL;
   _SerCtx sc  = {&buf};
   TEST_ASSERT_TRUE(orc_sdk_serialize_handle_header(
-                     (uint64_t)(uintptr_t)&sc, &h, _test_write_fn) == ORC_ERROR_NONE);
+                     (uint64_t)(uintptr_t)&sc, &h) == ORC_ERROR_NONE);
 
   /* Truncate by one byte — should fail */
   size_t     full_len = orc_sdk_arr_len(buf);
@@ -6298,6 +6310,7 @@ static void test_deserialize_header_wrong_abi_version(void)
 
 static void test_serialize_header_empty_items(void)
 {
+  _init_sdk_with_serial_write();
   OrcHandle h = {0};
   h.type_id   = ORC_TYPE_U64;
   h.n_items   = 0;
@@ -6308,7 +6321,7 @@ static void test_serialize_header_empty_items(void)
   char   *buf = NULL;
   _SerCtx sc  = {&buf};
   TEST_ASSERT_TRUE(orc_sdk_serialize_handle_header(
-                     (uint64_t)(uintptr_t)&sc, &h, _test_write_fn) == ORC_ERROR_NONE);
+                     (uint64_t)(uintptr_t)&sc, &h) == ORC_ERROR_NONE);
 
   OrcStrView sv    = {.start = buf, .end = buf + orc_sdk_arr_len(buf)};
   OrcHandle  out   = {0};
@@ -6327,6 +6340,7 @@ static void test_serialize_header_empty_items(void)
 
 static void test_deserialize_header_truncated_marks(void)
 {
+  _init_sdk_with_serial_write();
   OrcMark   test_marks[] = {{.depth = 0, .pos = 0}, {.depth = 1, .pos = 5}};
   OrcHandle h            = {0};
   h.type_id              = ORC_TYPE_I64;
@@ -6338,7 +6352,7 @@ static void test_deserialize_header_truncated_marks(void)
   char   *buf = NULL;
   _SerCtx sc  = {&buf};
   TEST_ASSERT_TRUE(orc_sdk_serialize_handle_header(
-                     (uint64_t)(uintptr_t)&sc, &h, _test_write_fn) == ORC_ERROR_NONE);
+                     (uint64_t)(uintptr_t)&sc, &h) == ORC_ERROR_NONE);
 
   /* Cut off part of the marks data */
   size_t     full_len    = orc_sdk_arr_len(buf);

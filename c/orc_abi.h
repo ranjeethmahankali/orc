@@ -144,6 +144,10 @@ typedef struct
   void (*dealloc)(void *ptr, uint64_t const size, uint64_t const alignment);
 } OrcHostMemoryAPI;
 
+typedef OrcError (*OrcSerializeWriteFn)(uint64_t const ctx,
+                                        void const    *data,
+                                        uint64_t const len);
+
 /**
 The host may populate any of these function pointers, or leave them as `NULL` to
 communicate its capabilities with the plugin.
@@ -166,6 +170,7 @@ typedef struct
                          char const           *msg);
   bool (*check_cancellation)(uint64_t const ctx);
   void (*report_intermediate_output)(uint64_t const ctx, OrcHandle const *handle);
+  OrcSerializeWriteFn serial_write;
 } OrcHostCallbackAPI;
 
 /**
@@ -341,13 +346,8 @@ ORC_PLUGIN_EXPORT OrcError orc_deck_from_proxy(OrcHandle const   *inputs,
                                                OrcHandle const   *proxy,
                                                OrcHandle         *out);
 
-typedef OrcError (*OrcSerializeWriteFn)(uint64_t const ctx,
-                                        void const    *data,
-                                        uint64_t const len);
-
-ORC_PLUGIN_EXPORT OrcError orc_deck_serialize(uint64_t const      ctx,
-                                              OrcHandle const    *handle,
-                                              OrcSerializeWriteFn write_fn);
+ORC_PLUGIN_EXPORT OrcError orc_deck_serialize(uint64_t const   ctx,
+                                              OrcHandle const *handle);
 
 ORC_PLUGIN_EXPORT OrcError orc_deck_deserialize(uint64_t const ctx,
                                                 void const    *buf,

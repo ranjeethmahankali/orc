@@ -469,6 +469,7 @@ impl HostCallbacks {
         report_message: None,
         check_cancellation: None,
         report_intermediate_output: None,
+        serial_write: None,
     };
 
     pub fn report_progress(&self, progress: f64) {

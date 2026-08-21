@@ -828,6 +828,10 @@ OrcError orc_sdk_host_create_proxy_deck(OrcHandle const   *inputs,
                                         OrcHandle const   *proxy,
                                         OrcHandle         *out);
 
+OrcError orc_sdk_host_serial_write(uint64_t const ctx,
+                                   void const    *buf,
+                                   uint64_t const buf_len);
+
 // ========== ABI helpers ==========
 
 typedef void (*ItemFreeFn)(void *);
@@ -856,9 +860,7 @@ OrcError orc_sdk_deck_from_proxy(OrcHandle const   *inputs,
 
 // ==================== Serialization Helpers ====================
 
-OrcError orc_sdk_serialize_handle_header(uint64_t const      ctx,
-                                         OrcHandle const    *handle,
-                                         OrcSerializeWriteFn write_fn);
+OrcError orc_sdk_serialize_handle_header(uint64_t const ctx, OrcHandle const *handle);
 
 OrcError orc_sdk_deserialize_handle_header(uint64_t const ctx,
                                            OrcStrView    *src,

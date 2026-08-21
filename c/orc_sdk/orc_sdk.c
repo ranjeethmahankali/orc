@@ -152,6 +152,16 @@ OrcError orc_sdk_host_create_proxy_deck(const OrcHandle   *inputs,
   }
 }
 
+OrcError orc_sdk_host_serial_write(uint64_t const ctx,
+                                   void const    *buf,
+                                   uint64_t const buf_len)
+{
+  if (HOST.callbacks.serial_write != NULL) {
+    return HOST.callbacks.serial_write(ctx, buf, buf_len);
+  }
+  return ORC_ERROR_MISSING_CAPABILITY;
+}
+
 void *_orc_sdk_arr_grow(void *ptr, size_t elemsize)
 {
   _OrcSdk_ArrHeader *h = _orc_sdk_arr_header(ptr);
@@ -1691,6 +1701,9 @@ void orc_sdk_init(OrcHost const *host, OrcSdkTypeCallbacksGetterFn type_fn)
       HOST.callbacks.report_intermediate_output =
         host->callbacks.report_intermediate_output;
     }
+    if (host->callbacks.serial_write) {
+      HOST.callbacks.serial_write = host->callbacks.serial_write;
+    }
     // Proxy deck creation callback.
     if (host->create_deck_from_proxy) {
       HOST.create_deck_from_proxy = host->create_deck_from_proxy;
@@ -2327,10 +2340,11 @@ static char *_bytes_append(char *dst, char const *src, size_t const count)
   return dst;
 }
 
-OrcError orc_sdk_serialize_handle_header(uint64_t const      ctx,
-                                         OrcHandle const    *handle,
-                                         OrcSerializeWriteFn write_fn)
+OrcError orc_sdk_serialize_handle_header(uint64_t const ctx, OrcHandle const *handle)
 {
+  if (HOST.callbacks.serial_write == NULL) {
+    return ORC_ERROR_MISSING_CAPABILITY;
+  }
   char    *buf = NULL;
   OrcError err =
     orc_sdk_arr_reserve(buf, sizeof(OrcHandle) + handle->n_marks * sizeof(OrcMark));
@@ -2345,7 +2359,7 @@ OrcError orc_sdk_serialize_handle_header(uint64_t const      ctx,
   buf = _bytes_append(buf, (char *)&(handle->item_size), sizeof(handle->item_size));
   buf = _bytes_append(buf, (char *)&(handle->n_marks), sizeof(handle->n_marks));
   buf = _bytes_append(buf, (char *)handle->marks, handle->n_marks * sizeof(OrcMark));
-  err = write_fn(ctx, buf, orc_sdk_arr_len(buf));
+  err = orc_sdk_host_serial_write(ctx, buf, orc_sdk_arr_len(buf));
   orc_sdk_arr_free(buf);
   return err;
 }

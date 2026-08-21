@@ -244,11 +244,7 @@ pub type DeckFromProxyFn = unsafe extern "C" fn(
     proxy: *const OrcHandle,
     out: *mut OrcHandle,
 ) -> OrcError;
-pub type DeckSerializeFn = unsafe extern "C" fn(
-    ctx: u64,
-    handle: *const OrcHandle,
-    write_fn: OrcSerializeWriteFn,
-) -> OrcError;
+pub type DeckSerializeFn = unsafe extern "C" fn(ctx: u64, handle: *const OrcHandle) -> OrcError;
 pub type DeckDeserializeFn = unsafe extern "C" fn(
     ctx: u64,
     buf: *const ::std::os::raw::c_void,

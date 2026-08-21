@@ -53,18 +53,17 @@ OrcError orc_deck_from_proxy(OrcHandle const   *inputs,
   return orc_sdk_deck_from_proxy(inputs, n_inputs, proxy_type, proxy, out);
 }
 
-OrcError orc_deck_serialize(uint64_t const      ctx,
-                            OrcHandle const    *handle,
-                            OrcSerializeWriteFn write_fn)
+OrcError orc_deck_serialize(uint64_t const ctx, OrcHandle const *handle)
 {
-  OrcError err = orc_sdk_serialize_handle_header(ctx, handle, write_fn);
+  OrcError err = orc_sdk_serialize_handle_header(ctx, handle);
   if (err != ORC_ERROR_NONE) {
     return err;
   }
   ORC_SDK_REQUIRE(handle->item_size > 0);
   // IMPORTANT: This only works because this plugin doesn't define custom types with any
   // pointer indirection. All the builtin types are value types.
-  err = write_fn(ctx, handle->items, handle->item_size * handle->n_items);
+  err =
+    orc_sdk_host_serial_write(ctx, handle->items, handle->item_size * handle->n_items);
   if (err != ORC_ERROR_NONE) {
     return err;
   }
