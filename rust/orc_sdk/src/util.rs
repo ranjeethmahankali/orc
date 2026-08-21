@@ -245,11 +245,47 @@ Many parts of the ABI use a u64 ctx to recognize the caller. The host will often
 some resources for a particular ctx key, and pass that ctx to the plugin. The host might then need
 to reacquire the same resource based on the ctx, inside the callback. This file provides useful
 things for implementing this pattern.
-*/
+ */
+
+#[derive(Default)]
+struct FreeList {
+    list: Vec<u64>,
+    present_flag: Vec<bool>,
+}
+
+impl FreeList {
+    pub fn push(&mut self, val: u64) -> Result<(), Error> {
+        match self.present_flag.get_mut(val as usize) {
+            Some(is_free) => {
+                if *is_free {
+                    Err(Error::InvalidContext) // Freeing an already free slot.
+                } else {
+                    *is_free = true;
+                    self.list.push(val);
+                    Ok(())
+                }
+            }
+            None => {
+                self.present_flag.resize(val as usize + 1, false);
+                self.present_flag[val as usize] = true;
+                self.list.push(val);
+                Ok(())
+            }
+        }
+    }
+
+    pub fn pop(&mut self) -> Option<u64> {
+        self.list.pop().map(|last| {
+            self.present_flag[last as usize] = false;
+            last
+        })
+    }
+}
+
 #[derive(Default)]
 pub struct ContextArena<T: Default> {
     slots: RwLock<Vec<Mutex<T>>>,
-    free: Mutex<Vec<u64>>,
+    free: Mutex<FreeList>,
 }
 
 impl<T: Default> ContextArena<T> {
@@ -265,7 +301,7 @@ impl<T: Default> ContextArena<T> {
                     Err(e) => {
                         // The initialization failed. That means this slot is still free.
                         let mut free = self.free.lock().map_err(|_| Error::ConcurrencyProblem)?;
-                        free.push(last);
+                        free.push(last)?;
                         Err(e)
                     }
                 }
@@ -291,7 +327,7 @@ impl<T: Default> ContextArena<T> {
     pub fn consume<R>(&self, ctx: u64, vis: impl Fn(&mut T) -> R) -> Result<R, Error> {
         let result = self.visit_mut(ctx, vis)?;
         let mut free = self.free.lock().map_err(|_| Error::ConcurrencyProblem)?;
-        free.push(ctx);
+        free.push(ctx)?;
         Ok(result)
     }
 }
