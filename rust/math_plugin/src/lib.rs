@@ -173,7 +173,15 @@ impl TOrcPluginAdaptor for Adaptor {
                 REGISTRY.alloc_with_value(Some(deck), out)
             }
             _ => Err(Error::DeckTypeMismatch),
+        }?;
+        {
+            // Assert that all bytes are consumed. read() returns Ok(0) at EOF.
+            let mut trailing = [0u8; 1];
+            if read.read(&mut trailing).unwrap_or(1) != 0 {
+                return Err(Error::SerializationError);
+            }
         }
+        Ok(())
     }
 }
 
