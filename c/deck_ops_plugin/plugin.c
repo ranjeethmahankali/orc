@@ -76,15 +76,46 @@ OrcError orc_deck_deserialize(uint64_t const ctx,
                               uint64_t const buf_len,
                               OrcHandle     *out)
 {
+  // This implementation is very naive and simple. It can affort to be so because this
+  // plugin doesn't implement any custom types with pointer indirection.
   OrcStrView src   = {.start = (char *)buf, .end = (char *)buf + buf_len};
   OrcMark   *marks = NULL;
   OrcError   err   = orc_sdk_deserialize_handle_header(ctx, &src, out, &marks);
   if (err != ORC_ERROR_NONE) {
     return err;
   }
-
-  (void)src;
-  (void)ctx;
-  (void)out;
-  ORC_SDK_TODO("Not implemented");
+  void *deck = NULL;
+  {  // We just want to use the registry mechanism of orc_deck_alloc. Otherwise this deck
+     // won't be in the registry.
+    OrcHandle temp_handle = {0};
+    temp_handle.handle    = out->handle;
+    err                   = orc_deck_alloc(out->type_id, &temp_handle);
+    if (err != ORC_ERROR_NONE) {
+      return err;
+    }
+    deck = _orc_sdk_deck_grow_capacity(
+      (void *)temp_handle.items, temp_handle.item_size, out->n_items);
+    ORC_SDK_REQUIRE(out->item_size == temp_handle.item_size);
+  }
+  ORC_SDK_REQUIRE(deck != NULL);
+  _OrcSdk_DeckHeader *header = _orc_sdk_deck_header(deck);
+  header->count              = out->n_items;
+  header->item_size          = out->item_size;
+  if (out->n_items > 0) {
+    err = orc_sdk_sv_read_bytes(&src, deck, out->item_size * out->n_items);
+    if (err != ORC_ERROR_NONE) {
+      orc_deck_free(deck);
+      return err;
+    }
+  }
+  // We must have fully consumed the sv by this point. Otherwise the deserialization
+  // didn't work properly.
+  if (!orc_sv_is_empty(src)) {
+    orc_deck_free(deck);
+    return ORC_ERROR_SERIALIZATION_ERROR;
+  }
+  orc_sdk_deck_calc_strides(header);
+  out->items = deck;
+  orc_sdk_oh_update(out);
+  return ORC_ERROR_NONE;
 }
