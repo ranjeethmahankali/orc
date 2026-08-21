@@ -2372,10 +2372,10 @@ OrcError orc_sdk_serialize_handle_header(uint64_t const ctx, OrcHandle const *ha
   buf = _bytes_append(buf, (char *)&(handle->item_size), sizeof(handle->item_size));
   if (buf == NULL)
     return ORC_ERROR_ALLOC_FAILED;
+  buf = _bytes_append(buf, (char *)&(handle->n_marks), sizeof(handle->n_marks));
+  if (buf == NULL)
+    return ORC_ERROR_ALLOC_FAILED;
   if (handle->marks != NULL && handle->n_marks > 0) {
-    buf = _bytes_append(buf, (char *)&(handle->n_marks), sizeof(handle->n_marks));
-    if (buf == NULL)
-      return ORC_ERROR_ALLOC_FAILED;
     buf = _bytes_append(buf, (char *)handle->marks, handle->n_marks * sizeof(OrcMark));
     if (buf == NULL)
       return ORC_ERROR_ALLOC_FAILED;

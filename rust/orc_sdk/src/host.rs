@@ -140,7 +140,12 @@ impl Plugin {
     ) -> Result<R, Error> {
         let ctx = arena.insert(|buf| buf.clear())?;
         let err = unsafe { (self.deck_serialize)(ctx, handle) };
-        Error::from_raw(err).and_then(|()| arena.consume(ctx, vis))
+        if let Err(e) = Error::from_raw(err) {
+            // Consume the slot to avoid leaking it, but discard the data.
+            let _ = arena.consume(ctx, |_| {});
+            return Err(e);
+        }
+        arena.consume(ctx, vis)
     }
 
     pub fn deserialize_deck(&self, _ctx: u64, _buf: &[u8]) -> Result<OrcHandle, Error> {
