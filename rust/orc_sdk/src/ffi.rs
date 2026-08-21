@@ -95,7 +95,8 @@ macro_rules! orc_plugin {
             handle: *const OrcHandle,
             write_fn: orc_sdk::OrcSerializeWriteFn,
         ) -> orc_sdk::OrcError {
-            let mut writer = orc_sdk::SerialWrite::new(ctx, write_fn);
+            let callbacks = <$plugin as orc_sdk::TOrcPluginAdaptor>::host_callbacks();
+            let mut writer = orc_sdk::SerialWrite::new(ctx, callbacks.serial_write);
             match <$plugin as orc_sdk::TOrcPluginAdaptor>::deck_serialize(
                 ctx,
                 unsafe { &*handle },
@@ -267,6 +268,7 @@ pub enum ProxyType {
 }
 
 pub trait TOrcPluginAdaptor {
+    fn host_callbacks() -> &'static OrcHostCallbackAPI;
     fn plugin_init(host: &OrcHost, out: &mut OrcPlugin) -> Result<(), Error>;
     fn deck_alloc(id: OrcTypeId, handle: &mut OrcHandle) -> Result<(), Error>;
     fn deck_free(handle: &mut OrcHandle) -> Result<(), Error>;

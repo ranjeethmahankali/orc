@@ -26,6 +26,10 @@ pub(crate) fn registry() -> &'static DeckRegistry {
 struct Adaptor;
 
 impl TOrcPluginAdaptor for Adaptor {
+    fn host_callbacks() -> &'static OrcHostCallbackAPI {
+        host_callbacks()
+    }
+
     fn plugin_init(host: &OrcHost, out: &mut OrcPlugin) -> Result<(), Error> {
         if host.abi_version != ORC_ABI_VERSION {
             return Err(Error::ABIVersionMismatch);
