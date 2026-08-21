@@ -62,10 +62,12 @@ OrcError orc_deck_serialize(uint64_t const ctx, OrcHandle const *handle)
   ORC_SDK_REQUIRE(handle->item_size > 0);
   // IMPORTANT: This only works because this plugin doesn't define custom types with any
   // pointer indirection. All the builtin types are value types.
-  err =
-    orc_sdk_host_serial_write(ctx, handle->items, handle->item_size * handle->n_items);
-  if (err != ORC_ERROR_NONE) {
-    return err;
+  if (handle->n_items > 0 && handle->items != NULL) {
+    err =
+      orc_sdk_host_serial_write(ctx, handle->items, handle->item_size * handle->n_items);
+    if (err != ORC_ERROR_NONE) {
+      return err;
+    }
   }
   return ORC_ERROR_NONE;
 }
@@ -90,6 +92,7 @@ OrcError orc_deck_deserialize(uint64_t const ctx,
     temp_handle.handle    = out->handle;
     err                   = orc_sdk_handle_alloc(out->type_id, &temp_handle);
     if (err != ORC_ERROR_NONE) {
+      orc_sdk_arr_free(marks);
       return err;
     }
     deck = _orc_sdk_deck_grow_capacity(
@@ -104,14 +107,14 @@ OrcError orc_deck_deserialize(uint64_t const ctx,
   if (out->n_items > 0) {
     err = orc_sdk_sv_read_bytes(&src, deck, out->item_size * out->n_items);
     if (err != ORC_ERROR_NONE) {
-      orc_sdk_deck_free(deck);
+      orc_sdk_handle_free(out);
       return err;
     }
   }
   // We must have fully consumed the sv by this point. Otherwise the deserialization
   // didn't work properly.
   if (!orc_sv_is_empty(src)) {
-    orc_sdk_deck_free(deck);
+    orc_sdk_handle_free(out);
     return ORC_ERROR_SERIALIZATION_ERROR;
   }
   orc_sdk_deck_calc_strides(header);

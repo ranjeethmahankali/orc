@@ -670,9 +670,11 @@ impl std::io::Write for SerialWrite {
             .write_func
             .ok_or(std::io::Error::from(std::io::ErrorKind::NotFound))?;
         let result = unsafe { (func)(self.ctx, self.buf.as_ptr().cast(), self.buf.len() as u64) };
-        self.buf.clear();
         let err_kind = match result {
-            crate::ORC_ERROR_NONE => return Ok(()),
+            crate::ORC_ERROR_NONE => {
+                self.buf.clear();
+                return Ok(());
+            }
             crate::ORC_ERROR_ABI_VERSION_MISMATCH | crate::ORC_ERROR_MISSING_CAPABILITY => {
                 std::io::ErrorKind::Unsupported
             }
