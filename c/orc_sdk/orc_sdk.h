@@ -495,6 +495,8 @@ OrcStrView orc_sv_slice(OrcStrView sv, size_t const start, size_t const end);
 
 bool orc_sv_eq(OrcStrView const a, OrcStrView const b);
 
+OrcError orc_sdk_sv_read_bytes(OrcStrView *sv, void *dst, size_t const count);
+
 // ========== Deck ==========
 
 typedef struct
@@ -567,6 +569,8 @@ void orc_sdk_deck_flatten(void *ptr);
 void orc_sdk_deck_graft(void *ptr);
 
 void orc_sdk_deck_simplify(void *ptr);
+
+void orc_sdk_deck_calc_strides(_OrcSdk_DeckHeader *h);
 
 char *_orc_sdk_deck_to_str(void const  *ptr,
                            size_t const item_size,
