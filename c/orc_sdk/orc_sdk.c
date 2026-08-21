@@ -960,7 +960,7 @@ bool orc_sv_eq(OrcStrView const a, OrcStrView const b)
 
 OrcError orc_sdk_sv_read_bytes(OrcStrView *sv, void *dst, size_t const count)
 {
-  if (sv->start + count > sv->end) {
+  if (sv->start == NULL || sv->start + count > sv->end) {
     return ORC_ERROR_SERIALIZATION_ERROR;
   }
   memcpy(dst, sv->start, count);
@@ -2335,6 +2335,9 @@ static char *_bytes_append(char *dst, char const *src, size_t const count)
 {
   size_t const current_size = orc_sdk_arr_len(dst);
   orc_sdk_arr_resize(dst, current_size + count);
+  if (dst == NULL) {
+    return dst;
+  }
   char *ptr = orc_sdk_arr_end(dst) - count;
   memcpy(ptr, src, count);
   return dst;
@@ -2348,17 +2351,35 @@ OrcError orc_sdk_serialize_handle_header(uint64_t const ctx, OrcHandle const *ha
   char    *buf = NULL;
   OrcError err =
     orc_sdk_arr_reserve(buf, sizeof(OrcHandle) + handle->n_marks * sizeof(OrcMark));
+  if (buf == NULL)
+    return ORC_ERROR_ALLOC_FAILED;
   if (ORC_ERROR_NONE != err) {
     return err;
   }
   ORC_SDK_REQUIRE(orc_sdk_arr_len(buf) == 0);
   buf = _bytes_append(buf, (char *)&ORC_ABI_VERSION, sizeof(ORC_ABI_VERSION));
+  if (buf == NULL)
+    return ORC_ERROR_ALLOC_FAILED;
   buf = _bytes_append(buf, (char *)&(handle->type_id), sizeof(handle->type_id));
+  if (buf == NULL)
+    return ORC_ERROR_ALLOC_FAILED;
   buf = _bytes_append(buf, (char *)handle->dims, sizeof(OrcDims));
+  if (buf == NULL)
+    return ORC_ERROR_ALLOC_FAILED;
   buf = _bytes_append(buf, (char *)&(handle->n_items), sizeof(handle->n_items));
+  if (buf == NULL)
+    return ORC_ERROR_ALLOC_FAILED;
   buf = _bytes_append(buf, (char *)&(handle->item_size), sizeof(handle->item_size));
-  buf = _bytes_append(buf, (char *)&(handle->n_marks), sizeof(handle->n_marks));
-  buf = _bytes_append(buf, (char *)handle->marks, handle->n_marks * sizeof(OrcMark));
+  if (buf == NULL)
+    return ORC_ERROR_ALLOC_FAILED;
+  if (handle->marks != NULL && handle->n_marks > 0) {
+    buf = _bytes_append(buf, (char *)&(handle->n_marks), sizeof(handle->n_marks));
+    if (buf == NULL)
+      return ORC_ERROR_ALLOC_FAILED;
+    buf = _bytes_append(buf, (char *)handle->marks, handle->n_marks * sizeof(OrcMark));
+    if (buf == NULL)
+      return ORC_ERROR_ALLOC_FAILED;
+  }
   err = orc_sdk_host_serial_write(ctx, buf, orc_sdk_arr_len(buf));
   orc_sdk_arr_free(buf);
   return err;

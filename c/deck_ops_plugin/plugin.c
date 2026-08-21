@@ -104,6 +104,7 @@ OrcError orc_deck_deserialize(uint64_t const ctx,
   header->count              = out->n_items;
   header->item_size          = out->item_size;
   header->marks              = marks;
+  out->items                 = deck;
   if (out->n_items > 0) {
     err = orc_sdk_sv_read_bytes(&src, deck, out->item_size * out->n_items);
     if (err != ORC_ERROR_NONE) {
@@ -118,7 +119,6 @@ OrcError orc_deck_deserialize(uint64_t const ctx,
     return ORC_ERROR_SERIALIZATION_ERROR;
   }
   orc_sdk_deck_calc_strides(header);
-  out->items = deck;
   orc_sdk_oh_update(out);
   return ORC_ERROR_NONE;
 }
