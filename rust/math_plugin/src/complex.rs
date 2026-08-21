@@ -8,6 +8,11 @@ pub struct Complex {
 }
 
 impl Complex {
+    #[cfg(test)]
+    pub fn from_parts(real: f64, imag: f64) -> Self {
+        Self { real, imag }
+    }
+
     pub fn serialize(items: &[Self], write: &mut impl std::io::Write) -> std::io::Result<usize> {
         for Complex { real, imag } in items {
             write.write_all(&real.to_ne_bytes())?;

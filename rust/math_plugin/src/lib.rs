@@ -205,3 +205,249 @@ const ORC_EXPORTED_FUNCTIONS: &[OrcFuncInfo] = &[
 ];
 
 const ORC_EXPORTED_TYPES: &[OrcTypeInfo] = &[Complex::TYPE_INFO];
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use orc_sdk::{Deck, deck, update_handle_from_deck};
+    use std::io::Cursor;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    static NEXT_ID: AtomicU64 = AtomicU64::new(9000);
+
+    fn next_id() -> u64 {
+        NEXT_ID.fetch_add(1, Ordering::Relaxed)
+    }
+
+    fn make_handle<T: TOrcData>(deck: &Deck<T>) -> OrcHandle {
+        let mut h = OrcHandle {
+            handle: next_id(),
+            ..Default::default()
+        };
+        unsafe { update_handle_from_deck(deck, &mut h) };
+        h
+    }
+
+    fn out_handle() -> OrcHandle {
+        OrcHandle {
+            handle: next_id(),
+            ..Default::default()
+        }
+    }
+
+    fn serialize_handle(handle: &OrcHandle) -> Vec<u8> {
+        let mut buf = Vec::new();
+        Adaptor::deck_serialize(0, handle, &mut buf).unwrap();
+        buf
+    }
+
+    fn deserialize_handle(buf: &[u8], handle_id: u64) -> OrcHandle {
+        let mut cursor = Cursor::new(buf);
+        let mut out = OrcHandle {
+            handle: handle_id,
+            ..Default::default()
+        };
+        Adaptor::deck_deserialize(0, &mut cursor, &mut out).unwrap();
+        out
+    }
+
+    // ==================== deck_serialize / deck_deserialize ====================
+
+    #[test]
+    fn t_serialize_round_trip_f64_flat() {
+        let deck = deck![1.0_f64, 2.0, 3.0];
+        let h = make_handle(&deck);
+        let buf = serialize_handle(&h);
+        let out = deserialize_handle(&buf, next_id());
+        assert_eq!(out.type_id, ORC_TYPE_F64);
+        assert_eq!(out.n_items, 3);
+        assert_eq!(out.items::<f64>(), &[1.0, 2.0, 3.0]);
+    }
+
+    #[test]
+    fn t_serialize_round_trip_i32_flat() {
+        let deck = deck![10_i32, 20, 30, 40];
+        let h = make_handle(&deck);
+        let buf = serialize_handle(&h);
+        let out = deserialize_handle(&buf, next_id());
+        assert_eq!(out.type_id, ORC_TYPE_I32);
+        assert_eq!(out.n_items, 4);
+        assert_eq!(out.items::<i32>(), &[10, 20, 30, 40]);
+    }
+
+    #[test]
+    fn t_serialize_round_trip_u8_flat() {
+        let deck = deck![255_u8, 0, 128];
+        let h = make_handle(&deck);
+        let buf = serialize_handle(&h);
+        let out = deserialize_handle(&buf, next_id());
+        assert_eq!(out.type_id, ORC_TYPE_U8);
+        assert_eq!(out.items::<u8>(), &[255, 0, 128]);
+    }
+
+    #[test]
+    fn t_serialize_round_trip_f64_nested() {
+        let deck: Deck<f64> = deck![[1.0, 2.0], [3.0]];
+        let h = make_handle(&deck);
+        assert!(h.n_marks > 0);
+        let buf = serialize_handle(&h);
+        let out = deserialize_handle(&buf, next_id());
+        assert_eq!(out.type_id, ORC_TYPE_F64);
+        assert_eq!(out.n_items, 3);
+        assert_eq!(out.items::<f64>(), &[1.0, 2.0, 3.0]);
+        assert_eq!(out.n_marks, h.n_marks);
+        let orig_marks = unsafe { std::slice::from_raw_parts(h.marks, h.n_marks as usize) };
+        let out_marks = unsafe { std::slice::from_raw_parts(out.marks, out.n_marks as usize) };
+        assert_eq!(orig_marks, out_marks);
+    }
+
+    #[test]
+    fn t_serialize_round_trip_empty_deck() {
+        let deck: Deck<f32> = Deck::default();
+        let h = make_handle(&deck);
+        let buf = serialize_handle(&h);
+        let out = deserialize_handle(&buf, next_id());
+        assert_eq!(out.type_id, ORC_TYPE_F32);
+        assert_eq!(out.n_items, 0);
+    }
+
+    #[test]
+    fn t_serialize_round_trip_complex() {
+        let deck = deck![
+            Complex::from_parts(1.0, 2.0),
+            Complex::from_parts(-3.5, 0.0)
+        ];
+        let h = make_handle(&deck);
+        assert_eq!(h.type_id, complex::COMPLEX_NUM_TYPE_ID);
+        assert_eq!(h.n_items, 2);
+        let buf = serialize_handle(&h);
+        let out = deserialize_handle(&buf, next_id());
+        assert_eq!(out.type_id, complex::COMPLEX_NUM_TYPE_ID);
+        assert_eq!(out.n_items, 2);
+        assert_eq!(out.items::<Complex>(), deck.items());
+    }
+
+    #[test]
+    fn t_serialize_preserves_dims() {
+        let deck = deck![1.0_f64, 2.0];
+        let mut h = make_handle(&deck);
+        h.dims[0] = 1;
+        h.dims[1] = -2;
+        h.dims[3] = 3;
+        let buf = serialize_handle(&h);
+        let out = deserialize_handle(&buf, next_id());
+        assert_eq!(out.dims, h.dims);
+    }
+
+    #[test]
+    fn t_deserialize_trailing_bytes_fails() {
+        let deck = deck![42_i64];
+        let h = make_handle(&deck);
+        let mut buf = serialize_handle(&h);
+        buf.push(0xFF); // extra trailing byte
+        let mut cursor = Cursor::new(&buf);
+        let mut out = out_handle();
+        let result = Adaptor::deck_deserialize(0, &mut cursor, &mut out);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn t_deserialize_truncated_fails() {
+        let deck = deck![1.0_f64, 2.0, 3.0];
+        let h = make_handle(&deck);
+        let buf = serialize_handle(&h);
+        let truncated = &buf[..buf.len() - 1];
+        let mut cursor = Cursor::new(truncated);
+        let mut out = out_handle();
+        let result = Adaptor::deck_deserialize(0, &mut cursor, &mut out);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn t_deserialize_empty_buffer_fails() {
+        let buf: &[u8] = &[];
+        let mut cursor = Cursor::new(buf);
+        let mut out = out_handle();
+        let result = Adaptor::deck_deserialize(0, &mut cursor, &mut out);
+        assert!(result.is_err());
+    }
+
+    // ==================== deck_alloc / deck_free ====================
+
+    #[test]
+    fn t_deck_alloc_f64() {
+        let mut h = out_handle();
+        Adaptor::deck_alloc(ORC_TYPE_F64, &mut h).unwrap();
+        assert_eq!(h.type_id, ORC_TYPE_F64);
+        assert_eq!(h.item_size, size_of::<f64>() as u64);
+        assert_eq!(h.n_items, 0);
+        assert!(h.free_fn.is_some());
+        Adaptor::deck_free(&mut h).unwrap();
+        assert!(h.items.is_null());
+    }
+
+    #[test]
+    fn t_deck_alloc_complex() {
+        let mut h = out_handle();
+        Adaptor::deck_alloc(complex::COMPLEX_NUM_TYPE_ID, &mut h).unwrap();
+        assert_eq!(h.type_id, complex::COMPLEX_NUM_TYPE_ID);
+        assert_eq!(h.item_size, size_of::<Complex>() as u64);
+        Adaptor::deck_free(&mut h).unwrap();
+    }
+
+    #[test]
+    fn t_deck_alloc_unknown_type_fails() {
+        let mut h = out_handle();
+        let result = Adaptor::deck_alloc(0xDEAD, &mut h);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn t_deck_alloc_preserves_handle_id() {
+        let mut h = out_handle();
+        let expected_id = h.handle;
+        Adaptor::deck_alloc(ORC_TYPE_I32, &mut h).unwrap();
+        assert_eq!(h.handle, expected_id);
+        Adaptor::deck_free(&mut h).unwrap();
+    }
+
+    #[test]
+    fn t_deck_free_sets_null() {
+        let mut h = out_handle();
+        Adaptor::deck_alloc(ORC_TYPE_F32, &mut h).unwrap();
+        assert!(h.free_fn.is_some());
+        Adaptor::deck_free(&mut h).unwrap();
+        assert!(h.items.is_null());
+        assert!(h.marks.is_null());
+        assert_eq!(h.n_items, 0);
+        assert_eq!(h.type_id, 0);
+    }
+
+    // ==================== all primitive types round-trip ====================
+
+    #[test]
+    fn t_serialize_round_trip_all_primitive_types() {
+        // Test each primitive type serializes and deserializes correctly.
+        macro_rules! test_type {
+            ($ty:ty, [$($v:expr),+ $(,)?]) => {{
+                let deck: Deck<$ty> = deck![$($v),+];
+                let h = make_handle(&deck);
+                let buf = serialize_handle(&h);
+                let out = deserialize_handle(&buf, next_id());
+                assert_eq!(out.type_id, <$ty as TOrcData>::TYPE_INFO.type_id);
+                let expected: &[$ty] = &[$($v),+];
+                assert_eq!(out.items::<$ty>(), expected);
+            }};
+        }
+        test_type!(u8, [1, 2, 3]);
+        test_type!(u16, [100, 200, 300]);
+        test_type!(u32, [1000, 2000, 3000]);
+        test_type!(u64, [10000, 20000, 30000]);
+        test_type!(i8, [-1, 0, 1]);
+        test_type!(i16, [-100, 0, 100]);
+        test_type!(i32, [-1000, 0, 1000]);
+        test_type!(i64, [-10000, 0, 10000]);
+        test_type!(f32, [1.5, -2.5, 0.0]);
+        test_type!(f64, [1.5, -2.5, 0.0]);
+    }
+}
