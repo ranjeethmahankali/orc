@@ -89,7 +89,7 @@ OrcError orc_deck_deserialize(uint64_t const ctx,
      // won't be in the registry.
     OrcHandle temp_handle = {0};
     temp_handle.handle    = out->handle;
-    err                   = orc_deck_alloc(out->type_id, &temp_handle);
+    err                   = orc_sdk_handle_alloc(out->type_id, &temp_handle);
     if (err != ORC_ERROR_NONE) {
       return err;
     }
@@ -101,17 +101,18 @@ OrcError orc_deck_deserialize(uint64_t const ctx,
   _OrcSdk_DeckHeader *header = _orc_sdk_deck_header(deck);
   header->count              = out->n_items;
   header->item_size          = out->item_size;
+  header->marks              = marks;
   if (out->n_items > 0) {
     err = orc_sdk_sv_read_bytes(&src, deck, out->item_size * out->n_items);
     if (err != ORC_ERROR_NONE) {
-      orc_deck_free(deck);
+      orc_sdk_deck_free(deck);
       return err;
     }
   }
   // We must have fully consumed the sv by this point. Otherwise the deserialization
   // didn't work properly.
   if (!orc_sv_is_empty(src)) {
-    orc_deck_free(deck);
+    orc_sdk_deck_free(deck);
     return ORC_ERROR_SERIALIZATION_ERROR;
   }
   orc_sdk_deck_calc_strides(header);
