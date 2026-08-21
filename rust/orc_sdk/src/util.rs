@@ -12,7 +12,7 @@ use std::{
     fmt::Display,
     marker::PhantomData,
     sync::{
-        Arc, RwLock,
+        Arc, Mutex, RwLock,
         atomic::{AtomicPtr, Ordering},
     },
 };
@@ -237,6 +237,62 @@ impl DeckRegistry {
             .read()
             .map(|map| map.len())
             .map_err(|_| Error::ConcurrencyProblem)
+    }
+}
+
+/**
+Many parts of the ABI use a u64 ctx to recognize the caller. The host will often need to allocate
+some resources for a particular ctx key, and pass that ctx to the plugin. The host might then need
+to reacquire the same resource based on the ctx, inside the callback. This file provides useful
+things for implementing this pattern.
+*/
+#[derive(Default)]
+pub struct ContextArena<T: Default> {
+    slots: RwLock<Vec<Mutex<T>>>,
+    free: Mutex<Vec<u64>>,
+}
+
+impl<T: Default> ContextArena<T> {
+    pub fn insert(&self, init: impl Fn(&mut T)) -> Result<u64, Error> {
+        let last = {
+            let mut free = self.free.lock().map_err(|_| Error::ConcurrencyProblem)?;
+            free.pop()
+        };
+        match last {
+            Some(last) => {
+                match self.visit_mut(last, init) {
+                    Ok(_) => Ok(last),
+                    Err(e) => {
+                        // The initialization failed. That means this slot is still free.
+                        let mut free = self.free.lock().map_err(|_| Error::ConcurrencyProblem)?;
+                        free.push(last);
+                        Err(e)
+                    }
+                }
+            }
+            None => {
+                let mut slots = self.slots.write().map_err(|_| Error::ConcurrencyProblem)?;
+                let idx = slots.len();
+                let mut value = T::default();
+                init(&mut value);
+                slots.push(Mutex::new(value));
+                Ok(idx as u64)
+            }
+        }
+    }
+
+    pub fn visit_mut<R>(&self, ctx: u64, vis: impl Fn(&mut T) -> R) -> Result<R, Error> {
+        let slots = self.slots.read().map_err(|_| Error::ConcurrencyProblem)?;
+        let slot_mx = slots.get(ctx as usize).ok_or(Error::InvalidContext)?;
+        let mut slot = slot_mx.lock().map_err(|_| Error::ConcurrencyProblem)?;
+        Ok(vis(&mut slot))
+    }
+
+    pub fn consume<R>(&self, ctx: u64, vis: impl Fn(&mut T) -> R) -> Result<R, Error> {
+        let result = self.visit_mut(ctx, vis)?;
+        let mut free = self.free.lock().map_err(|_| Error::ConcurrencyProblem)?;
+        free.push(ctx);
+        Ok(result)
     }
 }
 
