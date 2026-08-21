@@ -62,6 +62,7 @@ endif()
 # deck_ops_plugin_tests — executable
 add_executable(deck_ops_plugin_tests
     deck_ops_plugin/test.c
+    deck_ops_plugin/plugin.c
     deck_ops_plugin/functions.c
     $<TARGET_OBJECTS:orc_sdk_obj>
 )
