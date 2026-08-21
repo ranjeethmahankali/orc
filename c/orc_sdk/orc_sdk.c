@@ -1038,7 +1038,9 @@ static void _orc_sdk_deck_push_mark(_OrcSdk_DeckHeader *h,
       h->pegs[i] = orc_sdk_arr_len(h->marks);
     }
   }
-  OrcMark const mark = (OrcMark) {.depth = depth, .pos = pos};
+  OrcMark mark = {0};
+  mark.depth   = depth;
+  mark.pos     = pos;
   orc_sdk_arr_push(h->marks, mark);
 }
 
@@ -1232,16 +1234,22 @@ void orc_sdk_deck_graft(void *ptr)
     uint8_t const  new_depth = old_marks[i].depth + 1;
     uint64_t const current   = old_marks[i].pos;
     for (size_t j = prev; j < current; ++j) {
-      OrcMark const mark = {.depth = 0, .pos = j};
+      OrcMark mark = {0};
+      mark.depth   = 0;
+      mark.pos     = j;
       orc_sdk_arr_push(h->marks, mark);
     }
-    OrcMark const mark = {.depth = new_depth, .pos = current};
+    OrcMark mark = {0};
+    mark.depth   = new_depth;
+    mark.pos     = current;
     orc_sdk_arr_push(h->marks, mark);
     prev = current + 1;
   }
   size_t const n_items = h->count;
   for (size_t j = prev; j < n_items; ++j) {
-    OrcMark const mark = {.depth = 0, .pos = j};
+    OrcMark mark = {0};
+    mark.depth   = 0;
+    mark.pos     = j;
     orc_sdk_arr_push(h->marks, mark);
   }
   orc_sdk_arr_free(old_marks);

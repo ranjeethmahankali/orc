@@ -145,7 +145,7 @@ static OrcError flatten_deck(uint64_t         ctx,
   for (size_t i = 0; i < n_inputs; ++i) {
     // Create a proxy on the stack - does not need a free_fn.
     OrcHandle      proxy        = {0};
-    OrcMark const  first_mark   = {.depth = 0, .pos = 0};
+    OrcMark        first_mark   = {0};
     uint64_t const first_stride = input->n_items;
     uint64_t const zero         = 0;
     proxy.marks                 = &first_mark;
