@@ -589,7 +589,7 @@
   some more test coverage for the full serialization machiner from the host side. Need to do it from
   both the Rust and Python hosts.
 
-  - [ ] Add tests in the Rust host for the full roundtrip serialization of all types.
+  - [X] Add tests in the Rust host for the full roundtrip serialization of all types.
   - [ ] Bring the Python host up to speed with all the serialization stuff, when it loads the
     plugins etc. and add tests for serialization.
 
