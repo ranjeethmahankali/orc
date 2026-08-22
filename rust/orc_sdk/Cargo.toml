@@ -9,3 +9,7 @@ derive = ["orc_sdk_derive"]
 [dependencies]
 orc_sdk_derive = { path = "derive_macros", optional = true }
 libloading = "0.8"
+
+# Using this to serialize the DAG workflows for now. Doesn't inherit a tree of dependencies. May
+# rethink this later.
+rmp = "0.8"
