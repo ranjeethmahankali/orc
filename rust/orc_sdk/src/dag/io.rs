@@ -231,6 +231,11 @@ impl Graph {
     }
 }
 
+struct NestedVec<T> {
+    items: Vec<T>,
+    offsets: Vec<usize>,
+}
+
 impl<E: RmpWriteErr> From<ValueWriteError<E>> for DagError {
     fn from(_: ValueWriteError<E>) -> Self {
         DagError::WriteError
