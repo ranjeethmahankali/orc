@@ -4,7 +4,7 @@ use super::{
 };
 use crate::{FuncInfo, InputPropBuf, OrcHandle, OrcHandleBorrowed, PluginSet};
 use std::{
-    collections::{HashMap, HashSet, hash_map::Entry},
+    collections::{BTreeMap, HashSet, btree_map::Entry},
     sync::atomic::{AtomicU64, Ordering},
 };
 
@@ -52,7 +52,7 @@ pub struct Workflow {
     pub(crate) workflow_outputs: Vec<(OH, String)>,
     pub(crate) workflow_input_names: Vec<String>,
     pub(crate) workflow_input_index: InputProperty<Option<usize>>,
-    pub(crate) nested_workflows: HashMap<String, Workflow>,
+    pub(crate) nested_workflows: BTreeMap<String, Workflow>,
 }
 
 impl Default for Workflow {
