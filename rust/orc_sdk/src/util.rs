@@ -1,8 +1,10 @@
 use crate::{
     Deck, DeckView, Error, ORC_ARGS_VARIADIC, ORC_MSG_LEVEL_DEBUG, ORC_MSG_LEVEL_ERROR,
-    ORC_MSG_LEVEL_FATAL, ORC_MSG_LEVEL_INFO, ORC_MSG_LEVEL_WARN, ORC_NUM_DIMS, OrcFuncInfo,
-    OrcHandle, OrcHost, OrcHostCallbackAPI, OrcItemProxy, OrcMark, OrcPluginFunction, OrcTypeId,
-    OrcTypeInfo, ProxyType, deck::fmt_raw_deck, ffi::TOrcData,
+    ORC_MSG_LEVEL_FATAL, ORC_MSG_LEVEL_INFO, ORC_MSG_LEVEL_WARN, ORC_NUM_DIMS, ORC_TYPE_F32,
+    ORC_TYPE_F64, ORC_TYPE_I8, ORC_TYPE_I16, ORC_TYPE_I32, ORC_TYPE_I64, ORC_TYPE_U8, ORC_TYPE_U16,
+    ORC_TYPE_U32, ORC_TYPE_U64, OrcFuncInfo, OrcHandle, OrcHost, OrcHostCallbackAPI, OrcItemProxy,
+    OrcMark, OrcPluginFunction, OrcTypeId, OrcTypeInfo, ProxyType, deck::fmt_raw_deck,
+    ffi::TOrcData,
 };
 use std::{
     alloc::{GlobalAlloc, Layout, System},
@@ -803,6 +805,80 @@ pub fn read_orc_handle_header(
     Ok(marks)
 }
 
+/// Serialize a builtin (primitive) type handle. Writes the header and raw item bytes.
+/// Returns `Err(Error::DeckTypeMismatch)` if `handle.type_id` is not a builtin type.
+/// Try to fully serialize a handle. Always writes the header. For builtin types, also writes the
+/// item bytes and returns `Ok(())`. For unrecognized (custom) types, returns
+/// `Err(Error::DeckTypeMismatch)` with the header already written — the plugin should continue
+/// by writing its custom item data.
+pub fn try_serialize_handle(handle: &OrcHandle, w: &mut impl std::io::Write) -> Result<(), Error> {
+    write_orc_handle_header(handle, w).map_err(|_| Error::SerializationError)?;
+    match handle.type_id {
+        ORC_TYPE_U8 | ORC_TYPE_U16 | ORC_TYPE_U32 | ORC_TYPE_U64 | ORC_TYPE_I8 | ORC_TYPE_I16
+        | ORC_TYPE_I32 | ORC_TYPE_I64 | ORC_TYPE_F32 | ORC_TYPE_F64 => {
+            w.write_all(handle.items_as_bytes())
+                .map_err(|_| Error::SerializationError)
+        }
+        _ => Err(Error::DeckTypeMismatch),
+    }
+}
+
+/// Try to fully deserialize a handle. Always reads the header and marks. For builtin types,
+/// also reads the item bytes, allocates the deck via `registry`, checks for trailing bytes,
+/// and returns `Ok(())`. For unrecognized (custom) types, returns `Err(marks)` with the header
+/// already parsed into `out` — the plugin should continue by reading its custom item data.
+pub fn try_deserialize_handle(
+    r: &mut impl std::io::Read,
+    out: &mut OrcHandle,
+    registry: &DeckRegistry,
+) -> Result<(), Vec<OrcMark>> {
+    fn read_items<T: TOrcData + Default + Copy + std::any::Any + Send + Sync>(
+        r: &mut impl std::io::Read,
+        marks: Vec<OrcMark>,
+        n_items: usize,
+        handle: &mut OrcHandle,
+        registry: &DeckRegistry,
+    ) -> Result<(), Error> {
+        let mut items = vec![T::default(); n_items];
+        if n_items > 0 {
+            let bytes = unsafe {
+                slice_from_ptr_mut(items.as_mut_ptr().cast::<u8>(), n_items * size_of::<T>())
+            };
+            r.read_exact(bytes).map_err(|_| Error::SerializationError)?;
+        }
+        let mut deck = Deck::<T>::default();
+        deck.assign_from_raw_data(items, marks);
+        registry.alloc_with_value(Some(deck), handle)
+    }
+    let marks = read_orc_handle_header(out, r)
+        .map_err(|_| Vec::new())?;
+    match out.type_id {
+        ORC_TYPE_U8 | ORC_TYPE_U16 | ORC_TYPE_U32 | ORC_TYPE_U64 | ORC_TYPE_I8 | ORC_TYPE_I16
+        | ORC_TYPE_I32 | ORC_TYPE_I64 | ORC_TYPE_F32 | ORC_TYPE_F64 => {}
+        _ => return Err(marks),
+    }
+    let result = match out.type_id {
+        ORC_TYPE_U8 => read_items::<u8>(r, marks, out.n_items as usize, out, registry),
+        ORC_TYPE_U16 => read_items::<u16>(r, marks, out.n_items as usize, out, registry),
+        ORC_TYPE_U32 => read_items::<u32>(r, marks, out.n_items as usize, out, registry),
+        ORC_TYPE_U64 => read_items::<u64>(r, marks, out.n_items as usize, out, registry),
+        ORC_TYPE_I8 => read_items::<i8>(r, marks, out.n_items as usize, out, registry),
+        ORC_TYPE_I16 => read_items::<i16>(r, marks, out.n_items as usize, out, registry),
+        ORC_TYPE_I32 => read_items::<i32>(r, marks, out.n_items as usize, out, registry),
+        ORC_TYPE_I64 => read_items::<i64>(r, marks, out.n_items as usize, out, registry),
+        ORC_TYPE_F32 => read_items::<f32>(r, marks, out.n_items as usize, out, registry),
+        ORC_TYPE_F64 => read_items::<f64>(r, marks, out.n_items as usize, out, registry),
+        _ => unreachable!(),
+    };
+    result.map_err(|_| Vec::new())?;
+    // Assert that all bytes are consumed.
+    let mut trailing = [0u8; 1];
+    if r.read(&mut trailing).unwrap_or(1) != 0 {
+        return Err(Vec::new());
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1496,7 +1572,9 @@ mod tests {
     fn t_arena_visit_then_consume() {
         let arena = ContextArena::<Vec<u8>>::default();
         let ctx = arena.insert(|_| {}).unwrap();
-        arena.visit_mut(ctx, |v| v.extend_from_slice(b"abc")).unwrap();
+        arena
+            .visit_mut(ctx, |v| v.extend_from_slice(b"abc"))
+            .unwrap();
         let data = arena.consume(ctx, std::mem::take).unwrap();
         assert_eq!(data, b"abc");
         // Slot should be reusable.
@@ -1507,10 +1585,7 @@ mod tests {
     // Regression: header round-trip with truncated marks data must fail.
     #[test]
     fn t_header_truncated_marks_fails() {
-        let src_marks = [
-            OrcMark { depth: 1, pos: 0 },
-            OrcMark { depth: 0, pos: 3 },
-        ];
+        let src_marks = [OrcMark { depth: 1, pos: 0 }, OrcMark { depth: 0, pos: 3 }];
         let h = make_handle_with_marks(&src_marks);
         let mut buf = Vec::new();
         write_orc_handle_header(&h, &mut buf).unwrap();

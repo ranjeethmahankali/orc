@@ -2,9 +2,9 @@ use complex::Complex;
 use orc_sdk::{
     Deck, DeckRegistry, Error, HostCallbacks, ORC_ABI_VERSION, ORC_TYPE_F32, ORC_TYPE_F64,
     ORC_TYPE_I8, ORC_TYPE_I16, ORC_TYPE_I32, ORC_TYPE_I64, ORC_TYPE_U8, ORC_TYPE_U16, ORC_TYPE_U32,
-    ORC_TYPE_U64, OrcFuncInfo, OrcHandle, OrcHost, OrcHostCallbackAPI, OrcMark, OrcPlugin,
-    OrcTypeId, OrcTypeInfo, ProxyType, TOrcData, TOrcPluginAdaptor, deck_from_proxy, orc_fn_info,
-    orc_plugin, reset_handle,
+    ORC_TYPE_U64, OrcFuncInfo, OrcHandle, OrcHost, OrcHostCallbackAPI, OrcPlugin, OrcTypeId,
+    OrcTypeInfo, ProxyType, TOrcData, TOrcPluginAdaptor, deck_from_proxy, orc_fn_info, orc_plugin,
+    reset_handle,
 };
 use std::sync::{LazyLock, OnceLock};
 
@@ -111,12 +111,12 @@ impl TOrcPluginAdaptor for Adaptor {
         handle: &OrcHandle,
         write: &mut impl std::io::Write,
     ) -> Result<(), Error> {
-        orc_sdk::write_orc_handle_header(handle, write).map_err(|_| Error::SerializationError)?;
-        let result = match handle.type_id {
-            ORC_TYPE_U8 | ORC_TYPE_U16 | ORC_TYPE_U32 | ORC_TYPE_U64 | ORC_TYPE_I8
-            | ORC_TYPE_I16 | ORC_TYPE_I32 | ORC_TYPE_I64 | ORC_TYPE_F32 | ORC_TYPE_F64 => {
-                write.write_all(handle.items_as_bytes())
-            }
+        match orc_sdk::try_serialize_handle(handle, write) {
+            Err(Error::DeckTypeMismatch) => {}
+            result => return result,
+        }
+        // Header already written by try_serialize_handle. Write custom item data.
+        match handle.type_id {
             complex::COMPLEX_NUM_TYPE_ID => {
                 let items = handle.items::<Complex>();
                 let n_serialized =
@@ -126,9 +126,8 @@ impl TOrcPluginAdaptor for Adaptor {
                 }
                 Ok(())
             }
-            _ => return Err(Error::DeckTypeMismatch),
-        };
-        result.map_err(|_| Error::SerializationError)
+            _ => Err(Error::DeckTypeMismatch),
+        }
     }
 
     fn deck_deserialize(
@@ -136,54 +135,25 @@ impl TOrcPluginAdaptor for Adaptor {
         read: &mut impl std::io::Read,
         out: &mut OrcHandle,
     ) -> Result<(), Error> {
-        fn read_primitive_items<T: TOrcData + Default + Sized + Copy>(
-            read: &mut impl std::io::Read,
-            marks: Vec<OrcMark>,
-            n_items: usize,
-            handle: &mut OrcHandle,
-        ) -> Result<(), Error> {
-            let mut items = vec![T::default(); n_items];
-            let bytes = unsafe {
-                orc_sdk::slice_from_ptr_mut(
-                    items.as_mut_ptr().cast::<u8>(),
-                    n_items * size_of::<T>(),
-                )
-            };
-            read.read_exact(bytes)
-                .map_err(|_| Error::SerializationError)?;
-            let items = items;
-            let mut deck = Deck::<T>::default();
-            deck.assign_from_raw_data(items, marks);
-            REGISTRY.alloc_with_value(Some(deck), handle)
-        }
-        let marks =
-            orc_sdk::read_orc_handle_header(out, read).map_err(|_| Error::SerializationError)?;
+        let marks = match orc_sdk::try_deserialize_handle(read, out, &REGISTRY) {
+            Ok(()) => return Ok(()),
+            Err(marks) => marks,
+        };
+        // Header and marks already read. Read custom item data.
         match out.type_id {
-            ORC_TYPE_U8 => read_primitive_items::<u8>(read, marks, out.n_items as usize, out),
-            ORC_TYPE_U16 => read_primitive_items::<u16>(read, marks, out.n_items as usize, out),
-            ORC_TYPE_U32 => read_primitive_items::<u32>(read, marks, out.n_items as usize, out),
-            ORC_TYPE_U64 => read_primitive_items::<u64>(read, marks, out.n_items as usize, out),
-            ORC_TYPE_I8 => read_primitive_items::<i8>(read, marks, out.n_items as usize, out),
-            ORC_TYPE_I16 => read_primitive_items::<i16>(read, marks, out.n_items as usize, out),
-            ORC_TYPE_I32 => read_primitive_items::<i32>(read, marks, out.n_items as usize, out),
-            ORC_TYPE_I64 => read_primitive_items::<i64>(read, marks, out.n_items as usize, out),
-            ORC_TYPE_F32 => read_primitive_items::<f32>(read, marks, out.n_items as usize, out),
-            ORC_TYPE_F64 => read_primitive_items::<f64>(read, marks, out.n_items as usize, out),
             complex::COMPLEX_NUM_TYPE_ID => {
                 let items = Complex::deserialize(read, out.n_items as usize)
                     .map_err(|_| Error::SerializationError)?;
                 let mut deck = Deck::<Complex>::default();
                 deck.assign_from_raw_data(items, marks);
-                REGISTRY.alloc_with_value(Some(deck), out)
+                REGISTRY.alloc_with_value(Some(deck), out)?;
             }
-            _ => Err(Error::DeckTypeMismatch),
-        }?;
-        {
-            // Assert that all bytes are consumed. read() returns Ok(0) at EOF.
-            let mut trailing = [0u8; 1];
-            if read.read(&mut trailing).unwrap_or(1) != 0 {
-                return Err(Error::SerializationError);
-            }
+            _ => return Err(Error::DeckTypeMismatch),
+        }
+        // Assert that all bytes are consumed for custom types.
+        let mut trailing = [0u8; 1];
+        if read.read(&mut trailing).unwrap_or(1) != 0 {
+            return Err(Error::SerializationError);
         }
         Ok(())
     }
