@@ -379,7 +379,11 @@
 
   <2026-08-22 Sat 13:21> Scrapping the plan to save the DAG as plain text. Supporting mutliple
   scripting languages already scratches the plain text itch, and I can revisit this decision later
-  if need be.
+  if need be. For now, I am going forward with message pack. It is easy to implement version
+  support, is available in almost every language.
+
+  <2026-08-22 Sat 14:31> Need to figure out how storing constants will affect the design of Python
+  interop of the DAG workflows. Have some ideas, but not full clarity yet.
 
 ** CLOSED Vague Plan
    CLOSED: [2026-08-22 Sat 13:21]
