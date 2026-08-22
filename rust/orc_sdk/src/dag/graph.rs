@@ -514,6 +514,22 @@ impl Graph {
     pub fn is_valid_output(&self, output: OH) -> bool {
         output.idx < self.outputs.len()
     }
+
+    pub(crate) fn inputs(&self) -> &[Input] {
+        &self.inputs
+    }
+
+    pub(crate) fn outputs(&self) -> &[Output] {
+        &self.outputs
+    }
+
+    pub(crate) fn links(&self) -> &[Link] {
+        &self.links
+    }
+
+    pub(crate) fn nodes(&self) -> &[Node] {
+        &self.nodes
+    }
 }
 
 #[cfg(test)]
