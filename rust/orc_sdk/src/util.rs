@@ -805,8 +805,6 @@ pub fn read_orc_handle_header(
     Ok(marks)
 }
 
-/// Serialize a builtin (primitive) type handle. Writes the header and raw item bytes.
-/// Returns `Err(Error::DeckTypeMismatch)` if `handle.type_id` is not a builtin type.
 /// Try to fully serialize a handle. Always writes the header. For builtin types, also writes the
 /// item bytes and returns `Ok(())`. For unrecognized (custom) types, returns
 /// `Err(Error::DeckTypeMismatch)` with the header already written — the plugin should continue
