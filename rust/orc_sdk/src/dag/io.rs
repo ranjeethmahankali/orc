@@ -2,12 +2,6 @@ use super::{DagError, Graph, NH, Workflow};
 use rmp::encode::{RmpWrite, RmpWriteErr, ValueWriteError};
 use std::path::Path;
 
-impl<E: RmpWriteErr> From<ValueWriteError<E>> for DagError {
-    fn from(_: ValueWriteError<E>) -> Self {
-        DagError::WriteError
-    }
-}
-
 impl Workflow {
     pub fn read_from_file<P: AsRef<Path>>(_path: P) -> Result<Self, DagError> {
         todo!()
@@ -65,5 +59,11 @@ impl Graph {
             rmp::encode::write_u32(w, local_in)?;
         }
         Ok(())
+    }
+}
+
+impl<E: RmpWriteErr> From<ValueWriteError<E>> for DagError {
+    fn from(_: ValueWriteError<E>) -> Self {
+        DagError::WriteError
     }
 }
