@@ -197,9 +197,9 @@ macro_rules! orc_dag {
             let wf_ref_: &mut $crate::Workflow = $wf;
             // Workflow inputs accumulated during expansion.
             // Quoted symbols ('name) use Rust lifetime syntax to denote workflow inputs.
-            #[allow(unused_mut)]
+            #[allow(unused_mut, unused_variables)]
             let mut wf_ins_: Vec<($crate::IH, usize, &str)> = Vec::new();
-            #[allow(unused_mut)]
+            #[allow(unused_mut, unused_variables)]
             let mut wf_in_names_: Vec<&str> = Vec::new();
             let result_ = orc_dag!(@stmts ps_ref_, hc_ref_, reg_ref_, wf_ref_, wf_ins_, wf_in_names_, $($body)*);
             if !wf_ins_.is_empty() {
