@@ -5,7 +5,8 @@ use crate::{
     ContextArena, DeckAllocFn, DeckDeserializeFn, DeckFreeFn, DeckFromProxyFn, DeckSerializeFn,
     Error, FuncInfo, HostCallbacks, ORC_ABI_VERSION, ORC_DECK_PROXY_COPY_ALL,
     ORC_DECK_PROXY_COPY_ITEMS, ORC_DECK_PROXY_SHUFFLE, OrcHandle, OrcHost, OrcPlugin, OrcTypeId,
-    PRIMITIVE_TYPES, PluginInitFn, ProxyType, TypeInfo, slice_from_ptr, util::string_from_ffi,
+    PRIMITIVE_TYPES, PluginInitFn, ProxyType, TypeInfo, ptr_from_slice, slice_from_ptr,
+    util::string_from_ffi,
 };
 
 /// This is to store the info, handles etc. for a loaded plugin.
@@ -148,8 +149,11 @@ impl Plugin {
         arena.consume(ctx, vis)
     }
 
-    pub fn deserialize_deck(&self, _ctx: u64, _buf: &[u8]) -> Result<OrcHandle, Error> {
-        todo!()
+    pub fn deserialize_deck(&self, ctx: u64, buf: &[u8], out: &mut OrcHandle) -> Result<(), Error> {
+        let err = unsafe {
+            (self.deck_deserialize)(ctx, ptr_from_slice(buf).cast(), buf.len() as u64, out)
+        };
+        Error::from_raw(err)
     }
 
     pub fn name(&self) -> &str {
