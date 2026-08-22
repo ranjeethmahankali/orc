@@ -1,9 +1,15 @@
 use super::{DagError, Graph, NH, Workflow};
+use crate::PluginSet;
 use rmp::encode::{RmpWrite, RmpWriteErr, ValueWriteError};
 use std::path::Path;
 
 impl Workflow {
-    pub fn read_from_file<P: AsRef<Path>>(_path: P) -> Result<Self, DagError> {
+    pub fn write_to_msgpack<P: AsRef<Path>>(
+        &self,
+        path: P,
+        plugin_set: &PluginSet,
+        w: &mut impl RmpWrite,
+    ) -> Result<Self, DagError> {
         todo!()
     }
 }
