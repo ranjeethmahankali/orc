@@ -4,9 +4,11 @@ import ctypes
 import os
 import platform
 import sys
+import threading
 import numpy as np
 from bindings import (OrcDeckFreeFn, OrcHandle, OrcAllocFn, OrcDeallocFn,
-                      OrcReportMessageFn, ORC_TYPE_U8, ORC_TYPE_U16,
+                      OrcReportMessageFn, OrcSerializeWriteFn,
+                      ORC_TYPE_U8, ORC_TYPE_U16,
                       ORC_TYPE_U32, ORC_TYPE_U64, ORC_TYPE_I8, ORC_TYPE_I16,
                       ORC_TYPE_I32, ORC_TYPE_I64, ORC_TYPE_F32, ORC_TYPE_F64,
                       OrcMark, OrcHost, OrcPlugin, OrcError, ORC_ERROR_NONE,
@@ -57,6 +59,21 @@ def report_message(ctx, level, msg):
     level_names = {1: "DEBUG", 2: "INFO", 3: "WARN", 4: "ERROR", 5: "FATAL"}
     text = msg.decode("utf-8", errors="replace") if msg else ""
     print(f"[{level_names.get(level, 'UNKNOWN')}][{ctx}] {text}", flush=True)
+
+
+_serial_lock = threading.Lock()
+_serial_buffers = {}
+
+
+@OrcSerializeWriteFn
+def serial_write(_ctx, data, length):
+    """Append bytes to the serialization buffer identified by ctx."""
+    with _serial_lock:
+        buf = _serial_buffers.get(_ctx)
+    if buf is None:
+        return 1
+    buf.extend(ctypes.string_at(data, length))
+    return 0
 
 
 _proxy_deck_registry = {}  # handle_id -> tuple of backing ctypes objects
@@ -182,6 +199,7 @@ def default_host(use_custom_allocator=False):
         host.memory_api.alloc = host_alloc
         host.memory_api.dealloc = host_dealloc
     host.callbacks.report_message = report_message
+    host.callbacks.serial_write = serial_write
     host.create_deck_from_proxy = host_create_proxy_deck
     return host
 
@@ -419,6 +437,8 @@ REQUIRED_SYMBOLS = [
     "orc_deck_alloc",
     "orc_deck_free",
     "orc_deck_from_proxy",
+    "orc_deck_serialize",
+    "orc_deck_deserialize",
 ]
 
 
@@ -467,6 +487,18 @@ def load_plugins(search_dir, verbose=False, use_custom_allocator=False):
             ctypes.POINTER(OrcPlugin),
         ]
         lib.orc_plugin_init.restype = OrcError
+        lib.orc_deck_serialize.argtypes = [
+            ctypes.c_uint64,
+            ctypes.POINTER(OrcHandle),
+        ]
+        lib.orc_deck_serialize.restype = OrcError
+        lib.orc_deck_deserialize.argtypes = [
+            ctypes.c_uint64,
+            ctypes.c_void_p,
+            ctypes.c_uint64,
+            ctypes.POINTER(OrcHandle),
+        ]
+        lib.orc_deck_deserialize.restype = OrcError
         plugin = OrcPlugin()
         err = lib.orc_plugin_init(ctypes.byref(host), ctypes.byref(plugin))
         if err != ORC_ERROR_NONE:

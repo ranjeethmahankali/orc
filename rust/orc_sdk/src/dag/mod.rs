@@ -128,7 +128,7 @@ macro_rules! orc_inline_dag {
     (@const_handle $hc:ident, $reg:ident, $deck:expr) => {{
         let mut h_ = OrcHandle::default();
         h_.handle = $hc.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        $reg.alloc_with_value($deck, &mut h_)?;
+        $reg.alloc_with_value(Some($deck), &mut h_)?;
         Ok::<OrcHandle, $crate::Error>(h_)
     }};
 
@@ -351,7 +351,7 @@ macro_rules! orc_dag {
     (@const_node $hc:ident, $reg:ident, $wf:ident, $deck:expr) => {{
         let mut h_ = $crate::OrcHandle::default();
         h_.handle = $hc.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        $reg.alloc_with_value($deck, &mut h_)
+        $reg.alloc_with_value(Some($deck), &mut h_)
             .map_err(|e| $crate::DagError::from(e))?;
         let (_nh_, oh_) = $wf.add_constant(h_)?;
         Ok::<$crate::OH, $crate::DagError>(oh_)

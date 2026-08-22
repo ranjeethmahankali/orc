@@ -55,6 +55,8 @@ ORC_ERROR_NULL_PTR = 0xff0c
 ORC_ERROR_MISSING_CAPABILITY = 0xff0d
 ORC_ERROR_INVALID_FUNCTION = 0xff0e
 ORC_ERROR_INVALID_ARGUMENTS = 0xff0f
+ORC_ERROR_SERIALIZATION_ERROR = 0xff10
+ORC_ERROR_INVALID_CONTEXT = 0xff11
 ORC_ERROR_UNKNOWN = 0xffff
 
 ORC_DECK_PROXY_COPY_ALL = 0x01
@@ -97,6 +99,7 @@ class OrcItemProxy(ctypes.Structure):
 OrcDims = ctypes.c_int32 * 7
 
 OrcPluginFunction = ctypes.CFUNCTYPE(ctypes.c_uint32, ctypes.c_uint64, ctypes.POINTER(OrcHandle), ctypes.c_uint64, ctypes.POINTER(OrcHandle), ctypes.c_uint64)
+OrcSerializeWriteFn = ctypes.CFUNCTYPE(ctypes.c_uint32, ctypes.c_uint64, ctypes.c_void_p, ctypes.c_uint64)
 OrcDeckFreeFn = ctypes.CFUNCTYPE(ctypes.c_uint32, ctypes.POINTER(OrcHandle))
 
 OrcAllocFn = ctypes.CFUNCTYPE(ctypes.c_void_p, ctypes.c_uint64, ctypes.c_uint64)
@@ -109,16 +112,16 @@ OrcCreateDeckFromProxyFn = ctypes.CFUNCTYPE(ctypes.c_uint32, ctypes.POINTER(OrcH
 
 OrcHandle._fields_ = [
     ("handle", ctypes.c_uint64),
-    ("items", ctypes.c_void_p),
-    ("n_items", ctypes.c_uint64),
-    ("item_size", ctypes.c_uint64),
-    ("marks", ctypes.POINTER(OrcMark)),
-    ("stride_offset", ctypes.POINTER(ctypes.c_uint64)),
-    ("n_marks", ctypes.c_uint64),
-    ("strides", ctypes.POINTER(ctypes.c_uint64)),
     ("type_id", OrcTypeId),
     ("dims", OrcDims),
+    ("n_items", ctypes.c_uint64),
+    ("item_size", ctypes.c_uint64),
+    ("n_marks", ctypes.c_uint64),
     ("free_fn", OrcDeckFreeFn),
+    ("marks", ctypes.POINTER(OrcMark)),
+    ("stride_offset", ctypes.POINTER(ctypes.c_uint64)),
+    ("strides", ctypes.POINTER(ctypes.c_uint64)),
+    ("items", ctypes.c_void_p),
 ]
 
 OrcTypeInfo._fields_ = [
@@ -157,6 +160,7 @@ OrcHostCallbackAPI._fields_ = [
     ("report_message", OrcReportMessageFn),
     ("check_cancellation", OrcCheckCancellationFn),
     ("report_intermediate_output", OrcReportIntermediateOutputFn),
+    ("serial_write", OrcSerializeWriteFn),
 ]
 
 OrcHost._fields_ = [

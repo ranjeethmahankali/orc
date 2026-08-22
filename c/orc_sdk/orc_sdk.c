@@ -152,6 +152,16 @@ OrcError orc_sdk_host_create_proxy_deck(const OrcHandle   *inputs,
   }
 }
 
+OrcError orc_sdk_host_serial_write(uint64_t const ctx,
+                                   void const    *buf,
+                                   uint64_t const buf_len)
+{
+  if (HOST.callbacks.serial_write != NULL) {
+    return HOST.callbacks.serial_write(ctx, buf, buf_len);
+  }
+  return ORC_ERROR_MISSING_CAPABILITY;
+}
+
 void *_orc_sdk_arr_grow(void *ptr, size_t elemsize)
 {
   _OrcSdk_ArrHeader *h = _orc_sdk_arr_header(ptr);
@@ -948,6 +958,16 @@ bool orc_sv_eq(OrcStrView const a, OrcStrView const b)
   return memcmp(a.start, b.start, n) == 0;
 }
 
+OrcError orc_sdk_sv_read_bytes(OrcStrView *sv, void *dst, size_t const count)
+{
+  if (sv->start == NULL || sv->start + count > sv->end) {
+    return ORC_ERROR_SERIALIZATION_ERROR;
+  }
+  memcpy(dst, sv->start, count);
+  sv->start += count;
+  return ORC_ERROR_NONE;
+}
+
 // ========== Deck ==========
 
 void _orc_sdk_deck_free_impl(void *ptr)
@@ -1018,7 +1038,9 @@ static void _orc_sdk_deck_push_mark(_OrcSdk_DeckHeader *h,
       h->pegs[i] = orc_sdk_arr_len(h->marks);
     }
   }
-  OrcMark const mark = (OrcMark) {.depth = depth, .pos = pos};
+  OrcMark mark = {0};
+  mark.depth   = depth;
+  mark.pos     = pos;
   orc_sdk_arr_push(h->marks, mark);
 }
 
@@ -1148,7 +1170,7 @@ void orc_sdk_deck_flatten(void *ptr)
   }
 }
 
-static void _deck_calc_strides(_OrcSdk_DeckHeader *h)
+void orc_sdk_deck_calc_strides(_OrcSdk_DeckHeader *h)
 {
   if (h == NULL)
     return;
@@ -1212,20 +1234,26 @@ void orc_sdk_deck_graft(void *ptr)
     uint8_t const  new_depth = old_marks[i].depth + 1;
     uint64_t const current   = old_marks[i].pos;
     for (size_t j = prev; j < current; ++j) {
-      OrcMark const mark = {.depth = 0, .pos = j};
+      OrcMark mark = {0};
+      mark.depth   = 0;
+      mark.pos     = j;
       orc_sdk_arr_push(h->marks, mark);
     }
-    OrcMark const mark = {.depth = new_depth, .pos = current};
+    OrcMark mark = {0};
+    mark.depth   = new_depth;
+    mark.pos     = current;
     orc_sdk_arr_push(h->marks, mark);
     prev = current + 1;
   }
   size_t const n_items = h->count;
   for (size_t j = prev; j < n_items; ++j) {
-    OrcMark const mark = {.depth = 0, .pos = j};
+    OrcMark mark = {0};
+    mark.depth   = 0;
+    mark.pos     = j;
     orc_sdk_arr_push(h->marks, mark);
   }
   orc_sdk_arr_free(old_marks);
-  _deck_calc_strides(h);
+  orc_sdk_deck_calc_strides(h);
 }
 
 void orc_sdk_deck_simplify(void *ptr)
@@ -1256,7 +1284,7 @@ void orc_sdk_deck_simplify(void *ptr)
       m->depth = remap[m->depth];
     }
   }
-  _deck_calc_strides(h);
+  orc_sdk_deck_calc_strides(h);
 }
 
 char *_orc_sdk_deck_to_str(void const  *ptr,
@@ -1680,6 +1708,9 @@ void orc_sdk_init(OrcHost const *host, OrcSdkTypeCallbacksGetterFn type_fn)
     if (host->callbacks.report_intermediate_output) {
       HOST.callbacks.report_intermediate_output =
         host->callbacks.report_intermediate_output;
+    }
+    if (host->callbacks.serial_write) {
+      HOST.callbacks.serial_write = host->callbacks.serial_write;
     }
     // Proxy deck creation callback.
     if (host->create_deck_from_proxy) {
@@ -2226,7 +2257,7 @@ OrcError orc_sdk_deck_from_proxy(OrcHandle const   *inputs,
     size_t const n_marks = inputs[0].n_marks;
     h->marks             = _orc_sdk_arr_resize_impl(h->marks, sizeof(OrcMark), n_marks);
     memcpy(h->marks, inputs[0].marks, sizeof(OrcMark) * n_marks);
-    _deck_calc_strides(h);
+    orc_sdk_deck_calc_strides(h);
     // Assign the pointer back to the handle and update the data inside the handle.
     out->items = deck;
     orc_sdk_oh_update(out);
@@ -2260,7 +2291,7 @@ OrcError orc_sdk_deck_from_proxy(OrcHandle const   *inputs,
     size_t const n_marks = proxy->n_marks;
     h->marks             = _orc_sdk_arr_resize_impl(h->marks, sizeof(OrcMark), n_marks);
     memcpy(h->marks, proxy->marks, sizeof(OrcMark) * n_marks);
-    _deck_calc_strides(h);
+    orc_sdk_deck_calc_strides(h);
     // Update the handle pointer and update the rest of the data inside the handle.
     out->items = deck;
     orc_sdk_oh_update(out);
@@ -2296,7 +2327,7 @@ OrcError orc_sdk_deck_from_proxy(OrcHandle const   *inputs,
     size_t const n_marks = proxy->n_marks;
     h->marks             = _orc_sdk_arr_resize_impl(h->marks, sizeof(OrcMark), n_marks);
     memcpy(h->marks, proxy->marks, sizeof(OrcMark) * n_marks);
-    _deck_calc_strides(h);
+    orc_sdk_deck_calc_strides(h);
     // Update the handle pointer and update the rest of the data inside the handle.
     out->items = deck;
     orc_sdk_oh_update(out);
@@ -2305,5 +2336,101 @@ OrcError orc_sdk_deck_from_proxy(OrcHandle const   *inputs,
     orc_sdk_handle_free(out);
     return ORC_ERROR_INVALID_PROXY;
   }
+  return ORC_ERROR_NONE;
+}
+
+static char *_bytes_append(char *dst, char const *src, size_t const count)
+{
+  size_t const current_size = orc_sdk_arr_len(dst);
+  orc_sdk_arr_resize(dst, current_size + count);
+  if (dst == NULL) {
+    return dst;
+  }
+  char *ptr = orc_sdk_arr_end(dst) - count;
+  memcpy(ptr, src, count);
+  return dst;
+}
+
+OrcError orc_sdk_serialize_handle_header(uint64_t const ctx, OrcHandle const *handle)
+{
+  if (HOST.callbacks.serial_write == NULL) {
+    return ORC_ERROR_MISSING_CAPABILITY;
+  }
+  char    *buf = NULL;
+  OrcError err =
+    orc_sdk_arr_reserve(buf, sizeof(OrcHandle) + handle->n_marks * sizeof(OrcMark));
+  if (buf == NULL)
+    return ORC_ERROR_ALLOC_FAILED;
+  if (ORC_ERROR_NONE != err) {
+    return err;
+  }
+  ORC_SDK_REQUIRE(orc_sdk_arr_len(buf) == 0);
+  buf = _bytes_append(buf, (char *)&ORC_ABI_VERSION, sizeof(ORC_ABI_VERSION));
+  if (buf == NULL)
+    return ORC_ERROR_ALLOC_FAILED;
+  buf = _bytes_append(buf, (char *)&(handle->type_id), sizeof(handle->type_id));
+  if (buf == NULL)
+    return ORC_ERROR_ALLOC_FAILED;
+  buf = _bytes_append(buf, (char *)handle->dims, sizeof(OrcDims));
+  if (buf == NULL)
+    return ORC_ERROR_ALLOC_FAILED;
+  buf = _bytes_append(buf, (char *)&(handle->n_items), sizeof(handle->n_items));
+  if (buf == NULL)
+    return ORC_ERROR_ALLOC_FAILED;
+  buf = _bytes_append(buf, (char *)&(handle->item_size), sizeof(handle->item_size));
+  if (buf == NULL)
+    return ORC_ERROR_ALLOC_FAILED;
+  buf = _bytes_append(buf, (char *)&(handle->n_marks), sizeof(handle->n_marks));
+  if (buf == NULL)
+    return ORC_ERROR_ALLOC_FAILED;
+  if (handle->marks != NULL && handle->n_marks > 0) {
+    buf = _bytes_append(buf, (char *)handle->marks, handle->n_marks * sizeof(OrcMark));
+    if (buf == NULL)
+      return ORC_ERROR_ALLOC_FAILED;
+  }
+  err = orc_sdk_host_serial_write(ctx, buf, orc_sdk_arr_len(buf));
+  orc_sdk_arr_free(buf);
+  return err;
+}
+
+OrcError orc_sdk_deserialize_handle_header(uint64_t const ctx,
+                                           OrcStrView    *src,
+                                           OrcHandle     *out,
+                                           OrcMark      **out_marks)
+{
+  // We're going to wrap the received buffer in a string view, and consume bytes from it.
+  uint64_t abi_version = 0;
+  OrcError err         = orc_sdk_sv_read_bytes(src, &abi_version, sizeof(abi_version));
+  if (err != ORC_ERROR_NONE)
+    return err;
+  if (abi_version != ORC_ABI_VERSION) {
+    orc_sdk_report_message(
+      ctx, ORC_MSG_LEVEL_ERROR, "Cannot deserialize data due to version mismatch");
+    return ORC_ERROR_ABI_VERSION_MISMATCH;
+  }
+  err = orc_sdk_sv_read_bytes(src, &(out->type_id), sizeof(out->type_id));
+  if (err != ORC_ERROR_NONE)
+    return err;
+  err = orc_sdk_sv_read_bytes(src, out->dims, sizeof(OrcDims));
+  if (err != ORC_ERROR_NONE)
+    return err;
+  err = orc_sdk_sv_read_bytes(src, &(out->n_items), sizeof(out->n_items));
+  if (err != ORC_ERROR_NONE)
+    return err;
+  err = orc_sdk_sv_read_bytes(src, &(out->item_size), sizeof(out->item_size));
+  if (err != ORC_ERROR_NONE)
+    return err;
+  err = orc_sdk_sv_read_bytes(src, &(out->n_marks), sizeof(out->n_marks));
+  if (err != ORC_ERROR_NONE)
+    return err;
+  // Now deserialize the marks.
+  OrcMark *marks = NULL;
+  orc_sdk_arr_resize(marks, out->n_marks);
+  err = orc_sdk_sv_read_bytes(src, marks, sizeof(OrcMark) * out->n_marks);
+  if (err != ORC_ERROR_NONE) {
+    orc_sdk_arr_free(marks);
+    return err;
+  }
+  *out_marks = marks;
   return ORC_ERROR_NONE;
 }

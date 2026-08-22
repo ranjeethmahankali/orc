@@ -144,6 +144,10 @@ typedef struct
   void (*dealloc)(void *ptr, uint64_t const size, uint64_t const alignment);
 } OrcHostMemoryAPI;
 
+typedef OrcError (*OrcSerializeWriteFn)(uint64_t const ctx,
+                                        void const    *data,
+                                        uint64_t const len);
+
 /**
 The host may populate any of these function pointers, or leave them as `NULL` to
 communicate its capabilities with the plugin.
@@ -166,6 +170,7 @@ typedef struct
                          char const           *msg);
   bool (*check_cancellation)(uint64_t const ctx);
   void (*report_intermediate_output)(uint64_t const ctx, OrcHandle const *handle);
+  OrcSerializeWriteFn serial_write;
 } OrcHostCallbackAPI;
 
 /**
@@ -230,6 +235,8 @@ typedef struct
 #define ORC_ERROR_MISSING_CAPABILITY 0xff0du
 #define ORC_ERROR_INVALID_FUNCTION 0xff0eu
 #define ORC_ERROR_INVALID_ARGUMENTS 0xff0fu
+#define ORC_ERROR_SERIALIZATION_ERROR 0xff10u
+#define ORC_ERROR_INVALID_CONTEXT 0xff11u
 #define ORC_ERROR_UNKNOWN 0xffffu
 
 /**
@@ -288,16 +295,16 @@ struct OrcHandle
   // assignment, even when the backing data is freed.  Plugins use this as the key into
   // their internal registry.
   uint64_t        handle;
-  void const     *items;
-  uint64_t        n_items;
-  uint64_t        item_size;
-  OrcMark const  *marks;
-  uint64_t const *stride_offset;
-  uint64_t        n_marks;
-  uint64_t const *strides;
   OrcTypeId       type_id;
   OrcDims         dims;
+  uint64_t        n_items;
+  uint64_t        item_size;
+  uint64_t        n_marks;
   OrcDeckFreeFn   free_fn;
+  OrcMark const  *marks;
+  uint64_t const *stride_offset;
+  uint64_t const *strides;
+  void const     *items;
 };
 
 /**
@@ -338,3 +345,11 @@ ORC_PLUGIN_EXPORT OrcError orc_deck_from_proxy(OrcHandle const   *inputs,
                                                OrcProxyType const proxy_type,
                                                OrcHandle const   *proxy,
                                                OrcHandle         *out);
+
+ORC_PLUGIN_EXPORT OrcError orc_deck_serialize(uint64_t const   ctx,
+                                              OrcHandle const *handle);
+
+ORC_PLUGIN_EXPORT OrcError orc_deck_deserialize(uint64_t const ctx,
+                                                void const    *buf,
+                                                uint64_t const buf_len,
+                                                OrcHandle     *out);

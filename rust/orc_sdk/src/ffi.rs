@@ -88,6 +88,42 @@ macro_rules! orc_plugin {
                 Err(e) => e.into(),
             }
         }
+
+        #[unsafe(no_mangle)]
+        pub unsafe extern "C" fn orc_deck_serialize(
+            ctx: u64,
+            handle: *const OrcHandle,
+        ) -> orc_sdk::OrcError {
+            let callbacks = <$plugin as orc_sdk::TOrcPluginAdaptor>::host_callbacks();
+            let mut writer = orc_sdk::SerialWrite::new(ctx, callbacks.serial_write);
+            match <$plugin as orc_sdk::TOrcPluginAdaptor>::deck_serialize(
+                ctx,
+                unsafe { &*handle },
+                &mut writer,
+            ) {
+                Ok(_) => match std::io::Write::flush(&mut writer) {
+                    Ok(_) => orc_sdk::ORC_ERROR_NONE,
+                    Err(_) => orc_sdk::ORC_ERROR_SERIALIZATION_ERROR,
+                },
+                Err(e) => e.into(),
+            }
+        }
+
+        #[unsafe(no_mangle)]
+        pub unsafe extern "C" fn orc_deck_deserialize(
+            ctx: u64,
+            buf: *const ::std::os::raw::c_void,
+            buf_len: u64,
+            out: *mut OrcHandle,
+        ) -> orc_sdk::OrcError {
+            let bytes = unsafe { orc_sdk::slice_from_ptr(buf.cast::<u8>(), buf_len as usize) };
+            let mut reader = std::io::Cursor::new(bytes);
+            let out = unsafe { &mut *out };
+            match <$plugin as orc_sdk::TOrcPluginAdaptor>::deck_deserialize(ctx, &mut reader, out) {
+                Ok(_) => orc_sdk::ORC_ERROR_NONE,
+                Err(e) => e.into(),
+            }
+        }
     };
 }
 
@@ -124,6 +160,16 @@ impl OrcHandle {
     pub fn items<T: TOrcData>(&self) -> &[T] {
         // SAFETY; We're using the pointer and the length from the same pointer.
         unsafe { slice_from_ptr(self.items.cast(), self.n_items as usize) }
+    }
+
+    pub fn items_as_bytes(&self) -> &[u8] {
+        // SAFETY; We're using the pointer and the length from the same pointer.
+        unsafe { slice_from_ptr(self.items.cast(), (self.n_items * self.item_size) as usize) }
+    }
+
+    pub fn marks(&self) -> &[OrcMark] {
+        // SAFETY: We're using the pointer and the length from the same handle.
+        unsafe { slice_from_ptr(self.marks, self.n_marks as usize) }
     }
 }
 
@@ -182,6 +228,14 @@ impl<'a> Clone for OrcHandleBorrowed<'a> {
     }
 }
 
+// SAFETY: OrcHandleBorrowed is a read-only view whose lifetime is tied to the
+// original OrcHandle.  The raw pointers it contains (items, marks, etc.) are
+// only ever read through shared references, so sending / sharing across threads
+// is safe as long as the source handle outlives the borrow — which the lifetime
+// parameter already guarantees.
+unsafe impl Send for OrcHandleBorrowed<'_> {}
+unsafe impl Sync for OrcHandleBorrowed<'_> {}
+
 impl<'a> OrcHandleBorrowed<'a> {
     pub fn inner(&self) -> &OrcHandle {
         &self.inner
@@ -198,11 +252,21 @@ pub type DeckFromProxyFn = unsafe extern "C" fn(
     proxy: *const OrcHandle,
     out: *mut OrcHandle,
 ) -> OrcError;
+pub type DeckSerializeFn = unsafe extern "C" fn(ctx: u64, handle: *const OrcHandle) -> OrcError;
+pub type DeckDeserializeFn = unsafe extern "C" fn(
+    ctx: u64,
+    buf: *const ::std::os::raw::c_void,
+    buf_len: u64,
+    out: *mut OrcHandle,
+) -> OrcError;
 
 // Compile-time checks to keep these type aliases in sync with the bindings.
 const _: PluginInitFn = orc_plugin_init;
 const _: DeckAllocFn = orc_deck_alloc;
+const _: DeckFreeFn = orc_deck_free;
 const _: DeckFromProxyFn = orc_deck_from_proxy;
+const _: DeckSerializeFn = orc_deck_serialize;
+const _: DeckDeserializeFn = orc_deck_deserialize;
 
 pub enum ProxyType {
     CopyAll,
@@ -211,6 +275,7 @@ pub enum ProxyType {
 }
 
 pub trait TOrcPluginAdaptor {
+    fn host_callbacks() -> &'static OrcHostCallbackAPI;
     fn plugin_init(host: &OrcHost, out: &mut OrcPlugin) -> Result<(), Error>;
     fn deck_alloc(id: OrcTypeId, handle: &mut OrcHandle) -> Result<(), Error>;
     fn deck_free(handle: &mut OrcHandle) -> Result<(), Error>;
@@ -218,6 +283,16 @@ pub trait TOrcPluginAdaptor {
         inputs: &[OrcHandle],
         proxy_type: ProxyType,
         proxy: &OrcHandle,
+        out: &mut OrcHandle,
+    ) -> Result<(), Error>;
+    fn deck_serialize(
+        ctx: u64,
+        handle: &OrcHandle,
+        write: &mut impl std::io::Write,
+    ) -> Result<(), Error>;
+    fn deck_deserialize(
+        ctx: u64,
+        read: &mut impl std::io::Read,
         out: &mut OrcHandle,
     ) -> Result<(), Error>;
 }
@@ -324,4 +399,47 @@ pub fn dims_divide(dims: &OrcDims, other: &OrcDims) -> OrcDims {
 
 pub fn dims_pow(dims: &OrcDims, exponent: i32) -> OrcDims {
     dims.map(|d| d * exponent)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::update_handle_from_deck;
+
+    #[test]
+    fn t_items_as_bytes_round_trip() {
+        let data: [f32; 3] = [1.0, 2.5, -3.0];
+        let mut deck = crate::Deck::<f32>::default();
+        for &v in &data {
+            deck.push(v, 0);
+        }
+        let mut h = OrcHandle::default();
+        unsafe { update_handle_from_deck(&deck, &mut h) };
+        let bytes = h.items_as_bytes();
+        assert_eq!(bytes.len(), 3 * size_of::<f32>());
+        // Re-interpret the bytes back to f32s.
+        let (chunks, remainder) = bytes.as_chunks::<{ size_of::<f32>() }>();
+        assert!(remainder.is_empty());
+        let reconstructed: Vec<f32> = chunks.iter().map(|c| f32::from_ne_bytes(*c)).collect();
+        assert_eq!(reconstructed, &data);
+    }
+
+    #[test]
+    fn t_items_as_bytes_empty() {
+        let h = OrcHandle::default();
+        assert!(h.items_as_bytes().is_empty());
+    }
+
+    #[test]
+    fn t_items_as_bytes_length_matches_n_items_times_item_size() {
+        let mut deck = crate::Deck::<u64>::default();
+        deck.push(42, 1);
+        deck.push(99, 0);
+        let mut h = OrcHandle::default();
+        unsafe { update_handle_from_deck(&deck, &mut h) };
+        assert_eq!(
+            h.items_as_bytes().len(),
+            h.n_items as usize * h.item_size as usize
+        );
+    }
 }

@@ -3,13 +3,17 @@
   :CREATED:  2026-08-03 Mon 15:08
   :END:
 
-  Run these commands from the project root. To configure once:
+  Run these commands from the project root.
+
+  For a debug build:
 
   #+begin_src sh :results drawer
     # For a debug build - configure then build.
     cmake -S c/ -B build/debug -DCMAKE_BUILD_TYPE=Debug
     cmake --build build/debug
   #+end_src
+
+  For a release build:
 
   #+begin_src sh :results drawer
     # For a release build - configure then build.

@@ -1,8 +1,10 @@
 use crate::{
     Deck, DeckView, Error, ORC_ARGS_VARIADIC, ORC_MSG_LEVEL_DEBUG, ORC_MSG_LEVEL_ERROR,
-    ORC_MSG_LEVEL_FATAL, ORC_MSG_LEVEL_INFO, ORC_MSG_LEVEL_WARN, ORC_NUM_DIMS, OrcFuncInfo,
-    OrcHandle, OrcHost, OrcHostCallbackAPI, OrcItemProxy, OrcPluginFunction, OrcTypeId,
-    OrcTypeInfo, ProxyType, deck::fmt_raw_deck, ffi::TOrcData,
+    ORC_MSG_LEVEL_FATAL, ORC_MSG_LEVEL_INFO, ORC_MSG_LEVEL_WARN, ORC_NUM_DIMS, ORC_TYPE_F32,
+    ORC_TYPE_F64, ORC_TYPE_I8, ORC_TYPE_I16, ORC_TYPE_I32, ORC_TYPE_I64, ORC_TYPE_U8, ORC_TYPE_U16,
+    ORC_TYPE_U32, ORC_TYPE_U64, OrcFuncInfo, OrcHandle, OrcHost, OrcHostCallbackAPI, OrcItemProxy,
+    OrcMark, OrcPluginFunction, OrcTypeId, OrcTypeInfo, ProxyType, deck::fmt_raw_deck,
+    ffi::TOrcData,
 };
 use std::{
     alloc::{GlobalAlloc, Layout, System},
@@ -12,7 +14,7 @@ use std::{
     fmt::Display,
     marker::PhantomData,
     sync::{
-        Arc, RwLock,
+        Arc, Mutex, RwLock,
         atomic::{AtomicPtr, Ordering},
     },
 };
@@ -114,12 +116,12 @@ impl DeckRegistry {
         &self,
         handle: &mut OrcHandle,
     ) -> Result<(), Error> {
-        self.alloc_with_value(Deck::<T>::default(), handle)
+        self.alloc_with_value::<T>(None, handle)
     }
 
     pub fn alloc_with_value<T: TOrcData + Any + Send + Sync>(
         &self,
-        value: Deck<T>,
+        value: Option<Deck<T>>,
         handle: &mut OrcHandle,
     ) -> Result<(), Error> {
         // Here, the id is valid, so we try to find the previous allocation and reuse it. If it
@@ -148,10 +150,14 @@ impl DeckRegistry {
                     let deck = write_lock
                         .downcast_mut::<Deck<T>>()
                         .ok_or(Error::DeckTypeMismatch)?;
-                    deck.clear();
+                    match value {
+                        Some(value) => *deck = value,
+                        None => deck.clear(),
+                    }
                     unsafe { update_handle_from_deck(deck, handle) };
                 } else {
                     // Different type — drop the old deck and insert a fresh one.
+                    let value = value.unwrap_or_default();
                     unsafe { update_handle_from_deck(&value, handle) };
                     occupied.insert(Arc::new(RwLock::new(Box::new(value))));
                 }
@@ -160,6 +166,7 @@ impl DeckRegistry {
             Entry::Vacant(vacant) => {
                 // This handle could be pointing to data inside another plugin. So we have to free that data first, before reassigning.
                 handle.free();
+                let value = value.unwrap_or_default();
                 unsafe { update_handle_from_deck(&value, handle) };
                 vacant.insert(Arc::new(RwLock::new(Box::new(value))));
                 handle.free_fn = Some(crate::orc_deck_free);
@@ -235,6 +242,97 @@ impl DeckRegistry {
     }
 }
 
+/**
+Many parts of the ABI use a u64 ctx to recognize the caller. The host will often need to allocate
+some resources for a particular ctx key, and pass that ctx to the plugin. The host might then need
+to reacquire the same resource based on the ctx, inside the callback. This file provides useful
+things for implementing this pattern.
+ */
+
+#[derive(Default)]
+struct FreeList {
+    list: Vec<u64>,
+    present_flag: Vec<bool>,
+}
+
+impl FreeList {
+    pub fn push(&mut self, val: u64) -> Result<(), Error> {
+        match self.present_flag.get_mut(val as usize) {
+            Some(is_free) => {
+                if *is_free {
+                    Err(Error::InvalidContext) // Freeing an already free slot.
+                } else {
+                    *is_free = true;
+                    self.list.push(val);
+                    Ok(())
+                }
+            }
+            None => {
+                self.present_flag.resize(val as usize + 1, false);
+                self.present_flag[val as usize] = true;
+                self.list.push(val);
+                Ok(())
+            }
+        }
+    }
+
+    pub fn pop(&mut self) -> Option<u64> {
+        self.list.pop().inspect(|&last| {
+            self.present_flag[last as usize] = false;
+        })
+    }
+}
+
+#[derive(Default)]
+pub struct ContextArena<T: Default> {
+    slots: RwLock<Vec<Mutex<T>>>,
+    free: Mutex<FreeList>,
+}
+
+impl<T: Default> ContextArena<T> {
+    pub fn insert(&self, init: impl Fn(&mut T)) -> Result<u64, Error> {
+        let last = {
+            let mut free = self.free.lock().map_err(|_| Error::ConcurrencyProblem)?;
+            free.pop()
+        };
+        match last {
+            Some(last) => {
+                match self.visit_mut(last, init) {
+                    Ok(_) => Ok(last),
+                    Err(e) => {
+                        // The initialization failed. That means this slot is still free.
+                        let mut free = self.free.lock().map_err(|_| Error::ConcurrencyProblem)?;
+                        free.push(last)?;
+                        Err(e)
+                    }
+                }
+            }
+            None => {
+                let mut slots = self.slots.write().map_err(|_| Error::ConcurrencyProblem)?;
+                let idx = slots.len();
+                let mut value = T::default();
+                init(&mut value);
+                slots.push(Mutex::new(value));
+                Ok(idx as u64)
+            }
+        }
+    }
+
+    pub fn visit_mut<R>(&self, ctx: u64, vis: impl Fn(&mut T) -> R) -> Result<R, Error> {
+        let slots = self.slots.read().map_err(|_| Error::ConcurrencyProblem)?;
+        let slot_mx = slots.get(ctx as usize).ok_or(Error::InvalidContext)?;
+        let mut slot = slot_mx.lock().map_err(|_| Error::ConcurrencyProblem)?;
+        Ok(vis(&mut slot))
+    }
+
+    pub fn consume<R>(&self, ctx: u64, vis: impl Fn(&mut T) -> R) -> Result<R, Error> {
+        let result = self.visit_mut(ctx, vis)?;
+        let mut free = self.free.lock().map_err(|_| Error::ConcurrencyProblem)?;
+        free.push(ctx)?;
+        Ok(result)
+    }
+}
+
 // ==================================================
 // ================= Allocators =====================
 // ==================================================
@@ -289,13 +387,13 @@ unsafe impl Sync for PluginAllocator {}
 
 unsafe impl GlobalAlloc for PluginAllocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        let f: HostAllocFn = unsafe { std::mem::transmute(self.alloc_fn.load(Ordering::Relaxed)) };
+        let f: HostAllocFn = unsafe { std::mem::transmute(self.alloc_fn.load(Ordering::Acquire)) };
         unsafe { f(layout.size() as u64, layout.align() as u64) as *mut u8 }
     }
 
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
         let f: HostDeallocFn =
-            unsafe { std::mem::transmute(self.dealloc_fn.load(Ordering::Relaxed)) };
+            unsafe { std::mem::transmute(self.dealloc_fn.load(Ordering::Acquire)) };
         unsafe {
             f(
                 ptr as *mut c_void,
@@ -408,6 +506,7 @@ impl HostCallbacks {
         report_message: None,
         check_cancellation: None,
         report_intermediate_output: None,
+        serial_write: None,
     };
 
     pub fn report_progress(&self, progress: f64) {
@@ -579,6 +678,203 @@ pub fn deck_from_proxy<T: TOrcData>(
         .flatten()
 }
 
+// ==================== Serialization ====================
+
+pub struct SerialWrite {
+    ctx: u64,
+    write_func: crate::OrcSerializeWriteFn,
+    buf: Vec<u8>,
+}
+
+impl SerialWrite {
+    pub fn new(ctx: u64, write_func: crate::OrcSerializeWriteFn) -> Self {
+        Self {
+            ctx,
+            write_func,
+            buf: Default::default(),
+        }
+    }
+}
+
+impl std::io::Write for SerialWrite {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.buf.extend_from_slice(buf);
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        let func = self
+            .write_func
+            .ok_or(std::io::Error::from(std::io::ErrorKind::NotFound))?;
+        let result = unsafe { (func)(self.ctx, self.buf.as_ptr().cast(), self.buf.len() as u64) };
+        let err_kind = match result {
+            crate::ORC_ERROR_NONE => {
+                self.buf.clear();
+                return Ok(());
+            }
+            crate::ORC_ERROR_ABI_VERSION_MISMATCH | crate::ORC_ERROR_MISSING_CAPABILITY => {
+                std::io::ErrorKind::Unsupported
+            }
+            crate::ORC_ERROR_INVALID_HANDLE
+            | crate::ORC_ERROR_INVALID_DIMENSIONS
+            | crate::ORC_ERROR_TYPE_MISMATCH
+            | crate::ORC_ERROR_INVALID_COMBINATIONS
+            | crate::ORC_ERROR_INVALID_PROXY
+            | crate::ORC_ERROR_INVALID_FUNCTION
+            | crate::ORC_ERROR_INVALID_ARGUMENTS => std::io::ErrorKind::InvalidData,
+            crate::ORC_ERROR_PLUGIN_ALREADY_INITIALIZED => std::io::ErrorKind::AlreadyExists,
+            crate::ORC_ERROR_CONCURRENCY_PROBLEM => std::io::ErrorKind::Other,
+            crate::ORC_ERROR_CANNOT_LOAD_PLUGINS | crate::ORC_ERROR_NULL_PTR => {
+                std::io::ErrorKind::NotFound
+            }
+            crate::ORC_ERROR_OUT_OF_BOUNDS => std::io::ErrorKind::FileTooLarge,
+            crate::ORC_ERROR_ALLOC_FAILED => std::io::ErrorKind::OutOfMemory,
+            _ => std::io::ErrorKind::Other,
+        };
+        Err(std::io::Error::from(err_kind))
+    }
+}
+
+/// Binary serialization of an OrcHandle. The format follows the ABI layout directly:
+///   ORC_ABI_VERSION : u64
+///   type_id         : u64
+///   dims            : [i32; ORC_NUM_DIMS]
+///   n_items         : u64
+///   item_size       : u64
+///   n_marks         : u64
+///   marks           : [OrcMark; n_marks]  (each 16 bytes, ABI layout)
+///   items           : remaining bytes (n_items * item_size for primitives, plugin-defined otherwise)
+/// Write the handle header (everything before items) into `w`.
+pub fn write_orc_handle_header(
+    handle: &OrcHandle,
+    w: &mut impl std::io::Write,
+) -> std::io::Result<()> {
+    w.write_all(&crate::ORC_ABI_VERSION.to_ne_bytes())?;
+    w.write_all(&handle.type_id.to_ne_bytes())?;
+    {
+        let dims_bytes = unsafe {
+            std::slice::from_raw_parts(handle.dims.as_ptr().cast(), size_of_val(&handle.dims))
+        };
+        w.write_all(dims_bytes)?;
+    }
+    w.write_all(&handle.n_items.to_ne_bytes())?;
+    w.write_all(&handle.item_size.to_ne_bytes())?;
+    w.write_all(&handle.n_marks.to_ne_bytes())?;
+    let marks_bytes = unsafe {
+        slice_from_ptr(
+            handle.marks.cast(),
+            (handle.n_marks as usize) * size_of::<OrcMark>(),
+        )
+    };
+    w.write_all(marks_bytes)?;
+    Ok(())
+}
+
+/// Read the handle header. Returns the marks `Vec` whose memory backs `handle.marks`.
+pub fn read_orc_handle_header(
+    handle: &mut OrcHandle,
+    r: &mut impl std::io::Read,
+) -> std::io::Result<Vec<OrcMark>> {
+    let mut buf8 = [0u8; 8];
+    r.read_exact(&mut buf8)?;
+    let version = u64::from_ne_bytes(buf8);
+    if version != crate::ORC_ABI_VERSION {
+        return Err(std::io::Error::from(std::io::ErrorKind::InvalidData));
+    }
+    r.read_exact(&mut buf8)?;
+    handle.type_id = u64::from_ne_bytes(buf8);
+    let mut dims_buf = [0u8; size_of::<crate::OrcDims>()];
+    r.read_exact(&mut dims_buf)?;
+    handle.dims = unsafe { std::ptr::read_unaligned(dims_buf.as_ptr().cast()) };
+    r.read_exact(&mut buf8)?;
+    handle.n_items = u64::from_ne_bytes(buf8);
+    r.read_exact(&mut buf8)?;
+    handle.item_size = u64::from_ne_bytes(buf8);
+    r.read_exact(&mut buf8)?;
+    handle.n_marks = u64::from_ne_bytes(buf8);
+    let mut marks = vec![OrcMark { depth: 0, pos: 0 }; handle.n_marks as usize];
+    if !marks.is_empty() {
+        let marks_bytes = unsafe {
+            std::slice::from_raw_parts_mut(
+                marks.as_mut_ptr().cast::<u8>(),
+                size_of_val(marks.as_slice()),
+            )
+        };
+        r.read_exact(marks_bytes)?;
+    }
+    Ok(marks)
+}
+
+/// Try to fully serialize a handle. Always writes the header. For builtin types, also writes the
+/// item bytes and returns `Ok(())`. For unrecognized (custom) types, returns
+/// `Err(Error::DeckTypeMismatch)` with the header already written — the plugin should continue
+/// by writing its custom item data.
+pub fn try_serialize_handle(handle: &OrcHandle, w: &mut impl std::io::Write) -> Result<(), Error> {
+    write_orc_handle_header(handle, w).map_err(|_| Error::SerializationError)?;
+    match handle.type_id {
+        ORC_TYPE_U8 | ORC_TYPE_U16 | ORC_TYPE_U32 | ORC_TYPE_U64 | ORC_TYPE_I8 | ORC_TYPE_I16
+        | ORC_TYPE_I32 | ORC_TYPE_I64 | ORC_TYPE_F32 | ORC_TYPE_F64 => w
+            .write_all(handle.items_as_bytes())
+            .map_err(|_| Error::SerializationError),
+        _ => Err(Error::DeckTypeMismatch),
+    }
+}
+
+/// Try to fully deserialize a handle. Always reads the header and marks. For builtin types,
+/// also reads the item bytes, allocates the deck via `registry`, checks for trailing bytes,
+/// and returns `Ok(())`. For unrecognized (custom) types, returns `Err(marks)` with the header
+/// already parsed into `out` — the plugin should continue by reading its custom item data.
+pub fn try_deserialize_handle(
+    r: &mut impl std::io::Read,
+    out: &mut OrcHandle,
+    registry: &DeckRegistry,
+) -> Result<(), Vec<OrcMark>> {
+    fn read_items<T: TOrcData + Default + Copy + std::any::Any + Send + Sync>(
+        r: &mut impl std::io::Read,
+        marks: Vec<OrcMark>,
+        n_items: usize,
+        handle: &mut OrcHandle,
+        registry: &DeckRegistry,
+    ) -> Result<(), Error> {
+        let mut items = vec![T::default(); n_items];
+        if n_items > 0 {
+            let bytes = unsafe {
+                slice_from_ptr_mut(items.as_mut_ptr().cast::<u8>(), n_items * size_of::<T>())
+            };
+            r.read_exact(bytes).map_err(|_| Error::SerializationError)?;
+        }
+        let mut deck = Deck::<T>::default();
+        deck.assign_from_raw_data(items, marks);
+        registry.alloc_with_value(Some(deck), handle)
+    }
+    let marks = read_orc_handle_header(out, r).map_err(|_| Vec::new())?;
+    match out.type_id {
+        ORC_TYPE_U8 | ORC_TYPE_U16 | ORC_TYPE_U32 | ORC_TYPE_U64 | ORC_TYPE_I8 | ORC_TYPE_I16
+        | ORC_TYPE_I32 | ORC_TYPE_I64 | ORC_TYPE_F32 | ORC_TYPE_F64 => {}
+        _ => return Err(marks),
+    }
+    let result = match out.type_id {
+        ORC_TYPE_U8 => read_items::<u8>(r, marks, out.n_items as usize, out, registry),
+        ORC_TYPE_U16 => read_items::<u16>(r, marks, out.n_items as usize, out, registry),
+        ORC_TYPE_U32 => read_items::<u32>(r, marks, out.n_items as usize, out, registry),
+        ORC_TYPE_U64 => read_items::<u64>(r, marks, out.n_items as usize, out, registry),
+        ORC_TYPE_I8 => read_items::<i8>(r, marks, out.n_items as usize, out, registry),
+        ORC_TYPE_I16 => read_items::<i16>(r, marks, out.n_items as usize, out, registry),
+        ORC_TYPE_I32 => read_items::<i32>(r, marks, out.n_items as usize, out, registry),
+        ORC_TYPE_I64 => read_items::<i64>(r, marks, out.n_items as usize, out, registry),
+        ORC_TYPE_F32 => read_items::<f32>(r, marks, out.n_items as usize, out, registry),
+        ORC_TYPE_F64 => read_items::<f64>(r, marks, out.n_items as usize, out, registry),
+        _ => unreachable!(),
+    };
+    result.map_err(|_| Vec::new())?;
+    // Assert that all bytes are consumed.
+    let mut trailing = [0u8; 1];
+    if r.read(&mut trailing).unwrap_or(1) != 0 {
+        return Err(Vec::new());
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -610,7 +906,7 @@ mod tests {
     // ==================== DeckRegistry ====================
 
     #[test]
-    fn alloc_fresh() {
+    fn t_alloc_fresh() {
         let reg = DeckRegistry::new();
         let mut h = fresh_handle(1);
         reg.alloc::<f32>(&mut h).unwrap();
@@ -621,7 +917,7 @@ mod tests {
     }
 
     #[test]
-    fn alloc_reuse_same_type() {
+    fn t_alloc_reuse_same_type() {
         // Second alloc with the same type should be a no-op: no error, type and ID unchanged.
         // We verify the old free_fn is NOT called by checking the handle still has a valid entry
         // in the registry after the second alloc.
@@ -638,7 +934,7 @@ mod tests {
     }
 
     #[test]
-    fn alloc_type_change() {
+    fn t_alloc_type_change() {
         // Second alloc with a different type: old deck replaced, new type reflected in handle.
         let reg = DeckRegistry::new();
         let mut h = fresh_handle(3);
@@ -656,7 +952,7 @@ mod tests {
     }
 
     #[test]
-    fn alloc_eviction_foreign() {
+    fn t_alloc_eviction_foreign() {
         // A handle whose free_fn belongs to a foreign plugin: alloc must evict it first.
         static FOREIGN_CALLED: AtomicUsize = AtomicUsize::new(0);
         unsafe extern "C" fn mock_foreign(_handle: *mut OrcHandle) -> OrcError {
@@ -678,7 +974,7 @@ mod tests {
     }
 
     #[test]
-    fn free_success() {
+    fn t_free_success() {
         let reg = DeckRegistry::new();
         let mut h = fresh_handle(5);
         reg.alloc::<f32>(&mut h).unwrap();
@@ -691,13 +987,13 @@ mod tests {
     }
 
     #[test]
-    fn free_unregistered() {
+    fn t_free_unregistered() {
         let reg = DeckRegistry::new();
         assert!(matches!(reg.free(999), Err(Error::InvalidHandle)));
     }
 
     #[test]
-    fn free_does_not_clear_handle_id() {
+    fn t_free_does_not_clear_handle_id() {
         let reg = DeckRegistry::new();
         let mut h = fresh_handle(6);
         reg.alloc::<u8>(&mut h).unwrap();
@@ -707,7 +1003,7 @@ mod tests {
     }
 
     #[test]
-    fn with_mut_borrows_and_mutates() {
+    fn t_with_mut_borrows_and_mutates() {
         let reg = DeckRegistry::new();
         let mut h = fresh_handle(10);
         reg.alloc::<f64>(&mut h).unwrap();
@@ -725,7 +1021,7 @@ mod tests {
     }
 
     #[test]
-    fn with_mut_missing_id() {
+    fn t_with_mut_missing_id() {
         let reg = DeckRegistry::new();
         assert!(matches!(
             reg.with_mut::<(), _>(&[42], |_| ()),
@@ -734,7 +1030,7 @@ mod tests {
     }
 
     #[test]
-    fn concurrent_alloc_free() {
+    fn t_concurrent_alloc_free() {
         use std::thread;
         let reg = Arc::new(DeckRegistry::new());
         let threads: Vec<_> = (0u64..16)
@@ -776,7 +1072,7 @@ mod tests {
     // ==================== update_handle_from_deck ====================
 
     #[test]
-    fn fields_populated() {
+    fn t_fields_populated() {
         let mut deck: Deck<f32> = Deck::default();
         deck.push(1.0, 1);
         deck.push(2.0, 0);
@@ -795,7 +1091,7 @@ mod tests {
     }
 
     #[test]
-    fn empty_deck_gives_null_items() {
+    fn t_empty_deck_gives_null_items() {
         let deck: Deck<u64> = Deck::default();
         let mut h = OrcHandle {
             handle: 55,
@@ -808,7 +1104,7 @@ mod tests {
     }
 
     #[test]
-    fn preserves_handle_id() {
+    fn t_preserves_handle_id() {
         let mut deck: Deck<i32> = Deck::default();
         deck.push(42, 1);
         let mut h = OrcHandle {
@@ -820,7 +1116,7 @@ mod tests {
     }
 
     #[test]
-    fn preserves_free_fn() {
+    fn t_preserves_free_fn() {
         let deck: Deck<i32> = Deck::default();
         let mut h = OrcHandle {
             handle: 88,
@@ -834,7 +1130,7 @@ mod tests {
     // ==================== reset_handle ====================
 
     #[test]
-    fn clears_data_fields_not_id() {
+    fn t_clears_data_fields_not_id() {
         let mut h = OrcHandle {
             handle: 42,
             n_items: 5,
@@ -855,7 +1151,7 @@ mod tests {
     }
 
     #[test]
-    fn reset_idempotent() {
+    fn t_reset_idempotent() {
         let mut h = OrcHandle {
             handle: 11,
             n_items: 3,
@@ -871,13 +1167,13 @@ mod tests {
     // ==================== ptr helpers ====================
 
     #[test]
-    fn empty_slice_gives_null() {
+    fn t_empty_slice_gives_null() {
         let empty: &[u32] = &[];
         assert!(ptr_from_slice(empty).is_null());
     }
 
     #[test]
-    fn nonempty_round_trips() {
+    fn t_nonempty_round_trips() {
         let data = [1u32, 2, 3];
         let ptr = ptr_from_slice(&data);
         assert!(!ptr.is_null());
@@ -886,15 +1182,610 @@ mod tests {
     }
 
     #[test]
-    fn null_ptr_gives_empty_slice() {
+    fn t_null_ptr_gives_empty_slice() {
         let s: &[u32] = unsafe { slice_from_ptr(std::ptr::null(), 5) };
         assert!(s.is_empty());
     }
 
     #[test]
-    fn zero_len_gives_empty_slice() {
+    fn t_zero_len_gives_empty_slice() {
         let data = [42u32];
         let s: &[u32] = unsafe { slice_from_ptr(data.as_ptr(), 0) };
         assert!(s.is_empty());
+    }
+
+    // ==================== serialization header ====================
+
+    fn make_handle_with_marks(marks: &[OrcMark]) -> OrcHandle {
+        OrcHandle {
+            handle: 42,
+            type_id: crate::ORC_TYPE_F64,
+            dims: [1, 0, -2, 0, 0, 0, 0],
+            n_items: 5,
+            item_size: 8,
+            n_marks: marks.len() as u64,
+            marks: ptr_from_slice(marks),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn t_header_round_trip_no_marks() {
+        let h = make_handle_with_marks(&[]);
+        let mut buf = Vec::new();
+        write_orc_handle_header(&h, &mut buf).unwrap();
+        let mut out = OrcHandle::default();
+        let mut cursor = std::io::Cursor::new(&buf);
+        let marks = read_orc_handle_header(&mut out, &mut cursor).unwrap();
+        assert_eq!(out.type_id, h.type_id);
+        assert_eq!(out.dims, h.dims);
+        assert_eq!(out.n_items, h.n_items);
+        assert_eq!(out.item_size, h.item_size);
+        assert_eq!(out.n_marks, 0);
+        assert!(marks.is_empty());
+    }
+
+    #[test]
+    fn t_header_round_trip_with_marks() {
+        let src_marks = [
+            OrcMark { depth: 1, pos: 0 },
+            OrcMark { depth: 1, pos: 3 },
+            OrcMark { depth: 2, pos: 0 },
+        ];
+        let h = make_handle_with_marks(&src_marks);
+        let mut buf = Vec::new();
+        write_orc_handle_header(&h, &mut buf).unwrap();
+        let mut out = OrcHandle::default();
+        let mut cursor = std::io::Cursor::new(&buf);
+        let marks = read_orc_handle_header(&mut out, &mut cursor).unwrap();
+        assert_eq!(out.type_id, h.type_id);
+        assert_eq!(out.dims, h.dims);
+        assert_eq!(out.n_items, h.n_items);
+        assert_eq!(out.item_size, h.item_size);
+        assert_eq!(marks, src_marks);
+    }
+
+    #[test]
+    fn t_header_round_trip_preserves_dims() {
+        let h = OrcHandle {
+            type_id: crate::ORC_TYPE_I32,
+            dims: [-3, 7, 0, 1, -1, 2, 0],
+            n_items: 10,
+            item_size: 4,
+            ..Default::default()
+        };
+        let mut buf = Vec::new();
+        write_orc_handle_header(&h, &mut buf).unwrap();
+        let mut out = OrcHandle::default();
+        let mut cursor = std::io::Cursor::new(&buf);
+        read_orc_handle_header(&mut out, &mut cursor).unwrap();
+        assert_eq!(out.dims, h.dims);
+    }
+
+    #[test]
+    fn t_header_wrong_version_rejected() {
+        let h = make_handle_with_marks(&[]);
+        let mut buf = Vec::new();
+        write_orc_handle_header(&h, &mut buf).unwrap();
+        // Corrupt the version (first 8 bytes).
+        buf[0] = 0xff;
+        let mut out = OrcHandle::default();
+        let mut cursor = std::io::Cursor::new(&buf);
+        let err = read_orc_handle_header(&mut out, &mut cursor).unwrap_err();
+        assert_eq!(err.kind(), std::io::ErrorKind::InvalidData);
+    }
+
+    #[test]
+    fn t_header_truncated_input_fails() {
+        let h = make_handle_with_marks(&[]);
+        let mut buf = Vec::new();
+        write_orc_handle_header(&h, &mut buf).unwrap();
+        // Chop the buffer short.
+        buf.truncate(10);
+        let mut out = OrcHandle::default();
+        let mut cursor = std::io::Cursor::new(&buf);
+        assert!(read_orc_handle_header(&mut out, &mut cursor).is_err());
+    }
+
+    #[test]
+    fn t_header_cursor_positioned_after_marks() {
+        let src_marks = [OrcMark { depth: 1, pos: 0 }];
+        let h = make_handle_with_marks(&src_marks); // Write header + some trailing "item" bytes.
+        let mut buf = Vec::new();
+        write_orc_handle_header(&h, &mut buf).unwrap();
+        let header_len = buf.len();
+        buf.extend_from_slice(&[0xAA, 0xBB, 0xCC, 0xDD]);
+        let mut out = OrcHandle::default();
+        let mut cursor = std::io::Cursor::new(&buf);
+        read_orc_handle_header(&mut out, &mut cursor).unwrap(); // Cursor should be right after the header, ready to read items.
+        assert_eq!(cursor.position() as usize, header_len); // Read the trailing bytes to confirm.
+        let mut trail = [0u8; 4];
+        std::io::Read::read_exact(&mut cursor, &mut trail).unwrap();
+        assert_eq!(trail, [0xAA, 0xBB, 0xCC, 0xDD]);
+    }
+
+    #[test]
+    fn t_header_does_not_touch_handle_id_or_free_fn() {
+        let h = make_handle_with_marks(&[]);
+        let mut buf = Vec::new();
+        write_orc_handle_header(&h, &mut buf).unwrap();
+        let mut out = OrcHandle {
+            handle: 999,
+            ..Default::default()
+        };
+        let mut cursor = std::io::Cursor::new(&buf);
+        read_orc_handle_header(&mut out, &mut cursor).unwrap(); // read should not clobber handle or free_fn.
+        assert_eq!(out.handle, 999);
+        assert!(out.free_fn.is_none());
+    }
+
+    // ==================== SerialWrite ====================
+
+    use std::sync::Mutex;
+
+    // Collects bytes written via the FFI callback.
+    static MOCK_SINK: Mutex<Vec<u8>> = Mutex::new(Vec::new());
+
+    unsafe extern "C" fn mock_write_ok(
+        _ctx: u64,
+        data: *const std::ffi::c_void,
+        len: u64,
+    ) -> OrcError {
+        let bytes = unsafe { std::slice::from_raw_parts(data.cast::<u8>(), len as usize) };
+        MOCK_SINK.lock().unwrap().extend_from_slice(bytes);
+        ORC_ERROR_NONE
+    }
+
+    unsafe extern "C" fn mock_write_fail(
+        _ctx: u64,
+        _data: *const std::ffi::c_void,
+        _len: u64,
+    ) -> OrcError {
+        crate::ORC_ERROR_SERIALIZATION_ERROR
+    }
+
+    #[test]
+    fn t_serial_write_buffers_until_flush() {
+        use std::io::Write;
+        MOCK_SINK.lock().unwrap().clear();
+        let mut w = SerialWrite::new(0, Some(mock_write_ok));
+        w.write_all(b"hello").unwrap();
+        w.write_all(b" world").unwrap();
+        // Nothing sent yet.
+        assert!(MOCK_SINK.lock().unwrap().is_empty());
+        w.flush().unwrap();
+        assert_eq!(&*MOCK_SINK.lock().unwrap(), b"hello world");
+    }
+
+    #[test]
+    fn t_serial_write_clears_buffer_after_flush() {
+        use std::io::Write;
+        MOCK_SINK.lock().unwrap().clear();
+        let mut w = SerialWrite::new(0, Some(mock_write_ok));
+        w.write_all(b"first").unwrap();
+        w.flush().unwrap();
+        MOCK_SINK.lock().unwrap().clear();
+        w.write_all(b"second").unwrap();
+        w.flush().unwrap();
+        // Only "second" should appear — no leftover from "first".
+        assert_eq!(&*MOCK_SINK.lock().unwrap(), b"second");
+    }
+
+    #[test]
+    fn t_serial_write_none_callback_errors() {
+        use std::io::Write;
+        let mut w = SerialWrite::new(0, None);
+        w.write_all(b"data").unwrap();
+        let err = w.flush().unwrap_err();
+        assert_eq!(err.kind(), std::io::ErrorKind::NotFound);
+    }
+
+    #[test]
+    fn t_serial_write_callback_error_propagates() {
+        use std::io::Write;
+        let mut w = SerialWrite::new(0, Some(mock_write_fail));
+        w.write_all(b"data").unwrap();
+        assert!(w.flush().is_err());
+    }
+
+    #[test]
+    fn t_serial_write_preserves_buffer_on_error() {
+        use std::io::Write;
+        let mut w = SerialWrite::new(0, Some(mock_write_fail));
+        w.write_all(b"data").unwrap();
+        let _ = w.flush();
+        // Buffer is preserved on error, so a subsequent flush with a
+        // working callback should send the data that failed before.
+        w.write_func = Some(mock_write_ok);
+        MOCK_SINK.lock().unwrap().clear();
+        w.flush().unwrap();
+        assert_eq!(&*MOCK_SINK.lock().unwrap(), b"data");
+    }
+
+    #[test]
+    fn t_serial_write_passes_ctx() {
+        use std::sync::atomic::{AtomicU64, Ordering as AOrdering};
+        static SEEN_CTX: AtomicU64 = AtomicU64::new(0);
+        unsafe extern "C" fn capture_ctx(
+            ctx: u64,
+            _data: *const std::ffi::c_void,
+            _len: u64,
+        ) -> OrcError {
+            SEEN_CTX.store(ctx, AOrdering::Relaxed);
+            ORC_ERROR_NONE
+        }
+        use std::io::Write;
+        let mut w = SerialWrite::new(0xDEAD, Some(capture_ctx));
+        w.write_all(b"x").unwrap();
+        w.flush().unwrap();
+        assert_eq!(SEEN_CTX.load(AOrdering::Relaxed), 0xDEAD);
+    }
+
+    // ==================== alloc_with_value ====================
+
+    #[test]
+    fn t_alloc_with_value_replaces_same_type() {
+        let reg = DeckRegistry::new();
+        let mut h = fresh_handle(200);
+        // First alloc with default (empty) deck.
+        reg.alloc::<f64>(&mut h).unwrap();
+        assert_eq!(h.n_items, 0);
+        // Now alloc_with_value with a populated deck of the same type.
+        let mut deck = Deck::<f64>::default();
+        deck.push(1.0, 1);
+        deck.push(2.0, 0);
+        deck.push(3.0, 0);
+        reg.alloc_with_value(Some(deck), &mut h).unwrap();
+        // The handle should reflect the new data, not be cleared.
+        assert_eq!(h.n_items, 3);
+        let items = h.items::<f64>();
+        assert_eq!(items, &[1.0, 2.0, 3.0]);
+        disarm(&mut h);
+    }
+
+    // ==================== ContextArena ====================
+
+    #[test]
+    fn t_arena_insert_and_visit() {
+        let arena = ContextArena::<Vec<u8>>::default();
+        let ctx = arena.insert(|v| v.extend_from_slice(b"hello")).unwrap();
+        let result = arena.visit_mut(ctx, |v| v.clone()).unwrap();
+        assert_eq!(result, b"hello");
+    }
+
+    #[test]
+    fn t_arena_insert_returns_sequential_ids() {
+        let arena = ContextArena::<Vec<u8>>::default();
+        let a = arena.insert(|_| {}).unwrap();
+        let b = arena.insert(|_| {}).unwrap();
+        let c = arena.insert(|_| {}).unwrap();
+        assert_eq!(a, 0);
+        assert_eq!(b, 1);
+        assert_eq!(c, 2);
+    }
+
+    #[test]
+    fn t_arena_consume_returns_data_and_frees_slot() {
+        let arena = ContextArena::<Vec<u8>>::default();
+        let ctx = arena.insert(|v| v.extend_from_slice(b"data")).unwrap();
+        let data = arena.consume(ctx, std::mem::take).unwrap();
+        assert_eq!(data, b"data");
+        // Slot should be reused on next insert.
+        let ctx2 = arena.insert(|_| {}).unwrap();
+        assert_eq!(ctx2, ctx);
+    }
+
+    #[test]
+    fn t_arena_slot_reuse_preserves_capacity() {
+        let arena = ContextArena::<Vec<u8>>::default();
+        let ctx = arena.insert(|v| v.extend_from_slice(&[0u8; 1024])).unwrap();
+        // Consume but don't take — just clear.
+        arena.consume(ctx, |v| v.clear()).unwrap();
+        // Reuse the slot and check the vec still has capacity.
+        let ctx2 = arena.insert(|_| {}).unwrap();
+        assert_eq!(ctx2, ctx);
+        let cap = arena.visit_mut(ctx2, |v| v.capacity()).unwrap();
+        assert!(cap >= 1024);
+    }
+
+    #[test]
+    fn t_arena_visit_invalid_ctx() {
+        let arena = ContextArena::<Vec<u8>>::default();
+        let result = arena.visit_mut(999, |_| {});
+        assert!(matches!(result, Err(Error::InvalidContext)));
+    }
+
+    #[test]
+    fn t_arena_multiple_appends() {
+        let arena = ContextArena::<Vec<u8>>::default();
+        let ctx = arena.insert(|_| {}).unwrap();
+        arena
+            .visit_mut(ctx, |v| v.extend_from_slice(b"aaa"))
+            .unwrap();
+        arena
+            .visit_mut(ctx, |v| v.extend_from_slice(b"bbb"))
+            .unwrap();
+        arena
+            .visit_mut(ctx, |v| v.extend_from_slice(b"ccc"))
+            .unwrap();
+        let result = arena.consume(ctx, std::mem::take).unwrap();
+        assert_eq!(result, b"aaabbbccc");
+    }
+
+    #[test]
+    fn t_arena_concurrent_visits() {
+        use std::sync::Arc;
+        let arena = Arc::new(ContextArena::<Vec<u8>>::default());
+        let ctx_a = arena.insert(|_| {}).unwrap();
+        let ctx_b = arena.insert(|_| {}).unwrap();
+        let arena2 = Arc::clone(&arena);
+        let handle = std::thread::spawn(move || {
+            for i in 0u8..100 {
+                arena2.visit_mut(ctx_b, |v| v.push(i)).unwrap();
+            }
+        });
+        for i in 0u8..100 {
+            arena.visit_mut(ctx_a, |v| v.push(i)).unwrap();
+        }
+        handle.join().unwrap();
+        let a = arena.visit_mut(ctx_a, |v| v.len()).unwrap();
+        let b = arena.visit_mut(ctx_b, |v| v.len()).unwrap();
+        assert_eq!(a, 100);
+        assert_eq!(b, 100);
+    }
+
+    // Regression: double-consume must return an error, not corrupt state.
+    #[test]
+    fn t_arena_double_consume_returns_error() {
+        let arena = ContextArena::<Vec<u8>>::default();
+        let ctx = arena.insert(|v| v.extend_from_slice(b"data")).unwrap();
+        // First consume succeeds.
+        let data = arena.consume(ctx, std::mem::take).unwrap();
+        assert_eq!(data, b"data");
+        // Second consume of the same ctx must fail.
+        let result = arena.consume(ctx, |_| {});
+        assert!(result.is_err());
+    }
+
+    // Regression: after double-consume is rejected, the slot must not be
+    // double-added to the free list (which would cause two inserts to
+    // return the same ctx).
+    #[test]
+    fn t_arena_double_consume_does_not_corrupt_free_list() {
+        let arena = ContextArena::<Vec<u8>>::default();
+        let ctx0 = arena.insert(|_| {}).unwrap();
+        arena.consume(ctx0, |_| {}).unwrap();
+        // Try double-consume — must fail.
+        let _ = arena.consume(ctx0, |_| {});
+        // Now insert twice — should get distinct ctx values.
+        let a = arena.insert(|_| {}).unwrap();
+        let b = arena.insert(|_| {}).unwrap();
+        assert_ne!(a, b);
+    }
+
+    // Regression: consume after a visit_mut on the same ctx must work.
+    #[test]
+    fn t_arena_visit_then_consume() {
+        let arena = ContextArena::<Vec<u8>>::default();
+        let ctx = arena.insert(|_| {}).unwrap();
+        arena
+            .visit_mut(ctx, |v| v.extend_from_slice(b"abc"))
+            .unwrap();
+        let data = arena.consume(ctx, std::mem::take).unwrap();
+        assert_eq!(data, b"abc");
+        // Slot should be reusable.
+        let ctx2 = arena.insert(|_| {}).unwrap();
+        assert_eq!(ctx2, ctx);
+    }
+
+    // Regression: header round-trip with truncated marks data must fail.
+    #[test]
+    fn t_header_truncated_marks_fails() {
+        let src_marks = [OrcMark { depth: 1, pos: 0 }, OrcMark { depth: 0, pos: 3 }];
+        let h = make_handle_with_marks(&src_marks);
+        let mut buf = Vec::new();
+        write_orc_handle_header(&h, &mut buf).unwrap();
+        // Remove the last byte so the marks data is truncated.
+        buf.pop();
+        let mut out = OrcHandle::default();
+        let mut cursor = std::io::Cursor::new(&buf);
+        assert!(read_orc_handle_header(&mut out, &mut cursor).is_err());
+    }
+
+    // Regression: SerialWrite must accumulate data across multiple failed
+    // flushes and send it all on a successful flush.
+    #[test]
+    fn t_serial_write_accumulates_across_failed_flushes() {
+        use std::io::Write;
+        let mut w = SerialWrite::new(0, Some(mock_write_fail));
+        w.write_all(b"aaa").unwrap();
+        let _ = w.flush(); // fail — buffer preserved
+        w.write_all(b"bbb").unwrap();
+        let _ = w.flush(); // fail again — buffer still has "aaabbb"
+        w.write_func = Some(mock_write_ok);
+        MOCK_SINK.lock().unwrap().clear();
+        w.flush().unwrap();
+        assert_eq!(&*MOCK_SINK.lock().unwrap(), b"aaabbb");
+    }
+
+    // ==================== try_serialize_handle / try_deserialize_handle ====================
+
+    use crate::deck;
+    use std::sync::atomic::AtomicU64;
+
+    static SERIAL_NEXT_ID: AtomicU64 = AtomicU64::new(7000);
+
+    fn serial_fresh_handle(id: u64) -> OrcHandle {
+        OrcHandle {
+            handle: id,
+            ..Default::default()
+        }
+    }
+
+    fn serial_next_id() -> u64 {
+        SERIAL_NEXT_ID.fetch_add(1, Ordering::Relaxed)
+    }
+
+    fn serial_make_handle<T: TOrcData>(deck: &Deck<T>) -> OrcHandle {
+        let mut h = serial_fresh_handle(serial_next_id());
+        unsafe { update_handle_from_deck(deck, &mut h) };
+        h
+    }
+
+    #[test]
+    fn t_try_serialize_round_trip_f64() {
+        let reg = DeckRegistry::new();
+        let d = deck![1.0_f64, 2.0, 3.0];
+        let h = serial_make_handle(&d);
+        let mut buf = Vec::new();
+        try_serialize_handle(&h, &mut buf).unwrap();
+        let mut out = serial_fresh_handle(serial_next_id());
+        let mut cursor = std::io::Cursor::new(&buf[..]);
+        try_deserialize_handle(&mut cursor, &mut out, &reg).unwrap();
+        assert_eq!(out.type_id, h.type_id);
+        assert_eq!(out.n_items, 3);
+        assert_eq!(out.items::<f64>(), &[1.0, 2.0, 3.0]);
+        disarm(&mut out);
+    }
+
+    #[test]
+    fn t_try_serialize_round_trip_all_primitives() {
+        let reg = DeckRegistry::new();
+        macro_rules! test_type {
+            ($ty:ty, [$($v:expr),+ $(,)?]) => {{
+                let d: Deck<$ty> = deck![$($v),+];
+                let h = serial_make_handle(&d);
+                let mut buf = Vec::new();
+                try_serialize_handle(&h, &mut buf).unwrap();
+                let mut out = serial_fresh_handle(serial_next_id());
+                let mut cursor = std::io::Cursor::new(&buf[..]);
+                try_deserialize_handle(&mut cursor, &mut out, &reg).unwrap();
+                assert_eq!(out.type_id, <$ty as TOrcData>::TYPE_INFO.type_id);
+                let expected: &[$ty] = &[$($v),+];
+                assert_eq!(out.items::<$ty>(), expected);
+                disarm(&mut out);
+            }};
+        }
+        test_type!(u8, [1, 2, 3]);
+        test_type!(u16, [100, 200, 300]);
+        test_type!(u32, [1000, 2000]);
+        test_type!(u64, [10000, 20000]);
+        test_type!(i8, [-1, 0, 1]);
+        test_type!(i16, [-100, 0, 100]);
+        test_type!(i32, [-1000, 0, 1000]);
+        test_type!(i64, [-10000, 0, 10000]);
+        test_type!(f32, [1.5, -2.5]);
+        test_type!(f64, [1.5, -2.5, 0.0]);
+    }
+
+    #[test]
+    fn t_try_serialize_round_trip_nested() {
+        let reg = DeckRegistry::new();
+        let d: Deck<f64> = deck![[1.0, 2.0], [3.0]];
+        let h = serial_make_handle(&d);
+        assert!(h.n_marks > 0);
+        let mut buf = Vec::new();
+        try_serialize_handle(&h, &mut buf).unwrap();
+        let mut out = serial_fresh_handle(serial_next_id());
+        let mut cursor = std::io::Cursor::new(&buf[..]);
+        try_deserialize_handle(&mut cursor, &mut out, &reg).unwrap();
+        assert_eq!(out.items::<f64>(), &[1.0, 2.0, 3.0]);
+        assert_eq!(out.n_marks, h.n_marks);
+        let orig_marks = unsafe { slice_from_ptr(h.marks, h.n_marks as usize) };
+        let out_marks = unsafe { slice_from_ptr(out.marks, out.n_marks as usize) };
+        assert_eq!(orig_marks, out_marks);
+        disarm(&mut out);
+    }
+
+    #[test]
+    fn t_try_serialize_round_trip_empty() {
+        let reg = DeckRegistry::new();
+        let d: Deck<i32> = Deck::default();
+        let h = serial_make_handle(&d);
+        let mut buf = Vec::new();
+        try_serialize_handle(&h, &mut buf).unwrap();
+        let mut out = serial_fresh_handle(serial_next_id());
+        let mut cursor = std::io::Cursor::new(&buf[..]);
+        try_deserialize_handle(&mut cursor, &mut out, &reg).unwrap();
+        assert_eq!(out.type_id, crate::ORC_TYPE_I32);
+        assert_eq!(out.n_items, 0);
+        disarm(&mut out);
+    }
+
+    #[test]
+    fn t_try_serialize_custom_type_returns_mismatch() {
+        let mut h = serial_fresh_handle(serial_next_id());
+        h.type_id = 0xDEADBEEF;
+        h.item_size = 8;
+        let mut buf = Vec::new();
+        let result = try_serialize_handle(&h, &mut buf);
+        assert!(matches!(result, Err(Error::DeckTypeMismatch)));
+        // Header should still have been written.
+        assert!(!buf.is_empty());
+    }
+
+    #[test]
+    fn t_try_deserialize_custom_type_returns_marks() {
+        // Serialize a builtin handle, then tamper with the type_id in the buffer
+        // to simulate a custom type.
+        let d = deck![42_u32];
+        let h = serial_make_handle(&d);
+        let mut buf = Vec::new();
+        try_serialize_handle(&h, &mut buf).unwrap();
+        // Overwrite type_id (bytes 8..16) with a custom type id.
+        let custom_id: u64 = 0xDEADBEEF;
+        buf[8..16].copy_from_slice(&custom_id.to_ne_bytes());
+        let reg = DeckRegistry::new();
+        let mut out = serial_fresh_handle(serial_next_id());
+        let mut cursor = std::io::Cursor::new(&buf[..]);
+        let marks = try_deserialize_handle(&mut cursor, &mut out, &reg).unwrap_err();
+        // Header was parsed into out.
+        assert_eq!(out.type_id, custom_id);
+        assert_eq!(out.n_items, 1);
+        // Marks returned match what the original handle had.
+        assert_eq!(marks.len(), h.n_marks as usize);
+    }
+
+    #[test]
+    fn t_try_deserialize_trailing_bytes_fails() {
+        let reg = DeckRegistry::new();
+        let d = deck![1_u8, 2, 3];
+        let h = serial_make_handle(&d);
+        let mut buf = Vec::new();
+        try_serialize_handle(&h, &mut buf).unwrap();
+        buf.push(0xFF); // extra trailing byte
+        let mut out = serial_fresh_handle(serial_next_id());
+        let mut cursor = std::io::Cursor::new(&buf[..]);
+        assert!(try_deserialize_handle(&mut cursor, &mut out, &reg).is_err());
+    }
+
+    #[test]
+    fn t_try_deserialize_truncated_fails() {
+        let d = deck![1.0_f64, 2.0];
+        let h = serial_make_handle(&d);
+        let mut buf = Vec::new();
+        try_serialize_handle(&h, &mut buf).unwrap();
+        buf.truncate(buf.len() - 1);
+        let reg = DeckRegistry::new();
+        let mut out = serial_fresh_handle(serial_next_id());
+        let mut cursor = std::io::Cursor::new(&buf[..]);
+        assert!(try_deserialize_handle(&mut cursor, &mut out, &reg).is_err());
+    }
+
+    #[test]
+    fn t_try_serialize_preserves_dims() {
+        let reg = DeckRegistry::new();
+        let d = deck![1.0_f64, 2.0];
+        let mut h = serial_make_handle(&d);
+        h.dims[0] = 1;
+        h.dims[1] = -2;
+        h.dims[3] = 3;
+        let mut buf = Vec::new();
+        try_serialize_handle(&h, &mut buf).unwrap();
+        let mut out = serial_fresh_handle(serial_next_id());
+        let mut cursor = std::io::Cursor::new(&buf[..]);
+        try_deserialize_handle(&mut cursor, &mut out, &reg).unwrap();
+        assert_eq!(out.dims, h.dims);
+        disarm(&mut out);
     }
 }

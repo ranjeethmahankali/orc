@@ -196,6 +196,16 @@
   metadata. The actual function should still handle everything procedurally. Should be completely
   optional. Everything should still work without this metadata, albeit a more inconvenient manner.
 
+  <2026-08-20 Thu 19:54> I just realized another requirements UI apps will have. There should be a
+  way to auto populate the names of arguments. And also autopopulate the names of newly added
+  arguments for variadic blocks.
+
+  <2026-08-20 Thu 20:22> Just had a decent idea. Two structs of the same kind. Host owns and write
+  into one of them, and the plugin owns and writes into the other. They use this to communicate back
+  and forth. Host says what it has, and plugin fills out the information it knows, or an error if
+  what the host has is not valid. At the end of the dialogue, the host will call a free function to
+  clean up the plugin's struct, and cleans up it's own. This is inspired by ~git credential fill~.
+
 * TODO tjvt98 - Constructing a DAG from Python
   :PROPERTIES:
   :CREATED:  2026-08-16 Sun 14:40
@@ -551,13 +561,62 @@
     - ~OrcHandle.free_fn~ — destructor, set by the allocating plugin at runtime.
     - ~OrcHandle.dims~ — units metadata. TODO: decide if this should be serialized.
 
-* TODO ABI - Serializing OrcHandle
+* DONE tk1ji0 - ABI - Serializing OrcHandle
+  CLOSED: [2026-08-21 Fri 21:16]
   :PROPERTIES:
   :CREATED:  2026-08-19 Wed 18:38
+  :END:
+  :LOGBOOK:
+  - State "DONE"       from "NEXT"       [2026-08-21 Fri 21:16]
+  - State "NEXT"       from "TODO"       [2026-08-19 Wed 19:52]
   :END:
 
   For types that are owned by the plugin, the plugin alone can serialize and deserialize. The ABI
   needs to be extended to add support for this.
+
+  <2026-08-19 Wed 20:02> Have the basic ABI in place. The design feels solid.
+
+  <2026-08-20 Thu 17:00> Started implementing the serialization. Experimented with some weird plain
+  text file formats for storing the OrcHandle's header (all the structural and metadata) in a format
+  that all hosts and plugins can read and write. But then realized I don't need yet another format
+  that everyone agrees on. I already have the ABI, so I can just write out the bytes compatible with
+  the ABI, for the structural information. For the actual data:
+  - Primitive types are just raw byte dumps. This is safe since the entire run time data sharing
+    across hosts and plugins already relies on this being stable, and it is stable.
+  - Custom types are deferred to the plugin that owns them, they are serialized to the end of the
+    binary, after all the metadata in the header.
+
+  <2026-08-21 Fri 20:17> Finally got everything mostly working. The handles are now being serialized
+  and deserialized per their ABI. I have test coverage for most parts on their own, just need to add
+  some more test coverage for the full serialization machiner from the host side. Need to do it from
+  both the Rust and Python hosts.
+
+  - [X] Add tests in the Rust host for the full roundtrip serialization of all types.
+  - [X] Bring the Python host up to speed with all the serialization stuff, when it loads the
+    plugins etc. and add tests for serialization.
+
+  <2026-08-21 Fri 21:16> Python is all caught up with serialization, and everything is tested. Ready
+  to merge.
+
+** Ideas for host side context handling
+   :PROPERTIES:
+   :CREATED:  2026-08-19 Wed 20:05
+   :END:
+
+   The host needs to maintain per-call state (e.g. serialize buffers, progress tracking) that
+   callbacks can access using the =ctx= token. Use a global concurrent registry keyed by =ctx=, same
+   pattern as =DeckRegistry= (Rust) and the C SDK's handle registry. Each callback looks up =ctx= in
+   the map to find its associated state.
+
+   Thread-local storage is tempting but breaks under re-entrancy (=create_deck_from_proxy=
+   dispatches host -> plugin A -> host -> plugin B) and plugin-spawned worker threads calling
+   callbacks from threads the host didn't set up. A global map keyed by =ctx= handles both cases.
+
+   Lock overhead per callback is negligible (~25ns uncontended). Plugins should batch writes into
+   larger chunks anyway to minimize FFI crossings.
+
+   This should also be the general pattern for how the host handles other callbacks such as progress
+   reporting, etc.
 
 * DONE tk1hl6 - ABI - Return error codes from plugin functions
   CLOSED: [2026-08-19 Wed 19:38]

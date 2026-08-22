@@ -495,6 +495,8 @@ OrcStrView orc_sv_slice(OrcStrView sv, size_t const start, size_t const end);
 
 bool orc_sv_eq(OrcStrView const a, OrcStrView const b);
 
+OrcError orc_sdk_sv_read_bytes(OrcStrView *sv, void *dst, size_t const count);
+
 // ========== Deck ==========
 
 typedef struct
@@ -567,6 +569,8 @@ void orc_sdk_deck_flatten(void *ptr);
 void orc_sdk_deck_graft(void *ptr);
 
 void orc_sdk_deck_simplify(void *ptr);
+
+void orc_sdk_deck_calc_strides(_OrcSdk_DeckHeader *h);
 
 char *_orc_sdk_deck_to_str(void const  *ptr,
                            size_t const item_size,
@@ -824,6 +828,10 @@ OrcError orc_sdk_host_create_proxy_deck(OrcHandle const   *inputs,
                                         OrcHandle const   *proxy,
                                         OrcHandle         *out);
 
+OrcError orc_sdk_host_serial_write(uint64_t const ctx,
+                                   void const    *buf,
+                                   uint64_t const buf_len);
+
 // ========== ABI helpers ==========
 
 typedef void (*ItemFreeFn)(void *);
@@ -849,3 +857,12 @@ OrcError orc_sdk_deck_from_proxy(OrcHandle const   *inputs,
                                  OrcProxyType const proxy_type,
                                  OrcHandle const   *proxy,
                                  OrcHandle         *out);
+
+// ==================== Serialization Helpers ====================
+
+OrcError orc_sdk_serialize_handle_header(uint64_t const ctx, OrcHandle const *handle);
+
+OrcError orc_sdk_deserialize_handle_header(uint64_t const ctx,
+                                           OrcStrView    *src,
+                                           OrcHandle     *out,
+                                           OrcMark      **out_marks);

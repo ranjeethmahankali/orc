@@ -2,9 +2,10 @@ use libloading::Library;
 use std::{collections::HashMap, collections::hash_map::Entry, path::Path};
 
 use crate::{
-    DeckAllocFn, DeckFreeFn, DeckFromProxyFn, Error, FuncInfo, HostCallbacks, ORC_ABI_VERSION,
-    ORC_DECK_PROXY_COPY_ALL, ORC_DECK_PROXY_COPY_ITEMS, ORC_DECK_PROXY_SHUFFLE, OrcHandle, OrcHost,
-    OrcPlugin, OrcTypeId, PRIMITIVE_TYPES, PluginInitFn, ProxyType, TypeInfo, slice_from_ptr,
+    ContextArena, DeckAllocFn, DeckDeserializeFn, DeckFreeFn, DeckFromProxyFn, DeckSerializeFn,
+    Error, FuncInfo, HostCallbacks, ORC_ABI_VERSION, ORC_DECK_PROXY_COPY_ALL,
+    ORC_DECK_PROXY_COPY_ITEMS, ORC_DECK_PROXY_SHUFFLE, OrcHandle, OrcHost, OrcPlugin, OrcTypeId,
+    PRIMITIVE_TYPES, PluginInitFn, ProxyType, TypeInfo, ptr_from_slice, slice_from_ptr,
     util::string_from_ffi,
 };
 
@@ -19,6 +20,8 @@ pub struct Plugin {
     deck_alloc: DeckAllocFn,
     deck_free: DeckFreeFn,
     deck_from_proxy: DeckFromProxyFn,
+    deck_serialize: DeckSerializeFn,
+    deck_deserialize: DeckDeserializeFn,
 }
 
 impl Plugin {
@@ -26,14 +29,18 @@ impl Plugin {
     const DECK_ALLOC_FN_NAME: &str = "orc_deck_alloc";
     const DECK_FREE_FN_NAME: &str = "orc_deck_free";
     const DECK_FROM_PROXY_FN_NAME: &str = "orc_deck_from_proxy";
+    const DECK_SERIALIZE_FN_NAME: &str = "orc_deck_serialize";
+    const DECK_DESERIALIZE_FN_NAME: &str = "orc_deck_deserialize";
 
     pub fn load(path: &Path, host: &OrcHost) -> Result<Self, String> {
         let lib = unsafe { Library::new(path) }.map_err(|e| format!("cannot load library: {e}"))?;
-        let (init, deck_alloc, deck_free, deck_from_proxy): (
+        let (init, deck_alloc, deck_free, deck_from_proxy, deck_serialize, deck_deserialize): (
             PluginInitFn,
             DeckAllocFn,
             DeckFreeFn,
             DeckFromProxyFn,
+            DeckSerializeFn,
+            DeckDeserializeFn,
         ) = unsafe {
             (
                 lib.get(Self::PLUGIN_INIT_FN_NAME.as_bytes())
@@ -48,6 +55,12 @@ impl Plugin {
                 lib.get(Self::DECK_FROM_PROXY_FN_NAME.as_bytes())
                     .map(|s| *s)
                     .map_err(|_| format!("missing symbol '{}'", Self::DECK_FROM_PROXY_FN_NAME))?,
+                lib.get(Self::DECK_SERIALIZE_FN_NAME.as_bytes())
+                    .map(|s| *s)
+                    .map_err(|_| format!("missing symbol '{}'", Self::DECK_SERIALIZE_FN_NAME))?,
+                lib.get(Self::DECK_DESERIALIZE_FN_NAME.as_bytes())
+                    .map(|s| *s)
+                    .map_err(|_| format!("missing symbol '{}'", Self::DECK_DESERIALIZE_FN_NAME))?,
             )
         };
         let mut plugin_data = OrcPlugin::default();
@@ -78,13 +91,14 @@ impl Plugin {
             deck_alloc,
             deck_free,
             deck_from_proxy,
+            deck_serialize,
+            deck_deserialize,
         })
     }
 
-    pub fn alloc_deck(&self, type_id: OrcTypeId) -> Result<OrcHandle, Error> {
-        let mut handle = OrcHandle::default();
-        let err = unsafe { (self.deck_alloc)(type_id, &mut handle) };
-        Error::from_raw(err).map(|_| handle)
+    pub fn alloc_deck(&self, type_id: OrcTypeId, handle: &mut OrcHandle) -> Result<(), Error> {
+        let err = unsafe { (self.deck_alloc)(type_id, handle) };
+        Error::from_raw(err)
     }
 
     pub fn free_deck(&self, handle: &mut OrcHandle) -> Result<(), Error> {
@@ -105,17 +119,40 @@ impl Plugin {
         inputs: &[OrcHandle],
         proxy_type: ProxyType,
         proxy: &OrcHandle,
-    ) -> Result<OrcHandle, Error> {
-        let mut out = OrcHandle::default();
+        out: &mut OrcHandle,
+    ) -> Result<(), Error> {
         let ptype = match proxy_type {
             ProxyType::CopyAll => ORC_DECK_PROXY_COPY_ALL,
             ProxyType::CopyItems => ORC_DECK_PROXY_COPY_ITEMS,
             ProxyType::Shuffle => ORC_DECK_PROXY_SHUFFLE,
         };
         let err = unsafe {
-            (self.deck_from_proxy)(inputs.as_ptr(), inputs.len() as u64, ptype, proxy, &mut out)
+            (self.deck_from_proxy)(inputs.as_ptr(), inputs.len() as u64, ptype, proxy, out)
         };
-        Error::from_raw(err).map(|_| out)
+        Error::from_raw(err)
+    }
+
+    pub fn serialize_deck<R>(
+        &self,
+        arena: &ContextArena<Vec<u8>>,
+        handle: &OrcHandle,
+        vis: impl Fn(&mut Vec<u8>) -> R,
+    ) -> Result<R, Error> {
+        let ctx = arena.insert(|buf| buf.clear())?;
+        let err = unsafe { (self.deck_serialize)(ctx, handle) };
+        if let Err(e) = Error::from_raw(err) {
+            // Consume the slot to avoid leaking it, but discard the data.
+            let _ = arena.consume(ctx, |_| {});
+            return Err(e);
+        }
+        arena.consume(ctx, vis)
+    }
+
+    pub fn deserialize_deck(&self, ctx: u64, buf: &[u8], out: &mut OrcHandle) -> Result<(), Error> {
+        let err = unsafe {
+            (self.deck_deserialize)(ctx, ptr_from_slice(buf).cast(), buf.len() as u64, out)
+        };
+        Error::from_raw(err)
     }
 
     pub fn name(&self) -> &str {

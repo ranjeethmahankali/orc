@@ -6132,6 +6132,283 @@ static void test_deck_from_proxy_type_agnostic(void)
   }
 }
 
+// ==============================
+// Serialize / Deserialize header
+// ==============================
+
+/* A tiny write-callback that appends into an orc_sdk_arr-backed char buffer. */
+typedef struct
+{
+  char **buf;
+} _SerCtx;
+
+static OrcError _test_write_fn(uint64_t const ctx, void const *data, uint64_t const len)
+{
+  _SerCtx *sc      = (_SerCtx *)(uintptr_t)ctx;
+  size_t   cur_len = orc_sdk_arr_len(*sc->buf);
+  orc_sdk_arr_resize(*sc->buf, cur_len + (size_t)len);
+  memcpy(*sc->buf + cur_len, data, (size_t)len);
+  return ORC_ERROR_NONE;
+}
+
+static void _init_sdk_with_serial_write(void)
+{
+  static OrcHost host = {0};
+  host.abi_version            = ORC_ABI_VERSION;
+  host.callbacks.serial_write = _test_write_fn;
+  orc_sdk_init(&host, NULL);
+}
+
+static void test_serialize_header_round_trip_no_marks(void)
+{
+  _init_sdk_with_serial_write();
+  OrcHandle h = {0};
+  h.handle    = 42;
+  h.type_id   = ORC_TYPE_F64;
+  h.dims[0]   = 1;
+  h.dims[1]   = -1;
+  h.n_items   = 5;
+  h.item_size = sizeof(double);
+  h.n_marks   = 0;
+  h.marks     = NULL;
+
+  char   *buf = NULL;
+  _SerCtx sc  = {&buf};
+  TEST_ASSERT_TRUE(orc_sdk_serialize_handle_header(
+                     (uint64_t)(uintptr_t)&sc, &h) == ORC_ERROR_NONE);
+  TEST_ASSERT_TRUE(orc_sdk_arr_len(buf) > 0);
+
+  OrcStrView sv    = {.start = buf, .end = buf + orc_sdk_arr_len(buf)};
+  OrcHandle  out   = {0};
+  OrcMark   *marks = NULL;
+  TEST_ASSERT_TRUE(orc_sdk_deserialize_handle_header(0, &sv, &out, &marks) ==
+                   ORC_ERROR_NONE);
+
+  TEST_ASSERT_TRUE(out.type_id == h.type_id);
+  TEST_ASSERT_TRUE(out.n_items == h.n_items);
+  TEST_ASSERT_TRUE(out.item_size == h.item_size);
+  TEST_ASSERT_TRUE(out.n_marks == 0);
+  TEST_ASSERT_TRUE(memcmp(out.dims, h.dims, sizeof(OrcDims)) == 0);
+  TEST_ASSERT_TRUE(sv.start == sv.end); /* all bytes consumed */
+
+  orc_sdk_arr_free(marks);
+  orc_sdk_arr_free(buf);
+}
+
+static void test_serialize_header_round_trip_with_marks(void)
+{
+  _init_sdk_with_serial_write();
+  OrcMark test_marks[] = {
+    {.depth = 0, .pos = 0}, {.depth = 0, .pos = 3}, {.depth = 1, .pos = 0}};
+  OrcHandle h = {0};
+  h.handle    = 99;
+  h.type_id   = ORC_TYPE_I32;
+  h.dims[0]   = 2;
+  h.n_items   = 7;
+  h.item_size = sizeof(int32_t);
+  h.n_marks   = 3;
+  h.marks     = test_marks;
+
+  char   *buf = NULL;
+  _SerCtx sc  = {&buf};
+  TEST_ASSERT_TRUE(orc_sdk_serialize_handle_header(
+                     (uint64_t)(uintptr_t)&sc, &h) == ORC_ERROR_NONE);
+
+  OrcStrView sv    = {.start = buf, .end = buf + orc_sdk_arr_len(buf)};
+  OrcHandle  out   = {0};
+  OrcMark   *marks = NULL;
+  TEST_ASSERT_TRUE(orc_sdk_deserialize_handle_header(0, &sv, &out, &marks) ==
+                   ORC_ERROR_NONE);
+
+  TEST_ASSERT_TRUE(out.type_id == h.type_id);
+  TEST_ASSERT_TRUE(out.n_items == h.n_items);
+  TEST_ASSERT_TRUE(out.item_size == h.item_size);
+  TEST_ASSERT_TRUE(out.n_marks == 3);
+  TEST_ASSERT_TRUE(memcmp(out.dims, h.dims, sizeof(OrcDims)) == 0);
+  TEST_ASSERT_TRUE(orc_sdk_arr_len(marks) == 3);
+  for (size_t i = 0; i < 3; ++i) {
+    TEST_ASSERT_TRUE(marks[i].depth == test_marks[i].depth);
+    TEST_ASSERT_TRUE(marks[i].pos == test_marks[i].pos);
+  }
+  TEST_ASSERT_TRUE(sv.start == sv.end);
+
+  orc_sdk_arr_free(marks);
+  orc_sdk_arr_free(buf);
+}
+
+static void test_serialize_header_all_dims_set(void)
+{
+  _init_sdk_with_serial_write();
+  OrcHandle h = {0};
+  h.type_id   = ORC_TYPE_U8;
+  h.n_items   = 1;
+  h.item_size = sizeof(uint8_t);
+  h.n_marks   = 0;
+  h.marks     = NULL;
+  for (unsigned i = 0; i < ORC_NUM_DIMS; ++i) {
+    h.dims[i] = (int32_t)(i + 1);
+  }
+
+  char   *buf = NULL;
+  _SerCtx sc  = {&buf};
+  TEST_ASSERT_TRUE(orc_sdk_serialize_handle_header(
+                     (uint64_t)(uintptr_t)&sc, &h) == ORC_ERROR_NONE);
+
+  OrcStrView sv    = {.start = buf, .end = buf + orc_sdk_arr_len(buf)};
+  OrcHandle  out   = {0};
+  OrcMark   *marks = NULL;
+  TEST_ASSERT_TRUE(orc_sdk_deserialize_handle_header(0, &sv, &out, &marks) ==
+                   ORC_ERROR_NONE);
+  TEST_ASSERT_TRUE(memcmp(out.dims, h.dims, sizeof(OrcDims)) == 0);
+
+  orc_sdk_arr_free(marks);
+  orc_sdk_arr_free(buf);
+}
+
+static void test_deserialize_header_truncated_buffer(void)
+{
+  _init_sdk_with_serial_write();
+  OrcHandle h = {0};
+  h.type_id   = ORC_TYPE_F32;
+  h.n_items   = 2;
+  h.item_size = sizeof(float);
+  h.n_marks   = 0;
+  h.marks     = NULL;
+
+  char   *buf = NULL;
+  _SerCtx sc  = {&buf};
+  TEST_ASSERT_TRUE(orc_sdk_serialize_handle_header(
+                     (uint64_t)(uintptr_t)&sc, &h) == ORC_ERROR_NONE);
+
+  /* Truncate by one byte — should fail */
+  size_t     full_len = orc_sdk_arr_len(buf);
+  OrcStrView sv       = {.start = buf, .end = buf + full_len - 1};
+  OrcHandle  out      = {0};
+  OrcMark   *marks    = NULL;
+  TEST_ASSERT_TRUE(orc_sdk_deserialize_handle_header(0, &sv, &out, &marks) !=
+                   ORC_ERROR_NONE);
+
+  orc_sdk_arr_free(marks);
+  orc_sdk_arr_free(buf);
+}
+
+static void test_deserialize_header_wrong_abi_version(void)
+{
+  /* Manually write a bad ABI version into a buffer. */
+  uint64_t bad_version = 0xDEADBEEFDEADBEEFull;
+  char     buf[sizeof(bad_version)];
+  memcpy(buf, &bad_version, sizeof(bad_version));
+
+  OrcStrView sv    = {.start = buf, .end = buf + sizeof(buf)};
+  OrcHandle  out   = {0};
+  OrcMark   *marks = NULL;
+  TEST_ASSERT_TRUE(orc_sdk_deserialize_handle_header(0, &sv, &out, &marks) ==
+                   ORC_ERROR_ABI_VERSION_MISMATCH);
+
+  orc_sdk_arr_free(marks);
+}
+
+static void test_serialize_header_empty_items(void)
+{
+  _init_sdk_with_serial_write();
+  OrcHandle h = {0};
+  h.type_id   = ORC_TYPE_U64;
+  h.n_items   = 0;
+  h.item_size = sizeof(uint64_t);
+  h.n_marks   = 0;
+  h.marks     = NULL;
+
+  char   *buf = NULL;
+  _SerCtx sc  = {&buf};
+  TEST_ASSERT_TRUE(orc_sdk_serialize_handle_header(
+                     (uint64_t)(uintptr_t)&sc, &h) == ORC_ERROR_NONE);
+
+  OrcStrView sv    = {.start = buf, .end = buf + orc_sdk_arr_len(buf)};
+  OrcHandle  out   = {0};
+  OrcMark   *marks = NULL;
+  TEST_ASSERT_TRUE(orc_sdk_deserialize_handle_header(0, &sv, &out, &marks) ==
+                   ORC_ERROR_NONE);
+
+  TEST_ASSERT_TRUE(out.n_items == 0);
+  TEST_ASSERT_TRUE(out.item_size == sizeof(uint64_t));
+  TEST_ASSERT_TRUE(out.n_marks == 0);
+  TEST_ASSERT_TRUE(sv.start == sv.end);
+
+  orc_sdk_arr_free(marks);
+  orc_sdk_arr_free(buf);
+}
+
+static void test_deserialize_header_truncated_marks(void)
+{
+  _init_sdk_with_serial_write();
+  OrcMark   test_marks[] = {{.depth = 0, .pos = 0}, {.depth = 1, .pos = 5}};
+  OrcHandle h            = {0};
+  h.type_id              = ORC_TYPE_I64;
+  h.n_items              = 10;
+  h.item_size            = sizeof(int64_t);
+  h.n_marks              = 2;
+  h.marks                = test_marks;
+
+  char   *buf = NULL;
+  _SerCtx sc  = {&buf};
+  TEST_ASSERT_TRUE(orc_sdk_serialize_handle_header(
+                     (uint64_t)(uintptr_t)&sc, &h) == ORC_ERROR_NONE);
+
+  /* Cut off part of the marks data */
+  size_t     full_len    = orc_sdk_arr_len(buf);
+  size_t     header_only = full_len - sizeof(OrcMark); /* remove one mark */
+  OrcStrView sv          = {.start = buf, .end = buf + header_only};
+  OrcHandle  out         = {0};
+  OrcMark   *marks       = NULL;
+  TEST_ASSERT_TRUE(orc_sdk_deserialize_handle_header(0, &sv, &out, &marks) !=
+                   ORC_ERROR_NONE);
+
+  orc_sdk_arr_free(marks);
+  orc_sdk_arr_free(buf);
+}
+
+/* Regression: orc_sdk_sv_read_bytes must not do pointer arithmetic on NULL. */
+static void test_sv_read_bytes_null_start(void)
+{
+  OrcStrView sv  = {.start = NULL, .end = NULL};
+  uint8_t    dst = 0;
+  OrcError   err = orc_sdk_sv_read_bytes(&sv, &dst, 1);
+  TEST_ASSERT_TRUE(err != ORC_ERROR_NONE);
+  TEST_ASSERT_EQUAL_UINT8(0, dst); /* dst untouched */
+}
+
+/* Zero-count read from NULL sv is still safe (no bytes to read). */
+static void test_sv_read_bytes_null_start_zero_count(void)
+{
+  OrcStrView sv  = {.start = NULL, .end = NULL};
+  OrcError   err = orc_sdk_sv_read_bytes(&sv, NULL, 0);
+  /* With NULL start and count=0, start+0 == NULL > NULL is false on most
+     platforms, but the NULL check should catch it first. */
+  TEST_ASSERT_TRUE(err != ORC_ERROR_NONE);
+}
+
+/* Regression: OrcMark padding bytes must be zeroed when created via the SDK. */
+static void test_mark_padding_zeroed(void)
+{
+  orc_sdk_init(NULL, NULL);
+  OrcHandle h = {0};
+  h.handle    = 1;
+  orc_sdk_handle_alloc(ORC_TYPE_F64, &h);
+  ORC_SDK_DECK_INIT(h.items, double, ((1.0, 2.0), (3.0)));
+  orc_sdk_oh_update(&h);
+  TEST_ASSERT_TRUE(h.n_marks > 0);
+  /* Walk raw bytes of each mark and verify padding is zero. */
+  for (uint64_t i = 0; i < h.n_marks; ++i) {
+    uint8_t const *raw = (uint8_t const *)&h.marks[i];
+    /* depth is at offset 0 (1 byte), pos is at offset 8 (8 bytes).
+       Bytes 1..7 are padding and must be zero. */
+    for (size_t b = 1; b < 8; ++b) {
+      TEST_ASSERT_EQUAL_UINT8(0, raw[b]);
+    }
+  }
+  orc_sdk_handle_free(&h);
+}
+
 void setUp(void) {}
 void tearDown(void) {}
 
@@ -6285,5 +6562,15 @@ int main(void)
   RUN_TEST(test_hset_edge_cases);
   RUN_TEST(test_hset_memory_operations);
   RUN_TEST(test_hset_is_empty_comprehensive);
+  RUN_TEST(test_serialize_header_round_trip_no_marks);
+  RUN_TEST(test_serialize_header_round_trip_with_marks);
+  RUN_TEST(test_serialize_header_all_dims_set);
+  RUN_TEST(test_deserialize_header_truncated_buffer);
+  RUN_TEST(test_deserialize_header_wrong_abi_version);
+  RUN_TEST(test_serialize_header_empty_items);
+  RUN_TEST(test_deserialize_header_truncated_marks);
+  RUN_TEST(test_sv_read_bytes_null_start);
+  RUN_TEST(test_sv_read_bytes_null_start_zero_count);
+  RUN_TEST(test_mark_padding_zeroed);
   return UNITY_END();
 }

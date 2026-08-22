@@ -5,6 +5,7 @@ import gc
 import math
 import os
 import sys
+import threading
 
 import numpy as np
 
@@ -741,6 +742,199 @@ def t_complex_flatten():
     assert flat.n_marks == 1
     assert flat.marks[0].depth == 0
     assert flat.marks[0].pos == 0
+
+
+# ============================================================
+# Serialization round-trip
+# ============================================================
+
+
+def _serialize(lib, handle):
+    """Serialize a handle using a plugin's orc_deck_serialize."""
+    buf = bytearray()
+    ctx = id(buf)
+    with orc._serial_lock:
+        orc._serial_buffers[ctx] = buf
+    err = lib.orc_deck_serialize(ctx, ctypes.byref(handle))
+    with orc._serial_lock:
+        del orc._serial_buffers[ctx]
+    assert err == orc.ORC_ERROR_NONE, f"serialize failed: {err:#x}"
+    return bytes(buf)
+
+
+def _deserialize(lib, data):
+    """Deserialize bytes into a handle using a plugin's orc_deck_deserialize."""
+    out = orc.empty_handle()
+    _live_handles.add(out.handle)
+    buf = (ctypes.c_uint8 * len(data))(*data)
+    err = lib.orc_deck_deserialize(0, ctypes.cast(buf, ctypes.c_void_p),
+                                   len(data), ctypes.byref(out))
+    assert err == orc.ORC_ERROR_NONE, f"deserialize failed: {err:#x}"
+    return out
+
+
+def _serial_round_trip(lib_ser, lib_deser, handle):
+    """Serialize with one plugin, deserialize with another."""
+    data = _serialize(lib_ser, handle)
+    return _deserialize(lib_deser, data)
+
+
+# Map builtin type IDs to sample test values.
+_BUILTIN_SAMPLES = {
+    orc.ORC_TYPE_U8: [0, 1, 127, 255],
+    orc.ORC_TYPE_U16: [0, 1, 256, 65535],
+    orc.ORC_TYPE_U32: [0, 1, 70000, 0xFFFFFFFF],
+    orc.ORC_TYPE_U64: [0, 1, 0x100000000],
+    orc.ORC_TYPE_I8: [-128, 0, 127],
+    orc.ORC_TYPE_I16: [-32768, 0, 32767],
+    orc.ORC_TYPE_I32: [-0x80000000, 0, 0x7FFFFFFF],
+    orc.ORC_TYPE_I64: [-0x80000000_00000000, 0, 0x7FFFFFFF_FFFFFFFF],
+    orc.ORC_TYPE_F32: [0.0, 1.5, -3.25],
+    orc.ORC_TYPE_F64: [0.0, 1.5, -3.25, 1e100],
+}
+
+
+def t_serial_every_plugin_handles_builtin_types():
+    """Every plugin pair can serialize/deserialize all 10 builtin types."""
+    for type_id, values in _BUILTIN_SAMPLES.items():
+        h = make_handle(values, type_id=type_id)
+        for lib_ser, _ in orc._loaded_plugins:
+            for lib_deser, _ in orc._loaded_plugins:
+                out = _serial_round_trip(lib_ser, lib_deser, h)
+                assert out.type_id == h.type_id
+                assert out.n_items == h.n_items
+                ctype = orc.ORC_CTYPE_MAP[type_id]
+                original = orc._read_handle_items(h, ctype)
+                result = orc._read_handle_items(out, ctype)
+                assert original == result, (
+                    f"type {type_id:#x}: {original} != {result}")
+
+
+def t_serial_every_plugin_handles_nested_builtin():
+    """Every plugin pair can round-trip a nested f64 deck."""
+    h = make_handle([[1.0, 2.0, 3.0], [4.0, 5.0]])
+    for lib_ser, _ in orc._loaded_plugins:
+        for lib_deser, _ in orc._loaded_plugins:
+            out = _serial_round_trip(lib_ser, lib_deser, h)
+            assert orc.read_deck(out) == [[1.0, 2.0, 3.0], [4.0, 5.0]]
+
+
+def t_serial_custom_type_round_trip():
+    """Each plugin can serialize/deserialize its own custom types."""
+    for lib, plugin in orc._loaded_plugins:
+        for i in range(plugin.n_types):
+            type_info = plugin.types[i]
+            type_id = type_info.type_id
+            # Skip builtin types (already tested above).
+            if type_id in orc.ORC_CTYPE_MAP:
+                continue
+            # Create a deck of this custom type using plugin functions.
+            # For now we only know how to create Complex numbers.
+            if type_info.name and type_info.name.decode() == "Complex":
+                c = make_complex([1.0, -2.0, 3.0], [4.0, -5.0, 6.0])
+                out = _serial_round_trip(lib, lib, c)
+                real_orig, imag_orig = get_parts(c)
+                real_out, imag_out = get_parts(out)
+                assert real_orig == real_out
+                assert imag_orig == imag_out
+
+
+def t_serial_custom_type_nested_round_trip():
+    """Nested custom type deck survives serialization round-trip."""
+    for lib, plugin in orc._loaded_plugins:
+        for i in range(plugin.n_types):
+            type_info = plugin.types[i]
+            if type_info.name and type_info.name.decode() == "Complex":
+                c = make_complex([[1.0, 2.0], [3.0]], [[4.0, 5.0], [6.0]])
+                out = _serial_round_trip(lib, lib, c)
+                real_orig, imag_orig = get_parts(c)
+                real_out, imag_out = get_parts(out)
+                assert real_orig == real_out
+                assert imag_orig == imag_out
+                assert out.n_marks == c.n_marks
+
+
+def t_serial_concurrent_serialization():
+    """Two serialization calls on different threads don't corrupt each other."""
+    lib = orc._loaded_plugins[0][0]
+    h1 = make_handle([1.0, 2.0, 3.0, 4.0, 5.0])
+    h2 = make_handle([10, 20, 30, 40, 50], type_id=orc.ORC_TYPE_I32)
+    results = [None, None]
+    errors = [None, None]
+
+    def serialize_thread(idx, handle):
+        try:
+            results[idx] = _serialize(lib, handle)
+        except Exception as e:
+            errors[idx] = e
+
+    t1 = threading.Thread(target=serialize_thread, args=(0, h1))
+    t2 = threading.Thread(target=serialize_thread, args=(1, h2))
+    t1.start()
+    t2.start()
+    t1.join()
+    t2.join()
+    assert errors[0] is None, f"Thread 0 error: {errors[0]}"
+    assert errors[1] is None, f"Thread 1 error: {errors[1]}"
+    # Each buffer should deserialize back correctly.
+    out1 = _deserialize(lib, results[0])
+    out2 = _deserialize(lib, results[1])
+    assert orc.read_deck(out1) == [1.0, 2.0, 3.0, 4.0, 5.0]
+    assert out2.type_id == orc.ORC_TYPE_I32
+    assert orc._read_handle_items(out2, ctypes.c_int32) == [10, 20, 30, 40, 50]
+
+
+def t_serial_empty_deck():
+    """Serialize and deserialize an empty deck."""
+    h = make_handle([], type_id=orc.ORC_TYPE_F64)
+    for lib, _ in orc._loaded_plugins:
+        out = _serial_round_trip(lib, lib, h)
+        assert out.type_id == orc.ORC_TYPE_F64
+        assert out.n_items == 0
+
+
+def t_serial_single_element():
+    """Serialize and deserialize a single-element deck."""
+    h = make_handle([42.0])
+    for lib, _ in orc._loaded_plugins:
+        out = _serial_round_trip(lib, lib, h)
+        assert orc.read_deck(out) == [42.0]
+
+
+def t_serial_deserialize_truncated_fails():
+    """Deserializing truncated data returns an error."""
+    lib = orc._loaded_plugins[0][0]
+    h = make_handle([1.0, 2.0, 3.0])
+    data = _serialize(lib, h)
+    # Truncate to half the data.
+    truncated = data[:len(data) // 2]
+    out = orc.empty_handle()
+    buf = (ctypes.c_uint8 * len(truncated))(*truncated)
+    err = lib.orc_deck_deserialize(0, ctypes.cast(buf, ctypes.c_void_p),
+                                   len(truncated), ctypes.byref(out))
+    assert err != orc.ORC_ERROR_NONE
+
+
+def t_serial_deserialize_empty_buffer_fails():
+    """Deserializing an empty buffer returns an error."""
+    lib = orc._loaded_plugins[0][0]
+    out = orc.empty_handle()
+    err = lib.orc_deck_deserialize(0, None, 0, ctypes.byref(out))
+    assert err != orc.ORC_ERROR_NONE
+
+
+def t_serial_preserves_dims():
+    """Serialization round-trip preserves dimensional metadata."""
+    h = make_handle([1.0, 2.0, 3.0])
+    # Set some dims: length=1, mass=2, time=-1
+    h.dims[0] = 1
+    h.dims[1] = 2
+    h.dims[2] = -1
+    for lib, _ in orc._loaded_plugins:
+        out = _serial_round_trip(lib, lib, h)
+        assert orc.read_deck(out) == [1.0, 2.0, 3.0]
+        for i in range(7):
+            assert out.dims[i] == h.dims[i], f"dim[{i}]: {out.dims[i]} != {h.dims[i]}"
 
 
 # ============================================================

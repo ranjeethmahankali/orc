@@ -42,6 +42,8 @@ pub const ORC_ERROR_NULL_PTR: u32 = 65292;
 pub const ORC_ERROR_MISSING_CAPABILITY: u32 = 65293;
 pub const ORC_ERROR_INVALID_FUNCTION: u32 = 65294;
 pub const ORC_ERROR_INVALID_ARGUMENTS: u32 = 65295;
+pub const ORC_ERROR_SERIALIZATION_ERROR: u32 = 65296;
+pub const ORC_ERROR_INVALID_CONTEXT: u32 = 65297;
 pub const ORC_ERROR_UNKNOWN: u32 = 65535;
 pub const ORC_DECK_PROXY_COPY_ALL: u8 = 1;
 pub const ORC_DECK_PROXY_COPY_ITEMS: u8 = 2;
@@ -179,6 +181,9 @@ const _: () = {
     ["Offset of field: OrcHostMemoryAPI::dealloc"]
         [::std::mem::offset_of!(OrcHostMemoryAPI, dealloc) - 8usize];
 };
+pub type OrcSerializeWriteFn = ::std::option::Option<
+    unsafe extern "C" fn(ctx: u64, data: *const ::std::os::raw::c_void, len: u64) -> OrcError,
+>;
 #[doc = "The host may populate any of these function pointers, or leave them as `NULL` to\ncommunicate its capabilities with the plugin.\n\n- report_progress: The plugin can use this to report the progress of a function that is\ncurrently running, back to the host.\n- report_message: The plugin can use this to communicate, errors, warnings, and other\ntypes of messages with the host.\n- check_cancellation: The host may desire to cancel a function call before it completes.\nThe plugin can use this callback to check if the host requested cancellation.\n- report_intermediate_output: Sometiems, plugin functions that take a long time to run may\nchoose to report intermediate data to the host. The plugin can populate one of it's output\nhandles with intermediate data, and call this function to report it to the host."]
 #[repr(C)]
 #[derive(Debug, Default, Copy, Clone)]
@@ -190,10 +195,11 @@ pub struct OrcHostCallbackAPI {
     pub check_cancellation: ::std::option::Option<unsafe extern "C" fn(ctx: u64) -> bool>,
     pub report_intermediate_output:
         ::std::option::Option<unsafe extern "C" fn(ctx: u64, handle: *const OrcHandle)>,
+    pub serial_write: OrcSerializeWriteFn,
 }
 #[allow(clippy::unnecessary_operation, clippy::identity_op)]
 const _: () = {
-    ["Size of OrcHostCallbackAPI"][::std::mem::size_of::<OrcHostCallbackAPI>() - 32usize];
+    ["Size of OrcHostCallbackAPI"][::std::mem::size_of::<OrcHostCallbackAPI>() - 40usize];
     ["Alignment of OrcHostCallbackAPI"][::std::mem::align_of::<OrcHostCallbackAPI>() - 8usize];
     ["Offset of field: OrcHostCallbackAPI::report_progress"]
         [::std::mem::offset_of!(OrcHostCallbackAPI, report_progress) - 0usize];
@@ -203,6 +209,8 @@ const _: () = {
         [::std::mem::offset_of!(OrcHostCallbackAPI, check_cancellation) - 16usize];
     ["Offset of field: OrcHostCallbackAPI::report_intermediate_output"]
         [::std::mem::offset_of!(OrcHostCallbackAPI, report_intermediate_output) - 24usize];
+    ["Offset of field: OrcHostCallbackAPI::serial_write"]
+        [::std::mem::offset_of!(OrcHostCallbackAPI, serial_write) - 32usize];
 };
 #[doc = "This is how the host communicates information about itself to the plugin. This includes an\noptional memory allocator, various callbacks etc. The host MUST set the abi_version to\nthat of the header used to compile the host program.\n\n- create_deck_from_proxy: If the plugin wants to create a deck by proxy, of a type that it\ndoesn't own, it will call this function to defer to host. The host must identify which\nother plugin owns that datatype, and dispatch the proxy deck creation to that plugin."]
 #[repr(C)]
@@ -223,14 +231,14 @@ pub struct OrcHost {
 }
 #[allow(clippy::unnecessary_operation, clippy::identity_op)]
 const _: () = {
-    ["Size of OrcHost"][::std::mem::size_of::<OrcHost>() - 64usize];
+    ["Size of OrcHost"][::std::mem::size_of::<OrcHost>() - 72usize];
     ["Alignment of OrcHost"][::std::mem::align_of::<OrcHost>() - 8usize];
     ["Offset of field: OrcHost::abi_version"]
         [::std::mem::offset_of!(OrcHost, abi_version) - 0usize];
     ["Offset of field: OrcHost::memory_api"][::std::mem::offset_of!(OrcHost, memory_api) - 8usize];
     ["Offset of field: OrcHost::callbacks"][::std::mem::offset_of!(OrcHost, callbacks) - 24usize];
     ["Offset of field: OrcHost::create_deck_from_proxy"]
-        [::std::mem::offset_of!(OrcHost, create_deck_from_proxy) - 56usize];
+        [::std::mem::offset_of!(OrcHost, create_deck_from_proxy) - 64usize];
 };
 pub type OrcDims = [i32; 7usize];
 #[repr(C)]
@@ -254,34 +262,34 @@ pub type OrcDeckFreeFn =
 #[derive(Debug)]
 pub struct OrcHandle {
     pub handle: u64,
-    pub items: *const ::std::os::raw::c_void,
-    pub n_items: u64,
-    pub item_size: u64,
-    pub marks: *const OrcMark,
-    pub stride_offset: *const u64,
-    pub n_marks: u64,
-    pub strides: *const u64,
     pub type_id: OrcTypeId,
     pub dims: OrcDims,
+    pub n_items: u64,
+    pub item_size: u64,
+    pub n_marks: u64,
     pub free_fn: OrcDeckFreeFn,
+    pub marks: *const OrcMark,
+    pub stride_offset: *const u64,
+    pub strides: *const u64,
+    pub items: *const ::std::os::raw::c_void,
 }
 #[allow(clippy::unnecessary_operation, clippy::identity_op)]
 const _: () = {
     ["Size of OrcHandle"][::std::mem::size_of::<OrcHandle>() - 112usize];
     ["Alignment of OrcHandle"][::std::mem::align_of::<OrcHandle>() - 8usize];
     ["Offset of field: OrcHandle::handle"][::std::mem::offset_of!(OrcHandle, handle) - 0usize];
-    ["Offset of field: OrcHandle::items"][::std::mem::offset_of!(OrcHandle, items) - 8usize];
-    ["Offset of field: OrcHandle::n_items"][::std::mem::offset_of!(OrcHandle, n_items) - 16usize];
+    ["Offset of field: OrcHandle::type_id"][::std::mem::offset_of!(OrcHandle, type_id) - 8usize];
+    ["Offset of field: OrcHandle::dims"][::std::mem::offset_of!(OrcHandle, dims) - 16usize];
+    ["Offset of field: OrcHandle::n_items"][::std::mem::offset_of!(OrcHandle, n_items) - 48usize];
     ["Offset of field: OrcHandle::item_size"]
-        [::std::mem::offset_of!(OrcHandle, item_size) - 24usize];
-    ["Offset of field: OrcHandle::marks"][::std::mem::offset_of!(OrcHandle, marks) - 32usize];
+        [::std::mem::offset_of!(OrcHandle, item_size) - 56usize];
+    ["Offset of field: OrcHandle::n_marks"][::std::mem::offset_of!(OrcHandle, n_marks) - 64usize];
+    ["Offset of field: OrcHandle::free_fn"][::std::mem::offset_of!(OrcHandle, free_fn) - 72usize];
+    ["Offset of field: OrcHandle::marks"][::std::mem::offset_of!(OrcHandle, marks) - 80usize];
     ["Offset of field: OrcHandle::stride_offset"]
-        [::std::mem::offset_of!(OrcHandle, stride_offset) - 40usize];
-    ["Offset of field: OrcHandle::n_marks"][::std::mem::offset_of!(OrcHandle, n_marks) - 48usize];
-    ["Offset of field: OrcHandle::strides"][::std::mem::offset_of!(OrcHandle, strides) - 56usize];
-    ["Offset of field: OrcHandle::type_id"][::std::mem::offset_of!(OrcHandle, type_id) - 64usize];
-    ["Offset of field: OrcHandle::dims"][::std::mem::offset_of!(OrcHandle, dims) - 72usize];
-    ["Offset of field: OrcHandle::free_fn"][::std::mem::offset_of!(OrcHandle, free_fn) - 104usize];
+        [::std::mem::offset_of!(OrcHandle, stride_offset) - 88usize];
+    ["Offset of field: OrcHandle::strides"][::std::mem::offset_of!(OrcHandle, strides) - 96usize];
+    ["Offset of field: OrcHandle::items"][::std::mem::offset_of!(OrcHandle, items) - 104usize];
 };
 impl Default for OrcHandle {
     fn default() -> Self {
@@ -323,6 +331,17 @@ unsafe extern "C" {
         n_inputs: u64,
         proxy_type: OrcProxyType,
         proxy: *const OrcHandle,
+        out: *mut OrcHandle,
+    ) -> OrcError;
+}
+unsafe extern "C" {
+    pub fn orc_deck_serialize(ctx: u64, handle: *const OrcHandle) -> OrcError;
+}
+unsafe extern "C" {
+    pub fn orc_deck_deserialize(
+        ctx: u64,
+        buf: *const ::std::os::raw::c_void,
+        buf_len: u64,
         out: *mut OrcHandle,
     ) -> OrcError;
 }

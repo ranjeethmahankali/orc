@@ -17,6 +17,8 @@ pub enum Error {
     MissingCapability,
     InvalidFunction,
     InvalidArguments,
+    SerializationError,
+    InvalidContext,
     Unknown,
 }
 
@@ -39,6 +41,8 @@ impl Error {
             crate::ORC_ERROR_MISSING_CAPABILITY => Err(Error::MissingCapability),
             crate::ORC_ERROR_INVALID_FUNCTION => Err(Error::InvalidFunction),
             crate::ORC_ERROR_INVALID_ARGUMENTS => Err(Error::InvalidArguments),
+            crate::ORC_ERROR_SERIALIZATION_ERROR => Err(Error::SerializationError),
+            crate::ORC_ERROR_INVALID_CONTEXT => Err(Error::InvalidContext),
             _ => Err(Error::Unknown),
         }
     }
@@ -68,6 +72,8 @@ impl std::fmt::Display for Error {
                 f,
                 "The input/output arguments to this function are not valid."
             ),
+            Error::SerializationError => write!(f, "Serialization failed"),
+            Error::InvalidContext => write!(f, "Invalid context used in a callback."),
             Error::Unknown => write!(f, "Unknown error"),
         }
     }
@@ -94,6 +100,8 @@ impl From<Error> for OrcError {
             Error::InvalidFunction => crate::ORC_ERROR_INVALID_FUNCTION,
             Error::Unknown => crate::ORC_ERROR_UNKNOWN,
             Error::InvalidArguments => crate::ORC_ERROR_INVALID_ARGUMENTS,
+            Error::SerializationError => crate::ORC_ERROR_SERIALIZATION_ERROR,
+            Error::InvalidContext => crate::ORC_ERROR_INVALID_CONTEXT,
         }
     }
 }
