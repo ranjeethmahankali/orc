@@ -228,6 +228,14 @@ impl<'a> Clone for OrcHandleBorrowed<'a> {
     }
 }
 
+// SAFETY: OrcHandleBorrowed is a read-only view whose lifetime is tied to the
+// original OrcHandle.  The raw pointers it contains (items, marks, etc.) are
+// only ever read through shared references, so sending / sharing across threads
+// is safe as long as the source handle outlives the borrow — which the lifetime
+// parameter already guarantees.
+unsafe impl Send for OrcHandleBorrowed<'_> {}
+unsafe impl Sync for OrcHandleBorrowed<'_> {}
+
 impl<'a> OrcHandleBorrowed<'a> {
     pub fn inner(&self) -> &OrcHandle {
         &self.inner
