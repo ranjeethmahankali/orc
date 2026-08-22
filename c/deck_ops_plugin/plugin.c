@@ -65,9 +65,6 @@ OrcError orc_deck_serialize(uint64_t const ctx, OrcHandle const *handle)
   if (handle->n_items > 0 && handle->items != NULL) {
     err =
       orc_sdk_host_serial_write(ctx, handle->items, handle->item_size * handle->n_items);
-    if (err != ORC_ERROR_NONE) {
-      return err;
-    }
   }
   return ORC_ERROR_NONE;
 }

@@ -4,12 +4,12 @@ use super::{
 };
 use crate::{FuncInfo, InputPropBuf, OrcHandle, OrcHandleBorrowed, PluginSet};
 use std::{
-    collections::{HashMap, HashSet, hash_map::Entry},
+    collections::{BTreeMap, HashSet, btree_map::Entry},
     sync::atomic::{AtomicU64, Ordering},
 };
 
 pub enum NodeInfo {
-    Constant { name: String, data: OrcHandle },
+    Constant(OrcHandle),
     Function(FuncInfo),
     NestedCall { workflow_name: String },
 }
@@ -18,10 +18,7 @@ impl Clone for NodeInfo {
     fn clone(&self) -> Self {
         match self {
             // The host application is responsible for allocating the variable data manually.
-            Self::Constant { name, data: _data } => Self::Constant {
-                name: format!("{name}_copy"),
-                data: OrcHandle::default(),
-            },
+            Self::Constant(_) => Self::Constant(OrcHandle::default()),
             Self::Function(arg0) => Self::Function(arg0.clone()),
             Self::NestedCall { workflow_name } => Self::NestedCall {
                 workflow_name: workflow_name.clone(),
@@ -39,7 +36,7 @@ impl Default for NodeInfo {
 impl NodeInfo {
     pub fn name(&self) -> &str {
         match self {
-            NodeInfo::Constant { name, .. } => name,
+            NodeInfo::Constant(_data) => "const",
             NodeInfo::Function(func_info) => &func_info.name,
             NodeInfo::NestedCall { workflow_name } => workflow_name,
         }
@@ -47,14 +44,15 @@ impl NodeInfo {
 }
 
 pub struct Workflow {
-    graph: Graph,
-    node_infos: NodeProperty<NodeInfo>,
-    input_labels: InputProperty<String>,
-    output_labels: OutputProperty<String>,
-    node_comments: NodeProperty<String>,
-    workflow_outputs: Vec<(OH, String)>,
-    workflow_input_index: InputProperty<Option<(usize, String)>>,
-    nested_workflows: HashMap<String, Workflow>,
+    pub(crate) graph: Graph,
+    pub(crate) node_infos: NodeProperty<NodeInfo>,
+    pub(crate) input_labels: InputProperty<String>,
+    pub(crate) output_labels: OutputProperty<String>,
+    pub(crate) node_comments: NodeProperty<String>,
+    pub(crate) workflow_outputs: Vec<(OH, String)>,
+    pub(crate) workflow_input_names: Vec<String>,
+    pub(crate) workflow_input_index: InputProperty<Option<usize>>,
+    pub(crate) nested_workflows: BTreeMap<String, Workflow>,
 }
 
 impl Default for Workflow {
@@ -72,6 +70,7 @@ impl Default for Workflow {
             output_labels,
             node_comments,
             workflow_outputs: Default::default(),
+            workflow_input_names: Default::default(),
             workflow_input_index,
             nested_workflows: Default::default(),
         }
@@ -99,6 +98,7 @@ impl Workflow {
             output_labels,
             node_comments,
             workflow_outputs: Default::default(),
+            workflow_input_names: Default::default(),
             workflow_input_index,
             nested_workflows: Default::default(),
         }
@@ -154,8 +154,10 @@ impl Workflow {
         let mut input_idx = self.workflow_input_index.try_borrow_mut()?;
         let input_idx: &mut InputPropBuf<_> = &mut input_idx;
         input_idx.fill(None);
+        self.workflow_input_names.clear();
         for (input, idx, name) in inputs.iter() {
-            input_idx[*input] = Some((*idx, name.to_string()));
+            input_idx[*input] = Some(*idx);
+            self.workflow_input_names.push(name.to_string());
         }
         Ok(())
     }
@@ -201,10 +203,7 @@ impl Workflow {
             .push_node(&mut [], std::slice::from_mut(&mut output_handle))?;
         {
             let mut node_infos = self.node_infos.try_borrow_mut()?;
-            node_infos[n] = NodeInfo::Constant {
-                name: String::new(),
-                data,
-            };
+            node_infos[n] = NodeInfo::Constant(data);
         }
         Ok((n, output_handle))
     }
@@ -378,15 +377,13 @@ impl Workflow {
                     .map(|input| match self.graph.input_source(input) {
                         // If it is a constant, we just borrow it's value. Otherwise we get the value associated with the upstream output.
                         Some(source) => match &node_infos[self.graph.outputs[source.idx].node] {
-                            NodeInfo::Constant { name: _name, data } => Ok(data.borrowed()),
+                            NodeInfo::Constant(data) => Ok(data.borrowed()),
                             NodeInfo::Function(_) | NodeInfo::NestedCall { .. } => {
                                 Ok(computed_outputs[source.idx].borrowed())
                             }
                         },
                         None => match &workflow_input_index[input] {
-                            Some((index, _name)) if *index < inputs.len() => {
-                                Ok(inputs[*index].clone())
-                            }
+                            Some(index) if *index < inputs.len() => Ok(inputs[*index].clone()),
                             _ => Ok(empty_input.borrowed()),
                         },
                     })
@@ -406,7 +403,7 @@ impl Workflow {
                 debug_assert_eq!(temp_outputs.len(), temp_output_handles.len());
                 // Run this node.
                 match &node_infos[node] {
-                    NodeInfo::Constant { .. } => {} // Do nothing.
+                    NodeInfo::Constant(_) => {} // Do nothing.
                     NodeInfo::Function(func_info) => match func_info.func {
                         Some(func) => unsafe {
                             (func)(
@@ -459,7 +456,7 @@ impl Workflow {
         // Now copy the final outputs of the workflow.
         for ((src, _name), dst) in self.workflow_outputs.iter().zip(outputs.iter_mut()) {
             *dst = match &node_infos[self.graph.outputs[src.idx].node] {
-                NodeInfo::Constant { name: _, data } => clone_fn(data.borrowed())?,
+                NodeInfo::Constant(data) => clone_fn(data.borrowed())?,
                 NodeInfo::Function(_) | NodeInfo::NestedCall { .. } => {
                     std::mem::take(&mut computed_outputs[src.idx])
                 }
@@ -517,8 +514,8 @@ impl Workflow {
         let mut result = Vec::new();
         for i in 0..self.graph.inputs.len() {
             let ih = IH { idx: i };
-            if let Some((index, name)) = &idx[ih] {
-                result.push((ih, *index, name.clone()));
+            if let Some(index) = &idx[ih] {
+                result.push((ih, *index, self.workflow_input_names[*index].clone()));
             }
         }
         Ok(result)
