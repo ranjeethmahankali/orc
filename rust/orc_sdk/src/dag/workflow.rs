@@ -50,7 +50,8 @@ pub struct Workflow {
     output_labels: OutputProperty<String>,
     node_comments: NodeProperty<String>,
     workflow_outputs: Vec<(OH, String)>,
-    workflow_input_index: InputProperty<Option<(usize, String)>>,
+    workflow_input_names: Vec<String>,
+    workflow_input_index: InputProperty<Option<usize>>,
     nested_workflows: HashMap<String, Workflow>,
 }
 
@@ -69,6 +70,7 @@ impl Default for Workflow {
             output_labels,
             node_comments,
             workflow_outputs: Default::default(),
+            workflow_input_names: Default::default(),
             workflow_input_index,
             nested_workflows: Default::default(),
         }
@@ -96,6 +98,7 @@ impl Workflow {
             output_labels,
             node_comments,
             workflow_outputs: Default::default(),
+            workflow_input_names: Default::default(),
             workflow_input_index,
             nested_workflows: Default::default(),
         }
@@ -151,8 +154,10 @@ impl Workflow {
         let mut input_idx = self.workflow_input_index.try_borrow_mut()?;
         let input_idx: &mut InputPropBuf<_> = &mut input_idx;
         input_idx.fill(None);
+        self.workflow_input_names.clear();
         for (input, idx, name) in inputs.iter() {
-            input_idx[*input] = Some((*idx, name.to_string()));
+            input_idx[*input] = Some(*idx);
+            self.workflow_input_names.push(name.to_string());
         }
         Ok(())
     }
@@ -378,9 +383,7 @@ impl Workflow {
                             }
                         },
                         None => match &workflow_input_index[input] {
-                            Some((index, _name)) if *index < inputs.len() => {
-                                Ok(inputs[*index].clone())
-                            }
+                            Some(index) if *index < inputs.len() => Ok(inputs[*index].clone()),
                             _ => Ok(empty_input.borrowed()),
                         },
                     })
@@ -511,8 +514,8 @@ impl Workflow {
         let mut result = Vec::new();
         for i in 0..self.graph.inputs.len() {
             let ih = IH { idx: i };
-            if let Some((index, name)) = &idx[ih] {
-                result.push((ih, *index, name.clone()));
+            if let Some(index) = &idx[ih] {
+                result.push((ih, *index, self.workflow_input_names[*index].clone()));
             }
         }
         Ok(result)
