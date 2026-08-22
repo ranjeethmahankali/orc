@@ -1327,3 +1327,81 @@ fn t_serial_round_trip_complex_nested() {
     assert_eq!(orig_re, out_re);
     assert_eq!(orig_im, out_im);
 }
+
+// ==================== Every plugin handles builtin types ====================
+
+/// Serialize a handle using a specific plugin, and deserialize using another.
+fn cross_plugin_round_trip(
+    handle: &OrcHandle,
+    serialize_plugin: &Plugin,
+    deserialize_plugin: &Plugin,
+) -> OrcHandle {
+    let buf = serialize_plugin
+        .serialize_deck(&SERIAL_CONTEXT_ARENA, handle, |buf| buf.clone())
+        .expect("serialization failed");
+    let mut out = OrcHandle {
+        handle: next_id(),
+        ..Default::default()
+    };
+    deserialize_plugin
+        .deserialize_deck(0, &buf, &mut out)
+        .expect("deserialization failed");
+    out
+}
+
+#[test]
+fn t_serial_every_plugin_handles_builtin_types() {
+    let plugins = PLUGIN_SET.plugins();
+    assert!(
+        plugins.len() >= 2,
+        "need at least 2 plugins to test cross-plugin builtin serialization"
+    );
+    macro_rules! test_type {
+        ($ty:ty, [$($v:expr),+ $(,)?]) => {{
+            let d: Deck<$ty> = deck![$($v),+];
+            let h = make_handle(&d);
+            let expected: &[$ty] = &[$($v),+];
+            for (si, sp) in plugins.iter().enumerate() {
+                for (di, dp) in plugins.iter().enumerate() {
+                    let out = cross_plugin_round_trip(&h, sp, dp);
+                    assert_eq!(
+                        out.items::<$ty>(), expected,
+                        "failed: serialize with plugin {si} ({}), deserialize with plugin {di} ({}), type {}",
+                        sp.name(), dp.name(), stringify!($ty)
+                    );
+                }
+            }
+        }};
+    }
+    test_type!(u8, [1, 2, 3]);
+    test_type!(u16, [100, 200, 300]);
+    test_type!(u32, [1000, 2000]);
+    test_type!(u64, [10000, 20000]);
+    test_type!(i8, [-1, 0, 1]);
+    test_type!(i16, [-100, 0, 100]);
+    test_type!(i32, [-1000, 0, 1000]);
+    test_type!(i64, [-10000, 0, 10000]);
+    test_type!(f32, [1.5, -2.5, 0.0]);
+    test_type!(f64, [1.5, -2.5, 0.0]);
+}
+
+#[test]
+fn t_serial_every_plugin_handles_nested_builtin() {
+    let plugins = PLUGIN_SET.plugins();
+    let d: Deck<f64> = deck![[1.0, 2.0], [3.0]];
+    let h = make_handle(&d);
+    assert!(h.n_marks > 0);
+    for (si, sp) in plugins.iter().enumerate() {
+        for (di, dp) in plugins.iter().enumerate() {
+            let out = cross_plugin_round_trip(&h, sp, dp);
+            assert_eq!(
+                out.items::<f64>(),
+                &[1.0, 2.0, 3.0],
+                "items mismatch: plugin {si} ({}) -> plugin {di} ({})",
+                sp.name(),
+                dp.name()
+            );
+            assert_eq!(out.n_marks, h.n_marks);
+        }
+    }
+}
