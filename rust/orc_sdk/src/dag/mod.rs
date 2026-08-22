@@ -400,6 +400,7 @@ pub enum DagError {
     InvalidOutputs,
     NamingConflict,
     GarbageCollectionRequired,
+    WriteError,
     SdkError(crate::Error),
 }
 
