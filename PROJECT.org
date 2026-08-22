@@ -561,11 +561,13 @@
     - ~OrcHandle.free_fn~ — destructor, set by the allocating plugin at runtime.
     - ~OrcHandle.dims~ — units metadata. TODO: decide if this should be serialized.
 
-* NEXT tk1ji0 - ABI - Serializing OrcHandle
+* DONE tk1ji0 - ABI - Serializing OrcHandle
+  CLOSED: [2026-08-21 Fri 21:16]
   :PROPERTIES:
   :CREATED:  2026-08-19 Wed 18:38
   :END:
   :LOGBOOK:
+  - State "DONE"       from "NEXT"       [2026-08-21 Fri 21:16]
   - State "NEXT"       from "TODO"       [2026-08-19 Wed 19:52]
   :END:
 
@@ -590,8 +592,11 @@
   both the Rust and Python hosts.
 
   - [X] Add tests in the Rust host for the full roundtrip serialization of all types.
-  - [ ] Bring the Python host up to speed with all the serialization stuff, when it loads the
+  - [X] Bring the Python host up to speed with all the serialization stuff, when it loads the
     plugins etc. and add tests for serialization.
+
+  <2026-08-21 Fri 21:16> Python is all caught up with serialization, and everything is tested. Ready
+  to merge.
 
 ** Ideas for host side context handling
    :PROPERTIES:
