@@ -36,72 +36,69 @@ impl Workflow {
     ) -> Result<(), DagError> {
         // Top-level workflow map with 10 fields.
         rmp::encode::write_map_len(w, 10)?;
-
         // "version"
         rmp::encode::write_str(w, "version")?;
         rmp::encode::write_u64(w, Self::WORKFLOW_MSGPACK_VERSION_CURRENT)?;
-
         // "graph"
         rmp::encode::write_str(w, "graph")?;
         self.graph.write_to_msgpack(w)?;
-
         // "node_infos": array of [tag, payload], one entry per node.
         rmp::encode::write_str(w, "node_infos")?;
-        let node_infos = self.node_infos.try_borrow()?;
-        rmp::encode::write_array_len(w, node_infos.len() as u32)?;
-        for info in node_infos.iter() {
-            match info {
-                NodeInfo::Constant(handle) => {
-                    let bytes = serialize_handle(handle, plugin_set)?;
-                    rmp::encode::write_array_len(w, 2)?;
-                    rmp::encode::write_u32(w, 0)?;
-                    rmp::encode::write_bin(w, &bytes)?;
-                }
-                NodeInfo::Function(func_info) => {
-                    rmp::encode::write_array_len(w, 2)?;
-                    rmp::encode::write_u32(w, 1)?;
-                    rmp::encode::write_str(w, &func_info.name)?;
-                }
-                NodeInfo::NestedCall { workflow_name } => {
-                    rmp::encode::write_array_len(w, 2)?;
-                    rmp::encode::write_u32(w, 2)?;
-                    rmp::encode::write_str(w, workflow_name)?;
+        {
+            let node_infos = self.node_infos.try_borrow()?;
+            rmp::encode::write_array_len(w, node_infos.len() as u32)?;
+            for info in node_infos.iter() {
+                match info {
+                    NodeInfo::Constant(handle) => {
+                        let bytes = serialize_handle(handle, plugin_set)?;
+                        rmp::encode::write_array_len(w, 2)?;
+                        rmp::encode::write_u32(w, 0)?;
+                        rmp::encode::write_bin(w, &bytes)?;
+                    }
+                    NodeInfo::Function(func_info) => {
+                        rmp::encode::write_array_len(w, 2)?;
+                        rmp::encode::write_u32(w, 1)?;
+                        rmp::encode::write_str(w, &func_info.name)?;
+                    }
+                    NodeInfo::NestedCall { workflow_name } => {
+                        rmp::encode::write_array_len(w, 2)?;
+                        rmp::encode::write_u32(w, 2)?;
+                        rmp::encode::write_str(w, workflow_name)?;
+                    }
                 }
             }
         }
-        drop(node_infos);
-
         // "input_labels": array of strings.
         rmp::encode::write_str(w, "input_labels")?;
-        let input_labels = self.input_labels.try_borrow()?;
-        rmp::encode::write_array_len(w, input_labels.len() as u32)?;
-        for label in input_labels.iter() {
-            rmp::encode::write_str(w, label)?;
-        }
-        drop(input_labels);
-
-        // "output_labels": array of strings.
-        rmp::encode::write_str(w, "output_labels")?;
-        let output_labels = self.output_labels.try_borrow()?;
-        rmp::encode::write_array_len(w, output_labels.len() as u32)?;
-        for label in output_labels.iter() {
-            rmp::encode::write_str(w, label)?;
-        }
-        drop(output_labels);
-
-        // "node_comments": sparse map {node_idx -> comment}, empty strings skipped.
-        rmp::encode::write_str(w, "node_comments")?;
-        let node_comments = self.node_comments.try_borrow()?;
-        let n_comments = node_comments.iter().filter(|c| !c.is_empty()).count();
-        rmp::encode::write_map_len(w, n_comments as u32)?;
-        for (i, comment) in node_comments.iter().enumerate() {
-            if !comment.is_empty() {
-                rmp::encode::write_u32(w, i as u32)?;
-                rmp::encode::write_str(w, comment)?;
+        {
+            let input_labels = self.input_labels.try_borrow()?;
+            rmp::encode::write_array_len(w, input_labels.len() as u32)?;
+            for label in input_labels.iter() {
+                rmp::encode::write_str(w, label)?;
             }
         }
-        drop(node_comments);
-
+        // "output_labels": array of strings.
+        rmp::encode::write_str(w, "output_labels")?;
+        {
+            let output_labels = self.output_labels.try_borrow()?;
+            rmp::encode::write_array_len(w, output_labels.len() as u32)?;
+            for label in output_labels.iter() {
+                rmp::encode::write_str(w, label)?;
+            }
+        }
+        // "node_comments": sparse map {node_idx -> comment}, empty strings skipped.
+        rmp::encode::write_str(w, "node_comments")?;
+        {
+            let node_comments = self.node_comments.try_borrow()?;
+            let n_comments = node_comments.iter().filter(|c| !c.is_empty()).count();
+            rmp::encode::write_map_len(w, n_comments as u32)?;
+            for (i, comment) in node_comments.iter().enumerate() {
+                if !comment.is_empty() {
+                    rmp::encode::write_u32(w, i as u32)?;
+                    rmp::encode::write_str(w, comment)?;
+                }
+            }
+        }
         // "workflow_outputs": array of [oh_idx, name].
         rmp::encode::write_str(w, "workflow_outputs")?;
         rmp::encode::write_array_len(w, self.workflow_outputs.len() as u32)?;
@@ -110,27 +107,25 @@ impl Workflow {
             rmp::encode::write_u32(w, oh.idx as u32)?;
             rmp::encode::write_str(w, name)?;
         }
-
         // "workflow_input_names": array of strings.
         rmp::encode::write_str(w, "workflow_input_names")?;
         rmp::encode::write_array_len(w, self.workflow_input_names.len() as u32)?;
         for name in &self.workflow_input_names {
             rmp::encode::write_str(w, name)?;
         }
-
         // "workflow_input_index": sparse map {ih_idx -> workflow_input_idx}.
         rmp::encode::write_str(w, "workflow_input_index")?;
-        let wf_input_index = self.workflow_input_index.try_borrow()?;
-        let n_mapped = wf_input_index.iter().filter(|o| o.is_some()).count();
-        rmp::encode::write_map_len(w, n_mapped as u32)?;
-        for (i, opt) in wf_input_index.iter().enumerate() {
-            if let Some(wf_idx) = opt {
-                rmp::encode::write_u32(w, i as u32)?;
-                rmp::encode::write_u32(w, *wf_idx as u32)?;
+        {
+            let wf_input_index = self.workflow_input_index.try_borrow()?;
+            let n_mapped = wf_input_index.iter().filter(|o| o.is_some()).count();
+            rmp::encode::write_map_len(w, n_mapped as u32)?;
+            for (i, opt) in wf_input_index.iter().enumerate() {
+                if let Some(wf_idx) = opt {
+                    rmp::encode::write_u32(w, i as u32)?;
+                    rmp::encode::write_u32(w, *wf_idx as u32)?;
+                }
             }
         }
-        drop(wf_input_index);
-
         // "nested_workflows": array of [name, workflow].
         rmp::encode::write_str(w, "nested_workflows")?;
         rmp::encode::write_array_len(w, self.nested_workflows.len() as u32)?;
@@ -139,7 +134,6 @@ impl Workflow {
             rmp::encode::write_str(w, name)?;
             wf.write_to_msgpack(plugin_set, w)?;
         }
-
         Ok(())
     }
 }
