@@ -417,7 +417,7 @@
     Output indices are global across all nodes within a workflow, assigned implicitly in declaration
     order.
 
-    **** Function nodes
+**** Function nodes
 
     #+begin_example
     2 = add $x 0
@@ -430,23 +430,24 @@
       (~$name~).
     - ~_~ means an unconnected input.
 
-    **** Constant nodes
+**** Constant nodes
 
     #+begin_example
-    0 = .const [3.0f64]
-    1 = .const "offset" [[3u8, 2], [3, 4, 4]]
+    0 = .const "offset"
+    1 = .const
     #+end_example
 
-    - ~.const~ keyword followed by optional name string, then the data in brackets.
-    - The type suffix (e.g., ~f64~, ~u8~) appears on the first leaf value. Subsequent values in
-      the same constant can omit the suffix.
-    - Bracket nesting encodes the deck's mark/stride structure (depth).
-    - Supported builtin types: ~u8~, ~u16~, ~u32~, ~u64~, ~f32~, ~f64~, ~i8~, ~i16~, ~i32~, ~i64~.
-    - ~ORC_TYPE_PROXY~ is excluded from serialization.
+    - ~.const~ keyword followed by an optional name string.
     - The optional name string corresponds to the ~name~ field of ~NodeInfo::Constant~. It is
       only written when non-empty.
+    - Constant data is stored in a sibling binary file using MessagePack format. For a workflow
+      file named ~foo.orc~, the constants file is ~foo.const~.
+    - The ~.const~ file contains a msgpack array. Each entry is an arbitrary-length byte array
+      containing serialized constant data. The plugins are responsible for deserializing each
+      byte array.
+    - Constants are stored in the array in the same order they appear in the workflow file.
 
-    **** Nested workflow calls
+**** Nested workflow calls
 
     #+begin_example
     5 = double 2
@@ -456,7 +457,7 @@
     ~PluginSet~ first; if no function matches, it checks the workflow's nested workflows. This
     mirrors the runtime behavior and the ~orc_dag!~ macro's fallback logic.
 
-    **** Nodes with zero outputs
+**** Nodes with zero outputs
 
     #+begin_example
     fire_missiles 3
@@ -499,11 +500,13 @@
     - Input properties are keyed by ~node_index:input_index~ (per-node input index, zero-based).
     - Output properties are keyed by global output index.
     - Node properties are keyed by node index.
-    - Link properties are keyed by ~output_index input_node:input_index~.
+    - Link properties are keyed by ~output_index:input_node:input_index~.
     - Only non-default values are written. Default values (empty strings) are omitted.
 
 *** String Escaping
 
+    - Names of nested workflows, functions, labels of nodes, constants etc. cannot contain double or
+      single quotes. They also cannot start with a period.
     - Bare strings (identifiers like function names, workflow names, parameter names) are literal.
       They must not contain whitespace or special characters, and must not start with a period.
     - Quoted strings (labels, comments, names) use backslash escaping: ~\"~ for a literal quote,
@@ -542,18 +545,6 @@
     - Two workflows at different hierarchical paths can share the same name without conflict.
     - A workflow must be defined before it is called (definition appears before the call site in
       the node list, or as a nested workflow of an ancestor).
-
-*** Constant Data for Plugin-Owned Types
-
-    Not yet supported. Planned approach:
-
-    #+begin_example
-    0 = .const <0xABCD1234> data/node2.bin
-    #+end_example
-
-    - ~<type_id>~ is the integer type ID that identifies which plugin owns this type.
-    - The path points to a file in a companion data folder.
-    - The plugin provides serialize/deserialize over FFI (ABI extension needed).
 
 *** What Is NOT Serialized
 
