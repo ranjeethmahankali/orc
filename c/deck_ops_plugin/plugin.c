@@ -95,20 +95,21 @@ OrcError orc_deck_deserialize(uint64_t const ctx,
       orc_sdk_arr_free(marks);
       return err;
     }
-    deck = _orc_sdk_deck_grow_capacity(
-      (void *)temp_handle.items, temp_handle.item_size, out->n_items);
-    // Update items pointer now so handle_free frees the correct (grown) deck.
-    out->items = deck;
-    if (out->item_size != temp_handle.item_size || deck == NULL) {
+    if (out->item_size != temp_handle.item_size) {
       orc_sdk_arr_free(marks);
-      orc_sdk_handle_free(out);
+      orc_sdk_handle_free(&temp_handle);
       return ORC_ERROR_SERIALIZATION_ERROR;
     }
+    deck = _orc_sdk_deck_grow_capacity(
+      (void *)temp_handle.items, temp_handle.item_size, out->n_items);
+    ORC_SDK_REQUIRE(deck != NULL);
   }
   _OrcSdk_DeckHeader *header = _orc_sdk_deck_header(deck);
   header->count              = out->n_items;
   header->item_size          = out->item_size;
   header->marks              = marks;
+  out->items                 = deck;
+  orc_sdk_oh_update(out);
   if (out->n_items > 0) {
     err = orc_sdk_sv_read_bytes(&src, deck, out->item_size * out->n_items);
     if (err != ORC_ERROR_NONE) {

@@ -974,6 +974,84 @@ static void test_deck_alloc_type_change(void)
   orc_sdk_handle_free(&h);
 }
 
+/* Regression: deserialize must fail gracefully (not abort) when the serialized
+   item_size doesn't match the type's actual size. */
+static void test_deserialize_wrong_item_size_fails(void)
+{
+  _init_sdk_with_serial_write();
+  OrcHandle h = {0};
+  h.handle    = 1;
+  orc_sdk_handle_alloc(ORC_TYPE_F64, &h);
+  ORC_SDK_DECK_INIT(h.items, double, (1.0, 2.0));
+  orc_sdk_oh_update(&h);
+  char  *buf     = _serialize_handle(&h);
+  size_t buf_len = orc_sdk_arr_len(buf);
+  /* Corrupt the item_size field in the serialized buffer.
+     Header layout: abi_version(8) + type_id(8) + dims(28) + n_items(8) + item_size(8)
+     item_size starts at offset 52. Set it to 4 instead of 8. */
+  uint64_t bad_size = 4;
+  memcpy(buf + 52, &bad_size, sizeof(bad_size));
+  OrcHandle out = {0};
+  out.handle    = 10;
+  OrcError err  = orc_deck_deserialize(0, buf, buf_len, &out);
+  TEST_ASSERT_TRUE(err != ORC_ERROR_NONE);
+  orc_sdk_handle_free(&h);
+  orc_sdk_arr_free(buf);
+}
+
+/* Regression: deserialize must fail gracefully with an invalid type_id. */
+static void test_deserialize_invalid_type_id_fails(void)
+{
+  _init_sdk_with_serial_write();
+  OrcHandle h = {0};
+  h.handle    = 1;
+  orc_sdk_handle_alloc(ORC_TYPE_F64, &h);
+  ORC_SDK_DECK_INIT(h.items, double, (1.0));
+  orc_sdk_oh_update(&h);
+  char  *buf     = _serialize_handle(&h);
+  size_t buf_len = orc_sdk_arr_len(buf);
+  /* Corrupt the type_id field. type_id starts at offset 8. */
+  uint64_t bad_type = 0xFFFFFFFFFFFFFFFFull;
+  memcpy(buf + 8, &bad_type, sizeof(bad_type));
+  OrcHandle out = {0};
+  out.handle    = 10;
+  OrcError err  = orc_deck_deserialize(0, buf, buf_len, &out);
+  TEST_ASSERT_TRUE(err != ORC_ERROR_NONE);
+  orc_sdk_handle_free(&h);
+  orc_sdk_arr_free(buf);
+}
+
+/* Regression: on deserialization error, the grown deck must be freed (not leaked)
+   via handle_free. Verify that after a failed deserialize the handle is usable
+   for a fresh alloc (i.e., no stale state). */
+static void test_deserialize_error_cleans_up(void)
+{
+  _init_sdk_with_serial_write();
+  OrcHandle h = {0};
+  h.handle    = 1;
+  orc_sdk_handle_alloc(ORC_TYPE_F64, &h);
+  ORC_SDK_DECK_INIT(h.items, double, (1.0, 2.0, 3.0));
+  orc_sdk_oh_update(&h);
+  char  *buf     = _serialize_handle(&h);
+  size_t buf_len = orc_sdk_arr_len(buf);
+  /* Truncate to break deserialization after header is parsed (deck alloc
+     will succeed but item read will fail). Keep enough for header + marks
+     but cut off the item data. */
+  size_t truncated = buf_len - 1;
+  OrcHandle out    = {0};
+  out.handle       = 10;
+  OrcError err     = orc_deck_deserialize(0, buf, truncated, &out);
+  TEST_ASSERT_TRUE(err != ORC_ERROR_NONE);
+  /* The handle should be cleaned up — verify we can reuse the same handle id. */
+  OrcHandle fresh = {0};
+  fresh.handle    = 10;
+  err = orc_sdk_handle_alloc(ORC_TYPE_F64, &fresh);
+  TEST_ASSERT_EQUAL_UINT64(ORC_ERROR_NONE, err);
+  orc_sdk_handle_free(&fresh);
+  orc_sdk_handle_free(&h);
+  orc_sdk_arr_free(buf);
+}
+
 /* ============================================================ */
 
 int main(void)
@@ -1022,5 +1100,8 @@ int main(void)
   RUN_TEST(test_deck_free_resets_handle);
   RUN_TEST(test_deck_alloc_reuse_same_type);
   RUN_TEST(test_deck_alloc_type_change);
+  RUN_TEST(test_deserialize_wrong_item_size_fails);
+  RUN_TEST(test_deserialize_invalid_type_id_fails);
+  RUN_TEST(test_deserialize_error_cleans_up);
   return UNITY_END();
 }

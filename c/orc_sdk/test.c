@@ -6367,6 +6367,48 @@ static void test_deserialize_header_truncated_marks(void)
   orc_sdk_arr_free(buf);
 }
 
+/* Regression: orc_sdk_sv_read_bytes must not do pointer arithmetic on NULL. */
+static void test_sv_read_bytes_null_start(void)
+{
+  OrcStrView sv  = {.start = NULL, .end = NULL};
+  uint8_t    dst = 0;
+  OrcError   err = orc_sdk_sv_read_bytes(&sv, &dst, 1);
+  TEST_ASSERT_TRUE(err != ORC_ERROR_NONE);
+  TEST_ASSERT_EQUAL_UINT8(0, dst); /* dst untouched */
+}
+
+/* Zero-count read from NULL sv is still safe (no bytes to read). */
+static void test_sv_read_bytes_null_start_zero_count(void)
+{
+  OrcStrView sv  = {.start = NULL, .end = NULL};
+  OrcError   err = orc_sdk_sv_read_bytes(&sv, NULL, 0);
+  /* With NULL start and count=0, start+0 == NULL > NULL is false on most
+     platforms, but the NULL check should catch it first. */
+  TEST_ASSERT_TRUE(err != ORC_ERROR_NONE);
+}
+
+/* Regression: OrcMark padding bytes must be zeroed when created via the SDK. */
+static void test_mark_padding_zeroed(void)
+{
+  orc_sdk_init(NULL, NULL);
+  OrcHandle h = {0};
+  h.handle    = 1;
+  orc_sdk_handle_alloc(ORC_TYPE_F64, &h);
+  ORC_SDK_DECK_INIT(h.items, double, ((1.0, 2.0), (3.0)));
+  orc_sdk_oh_update(&h);
+  TEST_ASSERT_TRUE(h.n_marks > 0);
+  /* Walk raw bytes of each mark and verify padding is zero. */
+  for (uint64_t i = 0; i < h.n_marks; ++i) {
+    uint8_t const *raw = (uint8_t const *)&h.marks[i];
+    /* depth is at offset 0 (1 byte), pos is at offset 8 (8 bytes).
+       Bytes 1..7 are padding and must be zero. */
+    for (size_t b = 1; b < 8; ++b) {
+      TEST_ASSERT_EQUAL_UINT8(0, raw[b]);
+    }
+  }
+  orc_sdk_handle_free(&h);
+}
+
 void setUp(void) {}
 void tearDown(void) {}
 
@@ -6527,5 +6569,8 @@ int main(void)
   RUN_TEST(test_deserialize_header_wrong_abi_version);
   RUN_TEST(test_serialize_header_empty_items);
   RUN_TEST(test_deserialize_header_truncated_marks);
+  RUN_TEST(test_sv_read_bytes_null_start);
+  RUN_TEST(test_sv_read_bytes_null_start_zero_count);
+  RUN_TEST(test_mark_padding_zeroed);
   return UNITY_END();
 }

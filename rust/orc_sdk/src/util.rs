@@ -1462,4 +1462,79 @@ mod tests {
         assert_eq!(a, 100);
         assert_eq!(b, 100);
     }
+
+    // Regression: double-consume must return an error, not corrupt state.
+    #[test]
+    fn t_arena_double_consume_returns_error() {
+        let arena = ContextArena::<Vec<u8>>::default();
+        let ctx = arena.insert(|v| v.extend_from_slice(b"data")).unwrap();
+        // First consume succeeds.
+        let data = arena.consume(ctx, std::mem::take).unwrap();
+        assert_eq!(data, b"data");
+        // Second consume of the same ctx must fail.
+        let result = arena.consume(ctx, |_| {});
+        assert!(result.is_err());
+    }
+
+    // Regression: after double-consume is rejected, the slot must not be
+    // double-added to the free list (which would cause two inserts to
+    // return the same ctx).
+    #[test]
+    fn t_arena_double_consume_does_not_corrupt_free_list() {
+        let arena = ContextArena::<Vec<u8>>::default();
+        let ctx0 = arena.insert(|_| {}).unwrap();
+        arena.consume(ctx0, |_| {}).unwrap();
+        // Try double-consume — must fail.
+        let _ = arena.consume(ctx0, |_| {});
+        // Now insert twice — should get distinct ctx values.
+        let a = arena.insert(|_| {}).unwrap();
+        let b = arena.insert(|_| {}).unwrap();
+        assert_ne!(a, b);
+    }
+
+    // Regression: consume after a visit_mut on the same ctx must work.
+    #[test]
+    fn t_arena_visit_then_consume() {
+        let arena = ContextArena::<Vec<u8>>::default();
+        let ctx = arena.insert(|_| {}).unwrap();
+        arena.visit_mut(ctx, |v| v.extend_from_slice(b"abc")).unwrap();
+        let data = arena.consume(ctx, std::mem::take).unwrap();
+        assert_eq!(data, b"abc");
+        // Slot should be reusable.
+        let ctx2 = arena.insert(|_| {}).unwrap();
+        assert_eq!(ctx2, ctx);
+    }
+
+    // Regression: header round-trip with truncated marks data must fail.
+    #[test]
+    fn t_header_truncated_marks_fails() {
+        let src_marks = [
+            OrcMark { depth: 1, pos: 0 },
+            OrcMark { depth: 0, pos: 3 },
+        ];
+        let h = make_handle_with_marks(&src_marks);
+        let mut buf = Vec::new();
+        write_orc_handle_header(&h, &mut buf).unwrap();
+        // Remove the last byte so the marks data is truncated.
+        buf.pop();
+        let mut out = OrcHandle::default();
+        let mut cursor = std::io::Cursor::new(&buf);
+        assert!(read_orc_handle_header(&mut out, &mut cursor).is_err());
+    }
+
+    // Regression: SerialWrite must accumulate data across multiple failed
+    // flushes and send it all on a successful flush.
+    #[test]
+    fn t_serial_write_accumulates_across_failed_flushes() {
+        use std::io::Write;
+        let mut w = SerialWrite::new(0, Some(mock_write_fail));
+        w.write_all(b"aaa").unwrap();
+        let _ = w.flush(); // fail — buffer preserved
+        w.write_all(b"bbb").unwrap();
+        let _ = w.flush(); // fail again — buffer still has "aaabbb"
+        w.write_func = Some(mock_write_ok);
+        MOCK_SINK.lock().unwrap().clear();
+        w.flush().unwrap();
+        assert_eq!(&*MOCK_SINK.lock().unwrap(), b"aaabbb");
+    }
 }
