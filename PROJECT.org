@@ -366,11 +366,13 @@
   converting it to a graph. Allows idiomatic programming in each language. The Graph can then be
   transpiled back into any scripting language (usual code gen).
 
-* NEXT tk5iyg - Serializing workflows
+* DONE tk5iyg - Serializing workflows
+  CLOSED: [2026-08-22 Sat 16:58]
   :PROPERTIES:
   :CREATED:  2026-08-19 Wed 18:54
   :END:
   :LOGBOOK:
+  - State "DONE"       from "NEXT"       [2026-08-22 Sat 16:58]
   - State "NEXT"       from "TODO"       [2026-08-21 Fri 23:29]
   :END:
 
@@ -384,6 +386,9 @@
 
   <2026-08-22 Sat 14:31> Need to figure out how storing constants will affect the design of Python
   interop of the DAG workflows. Have some ideas, but not full clarity yet.
+
+  <2026-08-22 Sat 16:58> Used message pack. Got everything working. Tested the rountrip
+  serialization of workflows.
 
 ** CLOSED Vague Plan
    CLOSED: [2026-08-22 Sat 13:21]
