@@ -31,6 +31,7 @@ impl Workflow {
         plugin_set: &PluginSet,
         registry: &crate::DeckRegistry,
         ctx: u64,
+        next_handle_id: &mut impl FnMut() -> u64,
     ) -> Result<Self, DagError> {
         let n_entries = rmp::decode::read_map_len(src)?;
         if n_entries != 10 {
@@ -61,23 +62,22 @@ impl Workflow {
                     {
                         let mut node_infos = wf.node_infos.try_borrow_mut()?;
                         for i in 0..n {
-                            let _arr = rmp::decode::read_array_len(src)?; // 2
+                            let arr_len = rmp::decode::read_array_len(src)?;
                             let tag = rmp::decode::read_u32(src)?;
                             let info = match tag {
                                 0 => {
+                                    if arr_len != 3 {
+                                        return Err(DagError::ReadError);
+                                    }
+                                    let type_id = rmp::decode::read_u64(src)?;
                                     let bin_len = rmp::decode::read_bin_len(src)? as usize;
                                     let mut buf = vec![0u8; bin_len];
                                     src.read_exact_buf(&mut buf)
                                         .map_err(|_| DagError::ReadError)?;
-                                    // The header layout is [abi_version: u64, type_id: u64, ...].
-                                    // Peek at type_id (bytes 8..16) to dispatch without
-                                    // allocating the marks buffer on an unneeded code path.
-                                    if buf.len() < 16 {
-                                        return Err(DagError::ReadError);
-                                    }
-                                    let type_id =
-                                        u64::from_ne_bytes(buf[8..16].try_into().unwrap());
-                                    let mut handle = OrcHandle::default();
+                                    let mut handle = OrcHandle {
+                                        handle: next_handle_id(),
+                                        ..Default::default()
+                                    };
                                     match plugin_set.get_type_owner(type_id) {
                                         Some(TypeOwner::BuiltIn(_)) => {
                                             let mut cursor = std::io::Cursor::new(&buf);
@@ -98,6 +98,9 @@ impl Workflow {
                                     NodeInfo::Constant(handle)
                                 }
                                 1 => {
+                                    if arr_len != 2 {
+                                        return Err(DagError::ReadError);
+                                    }
                                     let len = rmp::decode::read_str_len(src)? as usize;
                                     let mut buf = vec![0u8; len];
                                     src.read_exact_buf(&mut buf)
@@ -110,6 +113,9 @@ impl Workflow {
                                     })
                                 }
                                 2 => {
+                                    if arr_len != 2 {
+                                        return Err(DagError::ReadError);
+                                    }
                                     let len = rmp::decode::read_str_len(src)? as usize;
                                     let mut buf = vec![0u8; len];
                                     src.read_exact_buf(&mut buf)
@@ -213,7 +219,13 @@ impl Workflow {
                         src.read_exact_buf(&mut buf)
                             .map_err(|_| DagError::ReadError)?;
                         let name = String::from_utf8(buf).map_err(|_| DagError::ReadError)?;
-                        let nested = Workflow::read_from_msgpack(src, plugin_set, registry, ctx)?;
+                        let nested = Workflow::read_from_msgpack(
+                            src,
+                            plugin_set,
+                            registry,
+                            ctx,
+                            next_handle_id,
+                        )?;
                         wf.nested_workflows.insert(name, nested);
                     }
                 }
@@ -249,8 +261,9 @@ impl Workflow {
                 match info {
                     NodeInfo::Constant(handle) => {
                         let bytes = serialize_handle(handle, plugin_set, arena)?;
-                        rmp::encode::write_array_len(w, 2)?;
+                        rmp::encode::write_array_len(w, 3)?;
                         rmp::encode::write_u32(w, 0)?;
+                        rmp::encode::write_u64(w, handle.type_id)?;
                         rmp::encode::write_bin(w, &bytes)?;
                     }
                     NodeInfo::Function(func_info) => {
