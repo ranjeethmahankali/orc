@@ -584,6 +584,15 @@
   - Custom types are deferred to the plugin that owns them, they are serialized to the end of the
     binary, after all the metadata in the header.
 
+  <2026-08-21 Fri 20:17> Finally got everything mostly working. The handles are now being serialized
+  and deserialized per their ABI. I have test coverage for most parts on their own, just need to add
+  some more test coverage for the full serialization machiner from the host side. Need to do it from
+  both the Rust and Python hosts.
+
+  - [ ] Add tests in the Rust host for the full roundtrip serialization of all types.
+  - [ ] Bring the Python host up to speed with all the serialization stuff, when it loads the
+    plugins etc. and add tests for serialization.
+
 ** Ideas for host side context handling
    :PROPERTIES:
    :CREATED:  2026-08-19 Wed 20:05
