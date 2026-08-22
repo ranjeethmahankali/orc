@@ -4,6 +4,8 @@ use rmp::encode::{RmpWrite, RmpWriteErr, ValueWriteError};
 use std::path::Path;
 
 impl Workflow {
+    const WORKFLOW_MSGPACK_VERSION_CURRENT: u64 = 1;
+
     pub fn write_to_msgpack<P: AsRef<Path>>(
         &self,
         path: P,
@@ -15,7 +17,7 @@ impl Workflow {
 }
 
 impl Graph {
-    const GRAPH_VERSION_CURRENT: u64 = 1;
+    const GRAPH_MSGPACK_VERSION_CURRENT: u64 = 1;
 
     pub fn write_to_msgpack(&self, w: &mut impl RmpWrite) -> Result<(), DagError> {
         if self.inputs.iter().any(|i| i.deleted)
@@ -30,7 +32,7 @@ impl Graph {
         }
         // Top-level: [version, nodes, links]
         rmp::encode::write_array_len(w, 3)?;
-        rmp::encode::write_u64(w, Self::GRAPH_VERSION_CURRENT)?;
+        rmp::encode::write_u64(w, Self::GRAPH_MSGPACK_VERSION_CURRENT)?;
         // nodes: [[n_inputs, n_outputs], ...]
         rmp::encode::write_array_len(w, self.nodes.len() as u32)?;
         let mut oh_local: Vec<u32> = vec![0; self.outputs.len()];
