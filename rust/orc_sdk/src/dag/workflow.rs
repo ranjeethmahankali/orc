@@ -44,15 +44,15 @@ impl NodeInfo {
 }
 
 pub struct Workflow {
-    graph: Graph,
-    node_infos: NodeProperty<NodeInfo>,
-    input_labels: InputProperty<String>,
-    output_labels: OutputProperty<String>,
-    node_comments: NodeProperty<String>,
-    workflow_outputs: Vec<(OH, String)>,
-    workflow_input_names: Vec<String>,
-    workflow_input_index: InputProperty<Option<usize>>,
-    nested_workflows: HashMap<String, Workflow>,
+    pub(crate) graph: Graph,
+    pub(crate) node_infos: NodeProperty<NodeInfo>,
+    pub(crate) input_labels: InputProperty<String>,
+    pub(crate) output_labels: OutputProperty<String>,
+    pub(crate) node_comments: NodeProperty<String>,
+    pub(crate) workflow_outputs: Vec<(OH, String)>,
+    pub(crate) workflow_input_names: Vec<String>,
+    pub(crate) workflow_input_index: InputProperty<Option<usize>>,
+    pub(crate) nested_workflows: HashMap<String, Workflow>,
 }
 
 impl Default for Workflow {
