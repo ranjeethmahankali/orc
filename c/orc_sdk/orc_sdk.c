@@ -2383,13 +2383,15 @@ OrcError orc_sdk_serialize_handle_header(uint64_t const ctx, OrcHandle const *ha
   buf = _bytes_append(buf, (char *)&(handle->n_marks), sizeof(handle->n_marks));
   if (buf == NULL)
     return ORC_ERROR_ALLOC_FAILED;
-  if (handle->marks != NULL && handle->n_marks > 0) {
-    buf = _bytes_append(buf, (char *)handle->marks, handle->n_marks * sizeof(OrcMark));
-    if (buf == NULL)
-      return ORC_ERROR_ALLOC_FAILED;
-  }
   err = orc_sdk_host_serial_write(ctx, buf, orc_sdk_arr_len(buf));
   orc_sdk_arr_free(buf);
+  if (err != ORC_ERROR_NONE) {
+    return err;
+  }
+  if (handle->marks != NULL && handle->n_marks > 0) {
+    err =
+      orc_sdk_host_serial_write(ctx, handle->marks, handle->n_marks * sizeof(OrcMark));
+  }
   return err;
 }
 
