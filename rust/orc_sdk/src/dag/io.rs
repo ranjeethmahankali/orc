@@ -1,7 +1,7 @@
-use super::{DagError, Graph, NH, NodeInfo, Workflow};
+use super::{DagError, Graph, IH, NH, NodeInfo, OH, Workflow};
 use crate::{OrcHandle, PluginSet, TypeOwner};
 use rmp::{
-    decode::RmpRead,
+    decode::{RmpRead, RmpReadErr, ValueReadError},
     encode::{RmpWrite, RmpWriteErr, ValueWriteError},
 };
 
@@ -26,7 +26,10 @@ fn serialize_handle(
 impl Workflow {
     const WORKFLOW_MSGPACK_VERSION_CURRENT: u64 = 1;
 
-    pub fn read_from_msgpack(_src: &mut impl RmpRead) -> Result<Self, DagError> {
+    pub fn read_from_msgpack(
+        src: &mut impl RmpRead,
+        plugin_set: &PluginSet,
+    ) -> Result<Self, DagError> {
         todo!()
     }
 
@@ -169,8 +172,53 @@ impl Workflow {
 impl Graph {
     const GRAPH_MSGPACK_VERSION_CURRENT: u64 = 1;
 
-    pub fn read_from_msgpack(_src: &mut impl RmpRead) -> Result<Self, DagError> {
-        todo!();
+    pub fn read_from_msgpack(src: &mut impl RmpRead) -> Result<Self, DagError> {
+        let outer_len = rmp::decode::read_array_len(src)?;
+        if outer_len != 3 {
+            return Err(DagError::ReadError);
+        }
+        let version = rmp::decode::read_u64(src)?;
+        if version != Self::GRAPH_MSGPACK_VERSION_CURRENT {
+            return Err(DagError::VersionMismatch);
+        }
+        let n_nodes = rmp::decode::read_array_len(src)? as usize;
+        let mut graph = Graph::default();
+        let mut node_ihs: NestedVec<IH> = NestedVec {
+            items: Vec::new(),
+            offsets: Vec::new(),
+        };
+        let mut node_ohs: NestedVec<OH> = NestedVec {
+            items: Vec::new(),
+            offsets: Vec::new(),
+        };
+        for _ in 0..n_nodes {
+            let node_len = rmp::decode::read_array_len(src)?;
+            if node_len != 2 {
+                return Err(DagError::ReadError);
+            }
+            let n_inputs = rmp::decode::read_u32(src)? as usize;
+            let n_outputs = rmp::decode::read_u32(src)? as usize;
+            let mut ihs = vec![IH::default(); n_inputs];
+            let mut ohs = vec![OH::default(); n_outputs];
+            graph.push_node(&mut ihs, &mut ohs)?;
+            node_ihs.push_slice(&ihs);
+            node_ohs.push_slice(&ohs);
+        }
+        let n_links = rmp::decode::read_array_len(src)? as usize;
+        for _ in 0..n_links {
+            let link_len = rmp::decode::read_array_len(src)?;
+            if link_len != 4 {
+                return Err(DagError::ReadError);
+            }
+            let src_node = rmp::decode::read_u32(src)? as usize;
+            let local_out = rmp::decode::read_u32(src)? as usize;
+            let dst_node = rmp::decode::read_u32(src)? as usize;
+            let local_in = rmp::decode::read_u32(src)? as usize;
+            let oh = node_ohs.get(src_node)[local_out];
+            let ih = node_ihs.get(dst_node)[local_in];
+            graph.push_link(oh, ih)?;
+        }
+        Ok(graph)
     }
 
     pub fn write_to_msgpack(
@@ -234,6 +282,24 @@ impl Graph {
 struct NestedVec<T> {
     items: Vec<T>,
     offsets: Vec<usize>,
+}
+
+impl<T: Clone> NestedVec<T> {
+    fn push_slice(&mut self, slice: &[T]) {
+        self.items.extend_from_slice(slice);
+        self.offsets.push(self.items.len());
+    }
+
+    fn get(&self, i: usize) -> &[T] {
+        let start = if i == 0 { 0 } else { self.offsets[i - 1] };
+        &self.items[start..self.offsets[i]]
+    }
+}
+
+impl<E: RmpReadErr> From<ValueReadError<E>> for DagError {
+    fn from(_: ValueReadError<E>) -> Self {
+        DagError::ReadError
+    }
 }
 
 impl<E: RmpWriteErr> From<ValueWriteError<E>> for DagError {

@@ -401,6 +401,8 @@ pub enum DagError {
     NamingConflict,
     GarbageCollectionRequired,
     WriteError,
+    ReadError,
+    VersionMismatch,
     SdkError(crate::Error),
 }
 
