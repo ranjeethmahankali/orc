@@ -269,7 +269,7 @@ macro_rules! orc_dag {
             let mut nested_names_: Vec<&str> = Vec::new();
             {
                 let nested_wf_ref_ = &mut nested_wf_;
-                let _: _ = orc_dag!(@stmts $ps, $hc, $reg, nested_wf_ref_, nested_ins_, nested_names_, $($body)*)
+                let _ = orc_dag!(@stmts $ps, $hc, $reg, nested_wf_ref_, nested_ins_, nested_names_, $($body)*)
                     .map_err(|e: $crate::DagError| e)?;
                 if !nested_ins_.is_empty() {
                     nested_wf_ref_.set_inputs(&nested_ins_)?;
