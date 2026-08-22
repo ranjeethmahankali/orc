@@ -1,7 +1,7 @@
 use crate::{HANDLE_COUNTER, PLUGIN_SET, REGISTRY, SERIAL_CONTEXT_ARENA, host_clone_orc_handle};
 use orc_sdk::{
-    DagError, Deck, DeckView, Error, IH, OH, OrcHandle, OrcTypeId, Plugin, TypeOwner, Workflow,
-    deck, orc_dag, orc_inline_dag, update_handle_from_deck,
+    DagError, Deck, DeckView, IH, OH, OrcHandle, OrcTypeId, Plugin, TypeOwner, Workflow, deck,
+    orc_dag, orc_inline_dag, update_handle_from_deck,
 };
 use std::sync::atomic::Ordering;
 
@@ -1207,7 +1207,10 @@ fn t_serial_deserialize_trailing_bytes_fails() {
     let h = make_handle(&d);
     let mut buf = host_serialize(&h);
     buf.push(0xFF);
-    let mut out = OrcHandle { handle: next_id(), ..Default::default() };
+    let mut out = OrcHandle {
+        handle: next_id(),
+        ..Default::default()
+    };
     let result = plugin_for_type(h.type_id).deserialize_deck(0, &buf, &mut out);
     assert!(result.is_err());
 }
@@ -1217,14 +1220,110 @@ fn t_serial_deserialize_truncated_fails() {
     let d = deck![1.0_f64, 2.0, 3.0];
     let h = make_handle(&d);
     let buf = host_serialize(&h);
-    let mut out = OrcHandle { handle: next_id(), ..Default::default() };
+    let mut out = OrcHandle {
+        handle: next_id(),
+        ..Default::default()
+    };
     let result = plugin_for_type(h.type_id).deserialize_deck(0, &buf[..buf.len() - 1], &mut out);
     assert!(result.is_err());
 }
 
 #[test]
 fn t_serial_deserialize_empty_buffer_fails() {
-    let mut out = OrcHandle { handle: next_id(), ..Default::default() };
+    let mut out = OrcHandle {
+        handle: next_id(),
+        ..Default::default()
+    };
     let result = plugin_for_type(orc_sdk::ORC_TYPE_F64).deserialize_deck(0, &[], &mut out);
     assert!(result.is_err());
+}
+
+/// Helper: call create_complex(real, imag) to produce a complex-typed handle.
+fn create_complex_handle(reals: &[f64], imags: &[f64]) -> OrcHandle {
+    let create_complex = PLUGIN_SET
+        .get_function("create_complex")
+        .expect("create_complex not found");
+    let real_deck: Deck<f64> = Deck::from_raw_data(reals, &[]);
+    let imag_deck: Deck<f64> = Deck::from_raw_data(imags, &[]);
+    let real_h = make_handle(&real_deck);
+    let imag_h = make_handle(&imag_deck);
+    let mut out = OrcHandle {
+        handle: next_id(),
+        ..Default::default()
+    };
+    let inputs = [real_h, imag_h];
+    unsafe {
+        (create_complex.func.expect("Invalid function"))(0, inputs.as_ptr(), 2, &mut out, 1);
+    }
+    out
+}
+
+/// Helper: call complex_get_parts to extract (reals, imags) from a complex handle.
+fn extract_complex_parts(handle: &OrcHandle) -> (Vec<f64>, Vec<f64>) {
+    let get_parts = PLUGIN_SET
+        .get_function("complex_get_parts")
+        .expect("complex_get_parts not found");
+    let real_out = OrcHandle {
+        handle: next_id(),
+        ..Default::default()
+    };
+    let imag_out = OrcHandle {
+        handle: next_id(),
+        ..Default::default()
+    };
+    let inputs = [handle.borrowed()];
+    let mut outputs = [real_out, imag_out];
+    unsafe {
+        (get_parts.func.expect("Invalid function"))(
+            0,
+            inputs.as_ptr().cast(),
+            1,
+            outputs.as_mut_ptr(),
+            2,
+        );
+    }
+    let reals = outputs[0].items::<f64>().to_vec();
+    let imags = outputs[1].items::<f64>().to_vec();
+    (reals, imags)
+}
+
+#[test]
+fn t_serial_round_trip_complex_flat() {
+    let h = create_complex_handle(&[1.0, -3.5], &[2.0, 0.0]);
+    let out = serial_round_trip(&h);
+    assert_eq!(out.n_items, 2);
+    assert_eq!(out.type_id, h.type_id);
+    let (orig_re, orig_im) = extract_complex_parts(&h);
+    let (out_re, out_im) = extract_complex_parts(&out);
+    assert_eq!(orig_re, out_re);
+    assert_eq!(orig_im, out_im);
+}
+
+#[test]
+fn t_serial_round_trip_complex_nested() {
+    // Create flat complex numbers, then nest them via a proxy.
+    let create_complex = PLUGIN_SET
+        .get_function("create_complex")
+        .expect("create_complex not found");
+    let real_deck: Deck<f64> = deck![[1.0, 2.0], [3.0]];
+    let imag_deck: Deck<f64> = deck![[0.5, -0.5], [1.0]];
+    let real_h = make_handle(&real_deck);
+    let imag_h = make_handle(&imag_deck);
+    let mut h = OrcHandle {
+        handle: next_id(),
+        ..Default::default()
+    };
+    let inputs = [real_h, imag_h];
+    unsafe {
+        (create_complex.func.expect("Invalid function"))(0, inputs.as_ptr(), 2, &mut h, 1);
+    }
+    assert!(h.n_marks > 0, "expected nested complex deck");
+    let buf = host_serialize(&h);
+    let out = host_deserialize(&buf, h.type_id);
+    assert_eq!(out.n_items, h.n_items);
+    assert_eq!(out.n_marks, h.n_marks);
+    let (orig_re, orig_im) = extract_complex_parts(&h);
+    let (out_re, out_im) = extract_complex_parts(&out);
+    assert_eq!(orig_re, out_re);
+    assert_eq!(orig_im, out_im);
 }
