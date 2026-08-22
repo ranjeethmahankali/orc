@@ -1,7 +1,7 @@
-use crate::{HANDLE_COUNTER, PLUGIN_SET, REGISTRY, host_clone_orc_handle};
+use crate::{HANDLE_COUNTER, PLUGIN_SET, REGISTRY, SERIAL_CONTEXT_ARENA, host_clone_orc_handle};
 use orc_sdk::{
-    DagError, Deck, DeckView, IH, OH, OrcHandle, Workflow, deck, orc_dag, orc_inline_dag,
-    update_handle_from_deck,
+    DagError, Deck, DeckView, Error, IH, OH, OrcHandle, OrcTypeId, Plugin, TypeOwner, Workflow,
+    deck, orc_dag, orc_inline_dag, update_handle_from_deck,
 };
 use std::sync::atomic::Ordering;
 
@@ -1028,4 +1028,203 @@ fn t_dag_nested_fn_with_outer_input() {
         .unwrap();
     let view = DeckView::<f64>::from_handle(&out[0]).unwrap();
     assert_eq!(view.items(), &[10.0, 14.0]);
+}
+
+// ==================== Full round-trip serialization ====================
+
+/// Look up the plugin that owns `type_id`, matching the host's dispatch pattern.
+fn plugin_for_type(type_id: OrcTypeId) -> &'static Plugin {
+    match PLUGIN_SET.get_type_owner(type_id) {
+        Some(TypeOwner::Plugin(plugin_index, _)) => &PLUGIN_SET.plugins()[*plugin_index],
+        // Builtin types can be serialized by any plugin.
+        Some(TypeOwner::BuiltIn(_)) => &PLUGIN_SET.plugins()[0],
+        None => panic!("No plugin found for type_id {type_id}"),
+    }
+}
+
+fn host_serialize(handle: &OrcHandle) -> Vec<u8> {
+    plugin_for_type(handle.type_id)
+        .serialize_deck(&SERIAL_CONTEXT_ARENA, handle, |buf| buf.clone())
+        .expect("serialization failed")
+}
+
+fn host_deserialize(buf: &[u8], type_id: OrcTypeId) -> OrcHandle {
+    let mut out = OrcHandle {
+        handle: next_id(),
+        ..Default::default()
+    };
+    plugin_for_type(type_id)
+        .deserialize_deck(0, buf, &mut out)
+        .expect("deserialization failed");
+    out
+}
+
+fn serial_round_trip(handle: &OrcHandle) -> OrcHandle {
+    let buf = host_serialize(handle);
+    host_deserialize(&buf, handle.type_id)
+}
+
+fn make_handle<T: orc_sdk::TOrcData>(deck: &Deck<T>) -> OrcHandle {
+    let mut h = OrcHandle {
+        handle: next_id(),
+        ..Default::default()
+    };
+    unsafe { update_handle_from_deck(deck, &mut h) };
+    h
+}
+
+#[test]
+fn t_serial_round_trip_f64_flat() {
+    let d = deck![1.0_f64, 2.0, 3.0];
+    let h = make_handle(&d);
+    let out = serial_round_trip(&h);
+    assert_eq!(out.items::<f64>(), &[1.0, 2.0, 3.0]);
+}
+
+#[test]
+fn t_serial_round_trip_f64_nested() {
+    let d: Deck<f64> = deck![[1.0, 2.0], [3.0]];
+    let h = make_handle(&d);
+    assert!(h.n_marks > 0);
+    let out = serial_round_trip(&h);
+    assert_eq!(out.items::<f64>(), &[1.0, 2.0, 3.0]);
+    assert_eq!(out.n_marks, h.n_marks);
+    let orig_marks = unsafe { std::slice::from_raw_parts(h.marks, h.n_marks as usize) };
+    let out_marks = unsafe { std::slice::from_raw_parts(out.marks, out.n_marks as usize) };
+    for (a, b) in orig_marks.iter().zip(out_marks.iter()) {
+        assert_eq!(a.depth, b.depth);
+        assert_eq!(a.pos, b.pos);
+    }
+}
+
+#[test]
+fn t_serial_round_trip_f64_deeply_nested() {
+    let d: Deck<f64> = deck![[[1.0, 2.0], [3.0]], [[4.0]]];
+    let h = make_handle(&d);
+    let out = serial_round_trip(&h);
+    let orig = DeckView::<f64>::from_handle(&h).unwrap();
+    let restored = DeckView::<f64>::from_handle(&out).unwrap();
+    assert_eq!(orig.depth(), restored.depth());
+    assert_eq!(orig.items(), restored.items());
+    assert_eq!(orig.marks().len(), restored.marks().len());
+}
+
+#[test]
+fn t_serial_round_trip_i32() {
+    let d = deck![10_i32, 20, 30, 40];
+    let h = make_handle(&d);
+    let out = serial_round_trip(&h);
+    assert_eq!(out.items::<i32>(), &[10, 20, 30, 40]);
+}
+
+#[test]
+fn t_serial_round_trip_u8() {
+    let d = deck![255_u8, 0, 128];
+    let h = make_handle(&d);
+    let out = serial_round_trip(&h);
+    assert_eq!(out.items::<u8>(), &[255, 0, 128]);
+}
+
+#[test]
+fn t_serial_round_trip_u16() {
+    let d = deck![100_u16, 200, 65535];
+    let h = make_handle(&d);
+    let out = serial_round_trip(&h);
+    assert_eq!(out.items::<u16>(), &[100, 200, 65535]);
+}
+
+#[test]
+fn t_serial_round_trip_u32() {
+    let d = deck![1000_u32, 2000, u32::MAX];
+    let h = make_handle(&d);
+    let out = serial_round_trip(&h);
+    assert_eq!(out.items::<u32>(), &[1000, 2000, u32::MAX]);
+}
+
+#[test]
+fn t_serial_round_trip_u64() {
+    let d = deck![u64::MAX, 0_u64, 42];
+    let h = make_handle(&d);
+    let out = serial_round_trip(&h);
+    assert_eq!(out.items::<u64>(), &[u64::MAX, 0, 42]);
+}
+
+#[test]
+fn t_serial_round_trip_i8() {
+    let d = deck![-128_i8, 0, 127];
+    let h = make_handle(&d);
+    let out = serial_round_trip(&h);
+    assert_eq!(out.items::<i8>(), &[-128, 0, 127]);
+}
+
+#[test]
+fn t_serial_round_trip_i16() {
+    let d = deck![-100_i16, 0, 100];
+    let h = make_handle(&d);
+    let out = serial_round_trip(&h);
+    assert_eq!(out.items::<i16>(), &[-100, 0, 100]);
+}
+
+#[test]
+fn t_serial_round_trip_i64() {
+    let d = deck![i64::MIN, 0_i64, i64::MAX];
+    let h = make_handle(&d);
+    let out = serial_round_trip(&h);
+    assert_eq!(out.items::<i64>(), &[i64::MIN, 0, i64::MAX]);
+}
+
+#[test]
+fn t_serial_round_trip_f32() {
+    let d = deck![1.5_f32, -2.5, 0.0];
+    let h = make_handle(&d);
+    let out = serial_round_trip(&h);
+    assert_eq!(out.items::<f32>(), &[1.5f32, -2.5, 0.0]);
+}
+
+#[test]
+fn t_serial_round_trip_empty_deck() {
+    let d: Deck<f64> = Deck::default();
+    let h = make_handle(&d);
+    assert_eq!(h.n_items, 0);
+    let out = serial_round_trip(&h);
+    assert_eq!(out.n_items, 0);
+}
+
+#[test]
+fn t_serial_round_trip_preserves_dims() {
+    let d = deck![1.0_f64, 2.0];
+    let mut h = make_handle(&d);
+    h.dims[0] = 1;
+    h.dims[1] = -2;
+    h.dims[3] = 3;
+    let out = serial_round_trip(&h);
+    assert_eq!(out.dims, h.dims);
+}
+
+#[test]
+fn t_serial_deserialize_trailing_bytes_fails() {
+    let d = deck![42_i64];
+    let h = make_handle(&d);
+    let mut buf = host_serialize(&h);
+    buf.push(0xFF);
+    let mut out = OrcHandle { handle: next_id(), ..Default::default() };
+    let result = plugin_for_type(h.type_id).deserialize_deck(0, &buf, &mut out);
+    assert!(result.is_err());
+}
+
+#[test]
+fn t_serial_deserialize_truncated_fails() {
+    let d = deck![1.0_f64, 2.0, 3.0];
+    let h = make_handle(&d);
+    let buf = host_serialize(&h);
+    let mut out = OrcHandle { handle: next_id(), ..Default::default() };
+    let result = plugin_for_type(h.type_id).deserialize_deck(0, &buf[..buf.len() - 1], &mut out);
+    assert!(result.is_err());
+}
+
+#[test]
+fn t_serial_deserialize_empty_buffer_fails() {
+    let mut out = OrcHandle { handle: next_id(), ..Default::default() };
+    let result = plugin_for_type(orc_sdk::ORC_TYPE_F64).deserialize_deck(0, &[], &mut out);
+    assert!(result.is_err());
 }
