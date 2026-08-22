@@ -96,10 +96,9 @@ impl Plugin {
         })
     }
 
-    pub fn alloc_deck(&self, type_id: OrcTypeId) -> Result<OrcHandle, Error> {
-        let mut handle = OrcHandle::default();
-        let err = unsafe { (self.deck_alloc)(type_id, &mut handle) };
-        Error::from_raw(err).map(|_| handle)
+    pub fn alloc_deck(&self, type_id: OrcTypeId, handle: &mut OrcHandle) -> Result<(), Error> {
+        let err = unsafe { (self.deck_alloc)(type_id, handle) };
+        Error::from_raw(err)
     }
 
     pub fn free_deck(&self, handle: &mut OrcHandle) -> Result<(), Error> {
@@ -120,17 +119,17 @@ impl Plugin {
         inputs: &[OrcHandle],
         proxy_type: ProxyType,
         proxy: &OrcHandle,
-    ) -> Result<OrcHandle, Error> {
-        let mut out = OrcHandle::default();
+        out: &mut OrcHandle,
+    ) -> Result<(), Error> {
         let ptype = match proxy_type {
             ProxyType::CopyAll => ORC_DECK_PROXY_COPY_ALL,
             ProxyType::CopyItems => ORC_DECK_PROXY_COPY_ITEMS,
             ProxyType::Shuffle => ORC_DECK_PROXY_SHUFFLE,
         };
         let err = unsafe {
-            (self.deck_from_proxy)(inputs.as_ptr(), inputs.len() as u64, ptype, proxy, &mut out)
+            (self.deck_from_proxy)(inputs.as_ptr(), inputs.len() as u64, ptype, proxy, out)
         };
-        Error::from_raw(err).map(|_| out)
+        Error::from_raw(err)
     }
 
     pub fn serialize_deck<R>(

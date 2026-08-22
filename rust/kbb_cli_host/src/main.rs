@@ -112,13 +112,7 @@ unsafe extern "C" fn host_create_proxy_deck(
             },
             TypeOwner::Plugin(plugin_index, _) => {
                 let plugin = &plugin_set.plugins()[*plugin_index];
-                match plugin.create_proxy_deck(inputs, proxy_type, proxy) {
-                    Ok(h) => {
-                        *out = h;
-                        Ok(())
-                    }
-                    Err(err) => Err(err),
-                }
+                plugin.create_proxy_deck(inputs, proxy_type, proxy, out)
             }
         },
         None => return ORC_ERROR_INVALID_PROXY,
