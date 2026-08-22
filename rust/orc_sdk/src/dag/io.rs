@@ -40,8 +40,12 @@ impl Workflow {
         let mut wf = Workflow::default();
         let mut node_ihs = NestedVec::<IH>::default();
         let mut node_ohs = NestedVec::<OH>::default();
+        let mut seen_keys = std::collections::HashSet::new();
         for _ in 0..n_entries {
             let key = read_string(src)?;
+            if !seen_keys.insert(key.clone()) {
+                return Err(DagError::ReadError);
+            }
             match key.as_str() {
                 "version" => {
                     let v = rmp::decode::read_u64(src)?;
@@ -55,6 +59,9 @@ impl Workflow {
                 }
                 "node_infos" => {
                     let n = rmp::decode::read_array_len(src)? as usize;
+                    if n != wf.graph.nodes.len() {
+                        return Err(DagError::ReadError);
+                    }
                     {
                         let mut node_infos = wf.node_infos.try_borrow_mut()?;
                         for i in 0..n {
@@ -125,7 +132,9 @@ impl Workflow {
                         }
                         let node_idx = rmp::decode::read_u32(src)? as usize;
                         let local_idx = rmp::decode::read_u32(src)? as usize;
-                        labels[node_ihs.get(node_idx)[local_idx]] = read_string(src)?;
+                        let ihs = node_ihs.get(node_idx)?;
+                        let &ih = ihs.get(local_idx).ok_or(DagError::ReadError)?;
+                        labels[ih] = read_string(src)?;
                     }
                 }
                 "output_labels" => {
@@ -137,7 +146,9 @@ impl Workflow {
                         }
                         let node_idx = rmp::decode::read_u32(src)? as usize;
                         let local_idx = rmp::decode::read_u32(src)? as usize;
-                        labels[node_ohs.get(node_idx)[local_idx]] = read_string(src)?;
+                        let ohs = node_ohs.get(node_idx)?;
+                        let &oh = ohs.get(local_idx).ok_or(DagError::ReadError)?;
+                        labels[oh] = read_string(src)?;
                     }
                 }
                 "node_comments" => {
@@ -145,6 +156,9 @@ impl Workflow {
                     let mut comments = wf.node_comments.try_borrow_mut()?;
                     for _ in 0..n {
                         let node_idx = rmp::decode::read_u32(src)? as usize;
+                        if node_idx >= wf.graph.nodes.len() {
+                            return Err(DagError::ReadError);
+                        }
                         comments[NH { idx: node_idx }] = read_string(src)?;
                     }
                 }
@@ -157,8 +171,9 @@ impl Workflow {
                         let node_idx = rmp::decode::read_u32(src)? as usize;
                         let local_idx = rmp::decode::read_u32(src)? as usize;
                         let name = read_string(src)?;
-                        wf.workflow_outputs
-                            .push((node_ohs.get(node_idx)[local_idx], name));
+                        let ohs = node_ohs.get(node_idx)?;
+                        let &oh = ohs.get(local_idx).ok_or(DagError::ReadError)?;
+                        wf.workflow_outputs.push((oh, name));
                     }
                 }
                 "workflow_input_names" => {
@@ -177,7 +192,9 @@ impl Workflow {
                         let node_idx = rmp::decode::read_u32(src)? as usize;
                         let local_idx = rmp::decode::read_u32(src)? as usize;
                         let wf_idx = rmp::decode::read_u32(src)? as usize;
-                        wf_input_index[node_ihs.get(node_idx)[local_idx]] = Some(wf_idx);
+                        let ihs = node_ihs.get(node_idx)?;
+                        let &ih = ihs.get(local_idx).ok_or(DagError::ReadError)?;
+                        wf_input_index[ih] = Some(wf_idx);
                     }
                 }
                 "nested_workflows" => {
@@ -383,8 +400,14 @@ impl Graph {
             let local_out = rmp::decode::read_u32(src)? as usize;
             let dst_node = rmp::decode::read_u32(src)? as usize;
             let local_in = rmp::decode::read_u32(src)? as usize;
-            let oh = node_ohs.get(src_node)[local_out];
-            let ih = node_ihs.get(dst_node)[local_in];
+            let oh = *node_ohs
+                .get(src_node)?
+                .get(local_out)
+                .ok_or(DagError::ReadError)?;
+            let ih = *node_ihs
+                .get(dst_node)?
+                .get(local_in)
+                .ok_or(DagError::ReadError)?;
             self.push_link(oh, ih)?;
         }
         Ok(())
@@ -468,9 +491,10 @@ impl<T: Clone> NestedVec<T> {
         self.offsets.push(self.items.len());
     }
 
-    fn get(&self, i: usize) -> &[T] {
+    fn get(&self, i: usize) -> Result<&[T], DagError> {
+        let end = *self.offsets.get(i).ok_or(DagError::ReadError)?;
         let start = if i == 0 { 0 } else { self.offsets[i - 1] };
-        &self.items[start..self.offsets[i]]
+        Ok(&self.items[start..end])
     }
 
     fn clear(&mut self) {
