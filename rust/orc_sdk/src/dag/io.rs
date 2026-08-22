@@ -5,19 +5,20 @@ use rmp::{
     encode::{RmpWrite, RmpWriteErr, ValueWriteError},
 };
 
-fn serialize_handle(handle: &OrcHandle, plugin_set: &PluginSet) -> Result<Vec<u8>, DagError> {
+fn serialize_handle(
+    handle: &OrcHandle,
+    plugin_set: &PluginSet,
+    arena: &crate::ContextArena<Vec<u8>>,
+) -> Result<Vec<u8>, DagError> {
     match plugin_set.get_type_owner(handle.type_id) {
         Some(TypeOwner::BuiltIn(_)) => {
             let mut buf = Vec::new();
             crate::try_serialize_handle(handle, &mut buf).map_err(|_| DagError::WriteError)?;
             Ok(buf)
         }
-        Some(TypeOwner::Plugin(plugin_idx, _)) => {
-            let arena = crate::ContextArena::<Vec<u8>>::default();
-            plugin_set.plugins()[*plugin_idx]
-                .serialize_deck(&arena, handle, |buf| buf.clone())
-                .map_err(|_| DagError::WriteError)
-        }
+        Some(TypeOwner::Plugin(plugin_idx, _)) => plugin_set.plugins()[*plugin_idx]
+            .serialize_deck(arena, handle, |buf| buf.clone())
+            .map_err(|_| DagError::WriteError),
         None => Err(DagError::WriteError),
     }
 }
@@ -32,6 +33,7 @@ impl Workflow {
     pub fn write_to_msgpack(
         &self,
         plugin_set: &PluginSet,
+        arena: &crate::ContextArena<Vec<u8>>,
         w: &mut impl RmpWrite,
     ) -> Result<(), DagError> {
         // Top-level workflow map with 10 fields.
@@ -39,9 +41,12 @@ impl Workflow {
         // "version"
         rmp::encode::write_str(w, "version")?;
         rmp::encode::write_u64(w, Self::WORKFLOW_MSGPACK_VERSION_CURRENT)?;
-        // "graph"
+        // "graph": populate local index maps as a side effect.
         rmp::encode::write_str(w, "graph")?;
-        self.graph.write_to_msgpack(w)?;
+        let mut oh_local = Vec::new();
+        let mut ih_local = Vec::new();
+        self.graph
+            .write_to_msgpack(w, &mut oh_local, &mut ih_local)?;
         // "node_infos": array of [tag, payload], one entry per node.
         rmp::encode::write_str(w, "node_infos")?;
         {
@@ -50,7 +55,7 @@ impl Workflow {
             for info in node_infos.iter() {
                 match info {
                     NodeInfo::Constant(handle) => {
-                        let bytes = serialize_handle(handle, plugin_set)?;
+                        let bytes = serialize_handle(handle, plugin_set, arena)?;
                         rmp::encode::write_array_len(w, 2)?;
                         rmp::encode::write_u32(w, 0)?;
                         rmp::encode::write_bin(w, &bytes)?;
@@ -68,22 +73,38 @@ impl Workflow {
                 }
             }
         }
-        // "input_labels": array of strings.
+        // "input_labels": sparse array of [node_idx, local_input_idx, label], empty labels skipped.
         rmp::encode::write_str(w, "input_labels")?;
         {
             let input_labels = self.input_labels.try_borrow()?;
-            rmp::encode::write_array_len(w, input_labels.len() as u32)?;
-            for label in input_labels.iter() {
-                rmp::encode::write_str(w, label)?;
+            let n = input_labels.iter().filter(|l| !l.is_empty()).count();
+            rmp::encode::write_array_len(w, n as u32)?;
+            for (ih_idx, label) in input_labels.iter().enumerate() {
+                if !label.is_empty() {
+                    let node_idx = self.graph.inputs[ih_idx].node.idx as u32;
+                    let local_idx = ih_local[ih_idx];
+                    rmp::encode::write_array_len(w, 3)?;
+                    rmp::encode::write_u32(w, node_idx)?;
+                    rmp::encode::write_u32(w, local_idx)?;
+                    rmp::encode::write_str(w, label)?;
+                }
             }
         }
-        // "output_labels": array of strings.
+        // "output_labels": sparse array of [node_idx, local_output_idx, label], empty labels skipped.
         rmp::encode::write_str(w, "output_labels")?;
         {
             let output_labels = self.output_labels.try_borrow()?;
-            rmp::encode::write_array_len(w, output_labels.len() as u32)?;
-            for label in output_labels.iter() {
-                rmp::encode::write_str(w, label)?;
+            let n = output_labels.iter().filter(|l| !l.is_empty()).count();
+            rmp::encode::write_array_len(w, n as u32)?;
+            for (oh_idx, label) in output_labels.iter().enumerate() {
+                if !label.is_empty() {
+                    let node_idx = self.graph.outputs[oh_idx].node.idx as u32;
+                    let local_idx = oh_local[oh_idx];
+                    rmp::encode::write_array_len(w, 3)?;
+                    rmp::encode::write_u32(w, node_idx)?;
+                    rmp::encode::write_u32(w, local_idx)?;
+                    rmp::encode::write_str(w, label)?;
+                }
             }
         }
         // "node_comments": sparse map {node_idx -> comment}, empty strings skipped.
@@ -99,12 +120,15 @@ impl Workflow {
                 }
             }
         }
-        // "workflow_outputs": array of [oh_idx, name].
+        // "workflow_outputs": array of [node_idx, local_output_idx, name].
         rmp::encode::write_str(w, "workflow_outputs")?;
         rmp::encode::write_array_len(w, self.workflow_outputs.len() as u32)?;
         for (oh, name) in &self.workflow_outputs {
-            rmp::encode::write_array_len(w, 2)?;
-            rmp::encode::write_u32(w, oh.idx as u32)?;
+            let node_idx = self.graph.outputs[oh.idx].node.idx as u32;
+            let local_idx = oh_local[oh.idx];
+            rmp::encode::write_array_len(w, 3)?;
+            rmp::encode::write_u32(w, node_idx)?;
+            rmp::encode::write_u32(w, local_idx)?;
             rmp::encode::write_str(w, name)?;
         }
         // "workflow_input_names": array of strings.
@@ -113,15 +137,19 @@ impl Workflow {
         for name in &self.workflow_input_names {
             rmp::encode::write_str(w, name)?;
         }
-        // "workflow_input_index": sparse map {ih_idx -> workflow_input_idx}.
+        // "workflow_input_index": array of [node_idx, local_input_idx, workflow_input_idx].
         rmp::encode::write_str(w, "workflow_input_index")?;
         {
             let wf_input_index = self.workflow_input_index.try_borrow()?;
             let n_mapped = wf_input_index.iter().filter(|o| o.is_some()).count();
-            rmp::encode::write_map_len(w, n_mapped as u32)?;
-            for (i, opt) in wf_input_index.iter().enumerate() {
+            rmp::encode::write_array_len(w, n_mapped as u32)?;
+            for (ih_idx, opt) in wf_input_index.iter().enumerate() {
                 if let Some(wf_idx) = opt {
-                    rmp::encode::write_u32(w, i as u32)?;
+                    let node_idx = self.graph.inputs[ih_idx].node.idx as u32;
+                    let local_idx = ih_local[ih_idx];
+                    rmp::encode::write_array_len(w, 3)?;
+                    rmp::encode::write_u32(w, node_idx)?;
+                    rmp::encode::write_u32(w, local_idx)?;
                     rmp::encode::write_u32(w, *wf_idx as u32)?;
                 }
             }
@@ -132,7 +160,7 @@ impl Workflow {
         for (name, wf) in &self.nested_workflows {
             rmp::encode::write_array_len(w, 2)?;
             rmp::encode::write_str(w, name)?;
-            wf.write_to_msgpack(plugin_set, w)?;
+            wf.write_to_msgpack(plugin_set, arena, w)?;
         }
         Ok(())
     }
@@ -145,7 +173,12 @@ impl Graph {
         todo!();
     }
 
-    pub fn write_to_msgpack(&self, w: &mut impl RmpWrite) -> Result<(), DagError> {
+    pub fn write_to_msgpack(
+        &self,
+        w: &mut impl RmpWrite,
+        oh_local: &mut Vec<u32>,
+        ih_local: &mut Vec<u32>,
+    ) -> Result<(), DagError> {
         if self.inputs.iter().any(|i| i.deleted)
             || self.outputs.iter().any(|i| i.deleted)
             || self.links.iter().any(|i| i.deleted)
@@ -161,8 +194,10 @@ impl Graph {
         rmp::encode::write_u64(w, Self::GRAPH_MSGPACK_VERSION_CURRENT)?;
         // nodes: [[n_inputs, n_outputs], ...]
         rmp::encode::write_array_len(w, self.nodes.len() as u32)?;
-        let mut oh_local: Vec<u32> = vec![0; self.outputs.len()];
-        let mut ih_local: Vec<u32> = vec![0; self.inputs.len()];
+        oh_local.clear();
+        oh_local.resize(self.outputs.len(), 0);
+        ih_local.clear();
+        ih_local.resize(self.inputs.len(), 0);
         for n in 0..self.nodes.len() {
             let nh = NH::from(n);
             let mut n_inputs = 0u32;
