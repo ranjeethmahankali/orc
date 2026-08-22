@@ -289,39 +289,80 @@ impl PluginSet {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::{ORC_TYPE_F64, OrcHandle};
-    use std::sync::LazyLock;
+pub(crate) mod test_harness {
+    use crate::{ContextArena, DagError, DeckRegistry, OrcHost, PluginSet, Workflow, load_plugins};
+    use std::sync::{
+        LazyLock,
+        atomic::{AtomicU64, Ordering},
+    };
 
-    fn math_plugin_path() -> std::path::PathBuf {
-        // The test binary is in build/debug/deps/; built DLLs are in build/debug/.
+    pub fn plugin_dir() -> std::path::PathBuf {
         let exe = std::env::current_exe().unwrap();
         let deps = exe.parent().unwrap();
-        let dir = if deps.ends_with("deps") {
-            deps.parent().unwrap()
+        if deps.ends_with("deps") {
+            deps.parent().unwrap().to_path_buf()
         } else {
-            deps
-        };
-        #[cfg(target_os = "windows")]
-        return dir.join("math_plugin.dll");
-        #[cfg(target_os = "macos")]
-        return dir.join("libmath_plugin.dylib");
-        #[cfg(not(any(target_os = "windows", target_os = "macos")))]
-        return dir.join("libmath_plugin.so");
+            deps.to_path_buf()
+        }
     }
 
     // Load once per process — the plugin's OnceLock<HOST> can only be set once.
-    static PLUGIN: LazyLock<Plugin> =
-        LazyLock::new(|| Plugin::load(&math_plugin_path(), &OrcHost::default()).unwrap());
+    pub static PLUGINS: LazyLock<PluginSet> =
+        LazyLock::new(|| load_plugins(&plugin_dir(), &OrcHost::default()).unwrap());
+
+    pub struct TestHarness {
+        pub registry: DeckRegistry,
+        pub arena: ContextArena<Vec<u8>>,
+        pub handle_counter: AtomicU64,
+    }
+
+    impl TestHarness {
+        pub fn new() -> Self {
+            Self {
+                registry: DeckRegistry::default(),
+                arena: ContextArena::<Vec<u8>>::default(),
+                handle_counter: AtomicU64::new(1),
+            }
+        }
+
+        pub fn roundtrip(&self, wf: &Workflow) -> Workflow {
+            let mut buf = Vec::new();
+            wf.write_to_msgpack(&PLUGINS, &self.arena, &mut buf)
+                .unwrap();
+            let mut cursor = std::io::Cursor::new(&buf);
+            let mut next_id = || self.handle_counter.fetch_add(1, Ordering::Relaxed);
+            Workflow::read_from_msgpack(&mut cursor, &PLUGINS, &self.registry, 0, &mut next_id)
+                .unwrap()
+        }
+
+        pub fn roundtrip_bytes(&self, wf: &Workflow) -> Vec<u8> {
+            let mut buf = Vec::new();
+            wf.write_to_msgpack(&PLUGINS, &self.arena, &mut buf)
+                .unwrap();
+            buf
+        }
+
+        pub fn read_workflow(&self, buf: &[u8]) -> Result<Workflow, DagError> {
+            let mut cursor = std::io::Cursor::new(buf);
+            let mut next_id = || self.handle_counter.fetch_add(1, Ordering::Relaxed);
+            Workflow::read_from_msgpack(&mut cursor, &PLUGINS, &self.registry, 0, &mut next_id)
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::test_harness::PLUGINS;
+    use crate::{ORC_TYPE_F64, OrcHandle};
 
     #[test]
     fn alloc_deck_populates_handle() {
+        let plugin = &PLUGINS.plugins()[0];
         let mut handle = OrcHandle {
             handle: 5000,
             ..Default::default()
         };
-        let err = unsafe { (PLUGIN.deck_alloc)(ORC_TYPE_F64, &mut handle) };
+        let err = unsafe { (plugin.deck_alloc)(ORC_TYPE_F64, &mut handle) };
         assert_eq!(err, crate::ORC_ERROR_NONE);
         assert!(handle.free_fn.is_some());
         assert_eq!(handle.type_id, ORC_TYPE_F64);
@@ -331,13 +372,14 @@ mod tests {
 
     #[test]
     fn free_deck_resets_handle() {
+        let plugin = &PLUGINS.plugins()[0];
         let mut handle = OrcHandle {
             handle: 5001,
             ..Default::default()
         };
-        unsafe { (PLUGIN.deck_alloc)(ORC_TYPE_F64, &mut handle) };
+        unsafe { (plugin.deck_alloc)(ORC_TYPE_F64, &mut handle) };
         assert!(handle.free_fn.is_some());
-        PLUGIN.free_deck(&mut handle).unwrap();
+        plugin.free_deck(&mut handle).unwrap();
         assert!(handle.free_fn.is_none());
         assert!(handle.items.is_null());
         assert_eq!(handle.handle, 5001);

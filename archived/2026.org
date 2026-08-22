@@ -1040,3 +1040,119 @@ Archived entries from file /home/rnjth94/dev/orc/PROJECT.org
   <2026-08-15 Sat 17:37> Renamed variable to 'parameter' to make it less confusing. Getting this
   merged.
 
+
+* DONE tjtyz1 - Running a DAG workflow
+  CLOSED: [2026-08-16 Sun 17:03]
+  :PROPERTIES:
+  :CREATED:  2026-08-15 Sat 14:26
+  :ARCHIVE_TIME: 2026-08-21 Fri 23:41
+  :ARCHIVE_FILE: ~/dev/orc/PROJECT.org
+  :ARCHIVE_CATEGORY: PROJECT
+  :ARCHIVE_TODO: DONE
+  :END:
+  :LOGBOOK:
+  - State "DONE"       from "NEXT"       [2026-08-16 Sun 17:03]
+  - State "NEXT"       from "TODO"       [2026-08-15 Sat 17:42]
+  :END:
+
+  First I need to iron out the details of handle ownership in Rust, and figure out what are all the
+  types of nodes I need in the DAG other than pure functions (constants, variables, ...). I need
+  clarity on all that before I can start.
+
+  <2026-08-15 Sat 17:45> Renamed the existing macro to ~orc_inline_dag~ to be more descriptive and
+  avoid conflict with new macro I want to add, to construct a DAG for testing.
+
+  <2026-08-15 Sat 19:05> Renamed ~orc_dag~ macro to ~orc_inline_dag~. Added support for ~const~ and
+  multiple return values to the orc_inline_dag macro. Added a new ~orc_dag~ macro that constructs a
+  DAG workflow instead of running the logic inline. This new macro hasn't been tested yet. I need a
+  rudimentary way to walk and evaluate the macro to start testing it. I could generate topological
+  tests, but feels messy. Seems much better to just write an evaluator and run that.
+
+  <2026-08-16 Sun 16:25> Sketched out a depth first euler tour to walk and evaluate the DAG
+  serially. This is good enough for testing, for now. Starting to write tests now.
+
+  - [X] Use the ~const~ syntax in all the existing orc_inline_dag tests, in kbb_cli_host/src/test.rs
+    instead of declaring the handles directly on the stack.
+
+  <2026-08-16 Sun 16:43> All tests are passing. Now able to run DAGs, retrieve outputs, and test
+  them. Checking a few more things, and ready to merge this soon.
+
+  <2026-08-16 Sun 17:02> Decided to do the Python DAG construction as a separate task. Ready to
+  merge.
+
+* DONE tjw1vf - Nested DAG support
+  CLOSED: [2026-08-19 Wed 18:54]
+  :PROPERTIES:
+  :CREATED:  2026-08-15 Sat 07:52
+  :ARCHIVE_TIME: 2026-08-21 Fri 23:41
+  :ARCHIVE_FILE: ~/dev/orc/PROJECT.org
+  :ARCHIVE_CATEGORY: PROJECT
+  :ARCHIVE_TODO: DONE
+  :END:
+  :LOGBOOK:
+  - State "DONE"       from "NEXT"       [2026-08-19 Wed 18:54]
+  - State "NEXT"       from "TODO"       [2026-08-16 Sun 20:50]
+  :END:
+
+  kbb file is a LISP dialect. The implementation goes [[file:rust/orc_sdk/src/dag/io.rs::pub fn parse_from_orc_file<P: AsRef<Path>>(path: P) -> Result<Self, DagError> {][here]].
+
+  S-expressions represent a DAG. It should parse the same cases as the ~orc_inline_dag~ macro
+  defined [[file:rust/orc_sdk/src/dag/mod.rs::macro_rules! orc_inline_dag {][here]]. And the ~orc_dag~ macro defined [[file:rust/orc_sdk/src/dag/mod.rs::macro_rules! orc_dag {][here]]. This should work like ~orc_dag~, except it
+  should parse the syntax from a file. Need to write a fast and efficient lexer.
+
+  Few ways in which this file format differs from the macros:
+
+  - Each argument of a function call can optionally be prefixed by a label such as:
+
+    #+begin_src lisp
+      (func :label arg1 arg2)
+    #+end_src
+
+    This is purely cosmetic, for readability. These labels should be parsed and stored in an input
+    property defined in the workflow. When a let binding is used for one or more outputs of a call,
+    that should be parsed and stored in the output_labels property. These properties are located [[file:rust/orc_sdk/src/dag/workflow.rs::input_labels:
+     InputProperty<String>,][here]].
+
+  - The datatypes of const literals needs to be parsed. If the literals mention it as 1.23f32, or
+    1.23f64, or 123u32, etc. They should be parsed to constants of that type. If the datatype is not
+    specified in this way, we should still support integers (i64 by default), floats (f64 by
+    default), and strings (u8 deck where each string is represented as a list of u8s). Strings will
+    be declared with quotes "my_string".
+
+  <2026-08-18 Tue 18:19> I am not sure if parsing a LISP syntax is the way to go. I am using this
+  task to answer other, related, and more important questions. Those answers are making the permise
+  of this task a bit redundant. I will still try to get this new stuff merged, but maybe as a
+  different task, and close this task.
+
+  <2026-08-18 Tue 19:33> Repurposing this task to flesh out the details of the DAG, including nested
+  DAGs, and serialization of the DAG. Next I want to figure out representing and running nested
+  workflows.
+
+  <2026-08-19 Wed 16:04> Tried out the named arguments idea. Didn't like it. It was throwing off the
+  Rust's syntax highlighting. Now, I almost have nested workflows working. Adding tests for
+  that. Once the nested workflows are fully working, I will be in a position to serialize a
+  hierarchy of workflows.
+
+  <2026-08-19 Wed 18:51> Repurposed this task yet again. Nested DAGs are working, and I want to get
+  this merged, and deal with serialization in a different task. Marking this done and getting it
+  merged.
+
+* DONE tk1hl6 - ABI - Return error codes from plugin functions
+  CLOSED: [2026-08-19 Wed 19:38]
+  :PROPERTIES:
+  :CREATED:  2026-08-19 Wed 08:39
+  :ARCHIVE_TIME: 2026-08-21 Fri 23:41
+  :ARCHIVE_FILE: ~/dev/orc/PROJECT.org
+  :ARCHIVE_CATEGORY: PROJECT
+  :ARCHIVE_TODO: DONE
+  :END:
+  :LOGBOOK:
+  - State "DONE"       from "NEXT"       [2026-08-19 Wed 19:38]
+  - State "NEXT"       from "TODO"       [2026-08-19 Wed 19:09]
+  :END:
+
+  This allows the host program to handle known error scenarios in addition to just reporting strings
+  to the user.
+
+  <2026-08-19 Wed 19:37> Quite straight forward refactor. All the tests are passing. Getting this
+  merged.

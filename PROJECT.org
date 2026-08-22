@@ -366,17 +366,37 @@
   converting it to a graph. Allows idiomatic programming in each language. The Graph can then be
   transpiled back into any scripting language (usual code gen).
 
-* TODO Serializing workflows
+* DONE tk5iyg - Serializing workflows
+  CLOSED: [2026-08-22 Sat 16:58]
   :PROPERTIES:
   :CREATED:  2026-08-19 Wed 18:54
+  :END:
+  :LOGBOOK:
+  - State "DONE"       from "NEXT"       [2026-08-22 Sat 16:58]
+  - State "NEXT"       from "TODO"       [2026-08-21 Fri 23:29]
   :END:
 
   [[*Serializing OrcHandle][Serializing OrcHandle]] needs to be solved before this can be properly executed. I workshopped a
   vague, obviously untested plan with the LLM's help. Just reprsents a vague direction.
 
-** Vague Plan
+  <2026-08-22 Sat 13:21> Scrapping the plan to save the DAG as plain text. Supporting mutliple
+  scripting languages already scratches the plain text itch, and I can revisit this decision later
+  if need be. For now, I am going forward with message pack. It is easy to implement version
+  support, is available in almost every language.
+
+  <2026-08-22 Sat 14:31> Need to figure out how storing constants will affect the design of Python
+  interop of the DAG workflows. Have some ideas, but not full clarity yet.
+
+  <2026-08-22 Sat 16:58> Used message pack. Got everything working. Tested the rountrip
+  serialization of workflows.
+
+** CLOSED Vague Plan
+   CLOSED: [2026-08-22 Sat 13:21]
    :PROPERTIES:
    :CREATED:  2026-08-19 Wed 18:55
+   :END:
+   :LOGBOOK:
+   - State "CLOSED"     from              [2026-08-22 Sat 13:21]
    :END:
 
 *** Overview
@@ -414,7 +434,7 @@
     Output indices are global across all nodes within a workflow, assigned implicitly in declaration
     order.
 
-    **** Function nodes
+**** Function nodes
 
     #+begin_example
     2 = add $x 0
@@ -427,23 +447,24 @@
       (~$name~).
     - ~_~ means an unconnected input.
 
-    **** Constant nodes
+**** Constant nodes
 
     #+begin_example
-    0 = .const [3.0f64]
-    1 = .const "offset" [[3u8, 2], [3, 4, 4]]
+    0 = .const "offset"
+    1 = .const
     #+end_example
 
-    - ~.const~ keyword followed by optional name string, then the data in brackets.
-    - The type suffix (e.g., ~f64~, ~u8~) appears on the first leaf value. Subsequent values in
-      the same constant can omit the suffix.
-    - Bracket nesting encodes the deck's mark/stride structure (depth).
-    - Supported builtin types: ~u8~, ~u16~, ~u32~, ~u64~, ~f32~, ~f64~, ~i8~, ~i16~, ~i32~, ~i64~.
-    - ~ORC_TYPE_PROXY~ is excluded from serialization.
+    - ~.const~ keyword followed by an optional name string.
     - The optional name string corresponds to the ~name~ field of ~NodeInfo::Constant~. It is
       only written when non-empty.
+    - Constant data is stored in a sibling binary file using MessagePack format. For a workflow
+      file named ~foo.orc~, the constants file is ~foo.const~.
+    - The ~.const~ file contains a msgpack array. Each entry is an arbitrary-length byte array
+      containing serialized constant data. The plugins are responsible for deserializing each
+      byte array.
+    - Constants are stored in the array in the same order they appear in the workflow file.
 
-    **** Nested workflow calls
+**** Nested workflow calls
 
     #+begin_example
     5 = double 2
@@ -453,7 +474,7 @@
     ~PluginSet~ first; if no function matches, it checks the workflow's nested workflows. This
     mirrors the runtime behavior and the ~orc_dag!~ macro's fallback logic.
 
-    **** Nodes with zero outputs
+**** Nodes with zero outputs
 
     #+begin_example
     fire_missiles 3
@@ -496,11 +517,13 @@
     - Input properties are keyed by ~node_index:input_index~ (per-node input index, zero-based).
     - Output properties are keyed by global output index.
     - Node properties are keyed by node index.
-    - Link properties are keyed by ~output_index input_node:input_index~.
+    - Link properties are keyed by ~output_index:input_node:input_index~.
     - Only non-default values are written. Default values (empty strings) are omitted.
 
 *** String Escaping
 
+    - Names of nested workflows, functions, labels of nodes, constants etc. cannot contain double or
+      single quotes. They also cannot start with a period.
     - Bare strings (identifiers like function names, workflow names, parameter names) are literal.
       They must not contain whitespace or special characters, and must not start with a period.
     - Quoted strings (labels, comments, names) use backslash escaping: ~\"~ for a literal quote,
@@ -539,18 +562,6 @@
     - Two workflows at different hierarchical paths can share the same name without conflict.
     - A workflow must be defined before it is called (definition appears before the call site in
       the node list, or as a nested workflow of an ancestor).
-
-*** Constant Data for Plugin-Owned Types
-
-    Not yet supported. Planned approach:
-
-    #+begin_example
-    0 = .const <0xABCD1234> data/node2.bin
-    #+end_example
-
-    - ~<type_id>~ is the integer type ID that identifies which plugin owns this type.
-    - The path points to a file in a companion data folder.
-    - The plugin provides serialize/deserialize over FFI (ABI extension needed).
 
 *** What Is NOT Serialized
 
@@ -617,107 +628,3 @@
 
    This should also be the general pattern for how the host handles other callbacks such as progress
    reporting, etc.
-
-* DONE tk1hl6 - ABI - Return error codes from plugin functions
-  CLOSED: [2026-08-19 Wed 19:38]
-  :PROPERTIES:
-  :CREATED:  2026-08-19 Wed 08:39
-  :END:
-  :LOGBOOK:
-  - State "DONE"       from "NEXT"       [2026-08-19 Wed 19:38]
-  - State "NEXT"       from "TODO"       [2026-08-19 Wed 19:09]
-  :END:
-
-  This allows the host program to handle known error scenarios in addition to just reporting strings
-  to the user.
-
-  <2026-08-19 Wed 19:37> Quite straight forward refactor. All the tests are passing. Getting this
-  merged.
-
-* DONE tjw1vf - Nested DAG support
-  CLOSED: [2026-08-19 Wed 18:54]
-  :PROPERTIES:
-  :CREATED:  2026-08-15 Sat 07:52
-  :END:
-  :LOGBOOK:
-  - State "DONE"       from "NEXT"       [2026-08-19 Wed 18:54]
-  - State "NEXT"       from "TODO"       [2026-08-16 Sun 20:50]
-  :END:
-
-  kbb file is a LISP dialect. The implementation goes [[file:rust/orc_sdk/src/dag/io.rs::pub fn parse_from_orc_file<P: AsRef<Path>>(path: P) -> Result<Self, DagError> {][here]].
-
-  S-expressions represent a DAG. It should parse the same cases as the ~orc_inline_dag~ macro
-  defined [[file:rust/orc_sdk/src/dag/mod.rs::macro_rules! orc_inline_dag {][here]]. And the ~orc_dag~ macro defined [[file:rust/orc_sdk/src/dag/mod.rs::macro_rules! orc_dag {][here]]. This should work like ~orc_dag~, except it
-  should parse the syntax from a file. Need to write a fast and efficient lexer.
-
-  Few ways in which this file format differs from the macros:
-
-  - Each argument of a function call can optionally be prefixed by a label such as:
-
-    #+begin_src lisp
-      (func :label arg1 arg2)
-    #+end_src
-
-    This is purely cosmetic, for readability. These labels should be parsed and stored in an input
-    property defined in the workflow. When a let binding is used for one or more outputs of a call,
-    that should be parsed and stored in the output_labels property. These properties are located [[file:rust/orc_sdk/src/dag/workflow.rs::input_labels:
-     InputProperty<String>,][here]].
-
-  - The datatypes of const literals needs to be parsed. If the literals mention it as 1.23f32, or
-    1.23f64, or 123u32, etc. They should be parsed to constants of that type. If the datatype is not
-    specified in this way, we should still support integers (i64 by default), floats (f64 by
-    default), and strings (u8 deck where each string is represented as a list of u8s). Strings will
-    be declared with quotes "my_string".
-
-  <2026-08-18 Tue 18:19> I am not sure if parsing a LISP syntax is the way to go. I am using this
-  task to answer other, related, and more important questions. Those answers are making the permise
-  of this task a bit redundant. I will still try to get this new stuff merged, but maybe as a
-  different task, and close this task.
-
-  <2026-08-18 Tue 19:33> Repurposing this task to flesh out the details of the DAG, including nested
-  DAGs, and serialization of the DAG. Next I want to figure out representing and running nested
-  workflows.
-
-  <2026-08-19 Wed 16:04> Tried out the named arguments idea. Didn't like it. It was throwing off the
-  Rust's syntax highlighting. Now, I almost have nested workflows working. Adding tests for
-  that. Once the nested workflows are fully working, I will be in a position to serialize a
-  hierarchy of workflows.
-
-  <2026-08-19 Wed 18:51> Repurposed this task yet again. Nested DAGs are working, and I want to get
-  this merged, and deal with serialization in a different task. Marking this done and getting it
-  merged.
-
-* DONE tjtyz1 - Running a DAG workflow
-  CLOSED: [2026-08-16 Sun 17:03]
-  :PROPERTIES:
-  :CREATED:  2026-08-15 Sat 14:26
-  :END:
-  :LOGBOOK:
-  - State "DONE"       from "NEXT"       [2026-08-16 Sun 17:03]
-  - State "NEXT"       from "TODO"       [2026-08-15 Sat 17:42]
-  :END:
-
-  First I need to iron out the details of handle ownership in Rust, and figure out what are all the
-  types of nodes I need in the DAG other than pure functions (constants, variables, ...). I need
-  clarity on all that before I can start.
-
-  <2026-08-15 Sat 17:45> Renamed the existing macro to ~orc_inline_dag~ to be more descriptive and
-  avoid conflict with new macro I want to add, to construct a DAG for testing.
-
-  <2026-08-15 Sat 19:05> Renamed ~orc_dag~ macro to ~orc_inline_dag~. Added support for ~const~ and
-  multiple return values to the orc_inline_dag macro. Added a new ~orc_dag~ macro that constructs a
-  DAG workflow instead of running the logic inline. This new macro hasn't been tested yet. I need a
-  rudimentary way to walk and evaluate the macro to start testing it. I could generate topological
-  tests, but feels messy. Seems much better to just write an evaluator and run that.
-
-  <2026-08-16 Sun 16:25> Sketched out a depth first euler tour to walk and evaluate the DAG
-  serially. This is good enough for testing, for now. Starting to write tests now.
-
-  - [X] Use the ~const~ syntax in all the existing orc_inline_dag tests, in kbb_cli_host/src/test.rs
-    instead of declaring the handles directly on the stack.
-
-  <2026-08-16 Sun 16:43> All tests are passing. Now able to run DAGs, retrieve outputs, and test
-  them. Checking a few more things, and ready to merge this soon.
-
-  <2026-08-16 Sun 17:02> Decided to do the Python DAG construction as a separate task. Ready to
-  merge.

@@ -197,9 +197,9 @@ macro_rules! orc_dag {
             let wf_ref_: &mut $crate::Workflow = $wf;
             // Workflow inputs accumulated during expansion.
             // Quoted symbols ('name) use Rust lifetime syntax to denote workflow inputs.
-            #[allow(unused_mut)]
+            #[allow(unused_mut, unused_variables)]
             let mut wf_ins_: Vec<($crate::IH, usize, &str)> = Vec::new();
-            #[allow(unused_mut)]
+            #[allow(unused_mut, unused_variables)]
             let mut wf_in_names_: Vec<&str> = Vec::new();
             let result_ = orc_dag!(@stmts ps_ref_, hc_ref_, reg_ref_, wf_ref_, wf_ins_, wf_in_names_, $($body)*);
             if !wf_ins_.is_empty() {
@@ -269,7 +269,7 @@ macro_rules! orc_dag {
             let mut nested_names_: Vec<&str> = Vec::new();
             {
                 let nested_wf_ref_ = &mut nested_wf_;
-                let _: _ = orc_dag!(@stmts $ps, $hc, $reg, nested_wf_ref_, nested_ins_, nested_names_, $($body)*)
+                let _ = orc_dag!(@stmts $ps, $hc, $reg, nested_wf_ref_, nested_ins_, nested_names_, $($body)*)
                     .map_err(|e: $crate::DagError| e)?;
                 if !nested_ins_.is_empty() {
                     nested_wf_ref_.set_inputs(&nested_ins_)?;
@@ -399,6 +399,10 @@ pub enum DagError {
     InvalidInputs,
     InvalidOutputs,
     NamingConflict,
+    GarbageCollectionRequired,
+    WriteError,
+    ReadError,
+    VersionMismatch,
     SdkError(crate::Error),
 }
 
