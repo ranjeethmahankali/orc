@@ -815,10 +815,9 @@ pub fn try_serialize_handle(handle: &OrcHandle, w: &mut impl std::io::Write) -> 
     write_orc_handle_header(handle, w).map_err(|_| Error::SerializationError)?;
     match handle.type_id {
         ORC_TYPE_U8 | ORC_TYPE_U16 | ORC_TYPE_U32 | ORC_TYPE_U64 | ORC_TYPE_I8 | ORC_TYPE_I16
-        | ORC_TYPE_I32 | ORC_TYPE_I64 | ORC_TYPE_F32 | ORC_TYPE_F64 => {
-            w.write_all(handle.items_as_bytes())
-                .map_err(|_| Error::SerializationError)
-        }
+        | ORC_TYPE_I32 | ORC_TYPE_I64 | ORC_TYPE_F32 | ORC_TYPE_F64 => w
+            .write_all(handle.items_as_bytes())
+            .map_err(|_| Error::SerializationError),
         _ => Err(Error::DeckTypeMismatch),
     }
 }
@@ -850,8 +849,7 @@ pub fn try_deserialize_handle(
         deck.assign_from_raw_data(items, marks);
         registry.alloc_with_value(Some(deck), handle)
     }
-    let marks = read_orc_handle_header(out, r)
-        .map_err(|_| Vec::new())?;
+    let marks = read_orc_handle_header(out, r).map_err(|_| Vec::new())?;
     match out.type_id {
         ORC_TYPE_U8 | ORC_TYPE_U16 | ORC_TYPE_U32 | ORC_TYPE_U64 | ORC_TYPE_I8 | ORC_TYPE_I16
         | ORC_TYPE_I32 | ORC_TYPE_I64 | ORC_TYPE_F32 | ORC_TYPE_F64 => {}
@@ -1610,5 +1608,186 @@ mod tests {
         MOCK_SINK.lock().unwrap().clear();
         w.flush().unwrap();
         assert_eq!(&*MOCK_SINK.lock().unwrap(), b"aaabbb");
+    }
+
+    // ==================== try_serialize_handle / try_deserialize_handle ====================
+
+    use crate::deck;
+    use std::sync::atomic::AtomicU64;
+
+    static SERIAL_NEXT_ID: AtomicU64 = AtomicU64::new(7000);
+
+    fn serial_fresh_handle(id: u64) -> OrcHandle {
+        OrcHandle {
+            handle: id,
+            ..Default::default()
+        }
+    }
+
+    fn serial_next_id() -> u64 {
+        SERIAL_NEXT_ID.fetch_add(1, Ordering::Relaxed)
+    }
+
+    fn serial_make_handle<T: TOrcData>(deck: &Deck<T>) -> OrcHandle {
+        let mut h = serial_fresh_handle(serial_next_id());
+        unsafe { update_handle_from_deck(deck, &mut h) };
+        h
+    }
+
+    #[test]
+    fn t_try_serialize_round_trip_f64() {
+        let reg = DeckRegistry::new();
+        let d = deck![1.0_f64, 2.0, 3.0];
+        let h = serial_make_handle(&d);
+        let mut buf = Vec::new();
+        try_serialize_handle(&h, &mut buf).unwrap();
+        let mut out = serial_fresh_handle(serial_next_id());
+        let mut cursor = std::io::Cursor::new(&buf[..]);
+        try_deserialize_handle(&mut cursor, &mut out, &reg).unwrap();
+        assert_eq!(out.type_id, h.type_id);
+        assert_eq!(out.n_items, 3);
+        assert_eq!(out.items::<f64>(), &[1.0, 2.0, 3.0]);
+        disarm(&mut out);
+    }
+
+    #[test]
+    fn t_try_serialize_round_trip_all_primitives() {
+        let reg = DeckRegistry::new();
+        macro_rules! test_type {
+            ($ty:ty, [$($v:expr),+ $(,)?]) => {{
+                let d: Deck<$ty> = deck![$($v),+];
+                let h = serial_make_handle(&d);
+                let mut buf = Vec::new();
+                try_serialize_handle(&h, &mut buf).unwrap();
+                let mut out = serial_fresh_handle(serial_next_id());
+                let mut cursor = std::io::Cursor::new(&buf[..]);
+                try_deserialize_handle(&mut cursor, &mut out, &reg).unwrap();
+                assert_eq!(out.type_id, <$ty as TOrcData>::TYPE_INFO.type_id);
+                let expected: &[$ty] = &[$($v),+];
+                assert_eq!(out.items::<$ty>(), expected);
+                disarm(&mut out);
+            }};
+        }
+        test_type!(u8, [1, 2, 3]);
+        test_type!(u16, [100, 200, 300]);
+        test_type!(u32, [1000, 2000]);
+        test_type!(u64, [10000, 20000]);
+        test_type!(i8, [-1, 0, 1]);
+        test_type!(i16, [-100, 0, 100]);
+        test_type!(i32, [-1000, 0, 1000]);
+        test_type!(i64, [-10000, 0, 10000]);
+        test_type!(f32, [1.5, -2.5]);
+        test_type!(f64, [1.5, -2.5, 0.0]);
+    }
+
+    #[test]
+    fn t_try_serialize_round_trip_nested() {
+        let reg = DeckRegistry::new();
+        let d: Deck<f64> = deck![[1.0, 2.0], [3.0]];
+        let h = serial_make_handle(&d);
+        assert!(h.n_marks > 0);
+        let mut buf = Vec::new();
+        try_serialize_handle(&h, &mut buf).unwrap();
+        let mut out = serial_fresh_handle(serial_next_id());
+        let mut cursor = std::io::Cursor::new(&buf[..]);
+        try_deserialize_handle(&mut cursor, &mut out, &reg).unwrap();
+        assert_eq!(out.items::<f64>(), &[1.0, 2.0, 3.0]);
+        assert_eq!(out.n_marks, h.n_marks);
+        let orig_marks = unsafe { slice_from_ptr(h.marks, h.n_marks as usize) };
+        let out_marks = unsafe { slice_from_ptr(out.marks, out.n_marks as usize) };
+        assert_eq!(orig_marks, out_marks);
+        disarm(&mut out);
+    }
+
+    #[test]
+    fn t_try_serialize_round_trip_empty() {
+        let reg = DeckRegistry::new();
+        let d: Deck<i32> = Deck::default();
+        let h = serial_make_handle(&d);
+        let mut buf = Vec::new();
+        try_serialize_handle(&h, &mut buf).unwrap();
+        let mut out = serial_fresh_handle(serial_next_id());
+        let mut cursor = std::io::Cursor::new(&buf[..]);
+        try_deserialize_handle(&mut cursor, &mut out, &reg).unwrap();
+        assert_eq!(out.type_id, crate::ORC_TYPE_I32);
+        assert_eq!(out.n_items, 0);
+        disarm(&mut out);
+    }
+
+    #[test]
+    fn t_try_serialize_custom_type_returns_mismatch() {
+        let mut h = serial_fresh_handle(serial_next_id());
+        h.type_id = 0xDEADBEEF;
+        h.item_size = 8;
+        let mut buf = Vec::new();
+        let result = try_serialize_handle(&h, &mut buf);
+        assert!(matches!(result, Err(Error::DeckTypeMismatch)));
+        // Header should still have been written.
+        assert!(!buf.is_empty());
+    }
+
+    #[test]
+    fn t_try_deserialize_custom_type_returns_marks() {
+        // Serialize a builtin handle, then tamper with the type_id in the buffer
+        // to simulate a custom type.
+        let d = deck![42_u32];
+        let h = serial_make_handle(&d);
+        let mut buf = Vec::new();
+        try_serialize_handle(&h, &mut buf).unwrap();
+        // Overwrite type_id (bytes 8..16) with a custom type id.
+        let custom_id: u64 = 0xDEADBEEF;
+        buf[8..16].copy_from_slice(&custom_id.to_ne_bytes());
+        let reg = DeckRegistry::new();
+        let mut out = serial_fresh_handle(serial_next_id());
+        let mut cursor = std::io::Cursor::new(&buf[..]);
+        let marks = try_deserialize_handle(&mut cursor, &mut out, &reg).unwrap_err();
+        // Header was parsed into out.
+        assert_eq!(out.type_id, custom_id);
+        assert_eq!(out.n_items, 1);
+        // Marks returned match what the original handle had.
+        assert_eq!(marks.len(), h.n_marks as usize);
+    }
+
+    #[test]
+    fn t_try_deserialize_trailing_bytes_fails() {
+        let reg = DeckRegistry::new();
+        let d = deck![1_u8, 2, 3];
+        let h = serial_make_handle(&d);
+        let mut buf = Vec::new();
+        try_serialize_handle(&h, &mut buf).unwrap();
+        buf.push(0xFF); // extra trailing byte
+        let mut out = serial_fresh_handle(serial_next_id());
+        let mut cursor = std::io::Cursor::new(&buf[..]);
+        assert!(try_deserialize_handle(&mut cursor, &mut out, &reg).is_err());
+    }
+
+    #[test]
+    fn t_try_deserialize_truncated_fails() {
+        let d = deck![1.0_f64, 2.0];
+        let h = serial_make_handle(&d);
+        let mut buf = Vec::new();
+        try_serialize_handle(&h, &mut buf).unwrap();
+        buf.truncate(buf.len() - 1);
+        let reg = DeckRegistry::new();
+        let mut out = serial_fresh_handle(serial_next_id());
+        let mut cursor = std::io::Cursor::new(&buf[..]);
+        assert!(try_deserialize_handle(&mut cursor, &mut out, &reg).is_err());
+    }
+
+    #[test]
+    fn t_try_serialize_preserves_dims() {
+        let reg = DeckRegistry::new();
+        let d = deck![1.0_f64, 2.0];
+        let mut h = serial_make_handle(&d);
+        h.dims[0] = 1;
+        h.dims[1] = -2;
+        h.dims[3] = 3;
+        let mut buf = Vec::new();
+        try_serialize_handle(&h, &mut buf).unwrap();
+        let mut out = serial_fresh_handle(serial_next_id());
+        let mut cursor = std::io::Cursor::new(&buf[..]);
+        try_deserialize_handle(&mut cursor, &mut out, &reg).unwrap();
+        assert_eq!(out.dims, h.dims);
+        disarm(&mut out);
     }
 }
