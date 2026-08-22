@@ -275,9 +275,8 @@ impl FreeList {
     }
 
     pub fn pop(&mut self) -> Option<u64> {
-        self.list.pop().map(|last| {
+        self.list.pop().inspect(|&last| {
             self.present_flag[last as usize] = false;
-            last
         })
     }
 }
