@@ -75,5 +75,5 @@ def collatz_parallel_experiment():
 
 
 if __name__ == "__main__":
-    # simple_experiment()
-    collatz_parallel_experiment()
+    simple_experiment()
+    # collatz_parallel_experiment()
