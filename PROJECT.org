@@ -366,9 +366,12 @@
   converting it to a graph. Allows idiomatic programming in each language. The Graph can then be
   transpiled back into any scripting language (usual code gen).
 
-* TODO Serializing workflows
+* NEXT tk5iyg - Serializing workflows
   :PROPERTIES:
   :CREATED:  2026-08-19 Wed 18:54
+  :END:
+  :LOGBOOK:
+  - State "NEXT"       from "TODO"       [2026-08-21 Fri 23:29]
   :END:
 
   [[*Serializing OrcHandle][Serializing OrcHandle]] needs to be solved before this can be properly executed. I workshopped a
