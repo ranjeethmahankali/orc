@@ -5,6 +5,7 @@ import gc
 import math
 import os
 import sys
+import threading
 
 import numpy as np
 
@@ -851,6 +852,89 @@ def t_serial_custom_type_nested_round_trip():
                 assert real_orig == real_out
                 assert imag_orig == imag_out
                 assert out.n_marks == c.n_marks
+
+
+def t_serial_concurrent_serialization():
+    """Two serialization calls on different threads don't corrupt each other."""
+    lib = orc._loaded_plugins[0][0]
+    h1 = make_handle([1.0, 2.0, 3.0, 4.0, 5.0])
+    h2 = make_handle([10, 20, 30, 40, 50], type_id=orc.ORC_TYPE_I32)
+    results = [None, None]
+    errors = [None, None]
+
+    def serialize_thread(idx, handle):
+        try:
+            results[idx] = _serialize(lib, handle)
+        except Exception as e:
+            errors[idx] = e
+
+    t1 = threading.Thread(target=serialize_thread, args=(0, h1))
+    t2 = threading.Thread(target=serialize_thread, args=(1, h2))
+    t1.start()
+    t2.start()
+    t1.join()
+    t2.join()
+    assert errors[0] is None, f"Thread 0 error: {errors[0]}"
+    assert errors[1] is None, f"Thread 1 error: {errors[1]}"
+    # Each buffer should deserialize back correctly.
+    out1 = _deserialize(lib, results[0])
+    out2 = _deserialize(lib, results[1])
+    assert orc.read_deck(out1) == [1.0, 2.0, 3.0, 4.0, 5.0]
+    assert out2.type_id == orc.ORC_TYPE_I32
+    assert orc._read_handle_items(out2, ctypes.c_int32) == [10, 20, 30, 40, 50]
+
+
+def t_serial_empty_deck():
+    """Serialize and deserialize an empty deck."""
+    h = make_handle([], type_id=orc.ORC_TYPE_F64)
+    for lib, _ in orc._loaded_plugins:
+        out = _serial_round_trip(lib, lib, h)
+        assert out.type_id == orc.ORC_TYPE_F64
+        assert out.n_items == 0
+
+
+def t_serial_single_element():
+    """Serialize and deserialize a single-element deck."""
+    h = make_handle([42.0])
+    for lib, _ in orc._loaded_plugins:
+        out = _serial_round_trip(lib, lib, h)
+        assert orc.read_deck(out) == [42.0]
+
+
+def t_serial_deserialize_truncated_fails():
+    """Deserializing truncated data returns an error."""
+    lib = orc._loaded_plugins[0][0]
+    h = make_handle([1.0, 2.0, 3.0])
+    data = _serialize(lib, h)
+    # Truncate to half the data.
+    truncated = data[:len(data) // 2]
+    out = orc.empty_handle()
+    buf = (ctypes.c_uint8 * len(truncated))(*truncated)
+    err = lib.orc_deck_deserialize(0, ctypes.cast(buf, ctypes.c_void_p),
+                                   len(truncated), ctypes.byref(out))
+    assert err != orc.ORC_ERROR_NONE
+
+
+def t_serial_deserialize_empty_buffer_fails():
+    """Deserializing an empty buffer returns an error."""
+    lib = orc._loaded_plugins[0][0]
+    out = orc.empty_handle()
+    err = lib.orc_deck_deserialize(0, None, 0, ctypes.byref(out))
+    assert err != orc.ORC_ERROR_NONE
+
+
+def t_serial_preserves_dims():
+    """Serialization round-trip preserves dimensional metadata."""
+    h = make_handle([1.0, 2.0, 3.0])
+    # Set some dims: length=1, mass=2, time=-1
+    h.dims[0] = 1
+    h.dims[1] = 2
+    h.dims[2] = -1
+    for lib, _ in orc._loaded_plugins:
+        out = _serial_round_trip(lib, lib, h)
+        assert orc.read_deck(out) == [1.0, 2.0, 3.0]
+        for i in range(7):
+            assert out.dims[i] == h.dims[i], f"dim[{i}]: {out.dims[i]} != {h.dims[i]}"
 
 
 # ============================================================
