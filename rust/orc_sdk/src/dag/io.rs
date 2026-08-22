@@ -41,12 +41,8 @@ impl Workflow {
         let mut node_ihs = NestedVec::<IH>::default();
         let mut node_ohs = NestedVec::<OH>::default();
         for _ in 0..n_entries {
-            let key_len = rmp::decode::read_str_len(src)? as usize;
-            let mut key_buf = vec![0u8; key_len];
-            src.read_exact_buf(&mut key_buf)
-                .map_err(|_| DagError::ReadError)?;
-            let key = std::str::from_utf8(&key_buf).map_err(|_| DagError::ReadError)?;
-            match key {
+            let key = read_string(src)?;
+            match key.as_str() {
                 "version" => {
                     let v = rmp::decode::read_u64(src)?;
                     if v != Self::WORKFLOW_MSGPACK_VERSION_CURRENT {
@@ -101,12 +97,7 @@ impl Workflow {
                                     if arr_len != 2 {
                                         return Err(DagError::ReadError);
                                     }
-                                    let len = rmp::decode::read_str_len(src)? as usize;
-                                    let mut buf = vec![0u8; len];
-                                    src.read_exact_buf(&mut buf)
-                                        .map_err(|_| DagError::ReadError)?;
-                                    let name =
-                                        String::from_utf8(buf).map_err(|_| DagError::ReadError)?;
+                                    let name = read_string(src)?;
                                     NodeInfo::Function(FuncInfo {
                                         name,
                                         ..Default::default()
@@ -116,12 +107,7 @@ impl Workflow {
                                     if arr_len != 2 {
                                         return Err(DagError::ReadError);
                                     }
-                                    let len = rmp::decode::read_str_len(src)? as usize;
-                                    let mut buf = vec![0u8; len];
-                                    src.read_exact_buf(&mut buf)
-                                        .map_err(|_| DagError::ReadError)?;
-                                    let workflow_name =
-                                        String::from_utf8(buf).map_err(|_| DagError::ReadError)?;
+                                    let workflow_name = read_string(src)?;
                                     NodeInfo::NestedCall { workflow_name }
                                 }
                                 _ => return Err(DagError::ReadError),
@@ -134,30 +120,24 @@ impl Workflow {
                     let n = rmp::decode::read_array_len(src)? as usize;
                     let mut labels = wf.input_labels.try_borrow_mut()?;
                     for _ in 0..n {
-                        let _arr = rmp::decode::read_array_len(src)?; // 3
+                        if rmp::decode::read_array_len(src)? != 3 {
+                            return Err(DagError::ReadError);
+                        }
                         let node_idx = rmp::decode::read_u32(src)? as usize;
                         let local_idx = rmp::decode::read_u32(src)? as usize;
-                        let len = rmp::decode::read_str_len(src)? as usize;
-                        let mut buf = vec![0u8; len];
-                        src.read_exact_buf(&mut buf)
-                            .map_err(|_| DagError::ReadError)?;
-                        labels[node_ihs.get(node_idx)[local_idx]] =
-                            String::from_utf8(buf).map_err(|_| DagError::ReadError)?;
+                        labels[node_ihs.get(node_idx)[local_idx]] = read_string(src)?;
                     }
                 }
                 "output_labels" => {
                     let n = rmp::decode::read_array_len(src)? as usize;
                     let mut labels = wf.output_labels.try_borrow_mut()?;
                     for _ in 0..n {
-                        let _arr = rmp::decode::read_array_len(src)?; // 3
+                        if rmp::decode::read_array_len(src)? != 3 {
+                            return Err(DagError::ReadError);
+                        }
                         let node_idx = rmp::decode::read_u32(src)? as usize;
                         let local_idx = rmp::decode::read_u32(src)? as usize;
-                        let len = rmp::decode::read_str_len(src)? as usize;
-                        let mut buf = vec![0u8; len];
-                        src.read_exact_buf(&mut buf)
-                            .map_err(|_| DagError::ReadError)?;
-                        labels[node_ohs.get(node_idx)[local_idx]] =
-                            String::from_utf8(buf).map_err(|_| DagError::ReadError)?;
+                        labels[node_ohs.get(node_idx)[local_idx]] = read_string(src)?;
                     }
                 }
                 "node_comments" => {
@@ -165,25 +145,18 @@ impl Workflow {
                     let mut comments = wf.node_comments.try_borrow_mut()?;
                     for _ in 0..n {
                         let node_idx = rmp::decode::read_u32(src)? as usize;
-                        let len = rmp::decode::read_str_len(src)? as usize;
-                        let mut buf = vec![0u8; len];
-                        src.read_exact_buf(&mut buf)
-                            .map_err(|_| DagError::ReadError)?;
-                        comments[NH { idx: node_idx }] =
-                            String::from_utf8(buf).map_err(|_| DagError::ReadError)?;
+                        comments[NH { idx: node_idx }] = read_string(src)?;
                     }
                 }
                 "workflow_outputs" => {
                     let n = rmp::decode::read_array_len(src)? as usize;
                     for _ in 0..n {
-                        let _arr = rmp::decode::read_array_len(src)?; // 3
+                        if rmp::decode::read_array_len(src)? != 3 {
+                            return Err(DagError::ReadError);
+                        }
                         let node_idx = rmp::decode::read_u32(src)? as usize;
                         let local_idx = rmp::decode::read_u32(src)? as usize;
-                        let len = rmp::decode::read_str_len(src)? as usize;
-                        let mut buf = vec![0u8; len];
-                        src.read_exact_buf(&mut buf)
-                            .map_err(|_| DagError::ReadError)?;
-                        let name = String::from_utf8(buf).map_err(|_| DagError::ReadError)?;
+                        let name = read_string(src)?;
                         wf.workflow_outputs
                             .push((node_ohs.get(node_idx)[local_idx], name));
                     }
@@ -191,19 +164,16 @@ impl Workflow {
                 "workflow_input_names" => {
                     let n = rmp::decode::read_array_len(src)? as usize;
                     for _ in 0..n {
-                        let len = rmp::decode::read_str_len(src)? as usize;
-                        let mut buf = vec![0u8; len];
-                        src.read_exact_buf(&mut buf)
-                            .map_err(|_| DagError::ReadError)?;
-                        wf.workflow_input_names
-                            .push(String::from_utf8(buf).map_err(|_| DagError::ReadError)?);
+                        wf.workflow_input_names.push(read_string(src)?);
                     }
                 }
                 "workflow_input_index" => {
                     let n = rmp::decode::read_array_len(src)? as usize;
                     let mut wf_input_index = wf.workflow_input_index.try_borrow_mut()?;
                     for _ in 0..n {
-                        let _arr = rmp::decode::read_array_len(src)?; // 3
+                        if rmp::decode::read_array_len(src)? != 3 {
+                            return Err(DagError::ReadError);
+                        }
                         let node_idx = rmp::decode::read_u32(src)? as usize;
                         let local_idx = rmp::decode::read_u32(src)? as usize;
                         let wf_idx = rmp::decode::read_u32(src)? as usize;
@@ -213,12 +183,10 @@ impl Workflow {
                 "nested_workflows" => {
                     let n = rmp::decode::read_array_len(src)? as usize;
                     for _ in 0..n {
-                        let _arr = rmp::decode::read_array_len(src)?; // 2
-                        let len = rmp::decode::read_str_len(src)? as usize;
-                        let mut buf = vec![0u8; len];
-                        src.read_exact_buf(&mut buf)
-                            .map_err(|_| DagError::ReadError)?;
-                        let name = String::from_utf8(buf).map_err(|_| DagError::ReadError)?;
+                        if rmp::decode::read_array_len(src)? != 2 {
+                            return Err(DagError::ReadError);
+                        }
+                        let name = read_string(src)?;
                         let nested = Workflow::read_from_msgpack(
                             src,
                             plugin_set,
@@ -509,6 +477,14 @@ impl<T: Clone> NestedVec<T> {
         self.items.clear();
         self.offsets.clear();
     }
+}
+
+fn read_string(src: &mut impl RmpRead) -> Result<String, DagError> {
+    let len = rmp::decode::read_str_len(src)? as usize;
+    let mut buf = vec![0u8; len];
+    src.read_exact_buf(&mut buf)
+        .map_err(|_| DagError::ReadError)?;
+    String::from_utf8(buf).map_err(|_| DagError::ReadError)
 }
 
 impl<E: RmpReadErr> From<ValueReadError<E>> for DagError {
