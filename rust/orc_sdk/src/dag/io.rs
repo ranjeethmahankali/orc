@@ -141,6 +141,10 @@ impl Workflow {
 impl Graph {
     const GRAPH_MSGPACK_VERSION_CURRENT: u64 = 1;
 
+    pub fn read_from_msgpack(_src: &mut impl RmpRead) -> Result<Self, DagError> {
+        todo!();
+    }
+
     pub fn write_to_msgpack(&self, w: &mut impl RmpWrite) -> Result<(), DagError> {
         if self.inputs.iter().any(|i| i.deleted)
             || self.outputs.iter().any(|i| i.deleted)
