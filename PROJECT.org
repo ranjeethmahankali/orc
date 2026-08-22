@@ -377,9 +377,17 @@
   [[*Serializing OrcHandle][Serializing OrcHandle]] needs to be solved before this can be properly executed. I workshopped a
   vague, obviously untested plan with the LLM's help. Just reprsents a vague direction.
 
-** Vague Plan
+  <2026-08-22 Sat 13:21> Scrapping the plan to save the DAG as plain text. Supporting mutliple
+  scripting languages already scratches the plain text itch, and I can revisit this decision later
+  if need be.
+
+** CLOSED Vague Plan
+   CLOSED: [2026-08-22 Sat 13:21]
    :PROPERTIES:
    :CREATED:  2026-08-19 Wed 18:55
+   :END:
+   :LOGBOOK:
+   - State "CLOSED"     from              [2026-08-22 Sat 13:21]
    :END:
 
 *** Overview
