@@ -25,11 +25,7 @@ unsafe extern "C" fn host_dealloc(ptr: *mut c_void, size: u64, alignment: u64) {
     unsafe { dealloc(ptr as *mut u8, layout) }
 }
 
-unsafe extern "C" fn serial_write_callback(
-    ctx: u64,
-    data: *const c_void,
-    len: u64,
-) -> OrcError {
+unsafe extern "C" fn serial_write_callback(ctx: u64, data: *const c_void, len: u64) -> OrcError {
     let incoming_slice: &[u8] = unsafe { slice_from_ptr(data.cast(), len as usize) };
     match SERIAL_CONTEXT_ARENA.visit_mut(ctx, |buf| buf.extend_from_slice(incoming_slice)) {
         Ok(_) => ORC_ERROR_NONE,

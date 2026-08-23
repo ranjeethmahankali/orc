@@ -6,8 +6,8 @@ use orc_sdk::{DagHandle, IH, OH, OrcHandle, OrcHandleBorrowed, Workflow};
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList, PyTuple};
 use std::mem::ManuallyDrop;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 pub(crate) static IN_GRAPH_MODE: AtomicBool = AtomicBool::new(false);
 pub(crate) static BUILDING_WORKFLOW: Mutex<Option<SendWorkflow>> = Mutex::new(None);
@@ -149,7 +149,12 @@ impl Graph {
 
         self.workflow
             .0
-            .run(input_borrows, &mut outputs, &host_clone_orc_handle, &HANDLE_COUNTER)
+            .run(
+                input_borrows,
+                &mut outputs,
+                &host_clone_orc_handle,
+                &HANDLE_COUNTER,
+            )
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("{:?}", e)))?;
 
         if n_outputs == 1 {
@@ -228,7 +233,14 @@ pub(crate) fn make_graph_impl(py: Python<'_>, func: &Bound<'_, PyAny>) -> PyResu
     let graph_nodes: Vec<Py<GraphNode>> = param_names
         .iter()
         .enumerate()
-        .map(|(i, _)| Py::new(py, GraphNode { kind: GraphNodeKind::Input(i) }))
+        .map(|(i, _)| {
+            Py::new(
+                py,
+                GraphNode {
+                    kind: GraphNodeKind::Input(i),
+                },
+            )
+        })
         .collect::<PyResult<_>>()?;
 
     // Call the user function.

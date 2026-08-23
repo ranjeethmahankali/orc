@@ -116,8 +116,7 @@ fn build_stub_content(ps: &PluginSet) -> String {
             write!(sig, "def {}(", func.name).unwrap();
             match func.n_inputs {
                 Some(n) => {
-                    let params: Vec<String> =
-                        (0..n).map(|i| format!("arg{}: Handle", i)).collect();
+                    let params: Vec<String> = (0..n).map(|i| format!("arg{}: Handle", i)).collect();
                     write!(sig, "{}", params.join(", ")).unwrap();
                 }
                 None => {

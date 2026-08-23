@@ -5,13 +5,13 @@ mod host;
 mod stubs;
 
 use func::OrcFunc;
-use graph::{Graph, GraphNode, GraphNodeKind, IN_GRAPH_MODE, BUILDING_WORKFLOW};
+use graph::{BUILDING_WORKFLOW, Graph, GraphNode, GraphNodeKind, IN_GRAPH_MODE};
 use handle::Handle;
 use host::{HANDLE_COUNTER, PLUGIN_SET, REGISTRY};
 
 use orc_sdk::{
-    Deck, OrcHandle, OrcMark, ORC_TYPE_F32, ORC_TYPE_F64, ORC_TYPE_I8, ORC_TYPE_I16, ORC_TYPE_I32,
-    ORC_TYPE_I64, ORC_TYPE_U8, ORC_TYPE_U16, ORC_TYPE_U32, ORC_TYPE_U64,
+    Deck, ORC_TYPE_F32, ORC_TYPE_F64, ORC_TYPE_I8, ORC_TYPE_I16, ORC_TYPE_I32, ORC_TYPE_I64,
+    ORC_TYPE_U8, ORC_TYPE_U16, ORC_TYPE_U32, ORC_TYPE_U64, OrcHandle, OrcMark,
 };
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyFloat, PyList, PyTuple};
@@ -187,9 +187,7 @@ fn create_orc_handle(
             }
             REGISTRY
                 .alloc_with_value(Some(deck), &mut handle)
-                .map_err(|e| {
-                    pyo3::exceptions::PyRuntimeError::new_err(format!("{:?}", e))
-                })?;
+                .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("{:?}", e)))?;
         }};
     }
 
@@ -208,7 +206,7 @@ fn create_orc_handle(
             return Err(pyo3::exceptions::PyValueError::new_err(format!(
                 "Unsupported type_id: {:#x}",
                 type_id
-            )))
+            )));
         }
     }
 
@@ -232,11 +230,17 @@ fn make_deck_deferred(
         .ok_or_else(|| pyo3::exceptions::PyRuntimeError::new_err("no workflow being built"))?
         .0;
 
-    let (_nh, oh) = wf.add_constant(handle).map_err(|e| {
-        pyo3::exceptions::PyRuntimeError::new_err(format!("{:?}", e))
-    })?;
+    let (_nh, oh) = wf
+        .add_constant(handle)
+        .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("{:?}", e)))?;
 
-    Ok(Py::new(py, GraphNode { kind: GraphNodeKind::Output(oh) })?.into_any())
+    Ok(Py::new(
+        py,
+        GraphNode {
+            kind: GraphNodeKind::Output(oh),
+        },
+    )?
+    .into_any())
 }
 
 // =====================================================================

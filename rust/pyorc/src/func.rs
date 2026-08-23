@@ -1,4 +1,4 @@
-use crate::graph::{GraphNode, GraphNodeKind, BUILDING_WORKFLOW, IN_GRAPH_MODE, WORKFLOW_INPUTS};
+use crate::graph::{BUILDING_WORKFLOW, GraphNode, GraphNodeKind, IN_GRAPH_MODE, WORKFLOW_INPUTS};
 use crate::handle::Handle;
 use crate::host::HANDLE_COUNTER;
 use orc_sdk::{FuncInfo, IH, OH, OrcHandle};
@@ -18,11 +18,7 @@ unsafe impl Send for OrcFunc {}
 #[pymethods]
 impl OrcFunc {
     #[pyo3(signature = (*args))]
-    fn __call__<'py>(
-        &self,
-        py: Python<'py>,
-        args: &Bound<'py, PyTuple>,
-    ) -> PyResult<PyObject> {
+    fn __call__<'py>(&self, py: Python<'py>, args: &Bound<'py, PyTuple>) -> PyResult<PyObject> {
         if IN_GRAPH_MODE.load(Ordering::Relaxed) {
             self.deferred_call(py, args)
         } else {
@@ -51,9 +47,10 @@ impl OrcFunc {
             }
         }
 
-        let func = self.info.func.ok_or_else(|| {
-            pyo3::exceptions::PyRuntimeError::new_err("null function pointer")
-        })?;
+        let func = self
+            .info
+            .func
+            .ok_or_else(|| pyo3::exceptions::PyRuntimeError::new_err("null function pointer"))?;
         let n_out = self.info.n_outputs.unwrap_or(1);
 
         // Build contiguous input array (borrowed copies, free_fn = None).
@@ -136,9 +133,10 @@ impl OrcFunc {
         let mut wf_guard = BUILDING_WORKFLOW
             .lock()
             .map_err(|_| pyo3::exceptions::PyRuntimeError::new_err("workflow lock poisoned"))?;
-        let wf = &mut wf_guard.as_mut().ok_or_else(|| {
-            pyo3::exceptions::PyRuntimeError::new_err("no workflow being built")
-        })?.0;
+        let wf = &mut wf_guard
+            .as_mut()
+            .ok_or_else(|| pyo3::exceptions::PyRuntimeError::new_err("no workflow being built"))?
+            .0;
 
         let mut ihs = vec![IH::default(); n_args];
         let mut ohs = vec![OH::default(); n_out];
@@ -164,11 +162,22 @@ impl OrcFunc {
         }
 
         if n_out == 1 {
-            Ok(Py::new(py, GraphNode { kind: GraphNodeKind::Output(ohs[0]) })?.into_any())
+            Ok(Py::new(
+                py,
+                GraphNode {
+                    kind: GraphNodeKind::Output(ohs[0]),
+                },
+            )?
+            .into_any())
         } else {
             let list = PyList::empty(py);
             for oh in ohs {
-                list.append(Py::new(py, GraphNode { kind: GraphNodeKind::Output(oh) })?)?;
+                list.append(Py::new(
+                    py,
+                    GraphNode {
+                        kind: GraphNodeKind::Output(oh),
+                    },
+                )?)?;
             }
             Ok(list.into_any().unbind())
         }
