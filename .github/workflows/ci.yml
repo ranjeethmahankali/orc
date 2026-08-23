@@ -39,6 +39,7 @@ jobs:
         run: |
           python3 -m venv .venv
           .venv/bin/pip install numpy
+          .venv/bin/pip install ./rust/pyorc
       - name: Run Python tests
         working-directory: python
         run: ../.venv/bin/python3 test.py
@@ -69,6 +70,7 @@ jobs:
         run: |
           python3 -m venv .venv
           .venv/Scripts/pip install numpy
+          .venv/Scripts/pip install ./rust/pyorc
       - name: Run Python tests
         working-directory: python
         run: ../.venv/Scripts/python3 test.py
@@ -99,6 +101,7 @@ jobs:
         run: |
           python3 -m venv .venv
           .venv/bin/pip install numpy
+          .venv/bin/pip install ./rust/pyorc
       - name: Run Python tests
         working-directory: python
         run: ../.venv/bin/python3 test.py
