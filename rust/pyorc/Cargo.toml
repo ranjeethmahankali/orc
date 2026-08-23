@@ -1,0 +1,12 @@
+[package]
+name = "pyorc"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "orc"
+crate-type = ["cdylib"]
+
+[dependencies]
+orc_sdk = { path = "../orc_sdk" }
+pyo3 = { version = "0.24", features = ["abi3-py37"] }
