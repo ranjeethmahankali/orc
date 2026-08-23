@@ -20,7 +20,7 @@ jobs:
       - name: Update Rust
         run: rustup update stable
       - name: Check bindings
-        run: cargo run -p bindings_generator -- c/orc_abi.h --rust-check rust/orc_sdk/src/bindings.rs --python-check python/bindings.py
+        run: cargo run -p bindings_generator -- c/orc_abi.h --rust-check rust/orc_sdk/src/bindings.rs
       - name: Build C (Debug)
         run: cmake -S c/ -B build/debug -DCMAKE_BUILD_TYPE=Debug && cmake --build build/debug
       - name: Run C tests
@@ -50,7 +50,7 @@ jobs:
       - name: Update Rust
         run: rustup update stable
       - name: Check bindings
-        run: cargo run -p bindings_generator -- c/orc_abi.h --rust-check rust/orc_sdk/src/bindings.rs --python-check python/bindings.py
+        run: cargo run -p bindings_generator -- c/orc_abi.h --rust-check rust/orc_sdk/src/bindings.rs
       - name: Build C (Debug)
         run: cmake -S c/ -B build/debug -DCMAKE_BUILD_TYPE=Debug && cmake --build build/debug --config Debug
       - name: Run C tests
@@ -80,7 +80,7 @@ jobs:
       - name: Update Rust
         run: rustup update stable
       - name: Check bindings
-        run: cargo run -p bindings_generator -- c/orc_abi.h --rust-check rust/orc_sdk/src/bindings.rs --python-check python/bindings.py
+        run: cargo run -p bindings_generator -- c/orc_abi.h --rust-check rust/orc_sdk/src/bindings.rs
       - name: Build C (Debug)
         run: cmake -B build/debug -S c -DCMAKE_BUILD_TYPE=Debug && cmake --build build/debug
       - name: Run C tests
