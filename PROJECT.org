@@ -206,9 +206,38 @@
   what the host has is not valid. At the end of the dialogue, the host will call a free function to
   clean up the plugin's struct, and cleans up it's own. This is inspired by ~git credential fill~.
 
-* TODO tjvt98 - Constructing a DAG from Python
+* TODO Functions and Scripts - a clear picture
+  :PROPERTIES:
+  :CREATED:  2026-08-16 Sun 14:36
+  :END:
+
+  Need a way to define incomplete fragments of a workflow DAG, and reuse those fragments by
+  partially or fully substituting the incomplete parts.
+
+  In a node editor UI app, this will map to something similar to Grasshopper's concept of
+  "cluster". In a Python script, this is equivalent to definng functions, and currying them. In
+  LISP, it is also equivalent to defining functions and currying them. I need to figure out a
+  complete picture of this concept that includes how it is represented in memory, how it is drawn on
+  screen in a UI app, and how it is stored on the disk in various formats, and make sure they all
+  integrate seamlessly.
+
+  <2026-08-16 Sun 22:46> For the Python part of the puzzle, using decorators to wrap Python
+  functions is an interesting idea. This will allow me to map Python functions, call structure and
+  nesting into the DAG representation. Going the other way is easy, it is just a code generation
+  problem. The Python function decorator receives the function name, signature, argument names
+  etc. All that can be transferred over into the DAG world and back.
+
+  <2026-08-19 Wed 19:04> The general idea of running a script in "capture mode" to create a DAG
+  generalizes for all scripting languages. This is nice. Much better way than parsing a language and
+  converting it to a graph. Allows idiomatic programming in each language. The Graph can then be
+  transpiled back into any scripting language (usual code gen).
+
+* NEXT tjvt98 - Constructing a DAG from Python
   :PROPERTIES:
   :CREATED:  2026-08-16 Sun 14:40
+  :END:
+  :LOGBOOK:
+  - State "NEXT"       from "TODO"       [2026-08-23 Sun 14:21]
   :END:
 
   Ideally the same scripts used to run the plugin functions, can be repurposed by running them in a
@@ -218,9 +247,54 @@
   over FFI. Instead the Python user may choose to construct the DAG and run it many times without
   the Python's ctypes function call overhead.
 
-** Vague Plan
+  <2026-08-23 Sun 14:26> After some more thought, I think it might be better to consolidate all the
+  Python integration into a single crate built with pyo3.
+
+** Vague plan using PyO3
+   :PROPERTIES:
+   :CREATED:  2026-08-23 Sun 14:29
+   :END:
+
+   Add a crate that compiles it's binary using PyO3, and acts as a host program written in
+   Rust. Loading the librariers, generating a .pyi on startup when required, and running the user
+   scripts by calling functions inside loaded plugins, are all done by this Rust host, via the
+   Python bindings.
+
+   The function calls return thin wrappers that contain an OrcHandle, and are reference counted by
+   the Python interpreter. When these are dropped, the underlying deck is freed within the plugin
+   via the free_fn callback.
+
+   This library should also expose a method like ~make_graph~, that takes a Python function
+   (lambda). And run it with a different set of function bindings, that construct a workflow DAG
+   instead of running the plugin functions directly, and return a handle to the Workflow graph back
+   to the Python script. Any foreign Python code within that function should run as usual. The
+   'Rebinding' only affects the functions exposed by this crate. The python script can then choose
+   to run said graph with any inputs. This can be potentially faster for repeated incremental runs,
+   if only few inputs are changed. The DAG can skip rerunning the functions whose inputs have not
+   changed. So, this can be faster than just running the Python bindings. The Python script can also
+   choose to serialize the workflow to messsage pack via another binding (uses orc_sdk's
+   serialization under the hood), to open and run the same workflow in other tools. Similarly, the
+   python script can deserialize a graph, that was exported in another tool, and run it with
+   inputs. Basically, the plugin functions can be run either in 'immediate mode', or a deferred DAG
+   evaluation mode.
+
+   This new design should:
+   - Allow the plugin functions to create threads freely, and report progress, messages, and other
+     things from these threads. GIL should not cause complications.
+   - I want to maintain the zero copy numpy integration. Large arrays of numbers owned by my
+     plugins, should be available to numpy, without copying, to be interpreted as arrays and
+     matrices. The current design has this capability, and that should be maintained.
+   - Ownership story of OrcHandle instances should be clear.
+   - Performance and memory efficienct are paramount.
+   - The Python module should feel idiomaticc for Python users, and should prioritize convenience.
+
+** CLOSED Vague Plan from LLM
+   CLOSED: [2026-08-23 Sun 14:26]
    :PROPERTIES:
    :CREATED:  2026-08-16 Sun 17:33
+   :END:
+   :LOGBOOK:
+   - State "CLOSED"     from              [2026-08-23 Sun 14:26]
    :END:
 
 *** Goal
@@ -339,32 +413,6 @@
             # Serialize the entire DAG to the given file path.
             ...
     #+end_src
-
-* TODO Functions and Scripts - a clear picture
-  :PROPERTIES:
-  :CREATED:  2026-08-16 Sun 14:36
-  :END:
-
-  Need a way to define incomplete fragments of a workflow DAG, and reuse those fragments by
-  partially or fully substituting the incomplete parts.
-
-  In a node editor UI app, this will map to something similar to Grasshopper's concept of
-  "cluster". In a Python script, this is equivalent to definng functions, and currying them. In
-  LISP, it is also equivalent to defining functions and currying them. I need to figure out a
-  complete picture of this concept that includes how it is represented in memory, how it is drawn on
-  screen in a UI app, and how it is stored on the disk in various formats, and make sure they all
-  integrate seamlessly.
-
-  <2026-08-16 Sun 22:46> For the Python part of the puzzle, using decorators to wrap Python
-  functions is an interesting idea. This will allow me to map Python functions, call structure and
-  nesting into the DAG representation. Going the other way is easy, it is just a code generation
-  problem. The Python function decorator receives the function name, signature, argument names
-  etc. All that can be transferred over into the DAG world and back.
-
-  <2026-08-19 Wed 19:04> The general idea of running a script in "capture mode" to create a DAG
-  generalizes for all scripting languages. This is nice. Much better way than parsing a language and
-  converting it to a graph. Allows idiomatic programming in each language. The Graph can then be
-  transpiled back into any scripting language (usual code gen).
 
 * DONE tk5iyg - Serializing workflows
   CLOSED: [2026-08-22 Sat 16:58]
