@@ -923,6 +923,417 @@ def t_serial_preserves_dims():
 
 
 # ============================================================
+# make_workflow — Construction
+# ============================================================
+
+
+def t_workflow_basic():
+    """Basic workflow: add two inputs."""
+    a = make_handle([1.0, 2.0, 3.0])
+    b = make_handle([10.0, 20.0, 30.0])
+    wf = orc.make_workflow(lambda x, y: orc.add(x, y))
+    assert orc.read_deck(wf.run(a, b)) == [11.0, 22.0, 33.0]
+
+
+def t_workflow_chain():
+    """Chained operations: mul then add."""
+    a = make_handle([2.0, 3.0])
+    b = make_handle([10.0, 20.0])
+    def chain(x, y):
+        product = orc.mul(x, y)
+        return orc.add(product, x)
+    wf = orc.make_workflow(chain)
+    assert orc.read_deck(wf.run(a, b)) == [22.0, 63.0]
+
+
+def t_workflow_with_constant():
+    """Workflow with an internal make_deck constant."""
+    a = make_handle([1.0, 2.0, 3.0])
+    def fn_with_const(x):
+        offset = orc.make_deck([100.0])
+        return orc.add(x, offset)
+    wf = orc.make_workflow(fn_with_const)
+    assert orc.read_deck(wf.run(a)) == [101.0, 102.0, 103.0]
+
+
+def t_workflow_multiple_constants():
+    """Workflow with several constants."""
+    a = make_handle([1.0])
+    def fn_multi_const(x):
+        a = orc.make_deck([10.0])
+        b = orc.make_deck([100.0])
+        return orc.add(orc.add(x, a), b)
+    wf = orc.make_workflow(fn_multi_const)
+    assert orc.read_deck(wf.run(a)) == [111.0]
+
+
+def t_workflow_fan_out():
+    """Same input feeds into multiple function arguments."""
+    a = make_handle([3.0, 4.0])
+    wf = orc.make_workflow(lambda x: orc.mul(x, x))
+    assert orc.read_deck(wf.run(a)) == [9.0, 16.0]
+
+
+def t_workflow_diamond():
+    """Diamond topology: input → two branches → merge."""
+    a = make_handle([5.0])
+    def diamond(x):
+        doubled = orc.add(x, x)
+        squared = orc.mul(x, x)
+        return orc.sub(squared, doubled)
+    wf = orc.make_workflow(diamond)
+    # 5^2 - 5*2 = 25 - 10 = 15
+    assert orc.read_deck(wf.run(a)) == [15.0]
+
+
+def t_workflow_multi_output():
+    """Workflow returning multiple outputs via a multi-output function."""
+    a = make_handle([1.0, 2.0])
+    b = make_handle([3.0, 4.0])
+    def fn_multi_out(x, y):
+        c = orc.create_complex(x, y)
+        return orc.complex_get_parts(c)
+    wf = orc.make_workflow(fn_multi_out)
+    real, imag = wf.run(a, b)
+    assert orc.read_deck(real) == [1.0, 2.0]
+    assert orc.read_deck(imag) == [3.0, 4.0]
+
+
+def t_workflow_no_inputs():
+    """Workflow with no parameters — all data from constants."""
+    def fn_const_only():
+        a = orc.make_deck([1.0, 2.0, 3.0])
+        b = orc.make_deck([10.0, 20.0, 30.0])
+        return orc.add(a, b)
+    wf = orc.make_workflow(fn_const_only)
+    assert orc.read_deck(wf.run()) == [11.0, 22.0, 33.0]
+
+
+def t_workflow_nested_data():
+    """Workflow operates on nested deck structure."""
+    a = make_handle([[1.0, 2.0], [3.0]])
+    b = make_handle([10.0])
+    wf = orc.make_workflow(lambda x, y: orc.add(x, y))
+    assert orc.read_deck(wf.run(a, b)) == [[11.0, 12.0], [13.0]]
+
+
+# ============================================================
+# make_workflow — Run with keyword / mixed arguments
+# ============================================================
+
+
+def t_workflow_run_kwargs():
+    """Run a workflow with keyword arguments."""
+    a = make_handle([1.0])
+    b = make_handle([2.0])
+    wf = orc.make_workflow(lambda x, y: orc.sub(x, y))
+    assert orc.read_deck(wf.run(x=a, y=b)) == [-1.0]
+    assert orc.read_deck(wf.run(y=a, x=b)) == [1.0]
+
+
+def t_workflow_run_mixed_args():
+    """Run a workflow with positional + keyword arguments."""
+    a = make_handle([5.0])
+    b = make_handle([3.0])
+    wf = orc.make_workflow(lambda x, y: orc.sub(x, y))
+    assert orc.read_deck(wf.run(a, y=b)) == [2.0]
+
+
+def t_workflow_run_reuse():
+    """Run the same workflow multiple times with different inputs."""
+    wf = orc.make_workflow(lambda x, y: orc.add(x, y))
+    a1 = make_handle([1.0])
+    b1 = make_handle([10.0])
+    a2 = make_handle([100.0])
+    b2 = make_handle([200.0])
+    assert orc.read_deck(wf.run(a1, b1)) == [11.0]
+    assert orc.read_deck(wf.run(a2, b2)) == [300.0]
+
+
+# ============================================================
+# make_workflow — Error cases
+# ============================================================
+
+
+def t_workflow_no_recursion():
+    """make_workflow cannot be called recursively."""
+    def outer(x):
+        # Attempt to call make_workflow inside make_workflow.
+        orc.make_workflow(lambda y: orc.add(y, y))
+        return orc.add(x, x)
+    try:
+        orc.make_workflow(outer)
+        assert False, "Should have raised RuntimeError"
+    except RuntimeError as e:
+        assert "recursively" in str(e).lower()
+
+
+def t_workflow_node_not_arithmetic():
+    """WorkflowNode cannot be used for arithmetic — Python raises TypeError."""
+    def bad_fn(x):
+        return x + 1  # WorkflowNode has no __add__
+    try:
+        orc.make_workflow(bad_fn)
+        assert False, "Should have raised TypeError"
+    except TypeError:
+        pass
+
+
+def t_workflow_node_not_comparable():
+    """WorkflowNode cannot be compared — Python raises TypeError."""
+    def bad_fn(x, y):
+        if x > y:  # WorkflowNode has no __gt__
+            return orc.add(x, y)
+        return orc.sub(x, y)
+    try:
+        orc.make_workflow(bad_fn)
+        assert False, "Should have raised TypeError"
+    except TypeError:
+        pass
+
+
+def t_workflow_node_not_readable():
+    """Calling read_deck on a WorkflowNode raises TypeError."""
+    def bad_fn(x):
+        orc.read_deck(x)  # x is WorkflowNode, not Handle
+        return orc.add(x, x)
+    try:
+        orc.make_workflow(bad_fn)
+        assert False, "Should have raised TypeError"
+    except TypeError:
+        pass
+
+
+def t_workflow_run_too_many_args():
+    """Running a workflow with too many positional args raises ValueError."""
+    wf = orc.make_workflow(lambda x: orc.add(x, x))
+    a = make_handle([1.0])
+    b = make_handle([2.0])
+    try:
+        wf.run(a, b)
+        assert False, "Should have raised ValueError"
+    except ValueError:
+        pass
+
+
+def t_workflow_run_missing_arg():
+    """Running a workflow with missing arguments raises ValueError."""
+    wf = orc.make_workflow(lambda x, y: orc.add(x, y))
+    a = make_handle([1.0])
+    try:
+        wf.run(a)
+        assert False, "Should have raised ValueError"
+    except ValueError:
+        pass
+
+
+def t_workflow_run_unknown_kwarg():
+    """Running a workflow with unknown keyword raises ValueError."""
+    wf = orc.make_workflow(lambda x: orc.add(x, x))
+    a = make_handle([1.0])
+    try:
+        wf.run(z=a)
+        assert False, "Should have raised ValueError"
+    except ValueError:
+        pass
+
+
+def t_workflow_run_duplicate_arg():
+    """Running with both positional and keyword for same param raises ValueError."""
+    wf = orc.make_workflow(lambda x: orc.add(x, x))
+    a = make_handle([1.0])
+    try:
+        wf.run(a, x=a)
+        assert False, "Should have raised ValueError"
+    except ValueError:
+        pass
+
+
+# ============================================================
+# run_workflow convenience function
+# ============================================================
+
+
+def t_run_workflow_convenience():
+    """run_workflow is equivalent to graph.run."""
+    a = make_handle([1.0, 2.0, 3.0])
+    b = make_handle([10.0, 20.0, 30.0])
+    wf = orc.make_workflow(lambda x, y: orc.add(x, y))
+    assert orc.read_deck(orc.run_workflow(wf, a, b)) == [11.0, 22.0, 33.0]
+    assert orc.read_deck(orc.run_workflow(wf, x=a, y=b)) == [11.0, 22.0, 33.0]
+
+
+# ============================================================
+# save_workflow / load_workflow — Round-trips
+# ============================================================
+
+
+def t_workflow_save_load_roundtrip():
+    """Workflow survives save/load round-trip."""
+    a = make_handle([1.0, 2.0, 3.0])
+    b = make_handle([10.0, 20.0, 30.0])
+    wf = orc.make_workflow(lambda x, y: orc.add(x, y))
+    with tempfile.NamedTemporaryFile(suffix=".mpk", delete=False) as f:
+        path = f.name
+    try:
+        orc.save_workflow(wf, path)
+        loaded = orc.load_workflow(path)
+        assert orc.read_deck(loaded.run(a, b)) == [11.0, 22.0, 33.0]
+    finally:
+        os.unlink(path)
+
+
+def t_workflow_save_load_with_constants():
+    """Workflow with internal constants survives save/load."""
+    a = make_handle([5.0])
+    def fn(x):
+        return orc.add(x, orc.make_deck([95.0]))
+    wf = orc.make_workflow(fn)
+    with tempfile.NamedTemporaryFile(suffix=".mpk", delete=False) as f:
+        path = f.name
+    try:
+        orc.save_workflow(wf, path)
+        loaded = orc.load_workflow(path)
+        assert orc.read_deck(loaded.run(a)) == [100.0]
+    finally:
+        os.unlink(path)
+
+
+def t_workflow_save_load_no_inputs():
+    """Pure-constant workflow survives save/load."""
+    def fn():
+        return orc.add(orc.make_deck([1.0, 2.0]), orc.make_deck([10.0, 20.0]))
+    wf = orc.make_workflow(fn)
+    with tempfile.NamedTemporaryFile(suffix=".mpk", delete=False) as f:
+        path = f.name
+    try:
+        orc.save_workflow(wf, path)
+        loaded = orc.load_workflow(path)
+        assert orc.read_deck(loaded.run()) == [11.0, 22.0]
+    finally:
+        os.unlink(path)
+
+
+def t_workflow_save_load_multi_output():
+    """Multi-output workflow survives save/load."""
+    def fn():
+        c = orc.create_complex(orc.make_deck([1.0]), orc.make_deck([2.0]))
+        return orc.complex_get_parts(c)
+    wf = orc.make_workflow(fn)
+    with tempfile.NamedTemporaryFile(suffix=".mpk", delete=False) as f:
+        path = f.name
+    try:
+        orc.save_workflow(wf, path)
+        loaded = orc.load_workflow(path)
+        real, imag = loaded.run()
+        assert orc.read_deck(real) == [1.0]
+        assert orc.read_deck(imag) == [2.0]
+    finally:
+        os.unlink(path)
+
+
+# ============================================================
+# Interleaving immediate and deferred modes
+# ============================================================
+
+
+def t_workflow_interleave():
+    """Immediate-mode calls work between and after make_workflow calls."""
+    # Before.
+    a = make_handle([1.0, 2.0])
+    b = make_handle([10.0, 20.0])
+    assert orc.read_deck(orc.add(a, b)) == [11.0, 22.0]
+    # Build a workflow.
+    wf = orc.make_workflow(lambda x: orc.add(x, orc.make_deck([100.0])))
+    # Between.
+    assert orc.read_deck(orc.mul(a, b)) == [10.0, 40.0]
+    # Run the workflow.
+    result = wf.run(a)
+    assert orc.read_deck(result) == [101.0, 102.0]
+    # After — use the workflow output in immediate mode.
+    doubled = orc.mul(result, make_handle([2.0]))
+    assert orc.read_deck(doubled) == [202.0, 204.0]
+
+
+def t_workflow_error_does_not_poison_immediate_mode():
+    """A failed make_workflow doesn't break subsequent immediate-mode calls."""
+    try:
+        orc.make_workflow(lambda x: x + 1)  # TypeError
+    except TypeError:
+        pass
+    # Immediate mode should still work.
+    a = make_handle([1.0])
+    b = make_handle([2.0])
+    assert orc.read_deck(orc.add(a, b)) == [3.0]
+
+
+def t_workflow_error_does_not_poison_next_workflow():
+    """A failed make_workflow doesn't break a subsequent make_workflow."""
+    try:
+        orc.make_workflow(lambda x: x + 1)  # TypeError
+    except TypeError:
+        pass
+    # Next make_workflow should work.
+    wf = orc.make_workflow(lambda x: orc.add(x, x))
+    a = make_handle([5.0])
+    assert orc.read_deck(wf.run(a)) == [10.0]
+
+
+# ============================================================
+# Stub generation
+# ============================================================
+
+
+def t_stubs_file_exists():
+    """A .pyi stub file exists alongside the installed module."""
+    import pathlib
+    module_file = pathlib.Path(orc.__file__)
+    stub_path = module_file.with_suffix(".pyi")
+    assert stub_path.exists(), f"Expected stub at {stub_path}"
+
+
+def t_stubs_contain_classes():
+    """The stub file declares Handle, WorkflowNode, and Workflow classes."""
+    import pathlib
+    stub_path = pathlib.Path(orc.__file__).with_suffix(".pyi")
+    content = stub_path.read_text()
+    assert "class Handle:" in content
+    assert "class WorkflowNode:" in content
+    assert "class Workflow:" in content
+
+
+def t_stubs_contain_module_functions():
+    """The stub file declares all module-level functions."""
+    import pathlib
+    stub_path = pathlib.Path(orc.__file__).with_suffix(".pyi")
+    content = stub_path.read_text()
+    for fn_name in ["load_plugins", "make_deck", "read_deck",
+                     "make_workflow", "run_workflow", "save_workflow",
+                     "load_workflow"]:
+        assert f"def {fn_name}(" in content, f"Missing {fn_name} in stubs"
+
+
+def t_stubs_contain_plugin_functions():
+    """The stub file declares plugin functions with correct signatures."""
+    import pathlib
+    stub_path = pathlib.Path(orc.__file__).with_suffix(".pyi")
+    content = stub_path.read_text()
+    # add has 2 inputs, 1 output.
+    assert "def add(arg0: Handle, arg1: Handle) -> Handle: ..." in content
+    # complex_get_parts has 1 input, 2 outputs → list[Handle].
+    assert "def complex_get_parts(arg0: Handle) -> list[Handle]: ..." in content
+
+
+def t_stubs_contain_type_constants():
+    """The stub file declares type constants."""
+    import pathlib
+    stub_path = pathlib.Path(orc.__file__).with_suffix(".pyi")
+    content = stub_path.read_text()
+    assert "ORC_TYPE_U8: int" in content
+    assert "ORC_TYPE_F64: int" in content
+
+
+# ============================================================
 # Runner
 # ============================================================
 

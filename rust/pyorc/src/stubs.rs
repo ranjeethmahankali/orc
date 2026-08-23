@@ -44,69 +44,69 @@ fn newest_plugin_mtime(_ps: &PluginSet) -> Option<std::time::SystemTime> {
 }
 
 fn build_stub_content(ps: &PluginSet) -> String {
-    let mut s = String::new();
-    writeln!(s, "from typing import Callable").unwrap();
-    writeln!(s).unwrap();
+    let mut stubs = String::new();
+    writeln!(stubs, "from typing import Callable").unwrap();
+    writeln!(stubs).unwrap();
     // Constants
-    writeln!(s, "ORC_TYPE_U8: int").unwrap();
-    writeln!(s, "ORC_TYPE_U16: int").unwrap();
-    writeln!(s, "ORC_TYPE_U32: int").unwrap();
-    writeln!(s, "ORC_TYPE_U64: int").unwrap();
-    writeln!(s, "ORC_TYPE_I8: int").unwrap();
-    writeln!(s, "ORC_TYPE_I16: int").unwrap();
-    writeln!(s, "ORC_TYPE_I32: int").unwrap();
-    writeln!(s, "ORC_TYPE_I64: int").unwrap();
-    writeln!(s, "ORC_TYPE_F32: int").unwrap();
-    writeln!(s, "ORC_TYPE_F64: int").unwrap();
-    writeln!(s).unwrap();
+    writeln!(stubs, "ORC_TYPE_U8: int").unwrap();
+    writeln!(stubs, "ORC_TYPE_U16: int").unwrap();
+    writeln!(stubs, "ORC_TYPE_U32: int").unwrap();
+    writeln!(stubs, "ORC_TYPE_U64: int").unwrap();
+    writeln!(stubs, "ORC_TYPE_I8: int").unwrap();
+    writeln!(stubs, "ORC_TYPE_I16: int").unwrap();
+    writeln!(stubs, "ORC_TYPE_I32: int").unwrap();
+    writeln!(stubs, "ORC_TYPE_I64: int").unwrap();
+    writeln!(stubs, "ORC_TYPE_F32: int").unwrap();
+    writeln!(stubs, "ORC_TYPE_F64: int").unwrap();
+    writeln!(stubs).unwrap();
     // Handle class
-    writeln!(s, "class Handle:").unwrap();
-    writeln!(s, "    @property").unwrap();
-    writeln!(s, "    def type_id(self) -> int: ...").unwrap();
-    writeln!(s, "    @property").unwrap();
-    writeln!(s, "    def n_items(self) -> int: ...").unwrap();
-    writeln!(s, "    @property").unwrap();
-    writeln!(s, "    def item_size(self) -> int: ...").unwrap();
-    writeln!(s, "    @property").unwrap();
-    writeln!(s, "    def dims(self) -> list[int]: ...").unwrap();
-    writeln!(s, "    @property").unwrap();
-    writeln!(s, "    def __array_interface__(self) -> dict: ...").unwrap();
-    writeln!(s).unwrap();
+    writeln!(stubs, "class Handle:").unwrap();
+    writeln!(stubs, "    @property").unwrap();
+    writeln!(stubs, "    def type_id(self) -> int: ...").unwrap();
+    writeln!(stubs, "    @property").unwrap();
+    writeln!(stubs, "    def n_items(self) -> int: ...").unwrap();
+    writeln!(stubs, "    @property").unwrap();
+    writeln!(stubs, "    def item_size(self) -> int: ...").unwrap();
+    writeln!(stubs, "    @property").unwrap();
+    writeln!(stubs, "    def dims(self) -> list[int]: ...").unwrap();
+    writeln!(stubs, "    @property").unwrap();
+    writeln!(stubs, "    def __array_interface__(self) -> dict: ...").unwrap();
+    writeln!(stubs).unwrap();
     // WorkflowNode
-    writeln!(s, "class WorkflowNode: ...").unwrap();
-    writeln!(s).unwrap();
+    writeln!(stubs, "class WorkflowNode: ...").unwrap();
+    writeln!(stubs).unwrap();
     // Workflow
-    writeln!(s, "class Workflow:").unwrap();
+    writeln!(stubs, "class Workflow:").unwrap();
     writeln!(
-        s,
+        stubs,
         "    def run(self, *args: Handle, **kwargs: Handle) -> Handle | list[Handle]: ..."
     )
     .unwrap();
-    writeln!(s).unwrap();
+    writeln!(stubs).unwrap();
     // Module functions
-    writeln!(s, "def load_plugins(search_dir: str) -> None: ...").unwrap();
+    writeln!(stubs, "def load_plugins(search_dir: str) -> None: ...").unwrap();
     writeln!(
-        s,
+        stubs,
         "def make_deck(data: object, type_id: int | None = None) -> Handle: ..."
     )
     .unwrap();
-    writeln!(s, "def read_deck(handle: Handle) -> object: ...").unwrap();
-    writeln!(s, "def make_workflow(fn: Callable) -> Workflow: ...").unwrap();
+    writeln!(stubs, "def read_deck(handle: Handle) -> object: ...").unwrap();
+    writeln!(stubs, "def make_workflow(fn: Callable) -> Workflow: ...").unwrap();
     writeln!(
-        s,
+        stubs,
         "def run_workflow(graph: Workflow, *args: Handle, **kwargs: Handle) -> Handle | list[Handle]: ..."
     )
     .unwrap();
     writeln!(
-        s,
+        stubs,
         "def save_workflow(graph: Workflow, path: str) -> None: ..."
     )
     .unwrap();
-    writeln!(s, "def load_workflow(path: str) -> Workflow: ...").unwrap();
-    writeln!(s).unwrap();
+    writeln!(stubs, "def load_workflow(path: str) -> Workflow: ...").unwrap();
+    writeln!(stubs).unwrap();
 
     // Plugin functions
-    writeln!(s, "# --- Plugin functions (auto-generated) ---").unwrap();
+    writeln!(stubs, "# --- Plugin functions (auto-generated) ---").unwrap();
     for plugin in ps.plugins() {
         for func in plugin.functions() {
             let mut sig = String::new();
@@ -127,9 +127,9 @@ fn build_stub_content(ps: &PluginSet) -> String {
                 _ => write!(sig, "Handle | list[Handle]").unwrap(),
             }
             writeln!(sig, ": ...").unwrap();
-            write!(s, "{}", sig).unwrap();
+            write!(stubs, "{}", sig).unwrap();
         }
     }
 
-    s
+    stubs
 }
