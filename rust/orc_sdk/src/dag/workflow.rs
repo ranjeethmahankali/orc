@@ -541,6 +541,16 @@ impl Workflow {
     pub fn num_links(&self) -> usize {
         self.graph.links.len()
     }
+
+    /// Returns the source output handle connected to the given input, if any.
+    pub fn input_source(&self, ih: IH) -> Option<OH> {
+        self.graph.input_source(ih)
+    }
+
+    /// Returns the workflow input names.
+    pub fn input_names(&self) -> &[String] {
+        &self.workflow_input_names
+    }
 }
 
 #[cfg(test)]
