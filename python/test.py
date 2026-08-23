@@ -724,7 +724,7 @@ def t_serial_every_plugin_handles_builtin_types():
                 return orc.flatten_deck(orc.make_deck(vals, type_id=tid))
             return fn
         graph = orc.make_workflow(make_const())
-        with tempfile.NamedTemporaryFile(suffix=".orcw", delete=False) as f:
+        with tempfile.NamedTemporaryFile(suffix=".orcflow", delete=False) as f:
             path = f.name
         try:
             orc.save_workflow(graph, path)
@@ -743,7 +743,7 @@ def t_serial_every_plugin_handles_nested_builtin():
         h = orc.make_deck([[1.0, 2.0, 3.0], [4.0, 5.0]])
         return orc.add(h, orc.make_deck([0.0]))
     graph = orc.make_workflow(make_nested)
-    with tempfile.NamedTemporaryFile(suffix=".orcw", delete=False) as f:
+    with tempfile.NamedTemporaryFile(suffix=".orcflow", delete=False) as f:
         path = f.name
     try:
         orc.save_workflow(graph, path)
@@ -761,7 +761,7 @@ def t_serial_custom_type_round_trip():
         imag = orc.make_deck([4.0, -5.0, 6.0])
         return orc.create_complex(real, imag)
     graph = orc.make_workflow(make_complex_graph)
-    with tempfile.NamedTemporaryFile(suffix=".orcw", delete=False) as f:
+    with tempfile.NamedTemporaryFile(suffix=".orcflow", delete=False) as f:
         path = f.name
     try:
         orc.save_workflow(graph, path)
@@ -782,7 +782,7 @@ def t_serial_custom_type_nested_round_trip():
         imag = orc.make_deck([[4.0, 5.0], [6.0]])
         return orc.create_complex(real, imag)
     graph = orc.make_workflow(make_nested_complex)
-    with tempfile.NamedTemporaryFile(suffix=".orcw", delete=False) as f:
+    with tempfile.NamedTemporaryFile(suffix=".orcflow", delete=False) as f:
         path = f.name
     try:
         orc.save_workflow(graph, path)
@@ -811,7 +811,7 @@ def t_serial_concurrent_serialization():
 
     def serialize_thread(idx, graph):
         try:
-            with tempfile.NamedTemporaryFile(suffix=".orcw", delete=False) as f:
+            with tempfile.NamedTemporaryFile(suffix=".orcflow", delete=False) as f:
                 paths[idx] = f.name
             orc.save_workflow(graph, paths[idx])
         except Exception as e:
@@ -843,7 +843,7 @@ def t_serial_empty_deck():
     def make_const():
         return orc.add(orc.make_deck([42.0]), orc.make_deck([0.0]))
     graph = orc.make_workflow(make_const)
-    with tempfile.NamedTemporaryFile(suffix=".orcw", delete=False) as f:
+    with tempfile.NamedTemporaryFile(suffix=".orcflow", delete=False) as f:
         path = f.name
     try:
         orc.save_workflow(graph, path)
@@ -860,7 +860,7 @@ def t_serial_single_element():
     def make_single():
         return orc.add(orc.make_deck([42.0]), orc.make_deck([0.0]))
     graph = orc.make_workflow(make_single)
-    with tempfile.NamedTemporaryFile(suffix=".orcw", delete=False) as f:
+    with tempfile.NamedTemporaryFile(suffix=".orcflow", delete=False) as f:
         path = f.name
     try:
         orc.save_workflow(graph, path)
@@ -876,7 +876,7 @@ def t_serial_deserialize_truncated_fails():
     def make_data():
         return orc.add(orc.make_deck([1.0, 2.0, 3.0]), orc.make_deck([0.0]))
     graph = orc.make_workflow(make_data)
-    with tempfile.NamedTemporaryFile(suffix=".orcw", delete=False) as f:
+    with tempfile.NamedTemporaryFile(suffix=".orcflow", delete=False) as f:
         path = f.name
     try:
         orc.save_workflow(graph, path)
@@ -900,7 +900,7 @@ def t_serial_deserialize_truncated_fails():
 
 def t_serial_deserialize_empty_buffer_fails():
     """Deserializing an empty workflow file raises an error."""
-    with tempfile.NamedTemporaryFile(suffix=".orcw", delete=False) as f:
+    with tempfile.NamedTemporaryFile(suffix=".orcflow", delete=False) as f:
         path = f.name
     try:
         # Write an empty file
@@ -1173,7 +1173,7 @@ def t_workflow_save_load_roundtrip():
     a = make_handle([1.0, 2.0, 3.0])
     b = make_handle([10.0, 20.0, 30.0])
     wf = orc.make_workflow(lambda x, y: orc.add(x, y))
-    with tempfile.NamedTemporaryFile(suffix=".mpk", delete=False) as f:
+    with tempfile.NamedTemporaryFile(suffix=".orcflow", delete=False) as f:
         path = f.name
     try:
         orc.save_workflow(wf, path)
@@ -1189,7 +1189,7 @@ def t_workflow_save_load_with_constants():
     def fn(x):
         return orc.add(x, orc.make_deck([95.0]))
     wf = orc.make_workflow(fn)
-    with tempfile.NamedTemporaryFile(suffix=".mpk", delete=False) as f:
+    with tempfile.NamedTemporaryFile(suffix=".orcflow", delete=False) as f:
         path = f.name
     try:
         orc.save_workflow(wf, path)
@@ -1204,7 +1204,7 @@ def t_workflow_save_load_no_inputs():
     def fn():
         return orc.add(orc.make_deck([1.0, 2.0]), orc.make_deck([10.0, 20.0]))
     wf = orc.make_workflow(fn)
-    with tempfile.NamedTemporaryFile(suffix=".mpk", delete=False) as f:
+    with tempfile.NamedTemporaryFile(suffix=".orcflow", delete=False) as f:
         path = f.name
     try:
         orc.save_workflow(wf, path)
@@ -1220,7 +1220,7 @@ def t_workflow_save_load_multi_output():
         c = orc.create_complex(orc.make_deck([1.0]), orc.make_deck([2.0]))
         return orc.complex_get_parts(c)
     wf = orc.make_workflow(fn)
-    with tempfile.NamedTemporaryFile(suffix=".mpk", delete=False) as f:
+    with tempfile.NamedTemporaryFile(suffix=".orcflow", delete=False) as f:
         path = f.name
     try:
         orc.save_workflow(wf, path)

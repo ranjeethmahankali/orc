@@ -68,11 +68,11 @@ def simple_experiment():
     print(f"Doubled: {orc.read_deck(doubled)}")
 
     # Serialize / deserialize.
-    orc.save_workflow(graph, "my_pipeline.mpk")
-    graph2 = orc.load_workflow("my_pipeline.mpk")
+    orc.save_workflow(graph, "my_pipeline.orcflow")
+    graph2 = orc.load_workflow("my_pipeline.orcflow")
     result3 = graph2.run(a, b)
     print(f"Deserialized DAG result: {orc.read_deck(result3)}")
-    os.unlink("my_pipeline.mpk")
+    os.unlink("my_pipeline.orcflow")
 
     print("PASS")
 
