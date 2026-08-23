@@ -5,7 +5,7 @@ mod host;
 mod stubs;
 
 use func::OrcFunc;
-use graph::{Graph, GraphNode, IN_GRAPH_MODE, BUILDING_WORKFLOW};
+use graph::{Graph, GraphNode, GraphNodeKind, IN_GRAPH_MODE, BUILDING_WORKFLOW};
 use handle::Handle;
 use host::{HANDLE_COUNTER, PLUGIN_SET, REGISTRY};
 
@@ -220,10 +220,10 @@ fn make_deck_deferred(
     data: &Bound<'_, PyAny>,
     type_id: Option<u64>,
 ) -> PyResult<PyObject> {
-    // Create the handle normally.
+    // Create the OrcHandle — this is the one place OrcHandle appears in deferred mode.
     let handle = create_orc_handle(py, data, type_id)?;
 
-    // Add as constant to the building workflow.
+    // Add as a constant node that owns the handle.
     let mut wf_guard = BUILDING_WORKFLOW
         .lock()
         .map_err(|_| pyo3::exceptions::PyRuntimeError::new_err("workflow lock poisoned"))?;
@@ -236,7 +236,7 @@ fn make_deck_deferred(
         pyo3::exceptions::PyRuntimeError::new_err(format!("{:?}", e))
     })?;
 
-    Ok(Py::new(py, GraphNode { oh })?.into_any())
+    Ok(Py::new(py, GraphNode { kind: GraphNodeKind::Output(oh) })?.into_any())
 }
 
 // =====================================================================

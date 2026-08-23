@@ -1,4 +1,4 @@
-use crate::graph::{GraphNode, BUILDING_WORKFLOW, IN_GRAPH_MODE};
+use crate::graph::{GraphNode, GraphNodeKind, BUILDING_WORKFLOW, IN_GRAPH_MODE, WORKFLOW_INPUTS};
 use crate::handle::Handle;
 use crate::host::HANDLE_COUNTER;
 use orc_sdk::{FuncInfo, IH, OH, OrcHandle};
@@ -51,16 +51,12 @@ impl OrcFunc {
             }
         }
 
-        let func = self
-            .info
-            .func
-            .ok_or_else(|| {
-                pyo3::exceptions::PyRuntimeError::new_err("null function pointer")
-            })?;
+        let func = self.info.func.ok_or_else(|| {
+            pyo3::exceptions::PyRuntimeError::new_err("null function pointer")
+        })?;
         let n_out = self.info.n_outputs.unwrap_or(1);
 
         // Build contiguous input array (borrowed copies, free_fn = None).
-        // ManuallyDrop prevents OrcHandle's Drop from running on these copies.
         let mut raw_inputs: Vec<ManuallyDrop<OrcHandle>> = Vec::with_capacity(n_args);
         for i in 0..n_args {
             let h: PyRef<'_, Handle> = args.get_item(i)?.extract()?;
@@ -80,7 +76,6 @@ impl OrcFunc {
             }));
         }
 
-        // Allocate output handles with fresh IDs.
         let base_id = HANDLE_COUNTER.fetch_add(n_out as u64, Ordering::Relaxed);
         let mut raw_outputs: Vec<ManuallyDrop<OrcHandle>> = (0..n_out)
             .map(|i| {
@@ -97,10 +92,7 @@ impl OrcFunc {
         let out_addr = raw_outputs.as_mut_ptr() as usize;
         let n_out_u64 = n_out as u64;
 
-        // SAFETY: ManuallyDrop<OrcHandle> has the same layout as OrcHandle.
-        // Input handles are valid borrows (Python objects alive in args).
-        // The plugin function is pure native code — no Python interaction.
-        // Release the GIL so other Python threads can run.
+        // SAFETY: Plugin function is pure native code — no Python interaction.
         py.allow_threads(|| unsafe {
             func(
                 0,
@@ -111,7 +103,6 @@ impl OrcFunc {
             );
         });
 
-        // Move outputs out of ManuallyDrop into Handle objects.
         if n_out == 1 {
             let h = ManuallyDrop::into_inner(raw_outputs.pop().unwrap());
             Ok(Py::new(py, Handle::new(h))?.into_any())
@@ -133,11 +124,11 @@ impl OrcFunc {
         let n_args = args.len();
         let n_out = self.info.n_outputs.unwrap_or(1);
 
-        // Extract GraphNode inputs.
-        let input_ohs: Vec<OH> = (0..n_args)
+        // Extract GraphNode arguments — each is either an Output(OH) or an Input(idx).
+        let arg_kinds: Vec<GraphNodeKind> = (0..n_args)
             .map(|i| {
                 let node: PyRef<'_, GraphNode> = args.get_item(i)?.extract()?;
-                Ok(node.oh)
+                Ok(node.kind)
             })
             .collect::<PyResult<_>>()?;
 
@@ -152,24 +143,32 @@ impl OrcFunc {
         let mut ihs = vec![IH::default(); n_args];
         let mut ohs = vec![OH::default(); n_out];
         wf.add_function(self.info.clone(), &mut ihs, &mut ohs)
-            .map_err(|e| {
-                pyo3::exceptions::PyRuntimeError::new_err(format!("{:?}", e))
-            })?;
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("{:?}", e)))?;
 
-        // Connect inputs.
-        for (input_oh, ih) in input_ohs.iter().zip(ihs.iter()) {
-            wf.connect(*input_oh, *ih).map_err(|e| {
-                pyo3::exceptions::PyRuntimeError::new_err(format!("{:?}", e))
-            })?;
+        // Connect or record workflow inputs.
+        let mut wi_guard = WORKFLOW_INPUTS
+            .lock()
+            .map_err(|_| pyo3::exceptions::PyRuntimeError::new_err("lock poisoned"))?;
+        for (kind, ih) in arg_kinds.iter().zip(ihs.iter()) {
+            match kind {
+                GraphNodeKind::Output(oh) => {
+                    wf.connect(*oh, *ih).map_err(|e| {
+                        pyo3::exceptions::PyRuntimeError::new_err(format!("{:?}", e))
+                    })?;
+                }
+                GraphNodeKind::Input(param_idx) => {
+                    // Leave this IH unconnected — record it as a workflow input.
+                    wi_guard.push((*ih, *param_idx));
+                }
+            }
         }
 
-        // Return GraphNode(s).
         if n_out == 1 {
-            Ok(Py::new(py, GraphNode { oh: ohs[0] })?.into_any())
+            Ok(Py::new(py, GraphNode { kind: GraphNodeKind::Output(ohs[0]) })?.into_any())
         } else {
             let list = PyList::empty(py);
             for oh in ohs {
-                list.append(Py::new(py, GraphNode { oh })?)?;
+                list.append(Py::new(py, GraphNode { kind: GraphNodeKind::Output(oh) })?)?;
             }
             Ok(list.into_any().unbind())
         }

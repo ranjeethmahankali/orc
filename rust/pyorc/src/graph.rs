@@ -1,5 +1,7 @@
 use crate::handle::Handle;
-use crate::host::{HANDLE_COUNTER, PLUGIN_SET, REGISTRY, SERIAL_CONTEXT_ARENA, host_clone_orc_handle};
+use crate::host::{
+    HANDLE_COUNTER, PLUGIN_SET, REGISTRY, SERIAL_CONTEXT_ARENA, host_clone_orc_handle,
+};
 use orc_sdk::{DagHandle, IH, OH, OrcHandle, OrcHandleBorrowed, Workflow};
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList, PyTuple};
@@ -9,28 +11,42 @@ use std::sync::Mutex;
 
 pub(crate) static IN_GRAPH_MODE: AtomicBool = AtomicBool::new(false);
 pub(crate) static BUILDING_WORKFLOW: Mutex<Option<SendWorkflow>> = Mutex::new(None);
+/// Accumulated workflow input mappings: (IH, param_index).
+pub(crate) static WORKFLOW_INPUTS: Mutex<Vec<(IH, usize)>> = Mutex::new(Vec::new());
 
-/// Wrapper to make Workflow Send+Sync (required by #[pyclass]).
+/// Wrapper to make Workflow Send+Sync (required by #[pyclass] and Mutex statics).
 /// SAFETY: Workflow contains Rc<RefCell<...>> (property system) which is !Send !Sync.
 /// However, the Workflow is only ever accessed while holding the Python GIL, so no
-/// concurrent access occurs. PyO3 enforces GIL acquisition for all method calls.
+/// concurrent access occurs.
 pub(crate) struct SendWorkflow(pub Workflow);
 unsafe impl Send for SendWorkflow {}
 unsafe impl Sync for SendWorkflow {}
 
-#[pyclass(name = "GraphNode")]
-pub(crate) struct GraphNode {
-    pub(crate) oh: OH,
+/// What a GraphNode represents.
+#[derive(Clone, Copy)]
+pub(crate) enum GraphNodeKind {
+    /// An output of a function call or a constant node in the DAG.
+    Output(OH),
+    /// A workflow input, identified by parameter index.
+    Input(usize),
 }
 
-// OH contains only a usize, which is Send+Sync.
+#[pyclass(name = "GraphNode")]
+pub(crate) struct GraphNode {
+    pub(crate) kind: GraphNodeKind,
+}
+
+// GraphNodeKind is Copy (OH is Copy, usize is Copy).
 unsafe impl Send for GraphNode {}
 unsafe impl Sync for GraphNode {}
 
 #[pymethods]
 impl GraphNode {
     fn __repr__(&self) -> String {
-        format!("<GraphNode idx={}>", self.oh.index())
+        match self.kind {
+            GraphNodeKind::Output(oh) => format!("<GraphNode output={}>", oh.index()),
+            GraphNodeKind::Input(idx) => format!("<GraphNode input={}>", idx),
+        }
     }
 }
 
@@ -48,12 +64,9 @@ impl Graph {
         kwargs: Option<&Bound<'py, PyDict>>,
     ) -> PyResult<PyObject> {
         let n_params = self.param_names.len();
-
-        // Collect input handles — use Py<Handle> so we don't need Clone on PyRef.
         let mut ordered: Vec<Option<Py<Handle>>> = Vec::new();
         ordered.resize_with(n_params, || None);
 
-        // Process positional args.
         for (i, arg) in args.iter().enumerate() {
             if i >= n_params {
                 return Err(pyo3::exceptions::PyValueError::new_err(
@@ -63,7 +76,6 @@ impl Graph {
             ordered[i] = Some(arg.extract()?);
         }
 
-        // Process keyword args.
         if let Some(kw) = kwargs {
             for (key, value) in kw.iter() {
                 let name: String = key.extract()?;
@@ -87,7 +99,6 @@ impl Graph {
             }
         }
 
-        // Ensure all inputs are provided.
         for (i, slot) in ordered.iter().enumerate() {
             if slot.is_none() {
                 return Err(pyo3::exceptions::PyValueError::new_err(format!(
@@ -127,7 +138,6 @@ impl Graph {
             )
         };
 
-        // Prepare outputs.
         let n_outputs = self.workflow.0.workflow_outputs().len();
         let base_id = HANDLE_COUNTER.fetch_add(n_outputs as u64, Ordering::Relaxed);
         let mut outputs: Vec<OrcHandle> = (0..n_outputs)
@@ -137,20 +147,11 @@ impl Graph {
             })
             .collect();
 
-        // Run the workflow.
         self.workflow
             .0
-            .run(
-                input_borrows,
-                &mut outputs,
-                &host_clone_orc_handle,
-                &HANDLE_COUNTER,
-            )
-            .map_err(|e| {
-                pyo3::exceptions::PyRuntimeError::new_err(format!("{:?}", e))
-            })?;
+            .run(input_borrows, &mut outputs, &host_clone_orc_handle, &HANDLE_COUNTER)
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("{:?}", e)))?;
 
-        // Wrap outputs.
         if n_outputs == 1 {
             Ok(Py::new(py, Handle::new(outputs.pop().unwrap()))?.into_any())
         } else {
@@ -176,9 +177,12 @@ impl Graph {
     }
 }
 
+// =====================================================================
+// make_graph
+// =====================================================================
+
 /// Build a workflow DAG by running `func` in deferred mode.
 pub(crate) fn make_graph_impl(py: Python<'_>, func: &Bound<'_, PyAny>) -> PyResult<Graph> {
-    // 1. Enter graph mode.
     if IN_GRAPH_MODE
         .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
         .is_err()
@@ -188,7 +192,7 @@ pub(crate) fn make_graph_impl(py: Python<'_>, func: &Bound<'_, PyAny>) -> PyResu
         ));
     }
 
-    // Guard that resets IN_GRAPH_MODE and cleans BUILDING_WORKFLOW on any exit path.
+    // Drop guard ensures cleanup on any exit path (panic, error, success).
     struct GraphModeGuard;
     impl Drop for GraphModeGuard {
         fn drop(&mut self) {
@@ -196,11 +200,13 @@ pub(crate) fn make_graph_impl(py: Python<'_>, func: &Bound<'_, PyAny>) -> PyResu
             if let Ok(mut wf) = BUILDING_WORKFLOW.lock() {
                 *wf = None;
             }
+            if let Ok(mut wi) = WORKFLOW_INPUTS.lock() {
+                wi.clear();
+            }
         }
     }
     let _guard = GraphModeGuard;
 
-    // 2. Create a fresh workflow.
     {
         let mut wf = BUILDING_WORKFLOW
             .lock()
@@ -208,7 +214,7 @@ pub(crate) fn make_graph_impl(py: Python<'_>, func: &Bound<'_, PyAny>) -> PyResu
         *wf = Some(SendWorkflow(Workflow::default()));
     }
 
-    // 3. Get parameter names via inspect.signature.
+    // Get parameter names via inspect.signature.
     let inspect = py.import("inspect")?;
     let sig = inspect.call_method1("signature", (func,))?;
     let params = sig.getattr("parameters")?;
@@ -218,75 +224,66 @@ pub(crate) fn make_graph_impl(py: Python<'_>, func: &Bound<'_, PyAny>) -> PyResu
         .map(|k| k.and_then(|k| k.extract::<String>()))
         .collect::<PyResult<_>>()?;
 
-    // 4. Create placeholder constant nodes for each parameter and wrap as GraphNode.
-    let graph_nodes: Vec<Py<GraphNode>> = {
-        let mut wf_guard = BUILDING_WORKFLOW.lock().unwrap();
-        let wf = &mut wf_guard.as_mut().unwrap().0;
-        let mut nodes = Vec::with_capacity(param_names.len());
-        for _name in &param_names {
-            let (_nh, oh) = wf
-                .add_constant(OrcHandle::default())
-                .map_err(|e| {
-                    pyo3::exceptions::PyRuntimeError::new_err(format!("{:?}", e))
-                })?;
-            nodes.push(Py::new(py, GraphNode { oh })?);
-        }
-        nodes
-    };
-
-    // Collect OHs for later use.
-    let param_ohs: Vec<OH> = graph_nodes
+    // Create GraphNode::Input for each parameter — pure graph concept, no OrcHandle.
+    let graph_nodes: Vec<Py<GraphNode>> = param_names
         .iter()
-        .map(|n| n.bind(py).borrow().oh)
-        .collect();
+        .enumerate()
+        .map(|(i, _)| Py::new(py, GraphNode { kind: GraphNodeKind::Input(i) }))
+        .collect::<PyResult<_>>()?;
 
-    // 5. Call the user function with GraphNode arguments.
+    // Call the user function.
     let py_args = PyTuple::new(py, &graph_nodes)?;
     let return_value = func.call1(&py_args)?;
 
-    // 6. Process results: extract outputs, disconnect param links, set workflow inputs.
+    // Finalize: set workflow inputs and outputs.
     let mut wf_guard = BUILDING_WORKFLOW.lock().unwrap();
     let wf = &mut wf_guard.as_mut().unwrap().0;
 
-    // Find all IHs connected to parameter-node OHs and disconnect them,
-    // recording them as workflow inputs.
-    let mut workflow_inputs: Vec<(IH, usize, String)> = Vec::new();
-    for (param_idx, param_oh) in param_ohs.iter().enumerate() {
-        let n_inputs = wf.num_total_inputs();
-        for ih_idx in 0..n_inputs {
-            let ih = IH::from(ih_idx);
-            if let Some(src_oh) = wf.input_source(ih) {
-                if src_oh == *param_oh {
-                    wf.disconnect(*param_oh, ih);
-                    workflow_inputs.push((ih, param_idx, param_names[param_idx].clone()));
-                }
-            }
-        }
-    }
-
-    if !workflow_inputs.is_empty() {
-        let refs: Vec<(IH, usize, &str)> = workflow_inputs
+    // Collect accumulated input mappings from deferred calls.
+    let input_map: Vec<(IH, usize)> = WORKFLOW_INPUTS.lock().unwrap().drain(..).collect();
+    if !input_map.is_empty() {
+        let refs: Vec<(IH, usize, &str)> = input_map
             .iter()
-            .map(|(ih, idx, name)| (*ih, *idx, name.as_str()))
+            .map(|(ih, idx)| (*ih, *idx, param_names[*idx].as_str()))
             .collect();
-        wf.set_inputs(&refs).map_err(|e| {
-            pyo3::exceptions::PyRuntimeError::new_err(format!("{:?}", e))
-        })?;
+        wf.set_inputs(&refs)
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("{:?}", e)))?;
     }
 
     // Extract workflow outputs from the return value.
     let mut output_ohs: Vec<OH> = Vec::new();
     if let Ok(node) = return_value.extract::<PyRef<'_, GraphNode>>() {
-        output_ohs.push(node.oh);
+        match node.kind {
+            GraphNodeKind::Output(oh) => output_ohs.push(oh),
+            GraphNodeKind::Input(_) => {
+                return Err(pyo3::exceptions::PyTypeError::new_err(
+                    "make_graph function must return function call results, not raw inputs",
+                ));
+            }
+        }
     } else if let Ok(tuple) = return_value.downcast::<PyTuple>() {
         for item in tuple.iter() {
             let node: PyRef<'_, GraphNode> = item.extract()?;
-            output_ohs.push(node.oh);
+            match node.kind {
+                GraphNodeKind::Output(oh) => output_ohs.push(oh),
+                GraphNodeKind::Input(_) => {
+                    return Err(pyo3::exceptions::PyTypeError::new_err(
+                        "make_graph function must return function call results, not raw inputs",
+                    ));
+                }
+            }
         }
     } else if let Ok(list) = return_value.downcast::<PyList>() {
         for item in list.iter() {
             let node: PyRef<'_, GraphNode> = item.extract()?;
-            output_ohs.push(node.oh);
+            match node.kind {
+                GraphNodeKind::Output(oh) => output_ohs.push(oh),
+                GraphNodeKind::Input(_) => {
+                    return Err(pyo3::exceptions::PyTypeError::new_err(
+                        "make_graph function must return function call results, not raw inputs",
+                    ));
+                }
+            }
         }
     } else {
         return Err(pyo3::exceptions::PyTypeError::new_err(
@@ -298,11 +295,9 @@ pub(crate) fn make_graph_impl(py: Python<'_>, func: &Bound<'_, PyAny>) -> PyResu
         .into_iter()
         .map(|oh| (oh, String::new()))
         .collect();
-    wf.set_outputs(&outputs).map_err(|e| {
-        pyo3::exceptions::PyRuntimeError::new_err(format!("{:?}", e))
-    })?;
+    wf.set_outputs(&outputs)
+        .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("{:?}", e)))?;
 
-    // 7. Take the workflow out.
     let workflow = wf_guard.take().unwrap();
 
     Ok(Graph {
@@ -311,42 +306,35 @@ pub(crate) fn make_graph_impl(py: Python<'_>, func: &Bound<'_, PyAny>) -> PyResu
     })
 }
 
-/// Serialize a workflow to a msgpack file.
+// =====================================================================
+// Serialization
+// =====================================================================
+
 pub(crate) fn serialize_workflow_impl(graph: &Graph, path: &str) -> PyResult<()> {
     let ps = PLUGIN_SET
         .get()
         .ok_or_else(|| pyo3::exceptions::PyRuntimeError::new_err("plugins not loaded"))?;
-    let file = std::fs::File::create(path).map_err(|e| {
-        pyo3::exceptions::PyIOError::new_err(format!("{}", e))
-    })?;
+    let file = std::fs::File::create(path)
+        .map_err(|e| pyo3::exceptions::PyIOError::new_err(format!("{}", e)))?;
     let mut writer = std::io::BufWriter::new(file);
     graph
         .workflow
         .0
         .write_to_msgpack(ps, &SERIAL_CONTEXT_ARENA, &mut writer)
-        .map_err(|e| {
-            pyo3::exceptions::PyRuntimeError::new_err(format!("{:?}", e))
-        })
+        .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("{:?}", e)))
 }
 
-/// Deserialize a workflow from a msgpack file.
 pub(crate) fn deserialize_workflow_impl(_py: Python<'_>, path: &str) -> PyResult<Graph> {
     let ps = PLUGIN_SET
         .get()
         .ok_or_else(|| pyo3::exceptions::PyRuntimeError::new_err("plugins not loaded"))?;
-    let file = std::fs::File::open(path).map_err(|e| {
-        pyo3::exceptions::PyIOError::new_err(format!("{}", e))
-    })?;
+    let file = std::fs::File::open(path)
+        .map_err(|e| pyo3::exceptions::PyIOError::new_err(format!("{}", e)))?;
     let mut reader = std::io::BufReader::new(file);
     let mut next_id = || HANDLE_COUNTER.fetch_add(1, Ordering::Relaxed);
     let wf = Workflow::read_from_msgpack(&mut reader, ps, &REGISTRY, 0, &mut next_id)
-        .map_err(|e| {
-            pyo3::exceptions::PyRuntimeError::new_err(format!("{:?}", e))
-        })?;
-
-    // Recover parameter names from workflow input names.
+        .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("{:?}", e)))?;
     let param_names = wf.input_names().to_vec();
-
     Ok(Graph {
         workflow: SendWorkflow(wf),
         param_names,
