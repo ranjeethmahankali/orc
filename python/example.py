@@ -55,7 +55,7 @@ def simple_experiment():
         total = orc.add(x, y)
         return orc.add(total, offset)
 
-    graph = orc.make_graph(my_pipeline)
+    graph = orc.make_workflow(my_pipeline)
 
     result = graph.run(a, b)
     print(f"\nDAG result: {orc.read_deck(result)}")
@@ -68,8 +68,8 @@ def simple_experiment():
     print(f"Doubled: {orc.read_deck(doubled)}")
 
     # Serialize / deserialize.
-    orc.serialize_workflow(graph, "my_pipeline.mpk")
-    graph2 = orc.deserialize_workflow("my_pipeline.mpk")
+    orc.save_workflow(graph, "my_pipeline.mpk")
+    graph2 = orc.load_workflow("my_pipeline.mpk")
     result3 = graph2.run(a, b)
     print(f"Deserialized DAG result: {orc.read_deck(result3)}")
     os.unlink("my_pipeline.mpk")

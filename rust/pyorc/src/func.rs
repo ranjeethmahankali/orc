@@ -1,4 +1,6 @@
-use crate::graph::{BUILDING_WORKFLOW, GraphNode, GraphNodeKind, IN_GRAPH_MODE, WORKFLOW_INPUTS};
+use crate::graph::{
+    BUILDING_WORKFLOW, IN_WORKFLOW_MODE, WORKFLOW_INPUTS, WorkflowNode, WorkflowNodeKind,
+};
 use crate::handle::Handle;
 use crate::host::HANDLE_COUNTER;
 use orc_sdk::{FuncInfo, IH, OH, OrcHandle};
@@ -19,7 +21,7 @@ unsafe impl Send for OrcFunc {}
 impl OrcFunc {
     #[pyo3(signature = (*args))]
     fn __call__<'py>(&self, py: Python<'py>, args: &Bound<'py, PyTuple>) -> PyResult<PyObject> {
-        if IN_GRAPH_MODE.load(Ordering::Relaxed) {
+        if IN_WORKFLOW_MODE.load(Ordering::Relaxed) {
             self.deferred_call(py, args)
         } else {
             self.immediate_call(py, args)
@@ -38,13 +40,13 @@ impl OrcFunc {
         args: &Bound<'py, PyTuple>,
     ) -> PyResult<PyObject> {
         let n_args = args.len();
-        if let Some(expected) = self.info.n_inputs {
-            if n_args != expected {
-                return Err(pyo3::exceptions::PyValueError::new_err(format!(
-                    "The function '{}' expects {} arguments, got {}.",
-                    self.info.name, expected, n_args
-                )));
-            }
+        if let Some(expected) = self.info.n_inputs
+            && n_args != expected
+        {
+            return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                "The function '{}' expects {} arguments, got {}.",
+                self.info.name, expected, n_args
+            )));
         }
 
         let func = self
@@ -121,10 +123,10 @@ impl OrcFunc {
         let n_args = args.len();
         let n_out = self.info.n_outputs.unwrap_or(1);
 
-        // Extract GraphNode arguments — each is either an Output(OH) or an Input(idx).
-        let arg_kinds: Vec<GraphNodeKind> = (0..n_args)
+        // Extract WorkflowNode arguments — each is either an Output(OH) or an Input(idx).
+        let arg_kinds: Vec<WorkflowNodeKind> = (0..n_args)
             .map(|i| {
-                let node: PyRef<'_, GraphNode> = args.get_item(i)?.extract()?;
+                let node: PyRef<'_, WorkflowNode> = args.get_item(i)?.extract()?;
                 Ok(node.kind)
             })
             .collect::<PyResult<_>>()?;
@@ -149,12 +151,12 @@ impl OrcFunc {
             .map_err(|_| pyo3::exceptions::PyRuntimeError::new_err("lock poisoned"))?;
         for (kind, ih) in arg_kinds.iter().zip(ihs.iter()) {
             match kind {
-                GraphNodeKind::Output(oh) => {
+                WorkflowNodeKind::Output(oh) => {
                     wf.connect(*oh, *ih).map_err(|e| {
                         pyo3::exceptions::PyRuntimeError::new_err(format!("{:?}", e))
                     })?;
                 }
-                GraphNodeKind::Input(param_idx) => {
+                WorkflowNodeKind::Input(param_idx) => {
                     // Leave this IH unconnected — record it as a workflow input.
                     wi_guard.push((*ih, *param_idx));
                 }
@@ -164,8 +166,8 @@ impl OrcFunc {
         if n_out == 1 {
             Ok(Py::new(
                 py,
-                GraphNode {
-                    kind: GraphNodeKind::Output(ohs[0]),
+                WorkflowNode {
+                    kind: WorkflowNodeKind::Output(ohs[0]),
                 },
             )?
             .into_any())
@@ -174,8 +176,8 @@ impl OrcFunc {
             for oh in ohs {
                 list.append(Py::new(
                     py,
-                    GraphNode {
-                        kind: GraphNodeKind::Output(oh),
+                    WorkflowNode {
+                        kind: WorkflowNodeKind::Output(oh),
                     },
                 )?)?;
             }

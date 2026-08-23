@@ -15,15 +15,12 @@ pub(crate) fn generate_stubs(py: Python<'_>, ps: &PluginSet) -> PyResult<()> {
     let stub_path = module_path.with_extension("pyi");
 
     // Check if regeneration is needed: compare newest plugin mtime vs stub mtime.
-    if let Ok(stub_meta) = std::fs::metadata(&stub_path) {
-        if let Ok(stub_mtime) = stub_meta.modified() {
-            let newest_plugin_mtime = newest_plugin_mtime(ps);
-            if let Some(pm) = newest_plugin_mtime {
-                if stub_mtime >= pm {
-                    return Ok(()); // Stub is up to date.
-                }
-            }
-        }
+    if let Ok(stub_meta) = std::fs::metadata(&stub_path)
+        && let Ok(stub_mtime) = stub_meta.modified()
+        && let Some(pm) = newest_plugin_mtime(ps)
+        && stub_mtime >= pm
+    {
+        return Ok(());
     }
 
     // Generate stub content.
@@ -75,11 +72,11 @@ fn build_stub_content(ps: &PluginSet) -> String {
     writeln!(s, "    @property").unwrap();
     writeln!(s, "    def __array_interface__(self) -> dict: ...").unwrap();
     writeln!(s).unwrap();
-    // GraphNode
-    writeln!(s, "class GraphNode: ...").unwrap();
+    // WorkflowNode
+    writeln!(s, "class WorkflowNode: ...").unwrap();
     writeln!(s).unwrap();
-    // Graph
-    writeln!(s, "class Graph:").unwrap();
+    // Workflow
+    writeln!(s, "class Workflow:").unwrap();
     writeln!(
         s,
         "    def run(self, *args: Handle, **kwargs: Handle) -> Handle | list[Handle]: ..."
@@ -94,18 +91,18 @@ fn build_stub_content(ps: &PluginSet) -> String {
     )
     .unwrap();
     writeln!(s, "def read_deck(handle: Handle) -> object: ...").unwrap();
-    writeln!(s, "def make_graph(fn: Callable) -> Graph: ...").unwrap();
+    writeln!(s, "def make_workflow(fn: Callable) -> Workflow: ...").unwrap();
     writeln!(
         s,
-        "def run_graph(graph: Graph, *args: Handle, **kwargs: Handle) -> Handle | list[Handle]: ..."
+        "def run_workflow(graph: Workflow, *args: Handle, **kwargs: Handle) -> Handle | list[Handle]: ..."
     )
     .unwrap();
     writeln!(
         s,
-        "def serialize_workflow(graph: Graph, path: str) -> None: ..."
+        "def save_workflow(graph: Workflow, path: str) -> None: ..."
     )
     .unwrap();
-    writeln!(s, "def deserialize_workflow(path: str) -> Graph: ...").unwrap();
+    writeln!(s, "def load_workflow(path: str) -> Workflow: ...").unwrap();
     writeln!(s).unwrap();
 
     // Plugin functions

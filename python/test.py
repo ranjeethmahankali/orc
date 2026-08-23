@@ -723,12 +723,12 @@ def t_serial_every_plugin_handles_builtin_types():
                 # Use flatten_deck as a type-preserving identity operation.
                 return orc.flatten_deck(orc.make_deck(vals, type_id=tid))
             return fn
-        graph = orc.make_graph(make_const())
+        graph = orc.make_workflow(make_const())
         with tempfile.NamedTemporaryFile(suffix=".orcw", delete=False) as f:
             path = f.name
         try:
-            orc.serialize_workflow(graph, path)
-            restored = orc.deserialize_workflow(path)
+            orc.save_workflow(graph, path)
+            restored = orc.load_workflow(path)
             out = restored.run()
             assert out.type_id == type_id, (
                 f"type {type_id:#x}: expected {type_id:#x}, got {out.type_id:#x}")
@@ -742,12 +742,12 @@ def t_serial_every_plugin_handles_nested_builtin():
     def make_nested():
         h = orc.make_deck([[1.0, 2.0, 3.0], [4.0, 5.0]])
         return orc.add(h, orc.make_deck([0.0]))
-    graph = orc.make_graph(make_nested)
+    graph = orc.make_workflow(make_nested)
     with tempfile.NamedTemporaryFile(suffix=".orcw", delete=False) as f:
         path = f.name
     try:
-        orc.serialize_workflow(graph, path)
-        restored = orc.deserialize_workflow(path)
+        orc.save_workflow(graph, path)
+        restored = orc.load_workflow(path)
         out = restored.run()
         assert orc.read_deck(out) == [[1.0, 2.0, 3.0], [4.0, 5.0]]
     finally:
@@ -760,12 +760,12 @@ def t_serial_custom_type_round_trip():
         real = orc.make_deck([1.0, -2.0, 3.0])
         imag = orc.make_deck([4.0, -5.0, 6.0])
         return orc.create_complex(real, imag)
-    graph = orc.make_graph(make_complex_graph)
+    graph = orc.make_workflow(make_complex_graph)
     with tempfile.NamedTemporaryFile(suffix=".orcw", delete=False) as f:
         path = f.name
     try:
-        orc.serialize_workflow(graph, path)
-        restored = orc.deserialize_workflow(path)
+        orc.save_workflow(graph, path)
+        restored = orc.load_workflow(path)
         out = restored.run()
         results = orc.complex_get_parts(out)
         real_out, imag_out = results
@@ -781,12 +781,12 @@ def t_serial_custom_type_nested_round_trip():
         real = orc.make_deck([[1.0, 2.0], [3.0]])
         imag = orc.make_deck([[4.0, 5.0], [6.0]])
         return orc.create_complex(real, imag)
-    graph = orc.make_graph(make_nested_complex)
+    graph = orc.make_workflow(make_nested_complex)
     with tempfile.NamedTemporaryFile(suffix=".orcw", delete=False) as f:
         path = f.name
     try:
-        orc.serialize_workflow(graph, path)
-        restored = orc.deserialize_workflow(path)
+        orc.save_workflow(graph, path)
+        restored = orc.load_workflow(path)
         out = restored.run()
         results = orc.complex_get_parts(out)
         real_out, imag_out = results
@@ -804,8 +804,8 @@ def t_serial_concurrent_serialization():
     def make_f64_b():
         return orc.add(orc.make_deck([10.0, 20.0, 30.0, 40.0, 50.0]),
                        orc.make_deck([0.0]))
-    graph1 = orc.make_graph(make_f64_a)
-    graph2 = orc.make_graph(make_f64_b)
+    graph1 = orc.make_workflow(make_f64_a)
+    graph2 = orc.make_workflow(make_f64_b)
     errors = [None, None]
     paths = [None, None]
 
@@ -813,7 +813,7 @@ def t_serial_concurrent_serialization():
         try:
             with tempfile.NamedTemporaryFile(suffix=".orcw", delete=False) as f:
                 paths[idx] = f.name
-            orc.serialize_workflow(graph, paths[idx])
+            orc.save_workflow(graph, paths[idx])
         except Exception as e:
             errors[idx] = e
 
@@ -826,8 +826,8 @@ def t_serial_concurrent_serialization():
     try:
         assert errors[0] is None, f"Thread 0 error: {errors[0]}"
         assert errors[1] is None, f"Thread 1 error: {errors[1]}"
-        restored1 = orc.deserialize_workflow(paths[0])
-        restored2 = orc.deserialize_workflow(paths[1])
+        restored1 = orc.load_workflow(paths[0])
+        restored2 = orc.load_workflow(paths[1])
         out1 = restored1.run()
         out2 = restored2.run()
         assert orc.read_deck(out1) == [1.0, 2.0, 3.0, 4.0, 5.0]
@@ -842,12 +842,12 @@ def t_serial_empty_deck():
     """Serialize and deserialize a single-element deck via workflow constant."""
     def make_const():
         return orc.add(orc.make_deck([42.0]), orc.make_deck([0.0]))
-    graph = orc.make_graph(make_const)
+    graph = orc.make_workflow(make_const)
     with tempfile.NamedTemporaryFile(suffix=".orcw", delete=False) as f:
         path = f.name
     try:
-        orc.serialize_workflow(graph, path)
-        restored = orc.deserialize_workflow(path)
+        orc.save_workflow(graph, path)
+        restored = orc.load_workflow(path)
         out = restored.run()
         assert out.type_id == orc.ORC_TYPE_F64
         assert orc.read_deck(out) == [42.0]
@@ -859,12 +859,12 @@ def t_serial_single_element():
     """Serialize and deserialize a single-element deck via workflow."""
     def make_single():
         return orc.add(orc.make_deck([42.0]), orc.make_deck([0.0]))
-    graph = orc.make_graph(make_single)
+    graph = orc.make_workflow(make_single)
     with tempfile.NamedTemporaryFile(suffix=".orcw", delete=False) as f:
         path = f.name
     try:
-        orc.serialize_workflow(graph, path)
-        restored = orc.deserialize_workflow(path)
+        orc.save_workflow(graph, path)
+        restored = orc.load_workflow(path)
         out = restored.run()
         assert orc.read_deck(out) == [42.0]
     finally:
@@ -875,11 +875,11 @@ def t_serial_deserialize_truncated_fails():
     """Deserializing a truncated workflow file raises an error."""
     def make_data():
         return orc.add(orc.make_deck([1.0, 2.0, 3.0]), orc.make_deck([0.0]))
-    graph = orc.make_graph(make_data)
+    graph = orc.make_workflow(make_data)
     with tempfile.NamedTemporaryFile(suffix=".orcw", delete=False) as f:
         path = f.name
     try:
-        orc.serialize_workflow(graph, path)
+        orc.save_workflow(graph, path)
         # Read the file and truncate it
         with open(path, "rb") as f:
             data = f.read()
@@ -887,7 +887,7 @@ def t_serial_deserialize_truncated_fails():
         with open(truncated_path, "wb") as f:
             f.write(data[:len(data) // 2])
         try:
-            orc.deserialize_workflow(truncated_path)
+            orc.load_workflow(truncated_path)
             assert False, "Should have raised an error on truncated data"
         except Exception:
             pass  # Expected: truncated data causes an error
@@ -907,7 +907,7 @@ def t_serial_deserialize_empty_buffer_fails():
         with open(path, "wb") as f:
             pass
         try:
-            orc.deserialize_workflow(path)
+            orc.load_workflow(path)
             assert False, "Should have raised an error on empty file"
         except Exception:
             pass  # Expected: empty file causes an error

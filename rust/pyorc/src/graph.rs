@@ -9,7 +9,7 @@ use std::mem::ManuallyDrop;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-pub(crate) static IN_GRAPH_MODE: AtomicBool = AtomicBool::new(false);
+pub(crate) static IN_WORKFLOW_MODE: AtomicBool = AtomicBool::new(false);
 pub(crate) static BUILDING_WORKFLOW: Mutex<Option<SendWorkflow>> = Mutex::new(None);
 /// Accumulated workflow input mappings: (IH, param_index).
 pub(crate) static WORKFLOW_INPUTS: Mutex<Vec<(IH, usize)>> = Mutex::new(Vec::new());
@@ -22,41 +22,41 @@ pub(crate) struct SendWorkflow(pub Workflow);
 unsafe impl Send for SendWorkflow {}
 unsafe impl Sync for SendWorkflow {}
 
-/// What a GraphNode represents.
+/// What a WorkflowNode represents.
 #[derive(Clone, Copy)]
-pub(crate) enum GraphNodeKind {
+pub(crate) enum WorkflowNodeKind {
     /// An output of a function call or a constant node in the DAG.
     Output(OH),
     /// A workflow input, identified by parameter index.
     Input(usize),
 }
 
-#[pyclass(name = "GraphNode")]
-pub(crate) struct GraphNode {
-    pub(crate) kind: GraphNodeKind,
+#[pyclass(name = "WorkflowNode")]
+pub(crate) struct WorkflowNode {
+    pub(crate) kind: WorkflowNodeKind,
 }
 
-// GraphNodeKind is Copy (OH is Copy, usize is Copy).
-unsafe impl Send for GraphNode {}
-unsafe impl Sync for GraphNode {}
+// WorkflowNodeKind is Copy (OH is Copy, usize is Copy).
+unsafe impl Send for WorkflowNode {}
+unsafe impl Sync for WorkflowNode {}
 
 #[pymethods]
-impl GraphNode {
+impl WorkflowNode {
     fn __repr__(&self) -> String {
         match self.kind {
-            GraphNodeKind::Output(oh) => format!("<GraphNode output={}>", oh.index()),
-            GraphNodeKind::Input(idx) => format!("<GraphNode input={}>", idx),
+            WorkflowNodeKind::Output(oh) => format!("<WorkflowNode output={}>", oh.index()),
+            WorkflowNodeKind::Input(idx) => format!("<WorkflowNode input={}>", idx),
         }
     }
 }
 
-#[pyclass(name = "Graph")]
-pub(crate) struct Graph {
+#[pyclass(name = "Workflow")]
+pub(crate) struct PyWorkflow {
     pub(crate) workflow: SendWorkflow,
     pub(crate) param_names: Vec<String>,
 }
 
-impl Graph {
+impl PyWorkflow {
     pub(crate) fn run_impl<'py>(
         &self,
         py: Python<'py>,
@@ -170,7 +170,7 @@ impl Graph {
 }
 
 #[pymethods]
-impl Graph {
+impl PyWorkflow {
     #[pyo3(signature = (*args, **kwargs))]
     fn run<'py>(
         &self,
@@ -183,25 +183,25 @@ impl Graph {
 }
 
 // =====================================================================
-// make_graph
+// make_workflow
 // =====================================================================
 
 /// Build a workflow DAG by running `func` in deferred mode.
-pub(crate) fn make_graph_impl(py: Python<'_>, func: &Bound<'_, PyAny>) -> PyResult<Graph> {
-    if IN_GRAPH_MODE
+pub(crate) fn make_workflow_impl(py: Python<'_>, func: &Bound<'_, PyAny>) -> PyResult<PyWorkflow> {
+    if IN_WORKFLOW_MODE
         .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
         .is_err()
     {
         return Err(pyo3::exceptions::PyRuntimeError::new_err(
-            "make_graph cannot be called recursively",
+            "make_workflow cannot be called recursively",
         ));
     }
 
     // Drop guard ensures cleanup on any exit path (panic, error, success).
-    struct GraphModeGuard;
-    impl Drop for GraphModeGuard {
+    struct WorkflowModeGuard;
+    impl Drop for WorkflowModeGuard {
         fn drop(&mut self) {
-            IN_GRAPH_MODE.store(false, Ordering::SeqCst);
+            IN_WORKFLOW_MODE.store(false, Ordering::SeqCst);
             if let Ok(mut wf) = BUILDING_WORKFLOW.lock() {
                 *wf = None;
             }
@@ -210,7 +210,7 @@ pub(crate) fn make_graph_impl(py: Python<'_>, func: &Bound<'_, PyAny>) -> PyResu
             }
         }
     }
-    let _guard = GraphModeGuard;
+    let _guard = WorkflowModeGuard;
 
     {
         let mut wf = BUILDING_WORKFLOW
@@ -229,15 +229,15 @@ pub(crate) fn make_graph_impl(py: Python<'_>, func: &Bound<'_, PyAny>) -> PyResu
         .map(|k| k.and_then(|k| k.extract::<String>()))
         .collect::<PyResult<_>>()?;
 
-    // Create GraphNode::Input for each parameter — pure graph concept, no OrcHandle.
-    let graph_nodes: Vec<Py<GraphNode>> = param_names
+    // Create WorkflowNode::Input for each parameter — pure graph concept, no OrcHandle.
+    let graph_nodes: Vec<Py<WorkflowNode>> = param_names
         .iter()
         .enumerate()
         .map(|(i, _)| {
             Py::new(
                 py,
-                GraphNode {
-                    kind: GraphNodeKind::Input(i),
+                WorkflowNode {
+                    kind: WorkflowNodeKind::Input(i),
                 },
             )
         })
@@ -264,42 +264,42 @@ pub(crate) fn make_graph_impl(py: Python<'_>, func: &Bound<'_, PyAny>) -> PyResu
 
     // Extract workflow outputs from the return value.
     let mut output_ohs: Vec<OH> = Vec::new();
-    if let Ok(node) = return_value.extract::<PyRef<'_, GraphNode>>() {
+    if let Ok(node) = return_value.extract::<PyRef<'_, WorkflowNode>>() {
         match node.kind {
-            GraphNodeKind::Output(oh) => output_ohs.push(oh),
-            GraphNodeKind::Input(_) => {
+            WorkflowNodeKind::Output(oh) => output_ohs.push(oh),
+            WorkflowNodeKind::Input(_) => {
                 return Err(pyo3::exceptions::PyTypeError::new_err(
-                    "make_graph function must return function call results, not raw inputs",
+                    "make_workflow function must return function call results, not raw inputs",
                 ));
             }
         }
     } else if let Ok(tuple) = return_value.downcast::<PyTuple>() {
         for item in tuple.iter() {
-            let node: PyRef<'_, GraphNode> = item.extract()?;
+            let node: PyRef<'_, WorkflowNode> = item.extract()?;
             match node.kind {
-                GraphNodeKind::Output(oh) => output_ohs.push(oh),
-                GraphNodeKind::Input(_) => {
+                WorkflowNodeKind::Output(oh) => output_ohs.push(oh),
+                WorkflowNodeKind::Input(_) => {
                     return Err(pyo3::exceptions::PyTypeError::new_err(
-                        "make_graph function must return function call results, not raw inputs",
+                        "make_workflow function must return function call results, not raw inputs",
                     ));
                 }
             }
         }
     } else if let Ok(list) = return_value.downcast::<PyList>() {
         for item in list.iter() {
-            let node: PyRef<'_, GraphNode> = item.extract()?;
+            let node: PyRef<'_, WorkflowNode> = item.extract()?;
             match node.kind {
-                GraphNodeKind::Output(oh) => output_ohs.push(oh),
-                GraphNodeKind::Input(_) => {
+                WorkflowNodeKind::Output(oh) => output_ohs.push(oh),
+                WorkflowNodeKind::Input(_) => {
                     return Err(pyo3::exceptions::PyTypeError::new_err(
-                        "make_graph function must return function call results, not raw inputs",
+                        "make_workflow function must return function call results, not raw inputs",
                     ));
                 }
             }
         }
     } else {
         return Err(pyo3::exceptions::PyTypeError::new_err(
-            "make_graph function must return GraphNode or a list/tuple of GraphNodes",
+            "make_workflow function must return WorkflowNode or a list/tuple of WorkflowNodes",
         ));
     }
 
@@ -312,7 +312,7 @@ pub(crate) fn make_graph_impl(py: Python<'_>, func: &Bound<'_, PyAny>) -> PyResu
 
     let workflow = wf_guard.take().unwrap();
 
-    Ok(Graph {
+    Ok(PyWorkflow {
         workflow,
         param_names,
     })
@@ -322,7 +322,7 @@ pub(crate) fn make_graph_impl(py: Python<'_>, func: &Bound<'_, PyAny>) -> PyResu
 // Serialization
 // =====================================================================
 
-pub(crate) fn serialize_workflow_impl(graph: &Graph, path: &str) -> PyResult<()> {
+pub(crate) fn save_workflow_impl(graph: &PyWorkflow, path: &str) -> PyResult<()> {
     let ps = PLUGIN_SET
         .get()
         .ok_or_else(|| pyo3::exceptions::PyRuntimeError::new_err("plugins not loaded"))?;
@@ -336,7 +336,7 @@ pub(crate) fn serialize_workflow_impl(graph: &Graph, path: &str) -> PyResult<()>
         .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("{:?}", e)))
 }
 
-pub(crate) fn deserialize_workflow_impl(_py: Python<'_>, path: &str) -> PyResult<Graph> {
+pub(crate) fn load_workflow_impl(_py: Python<'_>, path: &str) -> PyResult<PyWorkflow> {
     let ps = PLUGIN_SET
         .get()
         .ok_or_else(|| pyo3::exceptions::PyRuntimeError::new_err("plugins not loaded"))?;
@@ -347,7 +347,7 @@ pub(crate) fn deserialize_workflow_impl(_py: Python<'_>, path: &str) -> PyResult
     let wf = Workflow::read_from_msgpack(&mut reader, ps, &REGISTRY, 0, &mut next_id)
         .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("{:?}", e)))?;
     let param_names = wf.input_names().to_vec();
-    Ok(Graph {
+    Ok(PyWorkflow {
         workflow: SendWorkflow(wf),
         param_names,
     })

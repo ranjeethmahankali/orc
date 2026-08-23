@@ -5,7 +5,7 @@ mod host;
 mod stubs;
 
 use func::OrcFunc;
-use graph::{BUILDING_WORKFLOW, Graph, GraphNode, GraphNodeKind, IN_GRAPH_MODE};
+use graph::{BUILDING_WORKFLOW, IN_WORKFLOW_MODE, PyWorkflow, WorkflowNode, WorkflowNodeKind};
 use handle::Handle;
 use host::{HANDLE_COUNTER, PLUGIN_SET, REGISTRY};
 
@@ -20,15 +20,15 @@ use std::sync::atomic::Ordering;
 #[pymodule(name = "orc")]
 fn pyorc(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<Handle>()?;
-    m.add_class::<GraphNode>()?;
-    m.add_class::<Graph>()?;
+    m.add_class::<WorkflowNode>()?;
+    m.add_class::<PyWorkflow>()?;
     m.add_function(wrap_pyfunction!(load_plugins, m)?)?;
     m.add_function(wrap_pyfunction!(make_deck, m)?)?;
     m.add_function(wrap_pyfunction!(read_deck, m)?)?;
-    m.add_function(wrap_pyfunction!(make_graph, m)?)?;
-    m.add_function(wrap_pyfunction!(run_graph, m)?)?;
-    m.add_function(wrap_pyfunction!(serialize_workflow, m)?)?;
-    m.add_function(wrap_pyfunction!(deserialize_workflow, m)?)?;
+    m.add_function(wrap_pyfunction!(make_workflow, m)?)?;
+    m.add_function(wrap_pyfunction!(run_workflow, m)?)?;
+    m.add_function(wrap_pyfunction!(save_workflow, m)?)?;
+    m.add_function(wrap_pyfunction!(load_workflow, m)?)?;
     // Type constants.
     m.add("ORC_TYPE_U8", ORC_TYPE_U8)?;
     m.add("ORC_TYPE_U16", ORC_TYPE_U16)?;
@@ -83,7 +83,7 @@ fn load_plugins(py: Python<'_>, search_dir: &str) -> PyResult<()> {
 #[pyfunction]
 #[pyo3(signature = (data, type_id=None))]
 fn make_deck(py: Python<'_>, data: &Bound<'_, PyAny>, type_id: Option<u64>) -> PyResult<PyObject> {
-    if IN_GRAPH_MODE.load(Ordering::Relaxed) {
+    if IN_WORKFLOW_MODE.load(Ordering::Relaxed) {
         return make_deck_deferred(py, data, type_id);
     }
     let handle = create_orc_handle(py, data, type_id)?;
@@ -122,14 +122,14 @@ fn read_deck(py: Python<'_>, handle: &Handle) -> PyResult<PyObject> {
 }
 
 #[pyfunction]
-fn make_graph(py: Python<'_>, func: &Bound<'_, PyAny>) -> PyResult<Graph> {
-    graph::make_graph_impl(py, func)
+fn make_workflow(py: Python<'_>, func: &Bound<'_, PyAny>) -> PyResult<PyWorkflow> {
+    graph::make_workflow_impl(py, func)
 }
 
 #[pyfunction]
 #[pyo3(signature = (graph, *args, **kwargs))]
-fn run_graph<'py>(
-    graph: &Graph,
+fn run_workflow<'py>(
+    graph: &PyWorkflow,
     py: Python<'py>,
     args: &Bound<'py, PyTuple>,
     kwargs: Option<&Bound<'py, PyDict>>,
@@ -138,13 +138,13 @@ fn run_graph<'py>(
 }
 
 #[pyfunction]
-fn serialize_workflow(graph: &Graph, path: &str) -> PyResult<()> {
-    graph::serialize_workflow_impl(graph, path)
+fn save_workflow(graph: &PyWorkflow, path: &str) -> PyResult<()> {
+    graph::save_workflow_impl(graph, path)
 }
 
 #[pyfunction]
-fn deserialize_workflow(py: Python<'_>, path: &str) -> PyResult<Graph> {
-    graph::deserialize_workflow_impl(py, path)
+fn load_workflow(py: Python<'_>, path: &str) -> PyResult<PyWorkflow> {
+    graph::load_workflow_impl(py, path)
 }
 
 // =====================================================================
@@ -236,8 +236,8 @@ fn make_deck_deferred(
 
     Ok(Py::new(
         py,
-        GraphNode {
-            kind: GraphNodeKind::Output(oh),
+        WorkflowNode {
+            kind: WorkflowNodeKind::Output(oh),
         },
     )?
     .into_any())
@@ -248,12 +248,12 @@ fn make_deck_deferred(
 // =====================================================================
 
 fn intrinsic_depth(data: &Bound<'_, PyAny>) -> PyResult<u8> {
-    if let Ok(list) = data.downcast::<PyList>() {
-        if !list.is_empty() {
-            let first = list.get_item(0)?;
-            if first.downcast::<PyList>().is_ok() {
-                return Ok(1 + intrinsic_depth(&first.as_any())?);
-            }
+    if let Ok(list) = data.downcast::<PyList>()
+        && !list.is_empty()
+    {
+        let first = list.get_item(0)?;
+        if first.downcast::<PyList>().is_ok() {
+            return Ok(1 + intrinsic_depth(first.as_any())?);
         }
     }
     Ok(1)
@@ -272,11 +272,11 @@ fn collect_leaves<'py>(
         let first = list.get_item(0)?;
         if first.downcast::<PyList>().is_ok() {
             // List of lists.
-            collect_leaves(&first.as_any(), depth, items, depths)?;
+            collect_leaves(first.as_any(), depth, items, depths)?;
             for i in 1..list.len() {
                 let sub = list.get_item(i)?;
-                let sub_depth = intrinsic_depth(&sub.as_any())?;
-                collect_leaves(&sub.as_any(), sub_depth, items, depths)?;
+                let sub_depth = intrinsic_depth(sub.as_any())?;
+                collect_leaves(sub.as_any(), sub_depth, items, depths)?;
             }
         } else {
             // Flat list of leaf values.
@@ -367,8 +367,8 @@ fn reconstruct_nested(
     // Nest bottom-up.
     for d in 1..max_depth {
         let mut boundaries = vec![0usize];
-        for i in 1..marks_data.len() {
-            if marks_data[i].0 as usize >= d {
+        for (i, (mark_depth, _)) in marks_data.iter().enumerate().skip(1) {
+            if *mark_depth as usize >= d {
                 boundaries.push(i);
             }
         }
