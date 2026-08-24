@@ -248,27 +248,27 @@ pub(crate) fn make_workflow_impl(py: Python<'_>, func: &Bound<'_, PyAny>) -> PyR
 
 pub(crate) fn save_workflow_impl(graph: &PyWorkflow, path: &str) -> PyResult<()> {
     let ps = PLUGIN_SET
-        .get()
-        .ok_or_else(|| pyo3::exceptions::PyRuntimeError::new_err("Plugins not loaded"))?;
+        .lock()
+        .map_err(|_| pyo3::exceptions::PyRuntimeError::new_err("Lock error."))?;
     let file = std::fs::File::create(path)
         .map_err(|e| pyo3::exceptions::PyIOError::new_err(format!("{}", e)))?;
     let mut writer = std::io::BufWriter::new(file);
     graph
         .workflow
         .0
-        .write_to_msgpack(ps, &SERIAL_CONTEXT_ARENA, &mut writer)
+        .write_to_msgpack(&ps, &SERIAL_CONTEXT_ARENA, &mut writer)
         .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("{:?}", e)))
 }
 
 pub(crate) fn load_workflow_impl(path: &str) -> PyResult<PyWorkflow> {
     let ps = PLUGIN_SET
-        .get()
-        .ok_or_else(|| pyo3::exceptions::PyRuntimeError::new_err("Plugins not loaded"))?;
+        .lock()
+        .map_err(|_| pyo3::exceptions::PyRuntimeError::new_err("Lock error."))?;
     let file = std::fs::File::open(path)
         .map_err(|e| pyo3::exceptions::PyIOError::new_err(format!("{}", e)))?;
     let mut reader = std::io::BufReader::new(file);
     let mut next_id = || HANDLE_COUNTER.fetch_add(1, Ordering::Relaxed);
-    let wf = Workflow::read_from_msgpack(&mut reader, ps, &REGISTRY, 0, &mut next_id)
+    let wf = Workflow::read_from_msgpack(&mut reader, &ps, &REGISTRY, 0, &mut next_id)
         .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("{:?}", e)))?;
     Ok(PyWorkflow {
         param_names: wf.input_names().to_vec(),

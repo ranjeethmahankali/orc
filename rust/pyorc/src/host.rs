@@ -7,9 +7,10 @@ use orc_sdk::{
 };
 use std::alloc::{Layout, alloc, dealloc};
 use std::ffi::{CStr, c_void};
-use std::sync::{LazyLock, OnceLock, atomic::AtomicU64};
+use std::sync::{LazyLock, Mutex, atomic::AtomicU64};
 
-pub static PLUGIN_SET: OnceLock<PluginSet> = OnceLock::new();
+pub static PLUGIN_SET: LazyLock<Mutex<PluginSet>> =
+    LazyLock::new(|| Mutex::new(PluginSet::default()));
 pub static REGISTRY: LazyLock<DeckRegistry> = LazyLock::new(DeckRegistry::new);
 pub static HANDLE_COUNTER: AtomicU64 = AtomicU64::new(0);
 pub static SERIAL_CONTEXT_ARENA: LazyLock<ContextArena<Vec<u8>>> =
@@ -57,9 +58,9 @@ unsafe extern "C" fn host_create_proxy_deck(
     if inputs.iter().skip(1).any(|h| h.type_id != type_id) {
         return orc_sdk::ORC_ERROR_INVALID_PROXY;
     }
-    let plugin_set = match PLUGIN_SET.get() {
-        Some(ps) => ps,
-        None => return orc_sdk::ORC_ERROR_CANNOT_LOAD_PLUGINS,
+    let plugin_set = match PLUGIN_SET.lock() {
+        Ok(ps) => ps,
+        Err(_) => return orc_sdk::ORC_ERROR_CONCURRENCY_PROBLEM,
     };
     let proxy_type = match proxy_type {
         ORC_DECK_PROXY_COPY_ALL => ProxyType::CopyAll,

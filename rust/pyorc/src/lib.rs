@@ -37,32 +37,29 @@ fn pyorc(m: &Bound<'_, PyModule>) -> PyResult<()> {
 
 #[pyfunction]
 fn load_plugins(py: Python<'_>, search_dir: &str) -> PyResult<()> {
-    PLUGIN_SET
-        .set(
-            orc_sdk::PluginSet::load_from_dir(std::path::Path::new(search_dir), &host::HOST)
-                .map_err(|e| {
-                    pyo3::exceptions::PyRuntimeError::new_err(format!(
-                        "Failed to load plugins: {:?}.",
-                        e
-                    ))
-                })?,
-        )
-        .map_err(|_| {
-            pyo3::exceptions::PyRuntimeError::new_err("load_plugins has already been called.")
+    let mut ps = PLUGIN_SET
+        .lock()
+        .map_err(|_| pyo3::exceptions::PyRuntimeError::new_err("Lock error."))?;
+    // Record which plugins existed before so we only register the new ones.
+    let prev_count = ps.plugins().len();
+    ps.append_from_dir(std::path::Path::new(search_dir), &host::HOST)
+        .map_err(|e| {
+            pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to load plugins: {:?}.", e))
         })?;
-    let ps = PLUGIN_SET.get().unwrap();
-    // Register plugin functions as module attributes.
+    // Register newly loaded plugin functions as module attributes.
     let module = PyModule::import(py, "orc")?;
-    for plugin in ps.plugins() {
+    for plugin in &ps.plugins()[prev_count..] {
         for func_info in plugin.functions() {
-            let orc_func = OrcFunc {
-                info: func_info.clone(),
-            };
-            let py_func = Py::new(py, orc_func)?;
+            let py_func = Py::new(
+                py,
+                OrcFunc {
+                    info: func_info.clone(),
+                },
+            )?;
             module.setattr(pyo3::types::PyString::new(py, &func_info.name), py_func)?;
         }
     }
-    stubs::generate_stubs(py, ps)
+    stubs::generate_stubs(py, &ps)
 }
 
 #[pyfunction]
