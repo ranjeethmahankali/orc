@@ -37,13 +37,18 @@ fn pyorc(m: &Bound<'_, PyModule>) -> PyResult<()> {
 
 #[pyfunction]
 fn load_plugins(py: Python<'_>, search_dir: &str) -> PyResult<()> {
-    let plugin_set =
-        orc_sdk::load_plugins(std::path::Path::new(search_dir), &host::HOST).map_err(|e| {
-            pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to load plugins: {:?}.", e))
+    PLUGIN_SET
+        .set(
+            orc_sdk::load_plugins(std::path::Path::new(search_dir), &host::HOST).map_err(|e| {
+                pyo3::exceptions::PyRuntimeError::new_err(format!(
+                    "Failed to load plugins: {:?}.",
+                    e
+                ))
+            })?,
+        )
+        .map_err(|_| {
+            pyo3::exceptions::PyRuntimeError::new_err("load_plugins has already been called.")
         })?;
-    PLUGIN_SET.set(plugin_set).map_err(|_| {
-        pyo3::exceptions::PyRuntimeError::new_err("load_plugins has already been called.")
-    })?;
     let ps = PLUGIN_SET.get().unwrap();
     // Register plugin functions as module attributes.
     let module = PyModule::import(py, "orc")?;
