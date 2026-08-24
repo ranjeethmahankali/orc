@@ -10,7 +10,7 @@ use handle::Handle;
 use host::{HANDLE_COUNTER, PLUGIN_SET, REGISTRY};
 use orc_sdk::{
     Deck, ORC_TYPE_F32, ORC_TYPE_F64, ORC_TYPE_I8, ORC_TYPE_I16, ORC_TYPE_I32, ORC_TYPE_I64,
-    ORC_TYPE_U8, ORC_TYPE_U16, ORC_TYPE_U32, ORC_TYPE_U64, OrcHandle, OrcMark,
+    ORC_TYPE_U8, ORC_TYPE_U16, ORC_TYPE_U32, ORC_TYPE_U64, OrcHandle, OrcMark, Workflow,
 };
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyFloat, PyList, PyTuple};
@@ -98,7 +98,7 @@ fn parse_dtype(s: &str) -> PyResult<u64> {
 
 #[pyfunction]
 fn read_deck(py: Python<'_>, handle: &Handle) -> PyResult<PyObject> {
-    let h = &handle.inner.0;
+    let h = &handle.inner;
     macro_rules! read_typed {
         ($T:ty) => {{
             let items: &[$T] = h.items::<$T>();
@@ -226,10 +226,9 @@ fn make_deck_deferred(
     let mut wf_guard = BUILDING_WORKFLOW
         .lock()
         .map_err(|_| pyo3::exceptions::PyRuntimeError::new_err("Workflow lock poisoned"))?;
-    let wf = &mut wf_guard
+    let wf: &mut Workflow = wf_guard
         .as_mut()
-        .ok_or_else(|| pyo3::exceptions::PyRuntimeError::new_err("No workflow being built"))?
-        .0;
+        .ok_or_else(|| pyo3::exceptions::PyRuntimeError::new_err("No workflow being built"))?;
     let oh = wf
         .add_constant(handle)
         .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("{:?}", e)))?

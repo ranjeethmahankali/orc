@@ -3,7 +3,7 @@ use crate::graph::{
 };
 use crate::handle::Handle;
 use crate::host::HANDLE_COUNTER;
-use orc_sdk::{FuncInfo, IH, OH, OrcHandle, OrcHandleBorrowed};
+use orc_sdk::{FuncInfo, IH, OH, OrcHandle, OrcHandleBorrowed, Workflow};
 use pyo3::prelude::*;
 use pyo3::types::{PyList, PyTuple};
 use std::sync::atomic::Ordering;
@@ -58,7 +58,7 @@ impl OrcFunc {
             .map(|i| args.get_item(i)?.extract())
             .collect::<PyResult<_>>()?;
         let raw_inputs: Vec<OrcHandleBorrowed<'_>> =
-            input_refs.iter().map(|h| h.inner.0.borrowed()).collect();
+            input_refs.iter().map(|h| h.inner.borrowed()).collect();
         // Allocate output handles.
         let base_id = HANDLE_COUNTER.fetch_add(n_out as u64, Ordering::Relaxed);
         let mut raw_outputs: Vec<OrcHandle> = (0..n_out)
@@ -127,10 +127,9 @@ impl OrcFunc {
         let mut wf_guard = BUILDING_WORKFLOW
             .lock()
             .map_err(|_| pyo3::exceptions::PyRuntimeError::new_err("Workflow lock poisoned"))?;
-        let wf = &mut wf_guard
+        let wf: &mut Workflow = wf_guard
             .as_mut()
-            .ok_or_else(|| pyo3::exceptions::PyRuntimeError::new_err("No workflow being built"))?
-            .0;
+            .ok_or_else(|| pyo3::exceptions::PyRuntimeError::new_err("No workflow being built"))?;
         let mut ihs = vec![IH::default(); n_args];
         let mut ohs = vec![OH::default(); n_out];
         wf.add_function(self.info.clone(), &mut ihs, &mut ohs)

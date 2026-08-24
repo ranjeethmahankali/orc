@@ -16,9 +16,23 @@ pub(crate) static WORKFLOW_INPUTS: Mutex<Vec<(IH, usize)>> = Mutex::new(Vec::new
 /// SAFETY: Workflow contains Rc<RefCell<...>> (property system) which is !Send !Sync.
 /// However, the Workflow is only ever accessed while holding the Python GIL, so no
 /// concurrent access occurs.
+#[repr(transparent)]
 pub(crate) struct SendWorkflow(pub Workflow);
 unsafe impl Send for SendWorkflow {}
 unsafe impl Sync for SendWorkflow {}
+
+impl std::ops::Deref for SendWorkflow {
+    type Target = Workflow;
+    fn deref(&self) -> &Workflow {
+        &self.0
+    }
+}
+
+impl std::ops::DerefMut for SendWorkflow {
+    fn deref_mut(&mut self) -> &mut Workflow {
+        &mut self.0
+    }
+}
 
 #[derive(Clone, Copy)]
 pub(crate) enum WorkflowNodeKind {
@@ -102,12 +116,12 @@ impl PyWorkflow {
         let input_borrows: Vec<OrcHandleBorrowed<'_>> = refs
             .iter()
             .map(|r| match r {
-                Some(h) => h.inner.0.borrowed(),
+                Some(h) => h.inner.borrowed(),
                 None => empty.borrowed(),
             })
             .collect();
         // Allocate output handles.
-        let n_outputs = self.workflow.0.workflow_outputs().len();
+        let n_outputs = self.workflow.workflow_outputs().len();
         let base_id = HANDLE_COUNTER.fetch_add(n_outputs as u64, Ordering::Relaxed);
         let mut outputs: Vec<OrcHandle> = (0..n_outputs)
             .map(|i| OrcHandle {
@@ -117,7 +131,6 @@ impl PyWorkflow {
             .collect();
         // Run the workflow.
         self.workflow
-            .0
             .run(
                 &input_borrows,
                 &mut outputs,
@@ -215,10 +228,9 @@ pub(crate) fn make_workflow_impl(py: Python<'_>, func: &Bound<'_, PyAny>) -> PyR
     let mut wf_guard = BUILDING_WORKFLOW
         .lock()
         .map_err(|_| pyo3::exceptions::PyRuntimeError::new_err("Lock error"))?;
-    let wf = &mut wf_guard
+    let wf: &mut Workflow = wf_guard
         .as_mut()
-        .ok_or_else(|| pyo3::exceptions::PyRuntimeError::new_err("No workflow being built"))?
-        .0;
+        .ok_or_else(|| pyo3::exceptions::PyRuntimeError::new_err("No workflow being built"))?;
     // Set workflow inputs from accumulated deferred-call mappings.
     let input_refs: Vec<(IH, usize, &str)> = WORKFLOW_INPUTS
         .lock()
@@ -255,7 +267,6 @@ pub(crate) fn save_workflow_impl(graph: &PyWorkflow, path: &str) -> PyResult<()>
     let mut writer = std::io::BufWriter::new(file);
     graph
         .workflow
-        .0
         .write_to_msgpack(&ps, &SERIAL_CONTEXT_ARENA, &mut writer)
         .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("{:?}", e)))
 }
