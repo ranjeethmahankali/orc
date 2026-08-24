@@ -413,7 +413,7 @@ impl Workflow {
                                 temp_outputs.as_mut_ptr(),
                                 temp_outputs.len() as u64,
                             );
-                            let _ = crate::Error::from_raw(err)?;
+                            crate::Error::from_raw(err)?; // This returns if error.
                         },
                         None => return Err(DagError::InvalidFunction),
                     },
