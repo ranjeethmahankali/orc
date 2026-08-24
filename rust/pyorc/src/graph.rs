@@ -98,23 +98,21 @@ impl PyWorkflow {
             }
         }
 
-        for (i, slot) in ordered.iter().enumerate() {
-            if slot.is_none() {
-                return Err(pyo3::exceptions::PyValueError::new_err(format!(
-                    "Missing argument: {}",
-                    self.param_names[i]
-                )));
-            }
-        }
-
         // Keep PyRefs alive so we can borrow the inner OrcHandles.
-        let refs: Vec<PyRef<'py, Handle>> = ordered
+        // Missing args become empty default handles — Workflow::run passes those
+        // through to the plugin functions, which decide whether to tolerate them.
+        let refs: Vec<Option<PyRef<'py, Handle>>> = ordered
             .iter()
-            .map(|slot| slot.as_ref().unwrap().bind(py).borrow())
+            .map(|slot| slot.as_ref().map(|h| h.bind(py).borrow()))
             .collect();
-        // Contiguous array of borrows (copied fields, free_fn = None).
-        let input_borrows: Vec<OrcHandleBorrowed<'_>> =
-            refs.iter().map(|h| h.inner.0.borrowed()).collect();
+        let empty = OrcHandle::default();
+        let input_borrows: Vec<OrcHandleBorrowed<'_>> = refs
+            .iter()
+            .map(|r| match r {
+                Some(h) => h.inner.0.borrowed(),
+                None => empty.borrowed(),
+            })
+            .collect();
 
         let n_outputs = self.workflow.0.workflow_outputs().len();
         let base_id = HANDLE_COUNTER.fetch_add(n_outputs as u64, Ordering::Relaxed);

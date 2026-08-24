@@ -406,13 +406,14 @@ impl Workflow {
                     NodeInfo::Constant(_) => {} // Do nothing.
                     NodeInfo::Function(func_info) => match func_info.func {
                         Some(func) => unsafe {
-                            (func)(
+                            let err = (func)(
                                 node.idx as u64,
                                 temp_inputs.as_ptr().cast(),
                                 temp_inputs.len() as u64,
                                 temp_outputs.as_mut_ptr(),
                                 temp_outputs.len() as u64,
                             );
+                            let _ = crate::Error::from_raw(err)?;
                         },
                         None => return Err(DagError::InvalidFunction),
                     },

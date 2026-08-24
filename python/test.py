@@ -1129,13 +1129,15 @@ def t_workflow_run_too_many_args():
 
 
 def t_workflow_run_missing_arg():
-    """Running a workflow with missing arguments raises ValueError."""
+    """Missing arguments become empty handles. The plugin errors on type mismatch."""
     wf = orc.make_workflow(lambda x, y: orc.add(x, y))
     a = make_handle([1.0])
+    # add(a, <empty>) — type mismatch between f64 and type_id 0.
+    # Workflow::run propagates the plugin error.
     try:
         wf.run(a)
-        assert False, "Should have raised ValueError"
-    except ValueError:
+        assert False, "Should have raised RuntimeError"
+    except RuntimeError:
         pass
 
 
