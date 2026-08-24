@@ -46,37 +46,19 @@
   :CREATED:  2026-08-23 Sun 21:45
   :END:
 
-  Install once:
+  First time setup:
 
   #+begin_src sh
-    pip install ./rust/pyorc
-  #+end_src
-
-  For iterative development (incremental builds, much faster):
-
-  Linux:
-  #+begin_src sh :results drawer
-    python3 -m venv .venv
-    source .venv/bin/activate
     pip install numpy maturin
-    python -m maturin develop --release --manifest-path rust/pyorc/Cargo.toml
   #+end_src
 
-  macOS:
+  Build and install (run after every Rust change):
+
   #+begin_src sh :results drawer
-    python3 -m venv .venv
-    source .venv/bin/activate
-    pip install numpy maturin
-    python -m maturin develop --release --manifest-path rust/pyorc/Cargo.toml
+    python -m maturin build --release --manifest-path rust/pyorc/Cargo.toml
+    pip install --force-reinstall --no-deps build/wheels/orc-0.1.0-cp37-abi3-*.whl
   #+end_src
 
-  Windows:
-  #+begin_src sh :results drawer
-    python -m venv .venv
-    .venv/Scripts/activate
-    pip install numpy maturin
-    python -m maturin develop --release --manifest-path rust/pyorc/Cargo.toml
-  #+end_src
-
-  After Rust changes, re-run ~python -m maturin develop --release --manifest-path rust/pyorc/Cargo.toml~.
-  It does an incremental cargo build and installs directly — no wheel packaging step.
+  The first command does an incremental cargo build and packages a wheel. The second installs it.
+  ~--no-deps~ skips dependency resolution so the install is near-instant. The glob in the wheel
+  filename works across platforms.

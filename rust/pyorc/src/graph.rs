@@ -72,7 +72,7 @@ impl PyWorkflow {
             .iter()
             .map(|arg| arg.extract())
             .chain(std::iter::repeat_with(|| Ok(None)))
-            // .take(n_params)
+            .take(n_params)
             .collect::<PyResult<Vec<_>>>()?;
 
         if let Some(kw) = kwargs {
