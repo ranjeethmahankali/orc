@@ -253,7 +253,7 @@
   <2026-08-23 Sun 23:34> The generated code works, but the quality is horrendous. Working through it
   slowly, learning the ins and outs of pyo3, and cleaning it all up.
 
-  - [ ] Implement Default for PlugiSet, that creates an empty set, and add function to append to
+  - [X] Implement Default for PlugiSet, that creates an empty set, and add function to append to
     it. This is useful when loading plugins in multiple passes, for whatever reason.
 
 ** Plan using PyO3
