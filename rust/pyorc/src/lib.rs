@@ -39,12 +39,13 @@ fn pyorc(m: &Bound<'_, PyModule>) -> PyResult<()> {
 fn load_plugins(py: Python<'_>, search_dir: &str) -> PyResult<()> {
     PLUGIN_SET
         .set(
-            orc_sdk::load_from_dir(std::path::Path::new(search_dir), &host::HOST).map_err(|e| {
-                pyo3::exceptions::PyRuntimeError::new_err(format!(
-                    "Failed to load plugins: {:?}.",
-                    e
-                ))
-            })?,
+            orc_sdk::PluginSet::load_from_dir(std::path::Path::new(search_dir), &host::HOST)
+                .map_err(|e| {
+                    pyo3::exceptions::PyRuntimeError::new_err(format!(
+                        "Failed to load plugins: {:?}.",
+                        e
+                    ))
+                })?,
         )
         .map_err(|_| {
             pyo3::exceptions::PyRuntimeError::new_err("load_plugins has already been called.")

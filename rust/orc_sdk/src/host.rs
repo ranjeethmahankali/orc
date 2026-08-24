@@ -170,15 +170,35 @@ pub enum TypeOwner {
     Plugin(usize, usize),
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct PluginSet {
-    plugins: Box<[Plugin]>,
+    plugins: Vec<Plugin>,
     type_map: HashMap<OrcTypeId, TypeOwner>,
     function_map: HashMap<String, (usize, usize)>,
 }
 
+impl Default for PluginSet {
+    fn default() -> Self {
+        Self {
+            plugins: Default::default(),
+            type_map: HashMap::<OrcTypeId, TypeOwner>::from_iter(
+                PRIMITIVE_TYPES
+                    .iter()
+                    .map(|ti| (ti.type_id, TypeOwner::BuiltIn(TypeInfo::from(ti)))),
+            ),
+            function_map: Default::default(),
+        }
+    }
+}
+
 impl PluginSet {
     pub fn load_from_dir(dir: &Path, host: &OrcHost) -> Result<PluginSet, Error> {
+        let mut plugin_set = PluginSet::default();
+        plugin_set.append_from_dir(dir, host)?;
+        Ok(plugin_set)
+    }
+
+    pub fn append_from_dir(&mut self, dir: &Path, host: &OrcHost) -> Result<(), Error> {
         let callbacks = HostCallbacks {
             inner: host.callbacks,
             context: 0,
@@ -190,14 +210,6 @@ impl PluginSet {
         const PLUGIN_EXT: &str = "dylib";
         #[cfg(not(any(target_os = "windows", target_os = "macos")))]
         const PLUGIN_EXT: &str = "so";
-        // We're going to load the plugins one at a time, and accumulate the type_ids in this hashmap.
-        let mut type_map = HashMap::<OrcTypeId, TypeOwner>::from_iter(
-            PRIMITIVE_TYPES
-                .iter()
-                .map(|ti| (ti.type_id, TypeOwner::BuiltIn(TypeInfo::from(ti)))),
-        );
-        let mut function_map = HashMap::<String, (usize, usize)>::default();
-        let mut plugins = Vec::<Plugin>::new();
         for entry in entries.into_iter().flatten() {
             let path = entry.path();
             match path.extension() {
@@ -206,7 +218,7 @@ impl PluginSet {
                         Ok(plugin) => {
                             // Ensure the types in this new plugin don't conflict with the types already loaded.
                             for (type_index, type_info) in plugin.types().iter().enumerate() {
-                                match type_map.entry(type_info.type_id) {
+                                match self.type_map.entry(type_info.type_id) {
                                     Entry::Occupied(occupied) => match occupied.get() {
                                         TypeOwner::BuiltIn(ti) => {
                                             callbacks.error(&format!(
@@ -218,34 +230,37 @@ impl PluginSet {
                                         TypeOwner::Plugin(plugin_index, conflicting_type_index) => {
                                             callbacks.error(&format!(
                                         "The id of type {} from plugin {} conflicts with that of {} from {}.",
-                                        plugins[*plugin_index].name,
-                                        plugins[*plugin_index].types()[*conflicting_type_index].name,
+                                        self.plugins[*plugin_index].name,
+                                        self.plugins[*plugin_index].types()[*conflicting_type_index].name,
                                         type_info.name,
                                         plugin.name));
                                             return Err(Error::CannotLoadPlugins);
                                         }
                                     },
                                     Entry::Vacant(vacant) => {
-                                        vacant.insert(TypeOwner::Plugin(plugins.len(), type_index));
+                                        vacant.insert(TypeOwner::Plugin(
+                                            self.plugins.len(),
+                                            type_index,
+                                        ));
                                     }
                                 }
                             }
                             // Now ensure the functions in this plugin don't conflict with any functions already loaded.
                             for (fn_index, fn_info) in plugin.functions().iter().enumerate() {
-                                match function_map.entry(fn_info.name.clone()) {
+                                match self.function_map.entry(fn_info.name.clone()) {
                                     Entry::Occupied(occupied) => {
                                         let (plugin_index, _function_index) = occupied.get();
                                         callbacks.error(&format!(
                                         "Function {} in plugin {} conflicts with a function with the same name in plugin {}.",
-                                        fn_info.name, plugin.name(), plugins[*plugin_index].name()));
+                                        fn_info.name, plugin.name(), self.plugins[*plugin_index].name()));
                                         return Err(Error::CannotLoadPlugins);
                                     }
                                     Entry::Vacant(vacant) => {
-                                        vacant.insert((plugins.len(), fn_index));
+                                        vacant.insert((self.plugins.len(), fn_index));
                                     }
                                 }
                             }
-                            plugins.push(plugin);
+                            self.plugins.push(plugin);
                             callbacks.info(&format!("Loaded plugin: {}", path.display()));
                         }
                         Err(e) => {
@@ -256,11 +271,7 @@ impl PluginSet {
                 _ => {} // Not a shared library.
             }
         }
-        Ok(PluginSet {
-            plugins: plugins.into_boxed_slice(),
-            type_map,
-            function_map,
-        })
+        Ok(())
     }
 
     pub fn get_function(&self, name: &str) -> Option<&FuncInfo> {
