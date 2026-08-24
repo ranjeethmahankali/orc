@@ -39,7 +39,7 @@
     build/release/deck_ops_plugin_tests
   #+end_src
 
-* Building and Installing Pyorc
+* Working with Pyorc
   :PROPERTIES:
   :CREATED:  2026-08-23 Sun 21:45
   :END:
@@ -60,3 +60,10 @@
   The first command does an incremental cargo build and packages a wheel. The second installs it.
   ~--no-deps~ skips dependency resolution so the install is near-instant. The glob in the wheel
   filename works across platforms.
+
+  Run the example, and tests at once:
+
+  #+begin_src compile
+    python python/example.py
+    python python/test.py
+  #+end_src
