@@ -48,16 +48,19 @@ fn load_plugins(py: Python<'_>, search_dir: &str) -> PyResult<()> {
         })?;
     // Register newly loaded plugin functions as module attributes.
     let module = PyModule::import(py, "orc")?;
-    for plugin in &ps.plugins()[prev_count..] {
-        for func_info in plugin.functions() {
-            let py_func = Py::new(
+    for func_info in ps.plugins()[prev_count..]
+        .iter()
+        .flat_map(|plugin| plugin.functions().iter())
+    {
+        module.setattr(
+            pyo3::types::PyString::new(py, &func_info.name),
+            Py::new(
                 py,
                 OrcFunc {
                     info: func_info.clone(),
                 },
-            )?;
-            module.setattr(pyo3::types::PyString::new(py, &func_info.name), py_func)?;
-        }
+            )?,
+        )?;
     }
     stubs::generate_stubs(py, &ps)
 }
@@ -67,10 +70,11 @@ fn load_plugins(py: Python<'_>, search_dir: &str) -> PyResult<()> {
 fn make_deck(py: Python<'_>, data: &Bound<'_, PyAny>, dtype: Option<&str>) -> PyResult<PyObject> {
     let type_id = dtype.map(parse_dtype).transpose()?;
     if IN_WORKFLOW_MODE.load(Ordering::Relaxed) {
-        return make_deck_deferred(py, data, type_id);
+        make_deck_deferred(py, data, type_id)
+    } else {
+        let handle = create_orc_handle(py, data, type_id)?;
+        Ok(Py::new(py, Handle::new(handle))?.into_any())
     }
-    let handle = create_orc_handle(py, data, type_id)?;
-    Ok(Py::new(py, Handle::new(handle))?.into_any())
 }
 
 fn parse_dtype(s: &str) -> PyResult<u64> {
