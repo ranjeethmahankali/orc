@@ -351,36 +351,34 @@ fn reconstruct_nested(
     let marks_data: Vec<(u8, u64)> = marks.iter().map(|m| (m.depth, m.pos)).collect();
     let max_depth = marks_data[0].0 as usize + 1;
 
-    // Split items into leaf groups at mark positions.
-    let mut result: Vec<PyObject> = Vec::with_capacity(marks_data.len());
-    for i in 0..marks_data.len() {
-        let start = marks_data[i].1 as usize;
-        let end = if i + 1 < marks_data.len() {
-            marks_data[i + 1].1 as usize
-        } else {
-            items.len()
-        };
-        let list = PyList::new(py, &items[start..end])?;
-        result.push(list.into_any().unbind());
-    }
+    // Split items into leaf groups between consecutive mark positions.
+    let positions: Vec<usize> = marks_data.iter().map(|(_, pos)| *pos as usize).collect();
+    let mut result: Vec<PyObject> = positions
+        .windows(2)
+        .map(|w| PyList::new(py, &items[w[0]..w[1]]).map(|l| l.into_any().unbind()))
+        .collect::<PyResult<_>>()?;
+    // Last group: from last mark position to end of items.
+    let last = PyList::new(py, &items[*positions.last().unwrap()..])?
+        .into_any()
+        .unbind();
+    result.push(last);
 
     // Nest bottom-up.
     for d in 1..max_depth {
-        let mut boundaries = vec![0usize];
-        for (i, (mark_depth, _)) in marks_data.iter().enumerate().skip(1) {
-            if *mark_depth as usize >= d {
-                boundaries.push(i);
-            }
-        }
+        let mut boundaries: Vec<usize> = vec![0];
+        boundaries.extend(
+            marks_data
+                .iter()
+                .enumerate()
+                .skip(1)
+                .filter(|(_, (depth, _))| *depth as usize >= d)
+                .map(|(i, _)| i),
+        );
         boundaries.push(result.len());
-
-        let mut new_result: Vec<PyObject> = Vec::with_capacity(boundaries.len() - 1);
-        for b in 0..boundaries.len() - 1 {
-            let slice = &result[boundaries[b]..boundaries[b + 1]];
-            let list = PyList::new(py, slice)?;
-            new_result.push(list.into_any().unbind());
-        }
-        result = new_result;
+        result = boundaries
+            .windows(2)
+            .map(|w| PyList::new(py, &result[w[0]..w[1]]).map(|l| l.into_any().unbind()))
+            .collect::<PyResult<_>>()?;
     }
 
     if result.len() == 1 {

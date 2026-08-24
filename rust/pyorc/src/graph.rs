@@ -260,50 +260,8 @@ pub(crate) fn make_workflow_impl(py: Python<'_>, func: &Bound<'_, PyAny>) -> PyR
     }
 
     // Extract workflow outputs from the return value.
-    let mut output_ohs: Vec<OH> = Vec::new();
-    if let Ok(node) = return_value.extract::<PyRef<'_, WorkflowNode>>() {
-        match node.kind {
-            WorkflowNodeKind::Output(oh) => output_ohs.push(oh),
-            WorkflowNodeKind::Input(_) => {
-                return Err(pyo3::exceptions::PyTypeError::new_err(
-                    "make_workflow function must return function call results, not raw inputs",
-                ));
-            }
-        }
-    } else if let Ok(tuple) = return_value.downcast::<PyTuple>() {
-        for item in tuple.iter() {
-            let node: PyRef<'_, WorkflowNode> = item.extract()?;
-            match node.kind {
-                WorkflowNodeKind::Output(oh) => output_ohs.push(oh),
-                WorkflowNodeKind::Input(_) => {
-                    return Err(pyo3::exceptions::PyTypeError::new_err(
-                        "make_workflow function must return function call results, not raw inputs",
-                    ));
-                }
-            }
-        }
-    } else if let Ok(list) = return_value.downcast::<PyList>() {
-        for item in list.iter() {
-            let node: PyRef<'_, WorkflowNode> = item.extract()?;
-            match node.kind {
-                WorkflowNodeKind::Output(oh) => output_ohs.push(oh),
-                WorkflowNodeKind::Input(_) => {
-                    return Err(pyo3::exceptions::PyTypeError::new_err(
-                        "make_workflow function must return function call results, not raw inputs",
-                    ));
-                }
-            }
-        }
-    } else {
-        return Err(pyo3::exceptions::PyTypeError::new_err(
-            "make_workflow function must return WorkflowNode or a list/tuple of WorkflowNodes",
-        ));
-    }
-
-    let outputs: Vec<(OH, String)> = output_ohs
-        .into_iter()
-        .map(|oh| (oh, String::new()))
-        .collect();
+    let output_ohs = extract_output_ohs(&return_value)?;
+    let outputs: Vec<(OH, String)> = output_ohs.iter().map(|&oh| (oh, String::new())).collect();
     wf.set_outputs(&outputs)
         .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("{:?}", e)))?;
 
@@ -348,4 +306,29 @@ pub(crate) fn load_workflow_impl(_py: Python<'_>, path: &str) -> PyResult<PyWork
         workflow: SendWorkflow(wf),
         param_names,
     })
+}
+
+/// Extract output OHs from the return value of a user's workflow function.
+/// Accepts a single WorkflowNode, or a tuple/list of them.
+fn extract_output_ohs(value: &Bound<'_, PyAny>) -> PyResult<Vec<OH>> {
+    // Single WorkflowNode.
+    if let Ok(node) = value.extract::<PyRef<'_, WorkflowNode>>() {
+        return Ok(vec![require_output_oh(&node)?]);
+    }
+    // Tuple or list of WorkflowNodes.
+    let items: Vec<PyRef<'_, WorkflowNode>> = value.extract().map_err(|_| {
+        pyo3::exceptions::PyTypeError::new_err(
+            "make_workflow function must return WorkflowNode or a list/tuple of WorkflowNodes",
+        )
+    })?;
+    items.iter().map(|n| require_output_oh(n)).collect()
+}
+
+fn require_output_oh(node: &WorkflowNode) -> PyResult<OH> {
+    match node.kind {
+        WorkflowNodeKind::Output(oh) => Ok(oh),
+        WorkflowNodeKind::Input(_) => Err(pyo3::exceptions::PyTypeError::new_err(
+            "make_workflow function must return function call results, not raw inputs",
+        )),
+    }
 }
