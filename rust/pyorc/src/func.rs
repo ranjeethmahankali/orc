@@ -51,7 +51,7 @@ impl OrcFunc {
         let func = self
             .info
             .func
-            .ok_or_else(|| pyo3::exceptions::PyRuntimeError::new_err("null function pointer"))?;
+            .ok_or_else(|| pyo3::exceptions::PyRuntimeError::new_err("Null function pointer"))?;
         let n_out = self.info.n_outputs.unwrap_or(1);
 
         // Build contiguous input array (free_fn = None → drop is a no-op).
@@ -129,10 +129,10 @@ impl OrcFunc {
         // Lock the building workflow and add the function node.
         let mut wf_guard = BUILDING_WORKFLOW
             .lock()
-            .map_err(|_| pyo3::exceptions::PyRuntimeError::new_err("workflow lock poisoned"))?;
+            .map_err(|_| pyo3::exceptions::PyRuntimeError::new_err("Workflow lock poisoned"))?;
         let wf = &mut wf_guard
             .as_mut()
-            .ok_or_else(|| pyo3::exceptions::PyRuntimeError::new_err("no workflow being built"))?
+            .ok_or_else(|| pyo3::exceptions::PyRuntimeError::new_err("No workflow being built"))?
             .0;
 
         let mut ihs = vec![IH::default(); n_args];
@@ -143,7 +143,7 @@ impl OrcFunc {
         // Connect or record workflow inputs.
         let mut wi_guard = WORKFLOW_INPUTS
             .lock()
-            .map_err(|_| pyo3::exceptions::PyRuntimeError::new_err("lock poisoned"))?;
+            .map_err(|_| pyo3::exceptions::PyRuntimeError::new_err("Lock poisoned"))?;
         for (kind, ih) in arg_kinds.iter().zip(ihs.iter()) {
             match kind {
                 WorkflowNodeKind::Output(oh) => {

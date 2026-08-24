@@ -65,7 +65,7 @@ impl PyWorkflow {
         let n_params = self.param_names.len();
         if args.len() > n_params {
             return Err(pyo3::exceptions::PyValueError::new_err(
-                "too many positional arguments",
+                "Too many positional arguments",
             ));
         }
         let mut ordered: Vec<Option<Py<Handle>>> = args
@@ -83,13 +83,13 @@ impl PyWorkflow {
                     .position(|n| n == &name)
                     .ok_or_else(|| {
                         pyo3::exceptions::PyValueError::new_err(format!(
-                            "unknown parameter: {}",
+                            "Unknown parameter: {}",
                             name
                         ))
                     })?;
                 if ordered[idx].is_some() {
                     return Err(pyo3::exceptions::PyValueError::new_err(format!(
-                        "duplicate argument: {}",
+                        "Duplicate argument: {}",
                         name
                     )));
                 }
@@ -100,7 +100,7 @@ impl PyWorkflow {
         for (i, slot) in ordered.iter().enumerate() {
             if slot.is_none() {
                 return Err(pyo3::exceptions::PyValueError::new_err(format!(
-                    "missing argument: {}",
+                    "Missing argument: {}",
                     self.param_names[i]
                 )));
             }
@@ -190,7 +190,7 @@ pub(crate) fn make_workflow_impl(py: Python<'_>, func: &Bound<'_, PyAny>) -> PyR
         .is_err()
     {
         return Err(pyo3::exceptions::PyRuntimeError::new_err(
-            "make_workflow cannot be called recursively",
+            "make_workflow cannot be called recursively.",
         ));
     }
 
@@ -212,7 +212,7 @@ pub(crate) fn make_workflow_impl(py: Python<'_>, func: &Bound<'_, PyAny>) -> PyR
     {
         let mut wf = BUILDING_WORKFLOW
             .lock()
-            .map_err(|_| pyo3::exceptions::PyRuntimeError::new_err("lock error"))?;
+            .map_err(|_| pyo3::exceptions::PyRuntimeError::new_err("Lock error"))?;
         *wf = Some(SendWorkflow(Workflow::default()));
     }
 
@@ -280,7 +280,7 @@ pub(crate) fn make_workflow_impl(py: Python<'_>, func: &Bound<'_, PyAny>) -> PyR
 pub(crate) fn save_workflow_impl(graph: &PyWorkflow, path: &str) -> PyResult<()> {
     let ps = PLUGIN_SET
         .get()
-        .ok_or_else(|| pyo3::exceptions::PyRuntimeError::new_err("plugins not loaded"))?;
+        .ok_or_else(|| pyo3::exceptions::PyRuntimeError::new_err("Plugins not loaded"))?;
     let file = std::fs::File::create(path)
         .map_err(|e| pyo3::exceptions::PyIOError::new_err(format!("{}", e)))?;
     let mut writer = std::io::BufWriter::new(file);
@@ -294,7 +294,7 @@ pub(crate) fn save_workflow_impl(graph: &PyWorkflow, path: &str) -> PyResult<()>
 pub(crate) fn load_workflow_impl(_py: Python<'_>, path: &str) -> PyResult<PyWorkflow> {
     let ps = PLUGIN_SET
         .get()
-        .ok_or_else(|| pyo3::exceptions::PyRuntimeError::new_err("plugins not loaded"))?;
+        .ok_or_else(|| pyo3::exceptions::PyRuntimeError::new_err("Plugins not loaded"))?;
     let file = std::fs::File::open(path)
         .map_err(|e| pyo3::exceptions::PyIOError::new_err(format!("{}", e)))?;
     let mut reader = std::io::BufReader::new(file);
@@ -318,7 +318,7 @@ fn extract_output_ohs(value: &Bound<'_, PyAny>) -> PyResult<Vec<OH>> {
     // Tuple or list of WorkflowNodes.
     let items: Vec<PyRef<'_, WorkflowNode>> = value.extract().map_err(|_| {
         pyo3::exceptions::PyTypeError::new_err(
-            "make_workflow function must return WorkflowNode or a list/tuple of WorkflowNodes",
+            "make_workflow function must return a WorkflowNode or a list/tuple of WorkflowNodes.",
         )
     })?;
     items.iter().map(|n| require_output_oh(n)).collect()
@@ -328,7 +328,7 @@ fn require_output_oh(node: &WorkflowNode) -> PyResult<OH> {
     match node.kind {
         WorkflowNodeKind::Output(oh) => Ok(oh),
         WorkflowNodeKind::Input(_) => Err(pyo3::exceptions::PyTypeError::new_err(
-            "make_workflow function must return function call results, not raw inputs",
+            "make_workflow function must return function call results, not raw inputs.",
         )),
     }
 }

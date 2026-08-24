@@ -51,12 +51,12 @@ fn pyorc(m: &Bound<'_, PyModule>) -> PyResult<()> {
 fn load_plugins(py: Python<'_>, search_dir: &str) -> PyResult<()> {
     let plugin_set =
         orc_sdk::load_plugins(std::path::Path::new(search_dir), &host::HOST).map_err(|e| {
-            pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to load plugins: {:?}", e))
+            pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to load plugins: {:?}.", e))
         })?;
 
     if PLUGIN_SET.set(plugin_set).is_err() {
         return Err(pyo3::exceptions::PyRuntimeError::new_err(
-            "load_plugins has already been called",
+            "load_plugins has already been called.",
         ));
     }
 
@@ -224,10 +224,10 @@ fn make_deck_deferred(
     // Add as a constant node that owns the handle.
     let mut wf_guard = BUILDING_WORKFLOW
         .lock()
-        .map_err(|_| pyo3::exceptions::PyRuntimeError::new_err("workflow lock poisoned"))?;
+        .map_err(|_| pyo3::exceptions::PyRuntimeError::new_err("Workflow lock poisoned"))?;
     let wf = &mut wf_guard
         .as_mut()
-        .ok_or_else(|| pyo3::exceptions::PyRuntimeError::new_err("no workflow being built"))?
+        .ok_or_else(|| pyo3::exceptions::PyRuntimeError::new_err("No workflow being built"))?
         .0;
 
     let (_nh, oh) = wf
