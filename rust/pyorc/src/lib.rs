@@ -56,9 +56,7 @@ fn load_plugins(py: Python<'_>, search_dir: &str) -> PyResult<()> {
             module.setattr(pyo3::types::PyString::new(py, &func_info.name), py_func)?;
         }
     }
-    // Generate .pyi stubs (best effort).
-    let _ = stubs::generate_stubs(py, ps);
-    Ok(())
+    stubs::generate_stubs(py, ps)
 }
 
 #[pyfunction]
