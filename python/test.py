@@ -1141,6 +1141,18 @@ def t_workflow_run_missing_arg():
         pass
 
 
+def t_workflow_run_none_arg():
+    """Passing None as an argument maps to an empty handle."""
+    wf = orc.make_workflow(lambda x, y: orc.add(x, y))
+    a = make_handle([1.0])
+    # add(a, None) — None becomes an empty handle, same as a missing arg.
+    try:
+        wf.run(a, None)
+        assert False, "Should have raised RuntimeError"
+    except RuntimeError:
+        pass
+
+
 def t_workflow_run_unknown_kwarg():
     """Running a workflow with unknown keyword raises ValueError."""
     wf = orc.make_workflow(lambda x: orc.add(x, x))
