@@ -39,7 +39,7 @@ fn pyorc(m: &Bound<'_, PyModule>) -> PyResult<()> {
 fn load_plugins(py: Python<'_>, search_dir: &str) -> PyResult<()> {
     PLUGIN_SET
         .set(
-            orc_sdk::load_plugins(std::path::Path::new(search_dir), &host::HOST).map_err(|e| {
+            orc_sdk::load_from_dir(std::path::Path::new(search_dir), &host::HOST).map_err(|e| {
                 pyo3::exceptions::PyRuntimeError::new_err(format!(
                     "Failed to load plugins: {:?}.",
                     e

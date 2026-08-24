@@ -32,4 +32,4 @@ pub use dag::{
 };
 
 mod host;
-pub use host::{Plugin, PluginSet, TypeOwner, load_plugins};
+pub use host::{Plugin, PluginSet, TypeOwner};

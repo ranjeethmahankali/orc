@@ -170,99 +170,99 @@ pub enum TypeOwner {
     Plugin(usize, usize),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct PluginSet {
     plugins: Box<[Plugin]>,
     type_map: HashMap<OrcTypeId, TypeOwner>,
     function_map: HashMap<String, (usize, usize)>,
 }
 
-pub fn load_plugins(dir: &Path, host: &OrcHost) -> Result<PluginSet, Error> {
-    let callbacks = HostCallbacks {
-        inner: host.callbacks,
-        context: 0,
-    };
-    let entries = std::fs::read_dir(dir).map_err(|_e| Error::CannotLoadPlugins)?;
-    #[cfg(target_os = "windows")]
-    const PLUGIN_EXT: &str = "dll";
-    #[cfg(target_os = "macos")]
-    const PLUGIN_EXT: &str = "dylib";
-    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
-    const PLUGIN_EXT: &str = "so";
-    // We're going to load the plugins one at a time, and accumulate the type_ids in this hashmap.
-    let mut type_map = HashMap::<OrcTypeId, TypeOwner>::from_iter(
-        PRIMITIVE_TYPES
-            .iter()
-            .map(|ti| (ti.type_id, TypeOwner::BuiltIn(TypeInfo::from(ti)))),
-    );
-    let mut function_map = HashMap::<String, (usize, usize)>::default();
-    let mut plugins = Vec::<Plugin>::new();
-    for entry in entries.into_iter().flatten() {
-        let path = entry.path();
-        match path.extension() {
-            Some(ext) if ext == PLUGIN_EXT => {
-                match Plugin::load(&path, host) {
-                    Ok(plugin) => {
-                        // Ensure the types in this new plugin don't conflict with the types already loaded.
-                        for (type_index, type_info) in plugin.types().iter().enumerate() {
-                            match type_map.entry(type_info.type_id) {
-                                Entry::Occupied(occupied) => match occupied.get() {
-                                    TypeOwner::BuiltIn(ti) => {
-                                        callbacks.error(&format!(
+impl PluginSet {
+    pub fn load_from_dir(dir: &Path, host: &OrcHost) -> Result<PluginSet, Error> {
+        let callbacks = HostCallbacks {
+            inner: host.callbacks,
+            context: 0,
+        };
+        let entries = std::fs::read_dir(dir).map_err(|_e| Error::CannotLoadPlugins)?;
+        #[cfg(target_os = "windows")]
+        const PLUGIN_EXT: &str = "dll";
+        #[cfg(target_os = "macos")]
+        const PLUGIN_EXT: &str = "dylib";
+        #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+        const PLUGIN_EXT: &str = "so";
+        // We're going to load the plugins one at a time, and accumulate the type_ids in this hashmap.
+        let mut type_map = HashMap::<OrcTypeId, TypeOwner>::from_iter(
+            PRIMITIVE_TYPES
+                .iter()
+                .map(|ti| (ti.type_id, TypeOwner::BuiltIn(TypeInfo::from(ti)))),
+        );
+        let mut function_map = HashMap::<String, (usize, usize)>::default();
+        let mut plugins = Vec::<Plugin>::new();
+        for entry in entries.into_iter().flatten() {
+            let path = entry.path();
+            match path.extension() {
+                Some(ext) if ext == PLUGIN_EXT => {
+                    match Plugin::load(&path, host) {
+                        Ok(plugin) => {
+                            // Ensure the types in this new plugin don't conflict with the types already loaded.
+                            for (type_index, type_info) in plugin.types().iter().enumerate() {
+                                match type_map.entry(type_info.type_id) {
+                                    Entry::Occupied(occupied) => match occupied.get() {
+                                        TypeOwner::BuiltIn(ti) => {
+                                            callbacks.error(&format!(
                                             "Type {} of plugin {} conflicts with the builtin type {}.",
                                             type_info.name, plugin.name, ti.name
                                         ));
-                                        return Err(Error::CannotLoadPlugins);
-                                    }
-                                    TypeOwner::Plugin(plugin_index, conflicting_type_index) => {
-                                        callbacks.error(&format!(
+                                            return Err(Error::CannotLoadPlugins);
+                                        }
+                                        TypeOwner::Plugin(plugin_index, conflicting_type_index) => {
+                                            callbacks.error(&format!(
                                         "The id of type {} from plugin {} conflicts with that of {} from {}.",
                                         plugins[*plugin_index].name,
                                         plugins[*plugin_index].types()[*conflicting_type_index].name,
                                         type_info.name,
                                         plugin.name));
-                                        return Err(Error::CannotLoadPlugins);
+                                            return Err(Error::CannotLoadPlugins);
+                                        }
+                                    },
+                                    Entry::Vacant(vacant) => {
+                                        vacant.insert(TypeOwner::Plugin(plugins.len(), type_index));
                                     }
-                                },
-                                Entry::Vacant(vacant) => {
-                                    vacant.insert(TypeOwner::Plugin(plugins.len(), type_index));
                                 }
                             }
-                        }
-                        // Now ensure the functions in this plugin don't conflict with any functions already loaded.
-                        for (fn_index, fn_info) in plugin.functions().iter().enumerate() {
-                            match function_map.entry(fn_info.name.clone()) {
-                                Entry::Occupied(occupied) => {
-                                    let (plugin_index, _function_index) = occupied.get();
-                                    callbacks.error(&format!(
+                            // Now ensure the functions in this plugin don't conflict with any functions already loaded.
+                            for (fn_index, fn_info) in plugin.functions().iter().enumerate() {
+                                match function_map.entry(fn_info.name.clone()) {
+                                    Entry::Occupied(occupied) => {
+                                        let (plugin_index, _function_index) = occupied.get();
+                                        callbacks.error(&format!(
                                         "Function {} in plugin {} conflicts with a function with the same name in plugin {}.",
                                         fn_info.name, plugin.name(), plugins[*plugin_index].name()));
-                                    return Err(Error::CannotLoadPlugins);
-                                }
-                                Entry::Vacant(vacant) => {
-                                    vacant.insert((plugins.len(), fn_index));
+                                        return Err(Error::CannotLoadPlugins);
+                                    }
+                                    Entry::Vacant(vacant) => {
+                                        vacant.insert((plugins.len(), fn_index));
+                                    }
                                 }
                             }
+                            plugins.push(plugin);
+                            callbacks.info(&format!("Loaded plugin: {}", path.display()));
                         }
-                        plugins.push(plugin);
-                        callbacks.info(&format!("Loaded plugin: {}", path.display()));
-                    }
-                    Err(e) => {
-                        callbacks.info(&format!("Skipping {}: {e}", path.display()));
+                        Err(e) => {
+                            callbacks.info(&format!("Skipping {}: {e}", path.display()));
+                        }
                     }
                 }
+                _ => {} // Not a shared library.
             }
-            _ => {} // Not a shared library.
         }
+        Ok(PluginSet {
+            plugins: plugins.into_boxed_slice(),
+            type_map,
+            function_map,
+        })
     }
-    Ok(PluginSet {
-        plugins: plugins.into_boxed_slice(),
-        type_map,
-        function_map,
-    })
-}
 
-impl PluginSet {
     pub fn get_function(&self, name: &str) -> Option<&FuncInfo> {
         self.function_map
             .get(name)
@@ -290,7 +290,7 @@ impl PluginSet {
 
 #[cfg(test)]
 pub(crate) mod test_harness {
-    use crate::{ContextArena, DagError, DeckRegistry, OrcHost, PluginSet, Workflow, load_plugins};
+    use crate::{ContextArena, DagError, DeckRegistry, OrcHost, PluginSet, Workflow};
     use std::sync::{
         LazyLock,
         atomic::{AtomicU64, Ordering},
@@ -308,7 +308,7 @@ pub(crate) mod test_harness {
 
     // Load once per process — the plugin's OnceLock<HOST> can only be set once.
     pub static PLUGINS: LazyLock<PluginSet> =
-        LazyLock::new(|| load_plugins(&plugin_dir(), &OrcHost::default()).unwrap());
+        LazyLock::new(|| PluginSet::load_from_dir(&plugin_dir(), &OrcHost::default()).unwrap());
 
     pub struct TestHarness {
         pub registry: DeckRegistry,

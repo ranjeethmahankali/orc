@@ -189,7 +189,7 @@ pub static PLUGIN_SET: LazyLock<PluginSet> = LazyLock::new(|| {
     } else {
         exe_dir
     };
-    orc_sdk::load_plugins(plugin_dir, &HOST).expect("Failed to load plugins")
+    orc_sdk::PluginSet::load_from_dir(plugin_dir, &HOST).expect("Failed to load plugins")
 });
 
 /// Helper function to requrest the global host to clone an OrcHandle, by deferring the cloning logic to the appropriate plugin.
