@@ -10,7 +10,6 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 pub(crate) static IN_WORKFLOW_MODE: AtomicBool = AtomicBool::new(false);
 pub(crate) static BUILDING_WORKFLOW: Mutex<Option<SendWorkflow>> = Mutex::new(None);
-/// Accumulated workflow input mappings: (IH, param_index).
 pub(crate) static WORKFLOW_INPUTS: Mutex<Vec<(IH, usize)>> = Mutex::new(Vec::new());
 
 /// Wrapper to make Workflow Send+Sync (required by #[pyclass] and Mutex statics).
@@ -21,12 +20,9 @@ pub(crate) struct SendWorkflow(pub Workflow);
 unsafe impl Send for SendWorkflow {}
 unsafe impl Sync for SendWorkflow {}
 
-/// What a WorkflowNode represents.
 #[derive(Clone, Copy)]
 pub(crate) enum WorkflowNodeKind {
-    /// An output of a function call or a constant node in the DAG.
     Output(OH),
-    /// A workflow input, identified by parameter index.
     Input(usize),
 }
 
@@ -35,7 +31,6 @@ pub(crate) struct WorkflowNode {
     pub(crate) kind: WorkflowNodeKind,
 }
 
-// WorkflowNodeKind is Copy (OH is Copy, usize is Copy).
 unsafe impl Send for WorkflowNode {}
 unsafe impl Sync for WorkflowNode {}
 
@@ -62,6 +57,7 @@ impl PyWorkflow {
         args: &Bound<'py, PyTuple>,
         kwargs: Option<&Bound<'py, PyDict>>,
     ) -> PyResult<PyObject> {
+        // Collect positional args, pad remaining slots with None.
         let n_params = self.param_names.len();
         if args.len() > n_params {
             return Err(pyo3::exceptions::PyValueError::new_err(
@@ -74,7 +70,7 @@ impl PyWorkflow {
             .chain(std::iter::repeat_with(|| Ok(None)))
             .take(n_params)
             .collect::<PyResult<Vec<_>>>()?;
-
+        // Fill in keyword args.
         if let Some(kw) = kwargs {
             for (key, value) in kw.iter() {
                 let name: String = key.extract()?;
@@ -97,10 +93,8 @@ impl PyWorkflow {
                 ordered[idx] = Some(value.extract()?);
             }
         }
-
-        // Keep PyRefs alive so we can borrow the inner OrcHandles.
-        // Missing args become empty default handles — Workflow::run passes those
-        // through to the plugin functions, which decide whether to tolerate them.
+        // Borrow input handles. Missing args become empty default handles —
+        // Workflow::run passes those through to the plugin functions.
         let refs: Vec<Option<PyRef<'py, Handle>>> = ordered
             .iter()
             .map(|slot| slot.as_ref().map(|h| h.bind(py).borrow()))
@@ -113,7 +107,7 @@ impl PyWorkflow {
                 None => empty.borrowed(),
             })
             .collect();
-
+        // Allocate output handles.
         let n_outputs = self.workflow.0.workflow_outputs().len();
         let base_id = HANDLE_COUNTER.fetch_add(n_outputs as u64, Ordering::Relaxed);
         let mut outputs: Vec<OrcHandle> = (0..n_outputs)
@@ -122,7 +116,7 @@ impl PyWorkflow {
                 ..Default::default()
             })
             .collect();
-
+        // Run the workflow.
         self.workflow
             .0
             .run(
@@ -132,7 +126,7 @@ impl PyWorkflow {
                 &HANDLE_COUNTER,
             )
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("{:?}", e)))?;
-
+        // Wrap outputs.
         if n_outputs == 1 {
             Ok(Py::new(py, Handle::new(outputs.pop().unwrap()))?.into_any())
         } else {
@@ -162,8 +156,8 @@ impl PyWorkflow {
 // make_workflow
 // =====================================================================
 
-/// Build a workflow DAG by running `func` in deferred mode.
 pub(crate) fn make_workflow_impl(py: Python<'_>, func: &Bound<'_, PyAny>) -> PyResult<PyWorkflow> {
+    // Prevent recursive calls.
     if IN_WORKFLOW_MODE
         .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
         .is_err()
@@ -172,8 +166,7 @@ pub(crate) fn make_workflow_impl(py: Python<'_>, func: &Bound<'_, PyAny>) -> PyR
             "make_workflow cannot be called recursively.",
         ));
     }
-
-    // Drop guard ensures cleanup on any exit path (panic, error, success).
+    // Drop guard resets state on any exit path (panic, error, success).
     struct WorkflowModeGuard;
     impl Drop for WorkflowModeGuard {
         fn drop(&mut self) {
@@ -187,14 +180,13 @@ pub(crate) fn make_workflow_impl(py: Python<'_>, func: &Bound<'_, PyAny>) -> PyR
         }
     }
     let _guard = WorkflowModeGuard;
-
+    // Initialize building workflow.
     {
         let mut wf = BUILDING_WORKFLOW
             .lock()
             .map_err(|_| pyo3::exceptions::PyRuntimeError::new_err("Lock error"))?;
         *wf = Some(SendWorkflow(Workflow::default()));
     }
-
     // Get parameter names via inspect.signature.
     let inspect = py.import("inspect")?;
     let sig = inspect.call_method1("signature", (func,))?;
@@ -204,8 +196,7 @@ pub(crate) fn make_workflow_impl(py: Python<'_>, func: &Bound<'_, PyAny>) -> PyR
         .try_iter()?
         .map(|k| k.and_then(|k| k.extract::<String>()))
         .collect::<PyResult<_>>()?;
-
-    // Create WorkflowNode::Input for each parameter — pure graph concept, no OrcHandle.
+    // Create WorkflowNode::Input for each parameter.
     let graph_nodes: Vec<Py<WorkflowNode>> = param_names
         .iter()
         .enumerate()
@@ -218,11 +209,9 @@ pub(crate) fn make_workflow_impl(py: Python<'_>, func: &Bound<'_, PyAny>) -> PyR
             )
         })
         .collect::<PyResult<_>>()?;
-
-    // Call the user function.
+    // Call the user function in deferred mode.
     let py_args = PyTuple::new(py, &graph_nodes)?;
     let return_value = func.call1(&py_args)?;
-
     // Finalize: set workflow inputs and outputs.
     let mut wf_guard = BUILDING_WORKFLOW
         .lock()
@@ -231,8 +220,7 @@ pub(crate) fn make_workflow_impl(py: Python<'_>, func: &Bound<'_, PyAny>) -> PyR
         .as_mut()
         .ok_or_else(|| pyo3::exceptions::PyRuntimeError::new_err("No workflow being built"))?
         .0;
-
-    // Collect accumulated input mappings from deferred calls.
+    // Set workflow inputs from accumulated deferred-call mappings.
     let input_map: Vec<(IH, usize)> = WORKFLOW_INPUTS
         .lock()
         .map_err(|_| pyo3::exceptions::PyRuntimeError::new_err("Lock error"))?
@@ -246,15 +234,13 @@ pub(crate) fn make_workflow_impl(py: Python<'_>, func: &Bound<'_, PyAny>) -> PyR
         wf.set_inputs(&refs)
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("{:?}", e)))?;
     }
-
-    // Extract workflow outputs from the return value.
+    // Set workflow outputs from the return value.
     let output_ohs = extract_output_ohs(&return_value)?;
     let outputs: Vec<(OH, String)> = output_ohs.iter().map(|&oh| (oh, String::new())).collect();
     wf.set_outputs(&outputs)
         .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("{:?}", e)))?;
-
+    // Take the finished workflow.
     let workflow = wf_guard.take().unwrap();
-
     Ok(PyWorkflow {
         workflow,
         param_names,
@@ -296,8 +282,6 @@ pub(crate) fn load_workflow_impl(path: &str) -> PyResult<PyWorkflow> {
     })
 }
 
-/// Extract output OHs from the return value of a user's workflow function.
-/// Accepts a single WorkflowNode, or a tuple/list of them.
 fn extract_output_ohs(value: &Bound<'_, PyAny>) -> PyResult<Vec<OH>> {
     // Single WorkflowNode.
     if let Ok(node) = value.extract::<PyRef<'_, WorkflowNode>>() {

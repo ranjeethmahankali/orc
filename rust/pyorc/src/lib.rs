@@ -29,7 +29,6 @@ fn pyorc(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(run_workflow, m)?)?;
     m.add_function(wrap_pyfunction!(save_workflow, m)?)?;
     m.add_function(wrap_pyfunction!(load_workflow, m)?)?;
-    // Type constants.
     m.add("ORC_TYPE_U8", ORC_TYPE_U8)?;
     m.add("ORC_TYPE_U16", ORC_TYPE_U16)?;
     m.add("ORC_TYPE_U32", ORC_TYPE_U32)?;
@@ -53,15 +52,12 @@ fn load_plugins(py: Python<'_>, search_dir: &str) -> PyResult<()> {
         orc_sdk::load_plugins(std::path::Path::new(search_dir), &host::HOST).map_err(|e| {
             pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to load plugins: {:?}.", e))
         })?;
-
     if PLUGIN_SET.set(plugin_set).is_err() {
         return Err(pyo3::exceptions::PyRuntimeError::new_err(
             "load_plugins has already been called.",
         ));
     }
-
     let ps = PLUGIN_SET.get().unwrap();
-
     // Register plugin functions as module attributes.
     let module = PyModule::import(py, "orc")?;
     for plugin in ps.plugins() {
@@ -73,10 +69,8 @@ fn load_plugins(py: Python<'_>, search_dir: &str) -> PyResult<()> {
             module.setattr(pyo3::types::PyString::new(py, &func_info.name), py_func)?;
         }
     }
-
-    // Generate .pyi stubs.
-    let _ = stubs::generate_stubs(py, ps); // Best effort — don't fail load on stub error.
-
+    // Generate .pyi stubs (best effort).
+    let _ = stubs::generate_stubs(py, ps);
     Ok(())
 }
 
@@ -156,9 +150,9 @@ fn create_orc_handle(
     data: &Bound<'_, PyAny>,
     type_id: Option<u64>,
 ) -> PyResult<OrcHandle> {
+    // Flatten data into leaf values and their mark depths.
     let mut leaf_values: Vec<Bound<'_, PyAny>> = Vec::new();
     let mut depths: Vec<u8> = Vec::new();
-
     if data.downcast::<PyList>().is_ok() {
         let depth = intrinsic_depth(data)?;
         collect_leaves(data, depth, &mut leaf_values, &mut depths)?;
@@ -166,18 +160,17 @@ fn create_orc_handle(
         leaf_values.push(data.clone());
         depths.push(0);
     }
-
+    // Detect or use the provided type.
     let type_id = match type_id {
         Some(id) => id,
         None if leaf_values.is_empty() => ORC_TYPE_F64,
         None => detect_type(&leaf_values)?,
     };
-
+    // Build a typed Deck and allocate in the host registry.
     let mut handle = OrcHandle {
         handle: HANDLE_COUNTER.fetch_add(1, Ordering::Relaxed),
         ..Default::default()
     };
-
     macro_rules! build_deck {
         ($T:ty) => {{
             let mut deck = Deck::<$T>::default();
@@ -190,7 +183,6 @@ fn create_orc_handle(
                 .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("{:?}", e)))?;
         }};
     }
-
     match type_id {
         ORC_TYPE_U8 => build_deck!(u8),
         ORC_TYPE_U16 => build_deck!(u16),
@@ -209,7 +201,6 @@ fn create_orc_handle(
             )));
         }
     }
-
     Ok(handle)
 }
 
@@ -218,9 +209,7 @@ fn make_deck_deferred(
     data: &Bound<'_, PyAny>,
     type_id: Option<u64>,
 ) -> PyResult<PyObject> {
-    // Create the OrcHandle — this is the one place OrcHandle appears in deferred mode.
     let handle = create_orc_handle(py, data, type_id)?;
-
     // Add as a constant node that owns the handle.
     let mut wf_guard = BUILDING_WORKFLOW
         .lock()
@@ -229,11 +218,9 @@ fn make_deck_deferred(
         .as_mut()
         .ok_or_else(|| pyo3::exceptions::PyRuntimeError::new_err("No workflow being built"))?
         .0;
-
     let (_nh, oh) = wf
         .add_constant(handle)
         .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("{:?}", e)))?;
-
     Ok(Py::new(
         py,
         WorkflowNode {
@@ -244,7 +231,7 @@ fn make_deck_deferred(
 }
 
 // =====================================================================
-// Data flattening helpers (mirrors python/orc.py _push / _intrinsic_depth)
+// Data flattening helpers
 // =====================================================================
 
 fn intrinsic_depth(data: &Bound<'_, PyAny>) -> PyResult<u8> {
@@ -271,7 +258,6 @@ fn collect_leaves<'py>(
         }
         let first = list.get_item(0)?;
         if first.downcast::<PyList>().is_ok() {
-            // List of lists.
             collect_leaves(first.as_any(), depth, items, depths)?;
             for i in 1..list.len() {
                 let sub = list.get_item(i)?;
@@ -279,7 +265,6 @@ fn collect_leaves<'py>(
                 collect_leaves(sub.as_any(), sub_depth, items, depths)?;
             }
         } else {
-            // Flat list of leaf values.
             for i in 0..list.len() {
                 let val = list.get_item(i)?;
                 let d = if i == 0 { depth } else { 0 };
@@ -295,14 +280,11 @@ fn collect_leaves<'py>(
 }
 
 fn detect_type(values: &[Bound<'_, PyAny>]) -> PyResult<u64> {
-    let has_float = values.iter().any(|v| v.is_instance_of::<PyFloat>());
-    if has_float {
+    if values.iter().any(|v| v.is_instance_of::<PyFloat>()) {
         return Ok(ORC_TYPE_F64);
     }
-
     let mut lo: i128 = i128::MAX;
     let mut hi: i128 = i128::MIN;
-
     for val in values {
         let v: i128 = if let Ok(i) = val.extract::<i64>() {
             i as i128
@@ -312,7 +294,6 @@ fn detect_type(values: &[Bound<'_, PyAny>]) -> PyResult<u64> {
         lo = lo.min(v);
         hi = hi.max(v);
     }
-
     if lo >= 0 {
         if hi <= 0xFF {
             Ok(ORC_TYPE_U8)
@@ -335,7 +316,7 @@ fn detect_type(values: &[Bound<'_, PyAny>]) -> PyResult<u64> {
 }
 
 // =====================================================================
-// read_deck helpers (mirrors python/orc.py read_deck nesting logic)
+// read_deck helpers
 // =====================================================================
 
 fn reconstruct_nested(
@@ -347,23 +328,19 @@ fn reconstruct_nested(
         let list = PyList::new(py, &items)?;
         return Ok(list.into_any().unbind());
     }
-
     let marks_data: Vec<(u8, u64)> = marks.iter().map(|m| (m.depth, m.pos)).collect();
     let max_depth = marks_data[0].0 as usize + 1;
-
     // Split items into leaf groups between consecutive mark positions.
     let positions: Vec<usize> = marks_data.iter().map(|(_, pos)| *pos as usize).collect();
     let mut result: Vec<PyObject> = positions
         .windows(2)
         .map(|w| PyList::new(py, &items[w[0]..w[1]]).map(|l| l.into_any().unbind()))
         .collect::<PyResult<_>>()?;
-    // Last group: from last mark position to end of items.
     let last = PyList::new(py, &items[*positions.last().unwrap()..])?
         .into_any()
         .unbind();
     result.push(last);
-
-    // Nest bottom-up.
+    // Nest bottom-up by depth.
     for d in 1..max_depth {
         let mut boundaries: Vec<usize> = vec![0];
         boundaries.extend(
@@ -380,7 +357,6 @@ fn reconstruct_nested(
             .map(|w| PyList::new(py, &result[w[0]..w[1]]).map(|l| l.into_any().unbind()))
             .collect::<PyResult<_>>()?;
     }
-
     if result.len() == 1 {
         Ok(result.pop().unwrap())
     } else {
