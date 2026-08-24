@@ -101,12 +101,12 @@ fn read_deck(py: Python<'_>, handle: &Handle) -> PyResult<PyObject> {
     let handle = &handle.inner;
     macro_rules! read_typed {
         ($T:ty) => {{
-            let items: &[$T] = h.items::<$T>();
+            let items: &[$T] = handle.items::<$T>();
             let py_items: Vec<PyObject> = items
                 .iter()
                 .map(|v| Ok(v.into_pyobject(py)?.into_any().unbind()))
                 .collect::<PyResult<_>>()?;
-            reconstruct_nested(py, py_items, h.marks())
+            deck_to_nested_py_list(py, py_items, handle.marks())
         }};
     }
     match handle.type_id {
@@ -167,7 +167,7 @@ fn create_orc_handle(
     let mut depths: Vec<u8> = Vec::new();
     if data.downcast::<PyList>().is_ok() {
         let depth = intrinsic_depth(data)?;
-        collect_leaves(data, depth, &mut leaf_values, &mut depths)?;
+        py_list_to_deck(data, depth, &mut leaf_values, &mut depths)?;
     } else {
         leaf_values.push(data.clone());
         depths.push(0);
@@ -258,7 +258,7 @@ fn intrinsic_depth(data: &Bound<'_, PyAny>) -> PyResult<u8> {
     Ok(1)
 }
 
-fn collect_leaves<'py>(
+fn py_list_to_deck<'py>(
     data: &Bound<'py, PyAny>,
     depth: u8,
     items: &mut Vec<Bound<'py, PyAny>>,
@@ -270,11 +270,11 @@ fn collect_leaves<'py>(
         }
         let first = list.get_item(0)?;
         if first.downcast::<PyList>().is_ok() {
-            collect_leaves(first.as_any(), depth, items, depths)?;
+            py_list_to_deck(first.as_any(), depth, items, depths)?;
             for i in 1..list.len() {
                 let sub = list.get_item(i)?;
                 let sub_depth = intrinsic_depth(sub.as_any())?;
-                collect_leaves(sub.as_any(), sub_depth, items, depths)?;
+                py_list_to_deck(sub.as_any(), sub_depth, items, depths)?;
             }
         } else {
             for i in 0..list.len() {
@@ -331,7 +331,7 @@ fn detect_type(values: &[Bound<'_, PyAny>]) -> PyResult<u64> {
 // read_deck helpers
 // =====================================================================
 
-fn reconstruct_nested(
+fn deck_to_nested_py_list(
     py: Python<'_>,
     items: Vec<PyObject>,
     marks: &[OrcMark],
