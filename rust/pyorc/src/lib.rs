@@ -8,7 +8,6 @@ use func::OrcFunc;
 use graph::{BUILDING_WORKFLOW, IN_WORKFLOW_MODE, PyWorkflow, WorkflowNode, WorkflowNodeKind};
 use handle::Handle;
 use host::{HANDLE_COUNTER, PLUGIN_SET, REGISTRY};
-
 use orc_sdk::{
     Deck, ORC_TYPE_F32, ORC_TYPE_F64, ORC_TYPE_I8, ORC_TYPE_I16, ORC_TYPE_I32, ORC_TYPE_I64,
     ORC_TYPE_U8, ORC_TYPE_U16, ORC_TYPE_U32, ORC_TYPE_U64, OrcHandle, OrcMark,
@@ -29,16 +28,6 @@ fn pyorc(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(run_workflow, m)?)?;
     m.add_function(wrap_pyfunction!(save_workflow, m)?)?;
     m.add_function(wrap_pyfunction!(load_workflow, m)?)?;
-    m.add("ORC_TYPE_U8", ORC_TYPE_U8)?;
-    m.add("ORC_TYPE_U16", ORC_TYPE_U16)?;
-    m.add("ORC_TYPE_U32", ORC_TYPE_U32)?;
-    m.add("ORC_TYPE_U64", ORC_TYPE_U64)?;
-    m.add("ORC_TYPE_I8", ORC_TYPE_I8)?;
-    m.add("ORC_TYPE_I16", ORC_TYPE_I16)?;
-    m.add("ORC_TYPE_I32", ORC_TYPE_I32)?;
-    m.add("ORC_TYPE_I64", ORC_TYPE_I64)?;
-    m.add("ORC_TYPE_F32", ORC_TYPE_F32)?;
-    m.add("ORC_TYPE_F64", ORC_TYPE_F64)?;
     Ok(())
 }
 
@@ -73,13 +62,33 @@ fn load_plugins(py: Python<'_>, search_dir: &str) -> PyResult<()> {
 }
 
 #[pyfunction]
-#[pyo3(signature = (data, type_id=None))]
-fn make_deck(py: Python<'_>, data: &Bound<'_, PyAny>, type_id: Option<u64>) -> PyResult<PyObject> {
+#[pyo3(signature = (data, dtype=None))]
+fn make_deck(py: Python<'_>, data: &Bound<'_, PyAny>, dtype: Option<&str>) -> PyResult<PyObject> {
+    let type_id = dtype.map(parse_dtype).transpose()?;
     if IN_WORKFLOW_MODE.load(Ordering::Relaxed) {
         return make_deck_deferred(py, data, type_id);
     }
     let handle = create_orc_handle(py, data, type_id)?;
     Ok(Py::new(py, Handle::new(handle))?.into_any())
+}
+
+fn parse_dtype(s: &str) -> PyResult<u64> {
+    match s {
+        "u8" => Ok(ORC_TYPE_U8),
+        "u16" => Ok(ORC_TYPE_U16),
+        "u32" => Ok(ORC_TYPE_U32),
+        "u64" => Ok(ORC_TYPE_U64),
+        "i8" => Ok(ORC_TYPE_I8),
+        "i16" => Ok(ORC_TYPE_I16),
+        "i32" => Ok(ORC_TYPE_I32),
+        "i64" => Ok(ORC_TYPE_I64),
+        "f32" => Ok(ORC_TYPE_F32),
+        "f64" => Ok(ORC_TYPE_F64),
+        _ => Err(pyo3::exceptions::PyValueError::new_err(format!(
+            "Unknown dtype: '{}'.",
+            s
+        ))),
+    }
 }
 
 #[pyfunction]

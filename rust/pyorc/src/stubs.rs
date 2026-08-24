@@ -22,17 +22,6 @@ fn build_stub_content(ps: &PluginSet) -> String {
     let mut s = String::new();
     writeln!(s, "from typing import Callable").unwrap();
     writeln!(s).unwrap();
-    writeln!(s, "ORC_TYPE_U8: int").unwrap();
-    writeln!(s, "ORC_TYPE_U16: int").unwrap();
-    writeln!(s, "ORC_TYPE_U32: int").unwrap();
-    writeln!(s, "ORC_TYPE_U64: int").unwrap();
-    writeln!(s, "ORC_TYPE_I8: int").unwrap();
-    writeln!(s, "ORC_TYPE_I16: int").unwrap();
-    writeln!(s, "ORC_TYPE_I32: int").unwrap();
-    writeln!(s, "ORC_TYPE_I64: int").unwrap();
-    writeln!(s, "ORC_TYPE_F32: int").unwrap();
-    writeln!(s, "ORC_TYPE_F64: int").unwrap();
-    writeln!(s).unwrap();
     writeln!(s, "class Handle:").unwrap();
     writeln!(s, "    @property").unwrap();
     writeln!(s, "    def type_id(self) -> int: ...").unwrap();
@@ -57,7 +46,7 @@ fn build_stub_content(ps: &PluginSet) -> String {
     writeln!(s, "def load_plugins(search_dir: str) -> None: ...").unwrap();
     writeln!(
         s,
-        "def make_deck(data: object, type_id: int | None = None) -> Handle: ..."
+        "def make_deck(data: object, dtype: str | None = None) -> Handle: ..."
     )
     .unwrap();
     writeln!(s, "def read_deck(handle: Handle) -> object: ...").unwrap();

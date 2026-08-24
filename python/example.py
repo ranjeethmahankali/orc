@@ -85,8 +85,8 @@ def collatz_parallel_experiment():
 
     nums = list(range(500))
     print(f"Inputs: {nums}")
-    nums = orc.make_deck(nums, type_id=orc.ORC_TYPE_U64)
-    iterations = orc.make_deck(128, type_id=orc.ORC_TYPE_U64)
+    nums = orc.make_deck(nums, dtype="u64")
+    iterations = orc.make_deck(128, dtype="u64")
     outputs = orc.collatz_parallel_experiment(nums, iterations)
     outputs = orc.read_deck(outputs)
     print(f"Outputs: {outputs}")

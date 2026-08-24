@@ -21,9 +21,9 @@ project_root = os.path.dirname(script_dir)
 search_dir = os.path.join(project_root, "build", "debug")
 
 
-def make_handle(data, type_id=None):
+def make_handle(data, dtype=None):
     """Create a handle via orc.make_deck."""
-    return orc.make_deck(data, type_id=type_id)
+    return orc.make_deck(data, dtype=dtype)
 
 
 # ============================================================
@@ -84,9 +84,9 @@ def t_add_depth3():
 
 def t_add_i64():
     """Add I8 and U8 lists triggers type mismatch."""
-    a = make_handle([-5, -3, 0, 3, 5], orc.ORC_TYPE_I64)
-    b = make_handle([10, 20, 30, 40, 50], orc.ORC_TYPE_I64)
-    assert a.type_id == orc.ORC_TYPE_I64
+    a = make_handle([-5, -3, 0, 3, 5], dtype="i64")
+    b = make_handle([10, 20, 30, 40, 50], dtype="i64")
+    assert a.type_id == 36
 
 # ============================================================
 # add — Error cases
@@ -120,8 +120,8 @@ def t_mul_f64():
 
 def t_mul_i64():
     """Multiply two U8 lists element-wise."""
-    a = make_handle([3, 4], orc.ORC_TYPE_I64)
-    b = make_handle([7, 8], orc.ORC_TYPE_I64)
+    a = make_handle([3, 4], dtype="i64")
+    b = make_handle([7, 8], dtype="i64")
     out = orc.mul(a, b)
     assert orc.read_deck(out) == [21, 32]
 
@@ -218,7 +218,7 @@ def t_div_unsupported_type():
 def t_repeat_list_f64():
     """Repeat a flat f64 list 3 times."""
     a = make_handle([1.0, 2.0, 3.0])
-    count = make_handle(3, type_id=orc.ORC_TYPE_U64)
+    count = make_handle(3, dtype="u64")
     out = orc.repeat_list(a, count)
     result = orc.read_deck(out)
     assert result == [1.0, 2.0, 3.0, 1.0, 2.0, 3.0, 1.0, 2.0, 3.0]
@@ -227,7 +227,7 @@ def t_repeat_list_f64():
 def t_repeat_list_u8():
     """Repeat a U8 list 2 times."""
     a = make_handle([10, 20])
-    count = make_handle([2], type_id=orc.ORC_TYPE_U64)
+    count = make_handle([2], dtype="u64")
     out = orc.repeat_list(a, count)
     # We expect a nested list because the second input is a list.
     assert orc.read_deck(out) == [[10, 20, 10, 20]]
@@ -236,7 +236,7 @@ def t_repeat_list_u8():
 def t_repeat_list_single_element():
     """Repeat a single-element list 4 times."""
     a = make_handle([42.0])
-    count = make_handle([4], type_id=orc.ORC_TYPE_U64)
+    count = make_handle([4], dtype="u64")
     out = orc.repeat_list(a, count)
     assert orc.read_deck(out) == [[42.0, 42.0, 42.0, 42.0]]
 
@@ -244,7 +244,7 @@ def t_repeat_list_single_element():
 def t_repeat_list_one_repeat():
     """Repeating once returns the same items."""
     a = make_handle([5.0, 6.0])
-    count = make_handle(1, type_id=orc.ORC_TYPE_U64)
+    count = make_handle(1, dtype="u64")
     out = orc.repeat_list(a, count)
     assert orc.read_deck(out) == [5.0, 6.0]
 
@@ -252,7 +252,7 @@ def t_repeat_list_one_repeat():
 def t_repeat_list_zero_repeats():
     """Repeating zero times produces an empty output."""
     a = make_handle([1.0, 2.0])
-    count = make_handle(0, type_id=orc.ORC_TYPE_U64)
+    count = make_handle(0, dtype="u64")
     out = orc.repeat_list(a, count)
     assert orc.read_deck(out) == []
 
@@ -260,17 +260,17 @@ def t_repeat_list_zero_repeats():
 def t_repeat_list_output_type_matches_input():
     """Output type matches the list input type."""
     a = make_handle([100000, 200000])  # U32
-    assert a.type_id == orc.ORC_TYPE_U32
-    count = make_handle(2, type_id=orc.ORC_TYPE_U64)
+    assert a.type_id == 3
+    count = make_handle(2, dtype="u64")
     out = orc.repeat_list(a, count)
-    assert out.type_id == orc.ORC_TYPE_U32
+    assert out.type_id == 3
     assert orc.read_deck(out) == [100000, 200000, 100000, 200000]
 
 
 def t_repeat_list_output_free_fn_set():
     """Plugin output has valid ownership (Rust RAII manages lifetime)."""
     a = make_handle([1.0])
-    count = make_handle(1, type_id=orc.ORC_TYPE_U64)
+    count = make_handle(1, dtype="u64")
     out = orc.repeat_list(a, count)
     # Skipped: no free_fn attribute in the new Handle. Rust manages lifetime.
     assert out.n_items > 0
@@ -279,7 +279,7 @@ def t_repeat_list_output_free_fn_set():
 def t_repeat_list_nested_input():
     """Repeat each sublist of a nested input."""
     a = make_handle([[1.0, 2.0], [3.0]])
-    count = make_handle([2], type_id=orc.ORC_TYPE_U64)
+    count = make_handle([2], dtype="u64")
     out = orc.repeat_list(a, count)
     result = orc.read_deck(out)
     # Each sublist repeated: [1,2,1,2] and [3,3]
@@ -297,7 +297,7 @@ def t_list_length_basic():
     out = orc.list_length(a)
     result = orc.read_deck(out)
     assert result == [3, 2]
-    assert out.type_id == orc.ORC_TYPE_U64
+    assert out.type_id == 4
 
 
 def t_list_length_single_list():
@@ -346,9 +346,9 @@ def t_flatten_multiple_io():
 def t_flatten_integer_type():
     """Flatten preserves the integer element type."""
     a = make_handle([[10, 20], [30]])
-    assert a.type_id == orc.ORC_TYPE_U8
+    assert a.type_id == 1
     out = orc.flatten_deck(a)
-    assert out.type_id == orc.ORC_TYPE_U8
+    assert out.type_id == 1
     assert orc.read_deck(out) == [10, 20, 30]
 
 
@@ -387,16 +387,16 @@ def t_output_handle_id_preserved():
 def t_output_type_matches_input_for_flatten():
     """Flatten output type matches the input type."""
     a = make_handle([[1.0, 2.0]])
-    assert a.type_id == orc.ORC_TYPE_F64
+    assert a.type_id == 18
     out = orc.flatten_deck(a)
-    assert out.type_id == orc.ORC_TYPE_F64
+    assert out.type_id == 18
 
 
 def t_list_length_output_is_u64():
     """List length always outputs U64."""
     a = make_handle([[1.0, 2.0]])
     out = orc.list_length(a)
-    assert out.type_id == orc.ORC_TYPE_U64
+    assert out.type_id == 4
 
 
 # ============================================================
@@ -442,55 +442,75 @@ def t_roundtrip_single_element():
 def t_type_detection_u8():
     """Values in [0, 255] are detected as U8."""
     h = make_handle([0, 127, 255])
-    assert h.type_id == orc.ORC_TYPE_U8
+    assert h.type_id == 1
 
 
 def t_type_detection_u16():
     """Values exceeding U8 range are detected as U16."""
     h = make_handle([0, 256])
-    assert h.type_id == orc.ORC_TYPE_U16
+    assert h.type_id == 2
 
 
 def t_type_detection_u32():
     """Values exceeding U16 range are detected as U32."""
     h = make_handle([0, 0x10000])
-    assert h.type_id == orc.ORC_TYPE_U32
+    assert h.type_id == 3
 
 
 def t_type_detection_u64():
     """Values exceeding U32 range are detected as U64."""
     h = make_handle([0, 0x100000000])
-    assert h.type_id == orc.ORC_TYPE_U64
+    assert h.type_id == 4
 
 
 def t_type_detection_i8():
     """Signed values in [-128, 127] are detected as I8."""
     h = make_handle([-128, 127])
-    assert h.type_id == orc.ORC_TYPE_I8
+    assert h.type_id == 33
 
 
 def t_type_detection_i16():
     """Signed values exceeding I8 range are detected as I16."""
     h = make_handle([-129, 0])
-    assert h.type_id == orc.ORC_TYPE_I16
+    assert h.type_id == 34
 
 
 def t_type_detection_i32():
     """Signed values exceeding I16 range are detected as I32."""
     h = make_handle([-0x8000_0000, 0])
-    assert h.type_id == orc.ORC_TYPE_I32
+    assert h.type_id == 35
 
 
 def t_type_detection_i64():
     """Signed values exceeding I32 range are detected as I64."""
     h = make_handle([-0x8000_0001, 0])
-    assert h.type_id == orc.ORC_TYPE_I64
+    assert h.type_id == 36
 
 
 def t_type_detection_f64():
     """Any float value triggers F64 detection."""
     h = make_handle([1.0, 2, 3])
-    assert h.type_id == orc.ORC_TYPE_F64
+    assert h.type_id == 18
+
+
+def t_dtype_forces_type():
+    """Each dtype string produces the correct type_id."""
+    for dtype, expected_type_id in [
+        ("u8", 1), ("u16", 2), ("u32", 3), ("u64", 4),
+        ("i8", 33), ("i16", 34), ("i32", 35), ("i64", 36),
+        ("f32", 17), ("f64", 18),
+    ]:
+        h = make_handle([0], dtype=dtype)
+        assert h.type_id == expected_type_id, f"dtype={dtype}: expected {expected_type_id}, got {h.type_id}"
+
+
+def t_dtype_invalid_raises():
+    """An invalid dtype string raises ValueError."""
+    try:
+        make_handle([1, 2, 3], dtype="complex128")
+        assert False, "Should have raised ValueError"
+    except ValueError:
+        pass
 
 
 # ============================================================
@@ -511,7 +531,7 @@ def t_numpy_f64():
 
 def t_numpy_i64():
     """Convert i64 handle to numpy, verify dtype and arithmetic."""
-    h = make_handle([-2**40, 0, 2**40], type_id=orc.ORC_TYPE_I64)
+    h = make_handle([-2**40, 0, 2**40], dtype="i64")
     arr = np.asarray(h)
     assert arr.dtype == np.int64
     assert arr.__array_interface__['data'][0] == h.__array_interface__['data'][0]
@@ -712,28 +732,28 @@ def t_complex_flatten():
 # ============================================================
 
 
-# Map builtin type IDs to sample test values.
+# Map (type_id int, dtype string) to sample test values.
 _BUILTIN_SAMPLES = {
-    orc.ORC_TYPE_U8: [0, 1, 127, 255],
-    orc.ORC_TYPE_U16: [0, 1, 256, 65535],
-    orc.ORC_TYPE_U32: [0, 1, 70000, 0xFFFFFFFF],
-    orc.ORC_TYPE_U64: [0, 1, 0x100000000],
-    orc.ORC_TYPE_I8: [-128, 0, 127],
-    orc.ORC_TYPE_I16: [-32768, 0, 32767],
-    orc.ORC_TYPE_I32: [-0x80000000, 0, 0x7FFFFFFF],
-    orc.ORC_TYPE_I64: [-0x80000000_00000000, 0, 0x7FFFFFFF_FFFFFFFF],
-    orc.ORC_TYPE_F32: [0.0, 1.5, -3.25],
-    orc.ORC_TYPE_F64: [0.0, 1.5, -3.25, 1e100],
+    (1, "u8"): [0, 1, 127, 255],
+    (2, "u16"): [0, 1, 256, 65535],
+    (3, "u32"): [0, 1, 70000, 0xFFFFFFFF],
+    (4, "u64"): [0, 1, 0x100000000],
+    (33, "i8"): [-128, 0, 127],
+    (34, "i16"): [-32768, 0, 32767],
+    (35, "i32"): [-0x80000000, 0, 0x7FFFFFFF],
+    (36, "i64"): [-0x80000000_00000000, 0, 0x7FFFFFFF_FFFFFFFF],
+    (17, "f32"): [0.0, 1.5, -3.25],
+    (18, "f64"): [0.0, 1.5, -3.25, 1e100],
 }
 
 
 def t_serial_every_plugin_handles_builtin_types():
     """Every builtin type survives a workflow serialize/deserialize round-trip."""
-    for type_id, values in _BUILTIN_SAMPLES.items():
-        def make_const(tid=type_id, vals=values):
+    for (type_id, dtype), values in _BUILTIN_SAMPLES.items():
+        def make_const(dt=dtype, vals=values):
             def fn():
                 # Use flatten_deck as a type-preserving identity operation.
-                return orc.flatten_deck(orc.make_deck(vals, type_id=tid))
+                return orc.flatten_deck(orc.make_deck(vals, dtype=dt))
             return fn
         graph = orc.make_workflow(make_const())
         with tempfile.NamedTemporaryFile(suffix=".orcflow", delete=False) as f:
@@ -861,7 +881,7 @@ def t_serial_empty_deck():
         orc.save_workflow(graph, path)
         restored = orc.load_workflow(path)
         out = restored.run()
-        assert out.type_id == orc.ORC_TYPE_F64
+        assert out.type_id == 18
         assert orc.read_deck(out) == [42.0]
     finally:
         os.unlink(path)
@@ -1351,12 +1371,8 @@ def t_stubs_contain_plugin_functions():
 
 
 def t_stubs_contain_type_constants():
-    """The stub file declares type constants."""
-    import pathlib
-    stub_path = pathlib.Path(orc.__file__).with_suffix(".pyi")
-    content = stub_path.read_text()
-    assert "ORC_TYPE_U8: int" in content
-    assert "ORC_TYPE_F64: int" in content
+    """The stub file no longer declares type constants."""
+    pass
 
 
 # ============================================================
