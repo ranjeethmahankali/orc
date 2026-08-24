@@ -52,11 +52,9 @@ fn load_plugins(py: Python<'_>, search_dir: &str) -> PyResult<()> {
         orc_sdk::load_plugins(std::path::Path::new(search_dir), &host::HOST).map_err(|e| {
             pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to load plugins: {:?}.", e))
         })?;
-    if PLUGIN_SET.set(plugin_set).is_err() {
-        return Err(pyo3::exceptions::PyRuntimeError::new_err(
-            "load_plugins has already been called.",
-        ));
-    }
+    PLUGIN_SET.set(plugin_set).map_err(|_| {
+        pyo3::exceptions::PyRuntimeError::new_err("load_plugins has already been called.")
+    })?;
     let ps = PLUGIN_SET.get().unwrap();
     // Register plugin functions as module attributes.
     let module = PyModule::import(py, "orc")?;
@@ -218,9 +216,10 @@ fn make_deck_deferred(
         .as_mut()
         .ok_or_else(|| pyo3::exceptions::PyRuntimeError::new_err("No workflow being built"))?
         .0;
-    let (_nh, oh) = wf
+    let oh = wf
         .add_constant(handle)
-        .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("{:?}", e)))?;
+        .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("{:?}", e)))?
+        .1;
     Ok(Py::new(
         py,
         WorkflowNode {
@@ -328,10 +327,9 @@ fn reconstruct_nested(
         let list = PyList::new(py, &items)?;
         return Ok(list.into_any().unbind());
     }
-    let marks_data: Vec<(u8, u64)> = marks.iter().map(|m| (m.depth, m.pos)).collect();
-    let max_depth = marks_data[0].0 as usize + 1;
+    let max_depth = marks[0].depth as usize + 1;
     // Split items into leaf groups between consecutive mark positions.
-    let positions: Vec<usize> = marks_data.iter().map(|(_, pos)| *pos as usize).collect();
+    let positions: Vec<usize> = marks.iter().map(|m| m.pos as usize).collect();
     let mut result: Vec<PyObject> = positions
         .windows(2)
         .map(|w| PyList::new(py, &items[w[0]..w[1]]).map(|l| l.into_any().unbind()))
@@ -344,11 +342,11 @@ fn reconstruct_nested(
     for d in 1..max_depth {
         let mut boundaries: Vec<usize> = vec![0];
         boundaries.extend(
-            marks_data
+            marks
                 .iter()
                 .enumerate()
                 .skip(1)
-                .filter(|(_, (depth, _))| *depth as usize >= d)
+                .filter(|(_, m)| m.depth as usize >= d)
                 .map(|(i, _)| i),
         );
         boundaries.push(result.len());

@@ -84,13 +84,12 @@ impl PyWorkflow {
                             name
                         ))
                     })?;
-                if ordered[idx].is_some() {
+                if std::mem::replace(&mut ordered[idx], Some(value.extract()?)).is_some() {
                     return Err(pyo3::exceptions::PyValueError::new_err(format!(
                         "Duplicate argument: {}",
                         name
                     )));
                 }
-                ordered[idx] = Some(value.extract()?);
             }
         }
         // Borrow input handles. Missing args become empty default handles —
@@ -221,17 +220,14 @@ pub(crate) fn make_workflow_impl(py: Python<'_>, func: &Bound<'_, PyAny>) -> PyR
         .ok_or_else(|| pyo3::exceptions::PyRuntimeError::new_err("No workflow being built"))?
         .0;
     // Set workflow inputs from accumulated deferred-call mappings.
-    let input_map: Vec<(IH, usize)> = WORKFLOW_INPUTS
+    let input_refs: Vec<(IH, usize, &str)> = WORKFLOW_INPUTS
         .lock()
         .map_err(|_| pyo3::exceptions::PyRuntimeError::new_err("Lock error"))?
         .drain(..)
+        .map(|(ih, idx)| (ih, idx, param_names[idx].as_str()))
         .collect();
-    if !input_map.is_empty() {
-        let refs: Vec<(IH, usize, &str)> = input_map
-            .iter()
-            .map(|(ih, idx)| (*ih, *idx, param_names[*idx].as_str()))
-            .collect();
-        wf.set_inputs(&refs)
+    if !input_refs.is_empty() {
+        wf.set_inputs(&input_refs)
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("{:?}", e)))?;
     }
     // Set workflow outputs from the return value.
@@ -240,10 +236,9 @@ pub(crate) fn make_workflow_impl(py: Python<'_>, func: &Bound<'_, PyAny>) -> PyR
     wf.set_outputs(&outputs)
         .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("{:?}", e)))?;
     // Take the finished workflow.
-    let workflow = wf_guard.take().unwrap();
     Ok(PyWorkflow {
-        workflow,
         param_names,
+        workflow: wf_guard.take().unwrap(),
     })
 }
 
@@ -275,10 +270,9 @@ pub(crate) fn load_workflow_impl(path: &str) -> PyResult<PyWorkflow> {
     let mut next_id = || HANDLE_COUNTER.fetch_add(1, Ordering::Relaxed);
     let wf = Workflow::read_from_msgpack(&mut reader, ps, &REGISTRY, 0, &mut next_id)
         .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("{:?}", e)))?;
-    let param_names = wf.input_names().to_vec();
     Ok(PyWorkflow {
+        param_names: wf.input_names().to_vec(),
         workflow: SendWorkflow(wf),
-        param_names,
     })
 }
 

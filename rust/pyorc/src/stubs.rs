@@ -6,19 +6,16 @@ use std::path::PathBuf;
 
 pub(crate) fn generate_stubs(py: Python<'_>, ps: &PluginSet) -> PyResult<()> {
     let module = PyModule::import(py, "orc")?;
-    let file_attr = match module.getattr("__file__") {
-        Ok(f) => f.extract::<String>()?,
-        Err(_) => return Ok(()),
+    let Ok(file_attr) = module.getattr("__file__") else {
+        return Ok(());
     };
-    let stub_path = PathBuf::from(&file_attr).with_extension("pyi");
+    let stub_path = PathBuf::from(file_attr.extract::<String>()?).with_extension("pyi");
     let content = build_stub_content(ps);
-    let mut file = std::fs::File::create(&stub_path).map_err(|e| {
-        pyo3::exceptions::PyIOError::new_err(format!("Cannot write stub file: {}", e))
-    })?;
-    file.write_all(content.as_bytes()).map_err(|e| {
-        pyo3::exceptions::PyIOError::new_err(format!("Cannot write stub file: {}", e))
-    })?;
-    Ok(())
+    let io_err = |e| pyo3::exceptions::PyIOError::new_err(format!("Cannot write stub file: {}", e));
+    std::fs::File::create(&stub_path)
+        .map_err(&io_err)?
+        .write_all(content.as_bytes())
+        .map_err(io_err)
 }
 
 fn build_stub_content(ps: &PluginSet) -> String {
