@@ -6,7 +6,6 @@ use crate::host::HANDLE_COUNTER;
 use orc_sdk::{FuncInfo, IH, OH, OrcHandle};
 use pyo3::prelude::*;
 use pyo3::types::{PyList, PyTuple};
-use std::mem::ManuallyDrop;
 use std::sync::atomic::Ordering;
 
 #[pyclass(name = "OrcFunc")]
@@ -55,12 +54,12 @@ impl OrcFunc {
             .ok_or_else(|| pyo3::exceptions::PyRuntimeError::new_err("null function pointer"))?;
         let n_out = self.info.n_outputs.unwrap_or(1);
 
-        // Build contiguous input array (borrowed copies, free_fn = None).
-        let mut raw_inputs: Vec<ManuallyDrop<OrcHandle>> = Vec::with_capacity(n_args);
+        // Build contiguous input array (free_fn = None → drop is a no-op).
+        let mut raw_inputs: Vec<OrcHandle> = Vec::with_capacity(n_args);
         for i in 0..n_args {
             let h: PyRef<'_, Handle> = args.get_item(i)?.extract()?;
             let src = &h.inner.0;
-            raw_inputs.push(ManuallyDrop::new(OrcHandle {
+            raw_inputs.push(OrcHandle {
                 handle: src.handle,
                 type_id: src.type_id,
                 dims: src.dims,
@@ -72,16 +71,14 @@ impl OrcFunc {
                 stride_offset: src.stride_offset,
                 strides: src.strides,
                 items: src.items,
-            }));
+            });
         }
 
         let base_id = HANDLE_COUNTER.fetch_add(n_out as u64, Ordering::Relaxed);
-        let mut raw_outputs: Vec<ManuallyDrop<OrcHandle>> = (0..n_out)
-            .map(|i| {
-                ManuallyDrop::new(OrcHandle {
-                    handle: base_id + i as u64,
-                    ..Default::default()
-                })
+        let mut raw_outputs: Vec<OrcHandle> = (0..n_out)
+            .map(|i| OrcHandle {
+                handle: base_id + i as u64,
+                ..Default::default()
             })
             .collect();
 
@@ -103,12 +100,10 @@ impl OrcFunc {
         });
 
         if n_out == 1 {
-            let h = ManuallyDrop::into_inner(raw_outputs.pop().unwrap());
-            Ok(Py::new(py, Handle::new(h))?.into_any())
+            Ok(Py::new(py, Handle::new(raw_outputs.pop().unwrap()))?.into_any())
         } else {
             let list = PyList::empty(py);
-            for mh in raw_outputs {
-                let h = ManuallyDrop::into_inner(mh);
+            for h in raw_outputs {
                 list.append(Py::new(py, Handle::new(h))?)?;
             }
             Ok(list.into_any().unbind())

@@ -5,7 +5,6 @@ use crate::host::{
 use orc_sdk::{DagHandle, IH, OH, OrcHandle, OrcHandleBorrowed, Workflow};
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList, PyTuple};
-use std::mem::ManuallyDrop;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -44,8 +43,8 @@ unsafe impl Sync for WorkflowNode {}
 impl WorkflowNode {
     fn __repr__(&self) -> String {
         match self.kind {
-            WorkflowNodeKind::Output(oh) => format!("<WorkflowNode output={}>", oh.index()),
-            WorkflowNodeKind::Input(idx) => format!("<WorkflowNode input={}>", idx),
+            WorkflowNodeKind::Output(oh) => format!("<Workflow output={}>", oh.index()),
+            WorkflowNodeKind::Input(idx) => format!("<Workflow input={}>", idx),
         }
     }
 }
@@ -108,13 +107,13 @@ impl PyWorkflow {
             }
         }
 
-        // Build contiguous borrowed-input array.
-        let mut raw_inputs: Vec<ManuallyDrop<OrcHandle>> = Vec::with_capacity(n_params);
+        // Build contiguous borrowed-input array (free_fn = None → drop is a no-op).
+        let mut raw_inputs: Vec<OrcHandle> = Vec::with_capacity(n_params);
         for slot in &ordered {
             let py_handle = slot.as_ref().unwrap();
             let h = py_handle.bind(py).borrow();
             let src = &h.inner.0;
-            raw_inputs.push(ManuallyDrop::new(OrcHandle {
+            raw_inputs.push(OrcHandle {
                 handle: src.handle,
                 type_id: src.type_id,
                 dims: src.dims,
@@ -126,11 +125,10 @@ impl PyWorkflow {
                 stride_offset: src.stride_offset,
                 strides: src.strides,
                 items: src.items,
-            }));
+            });
         }
 
-        // SAFETY: ManuallyDrop<OrcHandle> is layout-identical to OrcHandle.
-        // OrcHandleBorrowed is repr(transparent) over OrcHandle.
+        // SAFETY: OrcHandleBorrowed is repr(transparent) over OrcHandle.
         let input_borrows: &[OrcHandleBorrowed<'_>] = unsafe {
             std::slice::from_raw_parts(
                 raw_inputs.as_ptr() as *const OrcHandleBorrowed<'_>,
