@@ -89,15 +89,21 @@ impl OrcFunc {
         let n_out_u64 = n_out as u64;
 
         // SAFETY: Plugin function is pure native code — no Python interaction.
-        py.allow_threads(|| unsafe {
+        let err = py.allow_threads(|| unsafe {
             func(
                 0,
                 in_addr as *const OrcHandle,
                 n_in,
                 out_addr as *mut OrcHandle,
                 n_out_u64,
-            );
+            )
         });
+        if err != orc_sdk::ORC_ERROR_NONE {
+            return Err(pyo3::exceptions::PyRuntimeError::new_err(format!(
+                "Plugin function '{}' failed with error code {:#x}.",
+                self.info.name, err
+            )));
+        }
 
         if n_out == 1 {
             Ok(Py::new(py, Handle::new(raw_outputs.pop().unwrap()))?.into_any())
@@ -116,6 +122,14 @@ impl OrcFunc {
         args: &Bound<'py, PyTuple>,
     ) -> PyResult<PyObject> {
         let n_args = args.len();
+        if let Some(expected) = self.info.n_inputs
+            && n_args != expected
+        {
+            return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                "The function '{}' expects {} arguments, got {}.",
+                self.info.name, expected, n_args
+            )));
+        }
         let n_out = self.info.n_outputs.unwrap_or(1);
 
         // Extract WorkflowNode arguments — each is either an Output(OH) or an Input(idx).

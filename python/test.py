@@ -94,12 +94,15 @@ def t_add_i64():
 
 
 def t_add_mismatched_types():
-    """Add U8 and F64 lists produces no output."""
+    """Add U8 and F64 lists raises RuntimeError."""
     a = make_handle([1, 2, 3])  # U8
     b = make_handle([1.0, 2.0, 3.0])  # F64
     assert a.type_id != b.type_id
-    out = orc.add(a, b)
-    assert out.n_items == 0
+    try:
+        orc.add(a, b)
+        assert False, "Should have raised RuntimeError"
+    except RuntimeError:
+        pass
 
 
 # ============================================================
@@ -132,11 +135,14 @@ def t_mul_nested():
 
 
 def t_mul_mismatched_types():
-    """Multiply U8 and F64 lists produces no output."""
+    """Multiply U8 and F64 lists raises RuntimeError."""
     a = make_handle([2, 3])  # U8
     b = make_handle([3.0, 4.0])  # F64
-    out = orc.mul(a, b)
-    assert out.n_items == 0
+    try:
+        orc.mul(a, b)
+        assert False, "Should have raised RuntimeError"
+    except RuntimeError:
+        pass
 
 
 # ============================================================
@@ -161,11 +167,14 @@ def t_sub_nested():
 
 
 def t_sub_unsupported_type():
-    """Sub on U8 is unsupported, produces no output."""
+    """Sub on U8 is unsupported, raises RuntimeError."""
     a = make_handle([5, 3])  # U8
     b = make_handle([3, 1])
-    out = orc.sub(a, b)
-    assert out.n_items == 0
+    try:
+        orc.sub(a, b)
+        assert False, "Should have raised RuntimeError"
+    except RuntimeError:
+        pass
 
 
 # ============================================================
@@ -191,11 +200,14 @@ def t_div_by_zero():
 
 
 def t_div_unsupported_type():
-    """Div on U8 is unsupported, produces no output."""
+    """Div on U8 is unsupported, raises RuntimeError."""
     a = make_handle([6, 2])  # U8
     b = make_handle([2, 1])
-    out = orc.div(a, b)
-    assert out.n_items == 0
+    try:
+        orc.div(a, b)
+        assert False, "Should have raised RuntimeError"
+    except RuntimeError:
+        pass
 
 
 # ============================================================

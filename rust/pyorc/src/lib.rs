@@ -98,8 +98,8 @@ fn read_deck(py: Python<'_>, handle: &Handle) -> PyResult<PyObject> {
             let items: &[$T] = h.items::<$T>();
             let py_items: Vec<PyObject> = items
                 .iter()
-                .map(|v| v.into_pyobject(py).unwrap().into_any().unbind())
-                .collect();
+                .map(|v| Ok(v.into_pyobject(py)?.into_any().unbind()))
+                .collect::<PyResult<_>>()?;
             reconstruct_nested(py, py_items, h.marks())
         }};
     }
@@ -143,8 +143,8 @@ fn save_workflow(graph: &PyWorkflow, path: &str) -> PyResult<()> {
 }
 
 #[pyfunction]
-fn load_workflow(py: Python<'_>, path: &str) -> PyResult<PyWorkflow> {
-    graph::load_workflow_impl(py, path)
+fn load_workflow(path: &str) -> PyResult<PyWorkflow> {
+    graph::load_workflow_impl(path)
 }
 
 // =====================================================================

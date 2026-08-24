@@ -44,8 +44,9 @@ impl Handle {
     }
 
     #[getter]
-    fn dims(&self) -> Vec<i32> {
-        self.inner.0.dims.to_vec()
+    fn dims(&self) -> (i32, i32, i32, i32, i32, i32, i32) {
+        let d = self.inner.0.dims;
+        (d[0], d[1], d[2], d[3], d[4], d[5], d[6])
     }
 
     #[getter]

@@ -246,11 +246,20 @@ pub(crate) fn make_workflow_impl(py: Python<'_>, func: &Bound<'_, PyAny>) -> PyR
     let return_value = func.call1(&py_args)?;
 
     // Finalize: set workflow inputs and outputs.
-    let mut wf_guard = BUILDING_WORKFLOW.lock().unwrap();
-    let wf = &mut wf_guard.as_mut().unwrap().0;
+    let mut wf_guard = BUILDING_WORKFLOW
+        .lock()
+        .map_err(|_| pyo3::exceptions::PyRuntimeError::new_err("Lock error"))?;
+    let wf = &mut wf_guard
+        .as_mut()
+        .ok_or_else(|| pyo3::exceptions::PyRuntimeError::new_err("No workflow being built"))?
+        .0;
 
     // Collect accumulated input mappings from deferred calls.
-    let input_map: Vec<(IH, usize)> = WORKFLOW_INPUTS.lock().unwrap().drain(..).collect();
+    let input_map: Vec<(IH, usize)> = WORKFLOW_INPUTS
+        .lock()
+        .map_err(|_| pyo3::exceptions::PyRuntimeError::new_err("Lock error"))?
+        .drain(..)
+        .collect();
     if !input_map.is_empty() {
         let refs: Vec<(IH, usize, &str)> = input_map
             .iter()
@@ -292,7 +301,7 @@ pub(crate) fn save_workflow_impl(graph: &PyWorkflow, path: &str) -> PyResult<()>
         .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("{:?}", e)))
 }
 
-pub(crate) fn load_workflow_impl(_py: Python<'_>, path: &str) -> PyResult<PyWorkflow> {
+pub(crate) fn load_workflow_impl(path: &str) -> PyResult<PyWorkflow> {
     let ps = PLUGIN_SET
         .get()
         .ok_or_else(|| pyo3::exceptions::PyRuntimeError::new_err("Plugins not loaded"))?;
