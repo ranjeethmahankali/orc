@@ -3,7 +3,7 @@ use crate::graph::{
 };
 use crate::handle::Handle;
 use crate::host::HANDLE_COUNTER;
-use orc_sdk::{FuncInfo, IH, OH, OrcHandle};
+use orc_sdk::{FuncInfo, IH, OH, OrcHandle, OrcHandleBorrowed};
 use pyo3::prelude::*;
 use pyo3::types::{PyList, PyTuple};
 use std::sync::atomic::Ordering;
@@ -54,25 +54,13 @@ impl OrcFunc {
             .ok_or_else(|| pyo3::exceptions::PyRuntimeError::new_err("Null function pointer"))?;
         let n_out = self.info.n_outputs.unwrap_or(1);
 
-        // Build contiguous input array (free_fn = None → drop is a no-op).
-        let mut raw_inputs: Vec<OrcHandle> = Vec::with_capacity(n_args);
-        for i in 0..n_args {
-            let h: PyRef<'_, Handle> = args.get_item(i)?.extract()?;
-            let src = &h.inner.0;
-            raw_inputs.push(OrcHandle {
-                handle: src.handle,
-                type_id: src.type_id,
-                dims: src.dims,
-                n_items: src.n_items,
-                item_size: src.item_size,
-                n_marks: src.n_marks,
-                free_fn: None,
-                marks: src.marks,
-                stride_offset: src.stride_offset,
-                strides: src.strides,
-                items: src.items,
-            });
-        }
+        // Keep PyRefs alive so we can borrow the inner OrcHandles.
+        let input_refs: Vec<PyRef<'_, Handle>> = (0..n_args)
+            .map(|i| args.get_item(i)?.extract())
+            .collect::<PyResult<_>>()?;
+        // Contiguous array of borrows (copied fields, free_fn = None).
+        let raw_inputs: Vec<OrcHandleBorrowed<'_>> =
+            input_refs.iter().map(|h| h.inner.0.borrowed()).collect();
 
         let base_id = HANDLE_COUNTER.fetch_add(n_out as u64, Ordering::Relaxed);
         let mut raw_outputs: Vec<OrcHandle> = (0..n_out)

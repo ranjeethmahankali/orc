@@ -107,34 +107,14 @@ impl PyWorkflow {
             }
         }
 
-        // Build contiguous borrowed-input array (free_fn = None → drop is a no-op).
-        let mut raw_inputs: Vec<OrcHandle> = Vec::with_capacity(n_params);
-        for slot in &ordered {
-            let py_handle = slot.as_ref().unwrap();
-            let h = py_handle.bind(py).borrow();
-            let src = &h.inner.0;
-            raw_inputs.push(OrcHandle {
-                handle: src.handle,
-                type_id: src.type_id,
-                dims: src.dims,
-                n_items: src.n_items,
-                item_size: src.item_size,
-                n_marks: src.n_marks,
-                free_fn: None,
-                marks: src.marks,
-                stride_offset: src.stride_offset,
-                strides: src.strides,
-                items: src.items,
-            });
-        }
-
-        // SAFETY: OrcHandleBorrowed is repr(transparent) over OrcHandle.
-        let input_borrows: &[OrcHandleBorrowed<'_>] = unsafe {
-            std::slice::from_raw_parts(
-                raw_inputs.as_ptr() as *const OrcHandleBorrowed<'_>,
-                raw_inputs.len(),
-            )
-        };
+        // Keep PyRefs alive so we can borrow the inner OrcHandles.
+        let refs: Vec<PyRef<'py, Handle>> = ordered
+            .iter()
+            .map(|slot| slot.as_ref().unwrap().bind(py).borrow())
+            .collect();
+        // Contiguous array of borrows (copied fields, free_fn = None).
+        let input_borrows: Vec<OrcHandleBorrowed<'_>> =
+            refs.iter().map(|h| h.inner.0.borrowed()).collect();
 
         let n_outputs = self.workflow.0.workflow_outputs().len();
         let base_id = HANDLE_COUNTER.fetch_add(n_outputs as u64, Ordering::Relaxed);
@@ -148,7 +128,7 @@ impl PyWorkflow {
         self.workflow
             .0
             .run(
-                input_borrows,
+                &input_borrows,
                 &mut outputs,
                 &host_clone_orc_handle,
                 &HANDLE_COUNTER,
