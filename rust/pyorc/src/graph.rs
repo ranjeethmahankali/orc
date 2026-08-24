@@ -84,7 +84,7 @@ impl PyWorkflow {
                             name
                         ))
                     })?;
-                if std::mem::replace(&mut ordered[idx], Some(value.extract()?)).is_some() {
+                if ordered[idx].replace(value.extract()?).is_some() {
                     return Err(pyo3::exceptions::PyValueError::new_err(format!(
                         "Duplicate argument: {}",
                         name
