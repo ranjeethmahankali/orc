@@ -162,16 +162,10 @@ fn create_orc_handle(
     data: &Bound<'_, PyAny>,
     type_id: Option<u64>,
 ) -> PyResult<OrcHandle> {
-    // Flatten data into leaf values and their mark depths.
+    // Flatten nested lists into leaf values and their nesting depths.
     let mut leaf_values: Vec<Bound<'_, PyAny>> = Vec::new();
     let mut depths: Vec<u8> = Vec::new();
-    if data.downcast::<PyList>().is_ok() {
-        let depth = intrinsic_depth(data)?;
-        py_list_to_deck(data, depth, &mut leaf_values, &mut depths)?;
-    } else {
-        leaf_values.push(data.clone());
-        depths.push(0);
-    }
+    py_list_to_deck(data, 0, &mut leaf_values, &mut depths)?;
     // Detect or use the provided type.
     let type_id = match type_id {
         Some(id) => id,
@@ -243,21 +237,12 @@ fn make_deck_deferred(
 }
 
 // =====================================================================
-// Data flattening helpers
+// Bidirectional conversion: Python lists <-> Deck (items + depths)
 // =====================================================================
 
-fn intrinsic_depth(data: &Bound<'_, PyAny>) -> PyResult<u8> {
-    if let Ok(list) = data.downcast::<PyList>()
-        && !list.is_empty()
-    {
-        let first = list.get_item(0)?;
-        if first.downcast::<PyList>().is_ok() {
-            return Ok(1 + intrinsic_depth(first.as_any())?);
-        }
-    }
-    Ok(1)
-}
-
+/// Recursively flatten a Python value (scalar or nested list) into leaf values
+/// and per-value nesting depths. First element of each list inherits depth + 1;
+/// subsequent elements get depth 0 (continuation).
 fn py_list_to_deck<'py>(
     data: &Bound<'py, PyAny>,
     depth: u8,
@@ -265,28 +250,12 @@ fn py_list_to_deck<'py>(
     depths: &mut Vec<u8>,
 ) -> PyResult<()> {
     if let Ok(list) = data.downcast::<PyList>() {
-        if list.is_empty() {
-            return Ok(());
-        }
-        let first = list.get_item(0)?;
-        if first.downcast::<PyList>().is_ok() {
-            py_list_to_deck(first.as_any(), depth, items, depths)?;
-            for i in 1..list.len() {
-                let sub = list.get_item(i)?;
-                let sub_depth = intrinsic_depth(sub.as_any())?;
-                py_list_to_deck(sub.as_any(), sub_depth, items, depths)?;
-            }
-        } else {
-            for i in 0..list.len() {
-                let val = list.get_item(i)?;
-                let d = if i == 0 { depth } else { 0 };
-                depths.push(d);
-                items.push(val.into_any());
-            }
+        for (i, elem) in list.iter().enumerate() {
+            py_list_to_deck(&elem, if i == 0 { depth + 1 } else { 0 }, items, depths)?;
         }
     } else {
-        depths.push(depth);
         items.push(data.clone());
+        depths.push(depth);
     }
     Ok(())
 }
@@ -331,47 +300,66 @@ fn detect_type(values: &[Bound<'_, PyAny>]) -> PyResult<u64> {
 // read_deck helpers
 // =====================================================================
 
+/// Reconstruct nested Python lists from flat items and sparse marks.
+/// Converts marks to per-value depths, then builds the structure in a
+/// single recursive pass.
 fn deck_to_nested_py_list(
     py: Python<'_>,
     items: Vec<PyObject>,
     marks: &[OrcMark],
 ) -> PyResult<PyObject> {
-    if marks.is_empty() {
-        let list = PyList::new(py, &items)?;
-        return Ok(list.into_any().unbind());
+    if marks.is_empty() || items.is_empty() {
+        return Ok(PyList::new(py, &items)?.into_any().unbind());
     }
-    let max_depth = marks[0].depth as usize + 1;
-    // Split items into leaf groups between consecutive mark positions.
-    let positions: Vec<usize> = marks.iter().map(|m| m.pos as usize).collect();
-    let mut result: Vec<PyObject> = positions
-        .windows(2)
-        .map(|w| PyList::new(py, &items[w[0]..w[1]]).map(|l| l.into_any().unbind()))
-        .collect::<PyResult<_>>()?;
-    let last = PyList::new(py, &items[*positions.last().unwrap()..])?
-        .into_any()
-        .unbind();
-    result.push(last);
-    // Nest bottom-up by depth.
-    for d in 1..max_depth {
-        let mut boundaries: Vec<usize> = vec![0];
-        boundaries.extend(
-            marks
-                .iter()
-                .enumerate()
-                .skip(1)
-                .filter(|(_, m)| m.depth as usize >= d)
-                .map(|(i, _)| i),
-        );
-        boundaries.push(result.len());
-        result = boundaries
-            .windows(2)
-            .map(|w| PyList::new(py, &result[w[0]..w[1]]).map(|l| l.into_any().unbind()))
-            .collect::<PyResult<_>>()?;
+    // Convert sparse marks to per-value depths.
+    let mut depths = vec![0u8; items.len()];
+    for mark in marks {
+        depths[mark.pos as usize] = mark.depth as u8 + 1;
     }
-    if result.len() == 1 {
-        Ok(result.pop().unwrap())
-    } else {
-        let list = PyList::new(py, &result)?;
-        Ok(list.into_any().unbind())
+    // Build nested lists recursively.
+    let mut idx = 0;
+    let list = PyList::empty(py);
+    build_nested_list(py, &items, &depths, &mut idx, &list, 1)?;
+    Ok(list.into_any().unbind())
+}
+
+/// Recursive helper: reads items[idx..] and appends nested lists to `dst`.
+/// `rdepth` is the nesting depth of `dst` — values with matching depth are
+/// appended directly; deeper values trigger sub-list creation.
+fn build_nested_list(
+    py: Python<'_>,
+    items: &[PyObject],
+    depths: &[u8],
+    idx: &mut usize,
+    dst: &Bound<'_, PyList>,
+    rdepth: u8,
+) -> PyResult<()> {
+    if *idx >= items.len() {
+        return Ok(());
     }
+    let d = depths[*idx];
+    if d == rdepth {
+        // Terminal: append leaf values until the next marked position.
+        loop {
+            dst.append(&items[*idx])?;
+            *idx += 1;
+            if *idx >= items.len() || depths[*idx] != 0 {
+                break;
+            }
+        }
+    } else if d > rdepth {
+        // Deeper nesting — create sub-lists at this level.
+        let gap = d - rdepth;
+        let mut next_rdepth = rdepth;
+        loop {
+            let nested = PyList::empty(py);
+            build_nested_list(py, items, depths, idx, &nested, next_rdepth + 1)?;
+            dst.append(&nested)?;
+            next_rdepth = 0;
+            if *idx >= items.len() || depths[*idx] != gap {
+                break;
+            }
+        }
+    }
+    Ok(())
 }
