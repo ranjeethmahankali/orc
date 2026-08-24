@@ -63,17 +63,16 @@ impl PyWorkflow {
         kwargs: Option<&Bound<'py, PyDict>>,
     ) -> PyResult<PyObject> {
         let n_params = self.param_names.len();
-        let mut ordered: Vec<Option<Py<Handle>>> = Vec::new();
-        ordered.resize_with(n_params, || None);
-
-        for (i, arg) in args.iter().enumerate() {
-            if i >= n_params {
-                return Err(pyo3::exceptions::PyValueError::new_err(
-                    "too many positional arguments",
-                ));
-            }
-            ordered[i] = Some(arg.extract()?);
+        if args.len() > n_params {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "too many positional arguments",
+            ));
         }
+        let mut ordered: Vec<Option<Py<Handle>>> = args
+            .iter()
+            .map(|arg| arg.extract())
+            .collect::<PyResult<Vec<_>>>()?;
+        ordered.resize_with(n_params, || None);
 
         if let Some(kw) = kwargs {
             for (key, value) in kw.iter() {
