@@ -98,7 +98,7 @@ fn parse_dtype(s: &str) -> PyResult<u64> {
 
 #[pyfunction]
 fn read_deck(py: Python<'_>, handle: &Handle) -> PyResult<PyObject> {
-    let h = &handle.inner;
+    let handle = &handle.inner;
     macro_rules! read_typed {
         ($T:ty) => {{
             let items: &[$T] = h.items::<$T>();
@@ -109,7 +109,7 @@ fn read_deck(py: Python<'_>, handle: &Handle) -> PyResult<PyObject> {
             reconstruct_nested(py, py_items, h.marks())
         }};
     }
-    match h.type_id {
+    match handle.type_id {
         ORC_TYPE_U8 => read_typed!(u8),
         ORC_TYPE_U16 => read_typed!(u16),
         ORC_TYPE_U32 => read_typed!(u32),
@@ -122,7 +122,7 @@ fn read_deck(py: Python<'_>, handle: &Handle) -> PyResult<PyObject> {
         ORC_TYPE_F64 => read_typed!(f64),
         _ => Err(pyo3::exceptions::PyValueError::new_err(format!(
             "Unknown type_id: {:#x}",
-            h.type_id
+            handle.type_id
         ))),
     }
 }
