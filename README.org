@@ -40,6 +40,7 @@
     build/release/orc_sdk_tests
     build/release/deck_ops_plugin_tests
   #+end_src
+
 * Building and Installing Pyorc
   :PROPERTIES:
   :CREATED:  2026-08-23 Sun 21:45

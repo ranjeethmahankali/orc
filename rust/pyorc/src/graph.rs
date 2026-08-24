@@ -71,8 +71,9 @@ impl PyWorkflow {
         let mut ordered: Vec<Option<Py<Handle>>> = args
             .iter()
             .map(|arg| arg.extract())
+            .chain(std::iter::repeat_with(|| Ok(None)))
+            // .take(n_params)
             .collect::<PyResult<Vec<_>>>()?;
-        ordered.resize_with(n_params, || None);
 
         if let Some(kw) = kwargs {
             for (key, value) in kw.iter() {
