@@ -256,6 +256,9 @@
   - [X] Implement Default for PlugiSet, that creates an empty set, and add function to append to
     it. This is useful when loading plugins in multiple passes, for whatever reason.
 
+  <2026-08-24 Mon 00:39> Slowly reviewed and refactored lib.rs, it is now decent. Need to go through
+  the remaining files in the same way.
+
 ** Plan using PyO3
    :PROPERTIES:
    :CREATED:  2026-08-23 Sun 14:29
