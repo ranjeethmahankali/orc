@@ -113,6 +113,13 @@
   Many good candidates through out this project, to start benchmarking, to start nailing down the
   performance, and make sure it doesn't regress. But this is not urgent.
 
+  - Combinations helpers. They should walk over the input decks fast, with minimal overhead. The
+    equivalent functionality in every SDK, in every language should be benchmarked.
+  - Basic arithmetic functions over large containers should be benchmarked and compared against
+    native code that does the same thing.
+  - Creating proxy decks: Grafting, flattening, simplifying and copying decks using the proxy
+    callbacks should be fast. This should be compared with native code that does the same thing.
+
 * TODO tj45qx - C++ SDK
   :PROPERTIES:
   :CREATED:  2026-08-01 Sat 18:58
