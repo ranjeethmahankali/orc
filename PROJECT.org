@@ -206,6 +206,9 @@
   what the host has is not valid. At the end of the dialogue, the host will call a free function to
   clean up the plugin's struct, and cleans up it's own. This is inspired by ~git credential fill~.
 
+  <2026-08-25 Tue 13:30> When this changes, all host programs need to be updated to respect the new
+  contract. Their input validation code will likely change.
+
 * TODO Functions and Scripts - a clear picture
   :PROPERTIES:
   :CREATED:  2026-08-16 Sun 14:36
