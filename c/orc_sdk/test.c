@@ -4040,7 +4040,7 @@ static void test_orc_sdk_deck_graft(void)
   // Graft a depth-3 binary deck: depth should increase by 1, items unchanged.
   size_t *deck = _binary_deck(3);
   TEST_ASSERT_TRUE(_orc_sdk_deck_header(deck)->item_size == sizeof(size_t));
-  orc_sdk_deck_graft(deck);
+  TEST_ASSERT_TRUE(orc_sdk_deck_graft(deck) == ORC_ERROR_NONE);
   TEST_ASSERT_TRUE(orc_sdk_deck_max_depth(deck) == 4);
   TEST_ASSERT_TRUE(_orc_sdk_deck_header(deck)->item_size == sizeof(size_t));
   for (size_t i = 0; i < 8; ++i) {
@@ -4062,7 +4062,7 @@ static void test_orc_sdk_deck_graft(void)
   orc_sdk_deck_free(deck);
   // Graft then flatten roundtrip: items survive.
   size_t *deck2 = _binary_deck(2);
-  orc_sdk_deck_graft(deck2);
+  TEST_ASSERT_TRUE(orc_sdk_deck_graft(deck2) == ORC_ERROR_NONE);
   TEST_ASSERT_TRUE(_orc_sdk_deck_header(deck2)->item_size == sizeof(size_t));
   orc_sdk_deck_flatten(deck2);
   TEST_ASSERT_TRUE(orc_sdk_deck_max_depth(deck2) == 1);
@@ -4078,7 +4078,7 @@ static void test_orc_sdk_deck_graft(void)
     TEST_ASSERT_TRUE(orc_sdk_deck_push(deck3, i, (i == 0) ? 1 : 0) == ORC_ERROR_NONE);
   }
   TEST_ASSERT_TRUE(orc_sdk_deck_max_depth(deck3) == 1);
-  orc_sdk_deck_graft(deck3);
+  TEST_ASSERT_TRUE(orc_sdk_deck_graft(deck3) == ORC_ERROR_NONE);
   TEST_ASSERT_TRUE(orc_sdk_deck_max_depth(deck3) == 2);
   TEST_ASSERT_TRUE(_orc_sdk_deck_header(deck3)->item_size == sizeof(size_t));
   TEST_ASSERT_TRUE(orc_sdk_deck_len(deck3) == 3);
@@ -4095,8 +4095,21 @@ static void test_orc_sdk_deck_graft(void)
   orc_sdk_deck_free(deck3);
   // Graft an empty deck: should be a no-op.
   size_t *deck4 = NULL;
-  orc_sdk_deck_graft(deck4);
+  TEST_ASSERT_TRUE(orc_sdk_deck_graft(deck4) == ORC_ERROR_NULL_PTR);
   TEST_ASSERT_TRUE(orc_sdk_deck_len(deck4) == 0);
+  // Depth overflow: a deck with a mark at depth 255 should return the error
+  // and leave the deck unchanged.
+  size_t  v0    = 0;
+  size_t  v1    = 1;
+  size_t *deck5 = NULL;
+  TEST_ASSERT_TRUE(orc_sdk_deck_push(deck5, v0, 1) == ORC_ERROR_NONE);
+  TEST_ASSERT_TRUE(orc_sdk_deck_push(deck5, v1, 0) == ORC_ERROR_NONE);
+  _OrcSdk_DeckHeader *h5 = _orc_sdk_deck_header(deck5);
+  h5->marks[0].depth     = 254;
+  TEST_ASSERT_TRUE(orc_sdk_deck_graft(deck5) == ORC_ERROR_DECK_DEPTH_OVERFLOW);
+  TEST_ASSERT_TRUE(orc_sdk_deck_max_depth(deck5) == 255);
+  TEST_ASSERT_TRUE(orc_sdk_deck_len(deck5) == 2);
+  orc_sdk_deck_free(deck5);
 }
 
 static void test_orc_sdk_deck_simplify(void)
@@ -4163,7 +4176,7 @@ static void test_orc_sdk_deck_simplify(void)
   // Simplify after graft.
   {
     size_t *deck = _binary_deck(3);
-    orc_sdk_deck_graft(deck);
+    TEST_ASSERT_TRUE(orc_sdk_deck_graft(deck) == ORC_ERROR_NONE);
     TEST_ASSERT_TRUE(orc_sdk_deck_max_depth(deck) == 4);
     // After graft, depths are contiguous (0,1,2,3), so simplify is a no-op.
     _OrcSdk_DeckHeader *h             = _orc_sdk_deck_header(deck);
@@ -5911,7 +5924,7 @@ static void test_deck_from_proxy_copy_items(void)
     ORC_SDK_DECK_INIT(in.items, double, ((1.0, 2.0), (3.0, 4.0)));
     orc_sdk_oh_update(&in);
     /* Graft to create a gap in depth levels, then use simplify proxy. */
-    orc_sdk_deck_graft((void *)in.items);
+    TEST_ASSERT_TRUE(orc_sdk_deck_graft((void *)in.items) == ORC_ERROR_NONE);
     orc_sdk_oh_update(&in);
     OrcHandle proxy = _make_simplified_proxy(in.items);
     proxy.handle    = 3;
@@ -5919,7 +5932,7 @@ static void test_deck_from_proxy_copy_items(void)
     /* Simplify should match orc_sdk_deck_simplify on an equivalent deck. */
     double *expected = NULL;
     ORC_SDK_DECK_INIT(expected, double, ((1.0, 2.0), (3.0, 4.0)));
-    orc_sdk_deck_graft(expected);
+    TEST_ASSERT_TRUE(orc_sdk_deck_graft(expected) == ORC_ERROR_NONE);
     orc_sdk_deck_simplify(expected);
     _assert_decks_match(out.items, expected, sizeof(double));
     orc_sdk_deck_free(expected);
@@ -6153,7 +6166,7 @@ static OrcError _test_write_fn(uint64_t const ctx, void const *data, uint64_t co
 
 static void _init_sdk_with_serial_write(void)
 {
-  static OrcHost host = {0};
+  static OrcHost host         = {0};
   host.abi_version            = ORC_ABI_VERSION;
   host.callbacks.serial_write = _test_write_fn;
   orc_sdk_init(&host, NULL);
@@ -6174,8 +6187,8 @@ static void test_serialize_header_round_trip_no_marks(void)
 
   char   *buf = NULL;
   _SerCtx sc  = {&buf};
-  TEST_ASSERT_TRUE(orc_sdk_serialize_handle_header(
-                     (uint64_t)(uintptr_t)&sc, &h) == ORC_ERROR_NONE);
+  TEST_ASSERT_TRUE(orc_sdk_serialize_handle_header((uint64_t)(uintptr_t)&sc, &h) ==
+                   ORC_ERROR_NONE);
   TEST_ASSERT_TRUE(orc_sdk_arr_len(buf) > 0);
 
   OrcStrView sv    = {.start = buf, .end = buf + orc_sdk_arr_len(buf)};
@@ -6211,8 +6224,8 @@ static void test_serialize_header_round_trip_with_marks(void)
 
   char   *buf = NULL;
   _SerCtx sc  = {&buf};
-  TEST_ASSERT_TRUE(orc_sdk_serialize_handle_header(
-                     (uint64_t)(uintptr_t)&sc, &h) == ORC_ERROR_NONE);
+  TEST_ASSERT_TRUE(orc_sdk_serialize_handle_header((uint64_t)(uintptr_t)&sc, &h) ==
+                   ORC_ERROR_NONE);
 
   OrcStrView sv    = {.start = buf, .end = buf + orc_sdk_arr_len(buf)};
   OrcHandle  out   = {0};
@@ -6251,8 +6264,8 @@ static void test_serialize_header_all_dims_set(void)
 
   char   *buf = NULL;
   _SerCtx sc  = {&buf};
-  TEST_ASSERT_TRUE(orc_sdk_serialize_handle_header(
-                     (uint64_t)(uintptr_t)&sc, &h) == ORC_ERROR_NONE);
+  TEST_ASSERT_TRUE(orc_sdk_serialize_handle_header((uint64_t)(uintptr_t)&sc, &h) ==
+                   ORC_ERROR_NONE);
 
   OrcStrView sv    = {.start = buf, .end = buf + orc_sdk_arr_len(buf)};
   OrcHandle  out   = {0};
@@ -6277,8 +6290,8 @@ static void test_deserialize_header_truncated_buffer(void)
 
   char   *buf = NULL;
   _SerCtx sc  = {&buf};
-  TEST_ASSERT_TRUE(orc_sdk_serialize_handle_header(
-                     (uint64_t)(uintptr_t)&sc, &h) == ORC_ERROR_NONE);
+  TEST_ASSERT_TRUE(orc_sdk_serialize_handle_header((uint64_t)(uintptr_t)&sc, &h) ==
+                   ORC_ERROR_NONE);
 
   /* Truncate by one byte — should fail */
   size_t     full_len = orc_sdk_arr_len(buf);
@@ -6320,8 +6333,8 @@ static void test_serialize_header_empty_items(void)
 
   char   *buf = NULL;
   _SerCtx sc  = {&buf};
-  TEST_ASSERT_TRUE(orc_sdk_serialize_handle_header(
-                     (uint64_t)(uintptr_t)&sc, &h) == ORC_ERROR_NONE);
+  TEST_ASSERT_TRUE(orc_sdk_serialize_handle_header((uint64_t)(uintptr_t)&sc, &h) ==
+                   ORC_ERROR_NONE);
 
   OrcStrView sv    = {.start = buf, .end = buf + orc_sdk_arr_len(buf)};
   OrcHandle  out   = {0};
@@ -6351,8 +6364,8 @@ static void test_deserialize_header_truncated_marks(void)
 
   char   *buf = NULL;
   _SerCtx sc  = {&buf};
-  TEST_ASSERT_TRUE(orc_sdk_serialize_handle_header(
-                     (uint64_t)(uintptr_t)&sc, &h) == ORC_ERROR_NONE);
+  TEST_ASSERT_TRUE(orc_sdk_serialize_handle_header((uint64_t)(uintptr_t)&sc, &h) ==
+                   ORC_ERROR_NONE);
 
   /* Cut off part of the marks data */
   size_t     full_len    = orc_sdk_arr_len(buf);

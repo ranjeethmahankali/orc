@@ -566,7 +566,7 @@ void *_orc_sdk_deck_grow_capacity(void *ptr, size_t const itemsize, size_t const
 
 void orc_sdk_deck_flatten(void *ptr);
 
-void orc_sdk_deck_graft(void *ptr);
+OrcError orc_sdk_deck_graft(void *ptr);
 
 void orc_sdk_deck_simplify(void *ptr);
 

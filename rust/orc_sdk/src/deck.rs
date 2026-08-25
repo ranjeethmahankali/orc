@@ -269,6 +269,9 @@ where
     ```
     */
     pub fn graft(&mut self) -> Result<(), Error> {
+        if self.marks.iter().any(|m| m.depth >= 254) {
+            return Err(Error::DeckDepthOverflow);
+        }
         let count = self.marks.len();
         let old_marks = std::mem::replace(
             &mut self.marks,
@@ -276,7 +279,7 @@ where
         );
         let mut prev = 0u64;
         for mut m in old_marks.into_iter() {
-            m.depth = m.depth.checked_add(1).ok_or(Error::DeckDepthOverflow)?;
+            m.depth += 1;
             self.marks
                 .extend((prev..m.pos).map(|pos| OrcMark { depth: 0, pos }));
             self.marks.push(m);
