@@ -411,7 +411,11 @@ impl std::fmt::Display for DagError {
         match self {
             DagError::BorrowedPropertyAccess => write!(f, "Borrowed property access"),
             DagError::MismatchedArrayLengths(expected, got) => {
-                write!(f, "Mismatched array lengths: expected {}, got {}", expected, got)
+                write!(
+                    f,
+                    "Mismatched array lengths: expected {}, got {}",
+                    expected, got
+                )
             }
             DagError::CycleDetected => write!(f, "Cycle detected"),
             DagError::InvalidFunction => write!(f, "Invalid function"),
