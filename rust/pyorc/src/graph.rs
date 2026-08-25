@@ -10,11 +10,11 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 pub(crate) struct WorkflowBuildState {
-    pub(crate) workflow: Option<SendWorkflow>,
+    pub(crate) workflow: SendWorkflow,
     pub(crate) inputs: Vec<(IH, usize)>,
-    /// Maps Python function pointer (as usize) to (nested workflow name, n_outputs).
+    /// Maps nested workflow name to n_outputs.
     /// Used to avoid building the same nested workflow more than once per outer workflow.
-    pub(crate) nested_built: HashMap<usize, (String, usize)>,
+    pub(crate) nested_built: HashMap<String, usize>,
 }
 
 pub(crate) static IN_WORKFLOW_MODE: AtomicBool = AtomicBool::new(false);
@@ -193,6 +193,41 @@ impl PyWorkflow {
 // make_workflow
 // =====================================================================
 
+/// Finalizes a WorkflowBuildState: sets workflow inputs and outputs, returns n_outputs.
+/// Called while the BUILDING_WORKFLOW lock is held.
+fn finalize_build_state(
+    state: &mut WorkflowBuildState,
+    return_value: &Bound<'_, PyAny>,
+    param_names: &[String],
+) -> PyResult<usize> {
+    // Destructure to get independent borrows of workflow and inputs.
+    let WorkflowBuildState { workflow, inputs, .. } = state;
+    let wf: &mut Workflow = workflow;
+    let input_refs: Vec<(IH, usize, &str)> = inputs
+        .drain(..)
+        .map(|(ih, idx)| -> PyResult<(IH, usize, &str)> {
+            let name = param_names.get(idx).ok_or_else(|| {
+                pyo3::exceptions::PyRuntimeError::new_err(format!(
+                    "Workflow input index {} out of range (expected < {})",
+                    idx,
+                    param_names.len()
+                ))
+            })?;
+            Ok((ih, idx, name.as_str()))
+        })
+        .collect::<PyResult<_>>()?;
+    if !input_refs.is_empty() {
+        wf.set_inputs(&input_refs)
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
+    }
+    let output_ohs = extract_output_ohs(return_value)?;
+    let n_outputs = output_ohs.len();
+    let outputs: Vec<(OH, String)> = output_ohs.iter().map(|&oh| (oh, String::new())).collect();
+    wf.set_outputs(&outputs)
+        .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
+    Ok(n_outputs)
+}
+
 pub(crate) fn make_workflow_impl(py: Python<'_>, func: &Bound<'_, PyAny>) -> PyResult<PyWorkflow> {
     // Prevent recursive calls to make_workflow at the top level.
     IN_WORKFLOW_MODE
@@ -217,7 +252,7 @@ pub(crate) fn make_workflow_impl(py: Python<'_>, func: &Bound<'_, PyAny>) -> PyR
             .lock()
             .map_err(|_| pyo3::exceptions::PyRuntimeError::new_err("Lock error"))?;
         stack.push(WorkflowBuildState {
-            workflow: Some(SendWorkflow(Workflow::default())),
+            workflow: SendWorkflow(Workflow::default()),
             inputs: Vec::new(),
             nested_built: HashMap::new(),
         });
@@ -247,38 +282,22 @@ pub(crate) fn make_workflow_impl(py: Python<'_>, func: &Bound<'_, PyAny>) -> PyR
     // Call the user function in deferred mode.
     let py_args = PyTuple::new(py, &graph_nodes)?;
     let return_value = func.call1(&py_args)?;
-    // Finalize: set workflow inputs and outputs, then take the finished workflow.
+    // Finalize: set workflow inputs and outputs, then pop the finished frame.
     // The block scope releases the BUILDING_WORKFLOW lock before we reset IN_WORKFLOW_MODE.
     let workflow = {
         let mut stack = BUILDING_WORKFLOW
             .lock()
             .map_err(|_| pyo3::exceptions::PyRuntimeError::new_err("Lock error"))?;
-        let state = stack
-            .last_mut()
-            .ok_or_else(|| pyo3::exceptions::PyRuntimeError::new_err("No workflow being built"))?;
-        let wf: &mut Workflow = state
-            .workflow
-            .as_mut()
-            .ok_or_else(|| pyo3::exceptions::PyRuntimeError::new_err("No workflow being built"))?;
-        // Set workflow inputs from accumulated deferred-call mappings.
-        let input_refs: Vec<(IH, usize, &str)> = state
-            .inputs
-            .drain(..)
-            .map(|(ih, idx)| (ih, idx, param_names[idx].as_str()))
-            .collect();
-        if !input_refs.is_empty() {
-            wf.set_inputs(&input_refs)
-                .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("{}", e)))?;
+        {
+            let state = stack
+                .last_mut()
+                .ok_or_else(|| pyo3::exceptions::PyRuntimeError::new_err("No workflow being built"))?;
+            finalize_build_state(state, &return_value, &param_names)?;
         }
-        // Set workflow outputs from the return value.
-        let output_ohs = extract_output_ohs(&return_value)?;
-        let outputs: Vec<(OH, String)> = output_ohs.iter().map(|&oh| (oh, String::new())).collect();
-        wf.set_outputs(&outputs)
-            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("{}", e)))?;
-        state
-            .workflow
-            .take()
+        stack
+            .pop()
             .ok_or_else(|| pyo3::exceptions::PyRuntimeError::new_err("No workflow being built"))?
+            .workflow
     }; // BUILDING_WORKFLOW lock released here.
     IN_WORKFLOW_MODE.store(false, Ordering::SeqCst);
     // _guard still runs on drop as a safety net for error/panic paths.
@@ -303,7 +322,7 @@ pub(crate) fn build_nested_workflow_impl(
             .lock()
             .map_err(|_| pyo3::exceptions::PyRuntimeError::new_err("Workflow lock poisoned"))?;
         stack.push(WorkflowBuildState {
-            workflow: Some(SendWorkflow(Workflow::default())),
+            workflow: SendWorkflow(Workflow::default()),
             inputs: Vec::new(),
             nested_built: HashMap::new(),
         });
@@ -342,32 +361,10 @@ pub(crate) fn build_nested_workflow_impl(
         let state = stack
             .last_mut()
             .ok_or_else(|| pyo3::exceptions::PyRuntimeError::new_err("No workflow frame"))?;
-        let wf: &mut Workflow = state
-            .workflow
-            .as_mut()
-            .ok_or_else(|| pyo3::exceptions::PyRuntimeError::new_err("No workflow being built"))?;
-        // Set inputs.
-        let input_refs: Vec<(IH, usize, &str)> = state
-            .inputs
-            .drain(..)
-            .map(|(ih, idx)| (ih, idx, param_names[idx].as_str()))
-            .collect();
-        if !input_refs.is_empty() {
-            wf.set_inputs(&input_refs)
-                .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("{}", e)))?;
-        }
-        // Set outputs.
-        let output_ohs = extract_output_ohs(&return_value)?;
-        let n_outputs = output_ohs.len();
-        let outputs: Vec<(OH, String)> = output_ohs.iter().map(|&oh| (oh, String::new())).collect();
-        wf.set_outputs(&outputs)
-            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("{}", e)))?;
-        let workflow = state
-            .workflow
-            .take()
-            .ok_or_else(|| pyo3::exceptions::PyRuntimeError::new_err("No workflow being built"))?;
+        let n_outputs = finalize_build_state(state, &return_value, param_names)?;
+        let workflow = std::mem::replace(&mut state.workflow, SendWorkflow(Workflow::default()));
         (workflow, n_outputs)
-    }; // Lock released; NestedFrameGuard will pop the (now-empty) frame on drop.
+    }; // Lock released; NestedFrameGuard pops the frame on drop.
     Ok((workflow, n_outputs))
 }
 

@@ -82,7 +82,7 @@ fn load_plugins(py: Python<'_>, search_dir: &str) -> PyResult<()> {
 #[pyo3(signature = (data, dtype=None))]
 fn make_deck(py: Python<'_>, data: &Bound<'_, PyAny>, dtype: Option<&str>) -> PyResult<PyObject> {
     let type_id = dtype.map(parse_dtype).transpose()?;
-    if IN_WORKFLOW_MODE.load(Ordering::Relaxed) {
+    if IN_WORKFLOW_MODE.load(Ordering::Acquire) {
         make_deck_deferred(py, data, type_id)
     } else {
         let handle = create_orc_handle(py, data, type_id)?;
@@ -233,12 +233,10 @@ fn make_deck_deferred(
     let mut wf_guard = BUILDING_WORKFLOW
         .lock()
         .map_err(|_| pyo3::exceptions::PyRuntimeError::new_err("Workflow lock poisoned"))?;
-    let wf: &mut Workflow = wf_guard
+    let wf: &mut Workflow = &mut wf_guard
         .last_mut()
         .ok_or_else(|| pyo3::exceptions::PyRuntimeError::new_err("No workflow being built"))?
-        .workflow
-        .as_mut()
-        .ok_or_else(|| pyo3::exceptions::PyRuntimeError::new_err("No workflow being built"))?;
+        .workflow;
     let oh = wf
         .add_constant(handle)
         .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("{}", e)))?
