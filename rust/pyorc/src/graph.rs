@@ -8,9 +8,16 @@ use pyo3::types::{PyDict, PyList, PyTuple};
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 
+pub(crate) struct WorkflowBuildState {
+    pub(crate) workflow: Option<SendWorkflow>,
+    pub(crate) inputs: Vec<(IH, usize)>,
+}
+
 pub(crate) static IN_WORKFLOW_MODE: AtomicBool = AtomicBool::new(false);
-pub(crate) static BUILDING_WORKFLOW: Mutex<Option<SendWorkflow>> = Mutex::new(None);
-pub(crate) static WORKFLOW_INPUTS: Mutex<Vec<(IH, usize)>> = Mutex::new(Vec::new());
+pub(crate) static BUILDING_WORKFLOW: Mutex<WorkflowBuildState> = Mutex::new(WorkflowBuildState {
+    workflow: None,
+    inputs: Vec::new(),
+});
 
 /// Wrapper to make Workflow Send+Sync (required by #[pyclass] and Mutex statics).
 /// SAFETY: Workflow contains Rc<RefCell<...>> (property system) which is !Send !Sync.
@@ -187,21 +194,20 @@ pub(crate) fn make_workflow_impl(py: Python<'_>, func: &Bound<'_, PyAny>) -> PyR
     impl Drop for WorkflowModeGuard {
         fn drop(&mut self) {
             IN_WORKFLOW_MODE.store(false, Ordering::SeqCst);
-            if let Ok(mut wf) = BUILDING_WORKFLOW.lock() {
-                *wf = None;
-            }
-            if let Ok(mut wi) = WORKFLOW_INPUTS.lock() {
-                wi.clear();
+            if let Ok(mut state) = BUILDING_WORKFLOW.lock() {
+                state.workflow = None;
+                state.inputs.clear();
             }
         }
     }
     let _guard = WorkflowModeGuard;
-    // Initialize building workflow.
     {
-        let mut wf = BUILDING_WORKFLOW
+        // Initialize building workflow.
+        let mut state = BUILDING_WORKFLOW
             .lock()
             .map_err(|_| pyo3::exceptions::PyRuntimeError::new_err("Lock error"))?;
-        *wf = Some(SendWorkflow(Workflow::default()));
+        state.workflow = Some(SendWorkflow(Workflow::default()));
+        state.inputs.clear();
     }
     // Get parameter names via inspect.signature.
     let inspect = py.import("inspect")?;
@@ -231,16 +237,17 @@ pub(crate) fn make_workflow_impl(py: Python<'_>, func: &Bound<'_, PyAny>) -> PyR
     // Finalize: set workflow inputs and outputs, then take the finished workflow.
     // The block scope releases the BUILDING_WORKFLOW lock before we reset IN_WORKFLOW_MODE.
     let workflow = {
-        let mut wf_guard = BUILDING_WORKFLOW
+        let mut guard = BUILDING_WORKFLOW
             .lock()
             .map_err(|_| pyo3::exceptions::PyRuntimeError::new_err("Lock error"))?;
-        let wf: &mut Workflow = wf_guard
+        let state = &mut *guard;
+        let wf: &mut Workflow = state
+            .workflow
             .as_mut()
             .ok_or_else(|| pyo3::exceptions::PyRuntimeError::new_err("No workflow being built"))?;
         // Set workflow inputs from accumulated deferred-call mappings.
-        let input_refs: Vec<(IH, usize, &str)> = WORKFLOW_INPUTS
-            .lock()
-            .map_err(|_| pyo3::exceptions::PyRuntimeError::new_err("Lock error"))?
+        let input_refs: Vec<(IH, usize, &str)> = state
+            .inputs
             .drain(..)
             .map(|(ih, idx)| (ih, idx, param_names[idx].as_str()))
             .collect();
@@ -253,8 +260,11 @@ pub(crate) fn make_workflow_impl(py: Python<'_>, func: &Bound<'_, PyAny>) -> PyR
         let outputs: Vec<(OH, String)> = output_ohs.iter().map(|&oh| (oh, String::new())).collect();
         wf.set_outputs(&outputs)
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("{}", e)))?;
-        wf_guard.take().ok_or_else(|| pyo3::exceptions::PyRuntimeError::new_err("No workflow being built"))?
-    }; // wf_guard (BUILDING_WORKFLOW lock) released here.
+        state
+            .workflow
+            .take()
+            .ok_or_else(|| pyo3::exceptions::PyRuntimeError::new_err("No workflow being built"))?
+    }; // BUILDING_WORKFLOW lock released here.
     IN_WORKFLOW_MODE.store(false, Ordering::SeqCst);
     // _guard still runs on drop as a safety net for error/panic paths.
     Ok(PyWorkflow {

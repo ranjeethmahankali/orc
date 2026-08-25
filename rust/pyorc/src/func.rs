@@ -1,6 +1,4 @@
-use crate::graph::{
-    BUILDING_WORKFLOW, IN_WORKFLOW_MODE, WORKFLOW_INPUTS, WorkflowNode, WorkflowNodeKind,
-};
+use crate::graph::{BUILDING_WORKFLOW, IN_WORKFLOW_MODE, WorkflowNode, WorkflowNodeKind};
 use crate::handle::Handle;
 use crate::host::HANDLE_COUNTER;
 use orc_sdk::{FuncInfo, IH, OH, OrcHandle, OrcHandleBorrowed, Workflow};
@@ -147,30 +145,29 @@ impl OrcFunc {
                     .map(|node: PyRef<'_, WorkflowNode>| node.kind)
             })
             .collect::<PyResult<_>>()?;
-        // Lock the building workflow and add the function node.
-        let mut wf_guard = BUILDING_WORKFLOW
+        // Lock the building workflow, add the function node, and record connections.
+        let mut guard = BUILDING_WORKFLOW
             .lock()
             .map_err(|_| pyo3::exceptions::PyRuntimeError::new_err("Workflow lock poisoned"))?;
-        let wf: &mut Workflow = wf_guard
+        let state = &mut *guard;
+        let wf: &mut Workflow = state
+            .workflow
             .as_mut()
             .ok_or_else(|| pyo3::exceptions::PyRuntimeError::new_err("No workflow being built"))?;
         let mut ihs = vec![IH::default(); n_args];
         let mut ohs = vec![OH::default(); n_out];
         wf.add_function(self.info.clone(), &mut ihs, &mut ohs)
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("{}", e)))?;
-        // Connect outputs or record workflow inputs.
-        let mut wi_guard = WORKFLOW_INPUTS
-            .lock()
-            .map_err(|_| pyo3::exceptions::PyRuntimeError::new_err("Lock poisoned"))?;
+        // Connect upstream outputs or record workflow inputs.
         for (kind, ih) in arg_kinds.iter().zip(ihs.iter()) {
-            match kind {
-                WorkflowNodeKind::UpstreamNode(oh) => {
-                    wf.connect(*oh, *ih)
-                        .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("{}", e)))?;
-                }
-                WorkflowNodeKind::WorkflowInput(param_idx) => {
-                    wi_guard.push((*ih, *param_idx));
-                }
+            if let WorkflowNodeKind::UpstreamNode(oh) = kind {
+                wf.connect(*oh, *ih)
+                    .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("{}", e)))?;
+            }
+        }
+        for (kind, ih) in arg_kinds.iter().zip(ihs.iter()) {
+            if let WorkflowNodeKind::WorkflowInput(param_idx) = kind {
+                state.inputs.push((*ih, *param_idx));
             }
         }
         // Wrap output OHs as WorkflowNodes.

@@ -232,6 +232,7 @@ fn make_deck_deferred(
         .lock()
         .map_err(|_| pyo3::exceptions::PyRuntimeError::new_err("Workflow lock poisoned"))?;
     let wf: &mut Workflow = wf_guard
+        .workflow
         .as_mut()
         .ok_or_else(|| pyo3::exceptions::PyRuntimeError::new_err("No workflow being built"))?;
     let oh = wf
