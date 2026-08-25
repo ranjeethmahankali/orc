@@ -263,6 +263,8 @@
   the remaining files in the same way.
 
   - [ ] Fix all the gratuitous .unwraps and .expects.
+  - [ ] Consolidate the mutexes being locked to build a workflow. This will make deadlocks and
+    mistakes less likely.
 
 ** Plan using PyO3
    :PROPERTIES:
