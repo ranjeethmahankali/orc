@@ -166,6 +166,21 @@ impl Workflow {
         self.nested_workflows.contains_key(name)
     }
 
+    pub fn count_nested_calls(&self, name: &str) -> Result<usize, DagError> {
+        if !self.has_nested_workflow(name) {
+            Ok(0)
+        } else {
+            let node_infos = self.node_infos.try_borrow()?;
+            Ok(node_infos
+                .iter()
+                .filter(|ni| match ni {
+                    NodeInfo::NestedCall { workflow_name } if workflow_name == name => true,
+                    _ => false,
+                })
+                .count())
+        }
+    }
+
     pub fn add_nested_workflow_call(
         &mut self,
         name: &str,
