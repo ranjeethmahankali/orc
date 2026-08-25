@@ -171,9 +171,12 @@
   Maybe I can write a rasterizer for my curve types, and somehow get the optimizer to export images
   of the sample points in the design space, so that I can visualize them when viewing the DOE.
 
-* TODO Function metadata ABI improvements
+* NEXT tkcjtv - Function metadata ABI improvements
   :PROPERTIES:
   :CREATED:  2026-08-15 Sat 13:54
+  :END:
+  :LOGBOOK:
+  - State "NEXT"       from "TODO"       [2026-08-25 Tue 18:30]
   :END:
 
   A node-editor UI app that wants to create nodes with properly named inputs needs to get that
