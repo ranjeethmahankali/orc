@@ -1,6 +1,3 @@
-
-
-
 import gc
 import math
 import os
@@ -116,7 +113,7 @@ def t_mul_f64():
     """Multiply two flat f64 lists element-wise."""
     a = make_handle([2.0, 3.0, 4.0])
     b = make_handle([5.0, 6.0, 7.0])
-    out = orc.mul(a, b)
+    out = orc.multiply(a, b)
     assert orc.read_deck(out) == [10.0, 18.0, 28.0]
 
 
@@ -124,7 +121,7 @@ def t_mul_i64():
     """Multiply two U8 lists element-wise."""
     a = make_handle([3, 4], dtype="i64")
     b = make_handle([7, 8], dtype="i64")
-    out = orc.mul(a, b)
+    out = orc.multiply(a, b)
     assert orc.read_deck(out) == [21, 32]
 
 
@@ -132,7 +129,7 @@ def t_mul_nested():
     """Multiply nested list by broadcast scalar."""
     a = make_handle([[2.0, 3.0], [4.0]])
     b = make_handle([10.0])
-    out = orc.mul(a, b)
+    out = orc.multiply(a, b)
     assert orc.read_deck(out) == [[20.0, 30.0], [40.0]]
 
 
@@ -141,7 +138,7 @@ def t_mul_mismatched_types():
     a = make_handle([2, 3])  # U8
     b = make_handle([3.0, 4.0])  # F64
     try:
-        orc.mul(a, b)
+        orc.multiply(a, b)
         assert False, "Should have raised RuntimeError"
     except RuntimeError:
         pass
@@ -156,7 +153,7 @@ def t_sub_f64():
     """Subtract two flat f64 lists element-wise."""
     a = make_handle([10.0, 20.0])
     b = make_handle([3.0, 7.0])
-    out = orc.sub(a, b)
+    out = orc.subtract(a, b)
     assert orc.read_deck(out) == [7.0, 13.0]
 
 
@@ -164,7 +161,7 @@ def t_sub_nested():
     """Subtract broadcast scalar from nested list."""
     a = make_handle([[10.0, 20.0], [30.0]])
     b = make_handle([1.0])
-    out = orc.sub(a, b)
+    out = orc.subtract(a, b)
     assert orc.read_deck(out) == [[9.0, 19.0], [29.0]]
 
 
@@ -173,7 +170,7 @@ def t_sub_unsupported_type():
     a = make_handle([5, 3])  # U8
     b = make_handle([3, 1])
     try:
-        orc.sub(a, b)
+        orc.subtract(a, b)
         assert False, "Should have raised RuntimeError"
     except RuntimeError:
         pass
@@ -188,7 +185,7 @@ def t_div_f64():
     """Divide two flat f64 lists element-wise."""
     a = make_handle([10.0, 9.0])
     b = make_handle([2.0, 3.0])
-    out = orc.div(a, b)
+    out = orc.divide(a, b)
     assert orc.read_deck(out) == [5.0, 3.0]
 
 
@@ -196,7 +193,7 @@ def t_div_by_zero():
     """Divide by zero produces positive infinity."""
     a = make_handle([1.0])
     b = make_handle([0.0])
-    out = orc.div(a, b)
+    out = orc.divide(a, b)
     result = orc.read_deck(out)
     assert math.isinf(result[0]) and result[0] > 0
 
@@ -206,7 +203,7 @@ def t_div_unsupported_type():
     a = make_handle([6, 2])  # U8
     b = make_handle([2, 1])
     try:
-        orc.div(a, b)
+        orc.divide(a, b)
         assert False, "Should have raised RuntimeError"
     except RuntimeError:
         pass
@@ -982,7 +979,7 @@ def t_workflow_chain():
     a = make_handle([2.0, 3.0])
     b = make_handle([10.0, 20.0])
     def chain(x, y):
-        product = orc.mul(x, y)
+        product = orc.multiply(x, y)
         return orc.add(product, x)
     wf = orc.make_workflow(chain)
     assert orc.read_deck(wf.run(a, b)) == [22.0, 63.0]
@@ -1024,7 +1021,7 @@ def t_workflow_n_out():
 def t_workflow_fan_out():
     """Same input feeds into multiple function arguments."""
     a = make_handle([3.0, 4.0])
-    wf = orc.make_workflow(lambda x: orc.mul(x, x))
+    wf = orc.make_workflow(lambda x: orc.multiply(x, x))
     assert orc.read_deck(wf.run(a)) == [9.0, 16.0]
 
 
@@ -1033,8 +1030,8 @@ def t_workflow_diamond():
     a = make_handle([5.0])
     def diamond(x):
         doubled = orc.add(x, x)
-        squared = orc.mul(x, x)
-        return orc.sub(squared, doubled)
+        squared = orc.multiply(x, x)
+        return orc.subtract(squared, doubled)
     wf = orc.make_workflow(diamond)
     # 5^2 - 5*2 = 25 - 10 = 15
     assert orc.read_deck(wf.run(a)) == [15.0]
@@ -1080,7 +1077,7 @@ def t_workflow_run_kwargs():
     """Run a workflow with keyword arguments."""
     a = make_handle([1.0])
     b = make_handle([2.0])
-    wf = orc.make_workflow(lambda x, y: orc.sub(x, y))
+    wf = orc.make_workflow(lambda x, y: orc.subtract(x, y))
     assert orc.read_deck(wf.run(x=a, y=b)) == [-1.0]
     assert orc.read_deck(wf.run(y=a, x=b)) == [1.0]
 
@@ -1089,7 +1086,7 @@ def t_workflow_run_mixed_args():
     """Run a workflow with positional + keyword arguments."""
     a = make_handle([5.0])
     b = make_handle([3.0])
-    wf = orc.make_workflow(lambda x, y: orc.sub(x, y))
+    wf = orc.make_workflow(lambda x, y: orc.subtract(x, y))
     assert orc.read_deck(wf.run(a, y=b)) == [2.0]
 
 
@@ -1138,7 +1135,7 @@ def t_workflow_node_not_comparable():
     def bad_fn(x, y):
         if x > y:  # WorkflowNode has no __gt__
             return orc.add(x, y)
-        return orc.sub(x, y)
+        return orc.subtract(x, y)
     try:
         orc.make_workflow(bad_fn)
         assert False, "Should have raised TypeError"
@@ -1314,12 +1311,12 @@ def t_workflow_interleave():
     # Build a workflow.
     wf = orc.make_workflow(lambda x: orc.add(x, orc.make_deck([100.0])))
     # Between.
-    assert orc.read_deck(orc.mul(a, b)) == [10.0, 40.0]
+    assert orc.read_deck(orc.multiply(a, b)) == [10.0, 40.0]
     # Run the workflow.
     result = wf.run(a)
     assert orc.read_deck(result) == [101.0, 102.0]
     # After — use the workflow output in immediate mode.
-    doubled = orc.mul(result, make_handle([2.0]))
+    doubled = orc.multiply(result, make_handle([2.0]))
     assert orc.read_deck(doubled) == [202.0, 204.0]
 
 

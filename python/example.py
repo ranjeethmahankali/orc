@@ -64,7 +64,7 @@ def simple_experiment():
     print(f"DAG result (named): {orc.read_deck(result2)}")
 
     # Interleave immediate and DAG calls freely.
-    doubled = orc.mul(result, orc.make_deck([2.0]))
+    doubled = orc.multiply(result, orc.make_deck([2.0]))
     print(f"Doubled: {orc.read_deck(doubled)}")
 
     # Serialize / deserialize.
