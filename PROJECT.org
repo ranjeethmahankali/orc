@@ -262,7 +262,7 @@
   <2026-08-24 Mon 00:39> Slowly reviewed and refactored lib.rs, it is now decent. Need to go through
   the remaining files in the same way.
 
-  - [ ] Fix all the gratuitous .unwraps and .expects.
+  - [X] Fix all the gratuitous .unwraps and .expects.
   - [ ] Consolidate the mutexes being locked to build a workflow. This will make deadlocks and
     mistakes less likely.
 
