@@ -105,6 +105,14 @@
   functions, that in turn run the embedded Python interpreter. I could be totally off base, but if
   this is true, then writing plugins in Python could be very interesting.
 
+* TODO Benchmarking
+  :PROPERTIES:
+  :CREATED:  2026-08-25 Tue 19:28
+  :END:
+
+  Many good candidates through out this project, to start benchmarking, to start nailing down the
+  performance, and make sure it doesn't regress. But this is not urgent.
+
 * TODO tj45qx - C++ SDK
   :PROPERTIES:
   :CREATED:  2026-08-01 Sat 18:58
