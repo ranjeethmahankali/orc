@@ -268,7 +268,7 @@ where
     assert_eq!(d, orc_sdk::deck![[[1], [2], [3]], [[4], [5], [6]], [[7], [8], [9]]]);
     ```
     */
-    pub fn graft(&mut self) {
+    pub fn graft(&mut self) -> Result<(), Error> {
         let count = self.marks.len();
         let old_marks = std::mem::replace(
             &mut self.marks,
@@ -276,7 +276,7 @@ where
         );
         let mut prev = 0u64;
         for mut m in old_marks.into_iter() {
-            m.depth = m.depth.checked_add(1).expect("Depth overflow");
+            m.depth = m.depth.checked_add(1).ok_or(Error::DeckDepthOverflow)?;
             self.marks
                 .extend((prev..m.pos).map(|pos| OrcMark { depth: 0, pos }));
             self.marks.push(m);
@@ -290,6 +290,7 @@ where
             &mut self.stride_offset,
             &mut self.strides,
         );
+        Ok(())
     }
 
     /**
@@ -1428,7 +1429,7 @@ mod test {
     fn t_deck_graft() {
         // Graft increments every mark depth by 1.
         let mut d = binary_deck(3);
-        d.graft();
+        d.graft().unwrap();
         assert_eq!(d.max_depth(), 4);
         // Items are unchanged.
         assert_eq!(d.items, binary_deck(3).items);
@@ -1453,7 +1454,7 @@ mod test {
         // Graft then flatten roundtrip: items survive.
         let mut d = binary_deck(2);
         let items = d.items.clone();
-        d.graft();
+        d.graft().unwrap();
         d.flatten();
         assert_eq!(d.items, items);
     }
@@ -2029,7 +2030,7 @@ mod test {
         }
         assert_eq!(tree2(&deck), vec![vec![1, 2], vec![3]]);
         // Graft: depth 2 → 3
-        deck.graft();
+        deck.graft().unwrap();
         assert_eq!(deck.max_depth(), 3);
         assert_eq!(tree3(&deck), vec![vec![vec![1], vec![2]], vec![vec![3]]]);
         // Simplify should be a no-op (depths are already contiguous).

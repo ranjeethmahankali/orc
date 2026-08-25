@@ -19,6 +19,7 @@ pub enum Error {
     InvalidArguments,
     SerializationError,
     InvalidContext,
+    DeckDepthOverflow,
     Unknown,
 }
 
@@ -43,6 +44,7 @@ impl Error {
             crate::ORC_ERROR_INVALID_ARGUMENTS => Err(Error::InvalidArguments),
             crate::ORC_ERROR_SERIALIZATION_ERROR => Err(Error::SerializationError),
             crate::ORC_ERROR_INVALID_CONTEXT => Err(Error::InvalidContext),
+            crate::ORC_ERROR_DECK_DEPTH_OVERFLOW => Err(Error::DeckDepthOverflow),
             _ => Err(Error::Unknown),
         }
     }
@@ -74,6 +76,9 @@ impl std::fmt::Display for Error {
             ),
             Error::SerializationError => write!(f, "Serialization failed"),
             Error::InvalidContext => write!(f, "Invalid context used in a callback."),
+            Error::DeckDepthOverflow => {
+                write!(f, "The depth of the deck exceeds maximum supported depth")
+            }
             Error::Unknown => write!(f, "Unknown error"),
         }
     }
@@ -102,6 +107,7 @@ impl From<Error> for OrcError {
             Error::InvalidArguments => crate::ORC_ERROR_INVALID_ARGUMENTS,
             Error::SerializationError => crate::ORC_ERROR_SERIALIZATION_ERROR,
             Error::InvalidContext => crate::ORC_ERROR_INVALID_CONTEXT,
+            Error::DeckDepthOverflow => crate::ORC_ERROR_DECK_DEPTH_OVERFLOW,
         }
     }
 }
