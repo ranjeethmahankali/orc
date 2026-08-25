@@ -201,7 +201,9 @@ fn finalize_build_state(
     param_names: &[String],
 ) -> PyResult<usize> {
     // Destructure to get independent borrows of workflow and inputs.
-    let WorkflowBuildState { workflow, inputs, .. } = state;
+    let WorkflowBuildState {
+        workflow, inputs, ..
+    } = state;
     let wf: &mut Workflow = workflow;
     let input_refs: Vec<(IH, usize, &str)> = inputs
         .drain(..)
@@ -289,9 +291,9 @@ pub(crate) fn make_workflow_impl(py: Python<'_>, func: &Bound<'_, PyAny>) -> PyR
             .lock()
             .map_err(|_| pyo3::exceptions::PyRuntimeError::new_err("Lock error"))?;
         {
-            let state = stack
-                .last_mut()
-                .ok_or_else(|| pyo3::exceptions::PyRuntimeError::new_err("No workflow being built"))?;
+            let state = stack.last_mut().ok_or_else(|| {
+                pyo3::exceptions::PyRuntimeError::new_err("No workflow being built")
+            })?;
             finalize_build_state(state, &return_value, &param_names)?;
         }
         stack
