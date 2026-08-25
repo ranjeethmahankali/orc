@@ -5,12 +5,12 @@ mod host;
 mod stubs;
 
 use func::OrcFunc;
-use graph::{BUILDING_WORKFLOW, IN_WORKFLOW_MODE, PyWorkflow, WorkflowNode, WorkflowNodeKind};
+use graph::{PyWorkflow, WorkflowNode, WorkflowNodeKind, BUILDING_WORKFLOW, IN_WORKFLOW_MODE};
 use handle::Handle;
 use host::{HANDLE_COUNTER, PLUGIN_SET, REGISTRY};
 use orc_sdk::{
-    Deck, ORC_TYPE_F32, ORC_TYPE_F64, ORC_TYPE_I8, ORC_TYPE_I16, ORC_TYPE_I32, ORC_TYPE_I64,
-    ORC_TYPE_U8, ORC_TYPE_U16, ORC_TYPE_U32, ORC_TYPE_U64, OrcHandle, OrcMark, Workflow,
+    Deck, OrcHandle, OrcMark, Workflow, ORC_TYPE_F32, ORC_TYPE_F64, ORC_TYPE_I16, ORC_TYPE_I32,
+    ORC_TYPE_I64, ORC_TYPE_I8, ORC_TYPE_U16, ORC_TYPE_U32, ORC_TYPE_U64, ORC_TYPE_U8,
 };
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyFloat, PyList, PyTuple};
