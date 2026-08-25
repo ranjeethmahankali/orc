@@ -40,6 +40,9 @@ pub(crate) enum WorkflowNodeKind {
     WorkflowInput(usize),
 }
 
+/// WorkflowNodeKind cannot be a #[pyclass] directly because PyO3's enum pyclass support is limited
+/// to unit variants. This struct exists solely as the pyclass boundary; WorkflowNodeKind stays a
+/// plain Copy enum for cheap internal use.
 #[pyclass(name = "WorkflowNode")]
 pub(crate) struct WorkflowNode {
     pub(crate) kind: WorkflowNodeKind,
