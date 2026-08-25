@@ -108,11 +108,15 @@ impl OrcFunc {
         if n_out == 1 {
             Ok(Py::new(py, Handle::new(raw_outputs.pop().unwrap()))?.into_any())
         } else {
-            let list = PyList::empty(py);
-            for h in raw_outputs {
-                list.append(Py::new(py, Handle::new(h))?)?;
-            }
-            Ok(list.into_any().unbind())
+            Ok(PyList::new(
+                py,
+                raw_outputs
+                    .into_iter()
+                    .map(|h| Py::new(py, Handle::new(h)))
+                    .collect::<PyResult<Vec<_>>>()?,
+            )?
+            .into_any()
+            .unbind())
         }
     }
 
@@ -176,16 +180,21 @@ impl OrcFunc {
             )?
             .into_any())
         } else {
-            let list = PyList::empty(py);
-            for oh in ohs {
-                list.append(Py::new(
-                    py,
-                    WorkflowNode {
-                        kind: WorkflowNodeKind::UpstreamNode(oh),
-                    },
-                )?)?;
-            }
-            Ok(list.into_any().unbind())
+            Ok(PyList::new(
+                py,
+                ohs.into_iter()
+                    .map(|oh| {
+                        Py::new(
+                            py,
+                            WorkflowNode {
+                                kind: WorkflowNodeKind::UpstreamNode(oh),
+                            },
+                        )
+                    })
+                    .collect::<PyResult<Vec<_>>>()?,
+            )?
+            .into_any()
+            .unbind())
         }
     }
 }
