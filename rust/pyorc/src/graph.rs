@@ -177,14 +177,11 @@ impl PyWorkflow {
 
 pub(crate) fn make_workflow_impl(py: Python<'_>, func: &Bound<'_, PyAny>) -> PyResult<PyWorkflow> {
     // Prevent recursive calls.
-    if IN_WORKFLOW_MODE
+    IN_WORKFLOW_MODE
         .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
-        .is_err()
-    {
-        return Err(pyo3::exceptions::PyRuntimeError::new_err(
-            "make_workflow cannot be called recursively.",
-        ));
-    }
+        .map_err(|_| {
+            pyo3::exceptions::PyRuntimeError::new_err("make_workflow cannot be called recursively.")
+        })?;
     // Drop guard resets state on any exit path (panic, error, success).
     struct WorkflowModeGuard;
     impl Drop for WorkflowModeGuard {
@@ -215,7 +212,7 @@ pub(crate) fn make_workflow_impl(py: Python<'_>, func: &Bound<'_, PyAny>) -> PyR
         .try_iter()?
         .map(|k| k.and_then(|k| k.extract::<String>()))
         .collect::<PyResult<_>>()?;
-    // Create WorkflowNode::Input for each parameter.
+    // Create WorkflowNode::WorkflowInput for each parameter.
     let graph_nodes: Vec<Py<WorkflowNode>> = param_names
         .iter()
         .enumerate()
@@ -231,33 +228,38 @@ pub(crate) fn make_workflow_impl(py: Python<'_>, func: &Bound<'_, PyAny>) -> PyR
     // Call the user function in deferred mode.
     let py_args = PyTuple::new(py, &graph_nodes)?;
     let return_value = func.call1(&py_args)?;
-    // Finalize: set workflow inputs and outputs.
-    let mut wf_guard = BUILDING_WORKFLOW
-        .lock()
-        .map_err(|_| pyo3::exceptions::PyRuntimeError::new_err("Lock error"))?;
-    let wf: &mut Workflow = wf_guard
-        .as_mut()
-        .ok_or_else(|| pyo3::exceptions::PyRuntimeError::new_err("No workflow being built"))?;
-    // Set workflow inputs from accumulated deferred-call mappings.
-    let input_refs: Vec<(IH, usize, &str)> = WORKFLOW_INPUTS
-        .lock()
-        .map_err(|_| pyo3::exceptions::PyRuntimeError::new_err("Lock error"))?
-        .drain(..)
-        .map(|(ih, idx)| (ih, idx, param_names[idx].as_str()))
-        .collect();
-    if !input_refs.is_empty() {
-        wf.set_inputs(&input_refs)
+    // Finalize: set workflow inputs and outputs, then take the finished workflow.
+    // The block scope releases the BUILDING_WORKFLOW lock before we reset IN_WORKFLOW_MODE.
+    let workflow = {
+        let mut wf_guard = BUILDING_WORKFLOW
+            .lock()
+            .map_err(|_| pyo3::exceptions::PyRuntimeError::new_err("Lock error"))?;
+        let wf: &mut Workflow = wf_guard
+            .as_mut()
+            .ok_or_else(|| pyo3::exceptions::PyRuntimeError::new_err("No workflow being built"))?;
+        // Set workflow inputs from accumulated deferred-call mappings.
+        let input_refs: Vec<(IH, usize, &str)> = WORKFLOW_INPUTS
+            .lock()
+            .map_err(|_| pyo3::exceptions::PyRuntimeError::new_err("Lock error"))?
+            .drain(..)
+            .map(|(ih, idx)| (ih, idx, param_names[idx].as_str()))
+            .collect();
+        if !input_refs.is_empty() {
+            wf.set_inputs(&input_refs)
+                .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("{}", e)))?;
+        }
+        // Set workflow outputs from the return value.
+        let output_ohs = extract_output_ohs(&return_value)?;
+        let outputs: Vec<(OH, String)> = output_ohs.iter().map(|&oh| (oh, String::new())).collect();
+        wf.set_outputs(&outputs)
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("{}", e)))?;
-    }
-    // Set workflow outputs from the return value.
-    let output_ohs = extract_output_ohs(&return_value)?;
-    let outputs: Vec<(OH, String)> = output_ohs.iter().map(|&oh| (oh, String::new())).collect();
-    wf.set_outputs(&outputs)
-        .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("{}", e)))?;
-    // Take the finished workflow.
+        wf_guard.take().unwrap()
+    }; // wf_guard (BUILDING_WORKFLOW lock) released here.
+    IN_WORKFLOW_MODE.store(false, Ordering::SeqCst);
+    // _guard still runs on drop as a safety net for error/panic paths.
     Ok(PyWorkflow {
         param_names,
-        workflow: wf_guard.take().unwrap(),
+        workflow,
     })
 }
 
