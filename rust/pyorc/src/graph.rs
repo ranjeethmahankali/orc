@@ -137,7 +137,7 @@ impl PyWorkflow {
                 &host_clone_orc_handle,
                 &HANDLE_COUNTER,
             )
-            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("{:?}", e)))?;
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("{}", e)))?;
         // Wrap outputs.
         if n_outputs == 1 {
             Ok(Py::new(py, Handle::new(outputs.pop().unwrap()))?.into_any())
@@ -240,13 +240,13 @@ pub(crate) fn make_workflow_impl(py: Python<'_>, func: &Bound<'_, PyAny>) -> PyR
         .collect();
     if !input_refs.is_empty() {
         wf.set_inputs(&input_refs)
-            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("{:?}", e)))?;
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("{}", e)))?;
     }
     // Set workflow outputs from the return value.
     let output_ohs = extract_output_ohs(&return_value)?;
     let outputs: Vec<(OH, String)> = output_ohs.iter().map(|&oh| (oh, String::new())).collect();
     wf.set_outputs(&outputs)
-        .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("{:?}", e)))?;
+        .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("{}", e)))?;
     // Take the finished workflow.
     Ok(PyWorkflow {
         param_names,
@@ -268,7 +268,7 @@ pub(crate) fn save_workflow_impl(graph: &PyWorkflow, path: &str) -> PyResult<()>
     graph
         .workflow
         .write_to_msgpack(&ps, &SERIAL_CONTEXT_ARENA, &mut writer)
-        .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("{:?}", e)))
+        .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("{}", e)))
 }
 
 pub(crate) fn load_workflow_impl(path: &str) -> PyResult<PyWorkflow> {
@@ -280,7 +280,7 @@ pub(crate) fn load_workflow_impl(path: &str) -> PyResult<PyWorkflow> {
     let mut reader = std::io::BufReader::new(file);
     let mut next_id = || HANDLE_COUNTER.fetch_add(1, Ordering::Relaxed);
     let wf = Workflow::read_from_msgpack(&mut reader, &ps, &REGISTRY, 0, &mut next_id)
-        .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("{:?}", e)))?;
+        .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("{}", e)))?;
     Ok(PyWorkflow {
         param_names: wf.input_names().to_vec(),
         workflow: SendWorkflow(wf),

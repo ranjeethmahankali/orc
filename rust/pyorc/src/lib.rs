@@ -44,7 +44,7 @@ fn load_plugins(py: Python<'_>, search_dir: &str) -> PyResult<()> {
     let prev_count = ps.plugins().len();
     ps.append_from_dir(std::path::Path::new(search_dir), &host::HOST)
         .map_err(|e| {
-            pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to load plugins: {:?}.", e))
+            pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to load plugins: {}.", e))
         })?;
     // Register newly loaded plugin functions as module attributes.
     let module = PyModule::import(py, "orc")?;
@@ -186,7 +186,7 @@ fn create_orc_handle(
             }
             REGISTRY
                 .alloc_with_value(Some(deck), &mut handle)
-                .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("{:?}", e)))?;
+                .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("{}", e)))?;
         }};
     }
     match type_id {
@@ -225,7 +225,7 @@ fn make_deck_deferred(
         .ok_or_else(|| pyo3::exceptions::PyRuntimeError::new_err("No workflow being built"))?;
     let oh = wf
         .add_constant(handle)
-        .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("{:?}", e)))?
+        .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("{}", e)))?
         .1;
     Ok(Py::new(
         py,
@@ -314,7 +314,7 @@ fn deck_to_nested_py_list(
     // Convert sparse marks to per-value depths.
     let mut depths = vec![0u8; items.len()];
     for mark in marks {
-        depths[mark.pos as usize] = mark.depth as u8 + 1;
+        depths[mark.pos as usize] = mark.depth + 1;
     }
     // Build nested lists recursively.
     let mut idx = 0;

@@ -76,12 +76,12 @@ impl OrcFunc {
                 n_out as u64,
             )
         });
-        if err != orc_sdk::ORC_ERROR_NONE {
-            return Err(pyo3::exceptions::PyRuntimeError::new_err(format!(
-                "Plugin function '{}' failed with error code {:#x}.",
-                self.info.name, err
-            )));
-        }
+        orc_sdk::Error::from_raw(err).map_err(|e| {
+            pyo3::exceptions::PyRuntimeError::new_err(format!(
+                "Plugin function '{}' failed with error: {}.",
+                self.info.name, e
+            ))
+        })?;
         // Wrap outputs.
         if n_out == 1 {
             Ok(Py::new(py, Handle::new(raw_outputs.pop().unwrap()))?.into_any())
@@ -127,7 +127,7 @@ impl OrcFunc {
         let mut ihs = vec![IH::default(); n_args];
         let mut ohs = vec![OH::default(); n_out];
         wf.add_function(self.info.clone(), &mut ihs, &mut ohs)
-            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("{:?}", e)))?;
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("{}", e)))?;
         // Connect outputs or record workflow inputs.
         let mut wi_guard = WORKFLOW_INPUTS
             .lock()
@@ -136,7 +136,7 @@ impl OrcFunc {
             match kind {
                 WorkflowNodeKind::Output(oh) => {
                     wf.connect(*oh, *ih).map_err(|e| {
-                        pyo3::exceptions::PyRuntimeError::new_err(format!("{:?}", e))
+                        pyo3::exceptions::PyRuntimeError::new_err(format!("{}", e))
                     })?;
                 }
                 WorkflowNodeKind::Input(param_idx) => {

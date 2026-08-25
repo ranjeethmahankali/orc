@@ -406,6 +406,28 @@ pub enum DagError {
     SdkError(crate::Error),
 }
 
+impl std::fmt::Display for DagError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            DagError::BorrowedPropertyAccess => write!(f, "Borrowed property access"),
+            DagError::MismatchedArrayLengths(expected, got) => {
+                write!(f, "Mismatched array lengths: expected {}, got {}", expected, got)
+            }
+            DagError::CycleDetected => write!(f, "Cycle detected"),
+            DagError::InvalidFunction => write!(f, "Invalid function"),
+            DagError::MissingInput(name) => write!(f, "Missing input: {}", name),
+            DagError::InvalidInputs => write!(f, "Invalid inputs"),
+            DagError::InvalidOutputs => write!(f, "Invalid outputs"),
+            DagError::NamingConflict => write!(f, "Naming conflict"),
+            DagError::GarbageCollectionRequired => write!(f, "Garbage collection required"),
+            DagError::WriteError => write!(f, "Write error"),
+            DagError::ReadError => write!(f, "Read error"),
+            DagError::VersionMismatch => write!(f, "Version mismatch"),
+            DagError::SdkError(e) => write!(f, "{}", e),
+        }
+    }
+}
+
 impl From<crate::Error> for DagError {
     fn from(e: crate::Error) -> Self {
         DagError::SdkError(e)
