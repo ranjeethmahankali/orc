@@ -17,13 +17,15 @@ pub static SERIAL_CONTEXT_ARENA: LazyLock<ContextArena<Vec<u8>>> =
     LazyLock::new(ContextArena::default);
 
 unsafe extern "C" fn host_alloc(size: u64, alignment: u64) -> *mut c_void {
-    let layout = Layout::from_size_align(size as usize, alignment as usize).unwrap();
-    unsafe { alloc(layout) as *mut c_void }
+    Layout::from_size_align(size as usize, alignment as usize)
+        .map(|layout| unsafe { alloc(layout) as *mut c_void })
+        .unwrap_or(std::ptr::null_mut())
 }
 
 unsafe extern "C" fn host_dealloc(ptr: *mut c_void, size: u64, alignment: u64) {
-    let layout = Layout::from_size_align(size as usize, alignment as usize).unwrap();
-    unsafe { dealloc(ptr as *mut u8, layout) }
+    // Ignoring the error. Nothing much we can do.
+    let _ = Layout::from_size_align(size as usize, alignment as usize)
+        .map(|layout| unsafe { dealloc(ptr as *mut u8, layout) });
 }
 
 unsafe extern "C" fn serial_write_callback(ctx: u64, data: *const c_void, len: u64) -> OrcError {

@@ -105,19 +105,22 @@ impl OrcFunc {
             ))
         })?;
         // Wrap outputs.
-        if n_out == 1 {
-            Ok(Py::new(py, Handle::new(raw_outputs.pop().unwrap()))?.into_any())
-        } else {
-            Ok(PyList::new(
-                py,
-                raw_outputs
-                    .into_iter()
-                    .map(|h| Py::new(py, Handle::new(h)))
-                    .collect::<PyResult<Vec<_>>>()?,
-            )?
-            .into_any()
-            .unbind())
+        if let Some(last) = raw_outputs.pop() {
+            if raw_outputs.is_empty() {
+                return Ok(Py::new(py, Handle::new(last))?.into_any());
+            } else {
+                raw_outputs.push(last);
+            }
         }
+        Ok(PyList::new(
+            py,
+            raw_outputs
+                .into_iter()
+                .map(|h| Py::new(py, Handle::new(h)))
+                .collect::<PyResult<Vec<_>>>()?,
+        )?
+        .into_any()
+        .unbind())
     }
 
     fn record_workflow_op<'py>(

@@ -139,19 +139,22 @@ impl PyWorkflow {
             )
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("{}", e)))?;
         // Wrap outputs.
-        if n_outputs == 1 {
-            Ok(Py::new(py, Handle::new(outputs.pop().unwrap()))?.into_any())
-        } else {
-            Ok(PyList::new(
-                py,
-                outputs
-                    .into_iter()
-                    .map(|h| Py::new(py, Handle::new(h)))
-                    .collect::<PyResult<Vec<_>>>()?,
-            )?
-            .into_any()
-            .unbind())
+        if let Some(last) = outputs.pop() {
+            if outputs.is_empty() {
+                return Ok(Py::new(py, Handle::new(last))?.into_any());
+            } else {
+                outputs.push(last);
+            }
         }
+        Ok(PyList::new(
+            py,
+            outputs
+                .into_iter()
+                .map(|h| Py::new(py, Handle::new(h)))
+                .collect::<PyResult<Vec<_>>>()?,
+        )?
+        .into_any()
+        .unbind())
     }
 }
 
@@ -250,7 +253,7 @@ pub(crate) fn make_workflow_impl(py: Python<'_>, func: &Bound<'_, PyAny>) -> PyR
         let outputs: Vec<(OH, String)> = output_ohs.iter().map(|&oh| (oh, String::new())).collect();
         wf.set_outputs(&outputs)
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("{}", e)))?;
-        wf_guard.take().unwrap()
+        wf_guard.take().ok_or_else(|| pyo3::exceptions::PyRuntimeError::new_err("No workflow being built"))?
     }; // wf_guard (BUILDING_WORKFLOW lock) released here.
     IN_WORKFLOW_MODE.store(false, Ordering::SeqCst);
     // _guard still runs on drop as a safety net for error/panic paths.
