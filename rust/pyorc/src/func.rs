@@ -18,12 +18,18 @@ unsafe impl Send for OrcFunc {}
 
 #[pymethods]
 impl OrcFunc {
-    #[pyo3(signature = (*args))]
-    fn __call__<'py>(&self, py: Python<'py>, args: &Bound<'py, PyTuple>) -> PyResult<PyObject> {
+    #[pyo3(signature = (*args, n_out=None))]
+    fn __call__<'py>(
+        &self,
+        py: Python<'py>,
+        args: &Bound<'py, PyTuple>,
+        n_out: Option<usize>,
+    ) -> PyResult<PyObject> {
+        let n_out = self.resolve_n_out(n_out)?;
         if IN_WORKFLOW_MODE.load(Ordering::Relaxed) {
-            self.record_workflow_op(py, args)
+            self.record_workflow_op(py, args, n_out)
         } else {
-            self.immediate_call(py, args)
+            self.immediate_call(py, args, n_out)
         }
     }
 
@@ -33,10 +39,27 @@ impl OrcFunc {
 }
 
 impl OrcFunc {
+    /// Resolve the effective output count from the optional user-supplied `n_out`
+    /// and the function's declared `n_outputs`. Errors if they conflict.
+    fn resolve_n_out(&self, n_out: Option<usize>) -> PyResult<usize> {
+        match (self.info.n_outputs, n_out) {
+            (Some(declared), Some(requested)) if declared != requested => {
+                Err(pyo3::exceptions::PyValueError::new_err(format!(
+                    "The function '{}' produces {} output(s), but n_out={} was requested.",
+                    self.info.name, declared, requested
+                )))
+            }
+            (_, Some(requested)) => Ok(requested),
+            (Some(declared), None) => Ok(declared),
+            (None, None) => Ok(1),
+        }
+    }
+
     fn immediate_call<'py>(
         &self,
         py: Python<'py>,
         args: &Bound<'py, PyTuple>,
+        n_out: usize,
     ) -> PyResult<PyObject> {
         // Validate input count.
         let n_args = args.len();
@@ -52,7 +75,6 @@ impl OrcFunc {
             .info
             .func
             .ok_or_else(|| pyo3::exceptions::PyRuntimeError::new_err("Null function pointer"))?;
-        let n_out = self.info.n_outputs.unwrap_or(1);
         // Borrow input handles into a contiguous array.
         let input_refs: Vec<PyRef<'_, Handle>> = (0..n_args)
             .map(|i| args.get_item(i)?.extract())
@@ -98,6 +120,7 @@ impl OrcFunc {
         &self,
         py: Python<'py>,
         args: &Bound<'py, PyTuple>,
+        n_out: usize,
     ) -> PyResult<PyObject> {
         // Validate input count.
         let n_args = args.len();
@@ -109,7 +132,6 @@ impl OrcFunc {
                 self.info.name, expected, n_args
             )));
         }
-        let n_out = self.info.n_outputs.unwrap_or(1);
         // Extract WorkflowNode arguments — each is either an Output(OH) or an Input(idx).
         let arg_kinds: Vec<WorkflowNodeKind> = (0..n_args)
             .map(|i| {

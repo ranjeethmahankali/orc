@@ -336,11 +336,12 @@ def t_flatten_already_flat():
 
 
 def t_flatten_multiple_io():
-    """Flatten with multiple inputs and outputs."""
-    # Skipped: flatten_deck is variadic (n_outputs = VARIADIC). With the new
-    # module, variadic functions default to 1 output, so multi-output flatten
-    # cannot be tested without n_out= support.
-    pass
+    """Flatten with multiple inputs and outputs using n_out=."""
+    a = make_handle([[1.0, 2.0], [3.0]])
+    b = make_handle([[4.0, 5.0, 6.0]])
+    outs = orc.flatten_deck(a, b, n_out=2)
+    assert orc.read_deck(outs[0]) == [1.0, 2.0, 3.0]
+    assert orc.read_deck(outs[1]) == [4.0, 5.0, 6.0]
 
 
 def t_flatten_integer_type():
@@ -358,10 +359,13 @@ def t_flatten_integer_type():
 
 
 def t_flatten_mismatched_counts():
-    """Flatten with n_inputs != n_outputs produces no output."""
-    # Skipped: no n_out= keyword in the new module, cannot reproduce this
-    # exact error condition.
-    pass
+    """Flatten errors when n_inputs != n_outputs."""
+    a = make_handle([[1.0, 2.0]])
+    try:
+        orc.flatten_deck(a, n_out=2)
+        assert False, "Expected RuntimeError"
+    except RuntimeError:
+        pass
 
 
 # ============================================================
@@ -997,6 +1001,18 @@ def t_workflow_multiple_constants():
         return orc.add(orc.add(x, a), b)
     wf = orc.make_workflow(fn_multi_const)
     assert orc.read_deck(wf.run(a)) == [111.0]
+
+
+def t_workflow_n_out():
+    """n_out= on a variadic function works inside make_workflow."""
+    def fn(x, y):
+        return orc.flatten_deck(x, y, n_out=2)
+    a = make_handle([[1.0, 2.0], [3.0]])
+    b = make_handle([[4.0, 5.0, 6.0]])
+    wf = orc.make_workflow(fn)
+    out0, out1 = wf.run(a, b)
+    assert orc.read_deck(out0) == [1.0, 2.0, 3.0]
+    assert orc.read_deck(out1) == [4.0, 5.0, 6.0]
 
 
 def t_workflow_fan_out():
