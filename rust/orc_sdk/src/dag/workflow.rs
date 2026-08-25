@@ -173,10 +173,7 @@ impl Workflow {
             let node_infos = self.node_infos.try_borrow()?;
             Ok(node_infos
                 .iter()
-                .filter(|ni| match ni {
-                    NodeInfo::NestedCall { workflow_name } if workflow_name == name => true,
-                    _ => false,
-                })
+                .filter(|ni| matches!(ni, NodeInfo::NestedCall { workflow_name } if workflow_name == name))
                 .count())
         }
     }
@@ -779,5 +776,108 @@ mod test {
         assert!(!(*dirty.get(nb).unwrap())); // default
         assert_eq!(*input_vals.get(b_in[0]).unwrap(), 3.1234);
         assert_eq!(*input_vals.get(b_in[1]).unwrap(), 2.72);
+    }
+
+    #[test]
+    fn t_nested_workflow_push_and_has() {
+        let mut outer = Workflow::default();
+        let inner = Workflow::default();
+        let ps = crate::PluginSet::default();
+        assert!(!outer.has_nested_workflow("inner"));
+        outer
+            .push_nested_workflow("inner".to_string(), inner, &ps)
+            .unwrap();
+        assert!(outer.has_nested_workflow("inner"));
+        assert!(!outer.has_nested_workflow("other"));
+    }
+
+    #[test]
+    fn t_nested_workflow_naming_conflict() {
+        let mut outer = Workflow::default();
+        let ps = crate::PluginSet::default();
+        outer
+            .push_nested_workflow("dup".to_string(), Workflow::default(), &ps)
+            .unwrap();
+        // Pushing the same name again is a NamingConflict.
+        let err = outer
+            .push_nested_workflow("dup".to_string(), Workflow::default(), &ps)
+            .unwrap_err();
+        assert!(matches!(err, crate::dag::DagError::NamingConflict));
+    }
+
+    #[test]
+    fn t_nested_workflow_count_calls_zero_when_not_registered() {
+        let mut w = Workflow::default();
+        let mut ihs = [IH::default(); 1];
+        let mut ohs = [OH::default(); 1];
+        // Add a call node whose name isn't in nested_workflows.
+        w.add_nested_workflow_call("ghost", &mut ihs, &mut ohs)
+            .unwrap();
+        // count_nested_calls returns 0 for unregistered names.
+        assert_eq!(w.count_nested_calls("ghost").unwrap(), 0);
+    }
+
+    #[test]
+    fn t_nested_workflow_count_calls_single() {
+        let mut outer = Workflow::default();
+        let ps = crate::PluginSet::default();
+        outer
+            .push_nested_workflow("fn".to_string(), Workflow::default(), &ps)
+            .unwrap();
+        assert_eq!(outer.count_nested_calls("fn").unwrap(), 0);
+
+        let mut ihs = [IH::default(); 2];
+        let mut ohs = [OH::default(); 1];
+        outer
+            .add_nested_workflow_call("fn", &mut ihs, &mut ohs)
+            .unwrap();
+        assert_eq!(outer.count_nested_calls("fn").unwrap(), 1);
+    }
+
+    #[test]
+    fn t_nested_workflow_count_calls_multiple() {
+        let mut outer = Workflow::default();
+        let ps = crate::PluginSet::default();
+        outer
+            .push_nested_workflow("adder".to_string(), Workflow::default(), &ps)
+            .unwrap();
+
+        for _ in 0..3 {
+            let mut ihs = [IH::default(); 2];
+            let mut ohs = [OH::default(); 1];
+            outer
+                .add_nested_workflow_call("adder", &mut ihs, &mut ohs)
+                .unwrap();
+        }
+        assert_eq!(outer.count_nested_calls("adder").unwrap(), 3);
+        // A different name that was never registered or added returns 0.
+        assert_eq!(outer.count_nested_calls("other").unwrap(), 0);
+    }
+
+    #[test]
+    fn t_nested_workflow_count_calls_independent_names() {
+        let mut outer = Workflow::default();
+        let ps = crate::PluginSet::default();
+        outer
+            .push_nested_workflow("alpha".to_string(), Workflow::default(), &ps)
+            .unwrap();
+        outer
+            .push_nested_workflow("beta".to_string(), Workflow::default(), &ps)
+            .unwrap();
+
+        let mut ihs = [IH::default(); 1];
+        let mut ohs = [OH::default(); 1];
+        outer
+            .add_nested_workflow_call("alpha", &mut ihs, &mut ohs)
+            .unwrap();
+        outer
+            .add_nested_workflow_call("alpha", &mut ihs, &mut ohs)
+            .unwrap();
+        outer
+            .add_nested_workflow_call("beta", &mut ihs, &mut ohs)
+            .unwrap();
+
+        assert_eq!(outer.count_nested_calls("alpha").unwrap(), 2);
+        assert_eq!(outer.count_nested_calls("beta").unwrap(), 1);
     }
 }

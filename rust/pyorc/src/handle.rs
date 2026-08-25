@@ -78,6 +78,10 @@ impl Handle {
     }
 }
 
+/// Returns the Python array interface typestring for a given type ID.
+///
+/// Format: `<endian><kind><bytes>` where endian is `|` (not applicable, single-byte)
+/// or `<` (little-endian, multi-byte), kind is `u`/`i`/`f`, and bytes is the byte count.
 fn type_id_to_typestr(type_id: u64) -> PyResult<&'static str> {
     match type_id {
         ORC_TYPE_U8 => Ok("|u1"),
@@ -94,5 +98,29 @@ fn type_id_to_typestr(type_id: u64) -> PyResult<&'static str> {
             "Unsupported type_id for numpy: {:#x}",
             type_id
         ))),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn t_type_id_to_typestr_all_known_types() {
+        assert_eq!(type_id_to_typestr(ORC_TYPE_U8).unwrap(), "|u1");
+        assert_eq!(type_id_to_typestr(ORC_TYPE_U16).unwrap(), "<u2");
+        assert_eq!(type_id_to_typestr(ORC_TYPE_U32).unwrap(), "<u4");
+        assert_eq!(type_id_to_typestr(ORC_TYPE_U64).unwrap(), "<u8");
+        assert_eq!(type_id_to_typestr(ORC_TYPE_I8).unwrap(), "|i1");
+        assert_eq!(type_id_to_typestr(ORC_TYPE_I16).unwrap(), "<i2");
+        assert_eq!(type_id_to_typestr(ORC_TYPE_I32).unwrap(), "<i4");
+        assert_eq!(type_id_to_typestr(ORC_TYPE_I64).unwrap(), "<i8");
+        assert_eq!(type_id_to_typestr(ORC_TYPE_F32).unwrap(), "<f4");
+        assert_eq!(type_id_to_typestr(ORC_TYPE_F64).unwrap(), "<f8");
+    }
+
+    #[test]
+    fn t_type_id_to_typestr_unknown_returns_err() {
+        assert!(type_id_to_typestr(0xDEAD_BEEF).is_err());
     }
 }
