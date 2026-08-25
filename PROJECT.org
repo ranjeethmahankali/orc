@@ -218,6 +218,11 @@
   and I can revisit the design if I discover outliers, or if the "metadata as static list" design
   choice turns into a problem later.
 
+  <2026-08-25 Tue 19:13> Added a simple name field for the arg info. Don't need descriptions for
+  them. The function's description should take care of describing what the arguments mean in
+  different scenarios. Updated the Rust macro to generate the new metadata based on argument names
+  used in the Rust function.
+
 * DONE tkcg1m - Nested workflow support in Python generated DAG
   CLOSED: [2026-08-25 Tue 18:14]
   :PROPERTIES:
