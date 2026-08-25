@@ -112,13 +112,13 @@ static OrcError list_length(uint64_t         ctx,
   return ORC_ERROR_NONE;
 }
 
-OrcFuncInfo const LIST_LENGTH_INFO = {.name         = "list_length",
-                                      .desc         = "Outputs the length of a list.",
-                                      .n_inputs     = 1,
-                                      .n_outputs    = 1,
-                                      .input_types  = NULL,  // Any type is allowed.
-                                      .output_types = NULL,  // Any type is allowed.
-                                      .func         = list_length};
+OrcFuncInfo const LIST_LENGTH_INFO = {.name        = "list_length",
+                                      .desc        = "Outputs the length of a list.",
+                                      .n_inputs    = 1,
+                                      .n_outputs   = 1,
+                                      .input_args  = NULL,  // Any type is allowed.
+                                      .output_args = NULL,  // Any type is allowed.
+                                      .func        = list_length};
 
 static OrcError flatten_deck(uint64_t         ctx,
                              OrcHandle const *inputs,
@@ -184,10 +184,10 @@ static OrcError flatten_deck(uint64_t         ctx,
 }
 
 OrcFuncInfo const FLATTEN_DECK_INFO = {
-  .name         = "flatten_deck",
-  .desc         = "Flattens the input deck into one plain list.",
-  .n_inputs     = ORC_ARGS_VARIADIC,
-  .n_outputs    = ORC_ARGS_VARIADIC,
-  .input_types  = NULL,  // Any type is allowed.
-  .output_types = NULL,  // Any type is allowed.
-  .func         = flatten_deck};
+  .name        = "flatten_deck",
+  .desc        = "Flattens the input deck into one plain list.",
+  .n_inputs    = ORC_ARGS_VARIADIC,
+  .n_outputs   = ORC_ARGS_VARIADIC,
+  .input_args  = NULL,  // Any type is allowed.
+  .output_args = NULL,  // Any type is allowed.
+  .func        = flatten_deck};

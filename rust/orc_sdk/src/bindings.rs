@@ -89,6 +89,33 @@ pub type OrcPluginFunction = ::std::option::Option<
         n_outputs: u64,
     ) -> OrcError,
 >;
+#[repr(C)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct OrcArgumentInfo {
+    pub name: *const ::std::os::raw::c_char,
+    pub desc: *const ::std::os::raw::c_char,
+    pub type_id: OrcTypeId,
+}
+#[allow(clippy::unnecessary_operation, clippy::identity_op)]
+const _: () = {
+    ["Size of OrcArgumentInfo"][::std::mem::size_of::<OrcArgumentInfo>() - 24usize];
+    ["Alignment of OrcArgumentInfo"][::std::mem::align_of::<OrcArgumentInfo>() - 8usize];
+    ["Offset of field: OrcArgumentInfo::name"]
+        [::std::mem::offset_of!(OrcArgumentInfo, name) - 0usize];
+    ["Offset of field: OrcArgumentInfo::desc"]
+        [::std::mem::offset_of!(OrcArgumentInfo, desc) - 8usize];
+    ["Offset of field: OrcArgumentInfo::type_id"]
+        [::std::mem::offset_of!(OrcArgumentInfo, type_id) - 16usize];
+};
+impl Default for OrcArgumentInfo {
+    fn default() -> Self {
+        let mut s = ::std::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::std::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
 #[doc = "Metadata for a function exposed by the plugin. All plugin functions have the same\nsignature. The metadata encodes information about the inputs, outputs, and the function\npointer.\n\n`name` and `desc` are optional strings that are meant to help the host / user understand\nwhat the function does. `n_inputs` and `n_outputs` can be any value, except\n`ORC_ARGS_VARIADIC`. If they are set to `ORC_ARGS_VARIADIC`, host will infer that the\nfunctions will support any number of inputs / outputs.\n\nIf `n_inputs` / `n_outputs` are set to a value other than `ORC_ARGS_VARIADIC`, then the\nhost can read the corresponding `input_types` and `output_types` arrays to infer the types\nexpected by the function. This should only be set if the function expects one concrete\ntype. If the function is generic / and can process many types, the corresponding type must\nbe set to `ORC_TYPE_ANY`. If the `input_types` and `output_types` pointers are set to\n`NULL`, the host must infer that all inputs and outputs can be of any type.\n\nThis metadata is a hint for the host. The plugin function must still validate all it's\ninputs, and outputs, counts, and types, and return appropriate errors. Conversely, even if\nthe metadata implies a certain input/output configuration is supported by the function,\nthe function may still fail when called with said inputs/outputs."]
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
@@ -97,8 +124,8 @@ pub struct OrcFuncInfo {
     pub desc: *const ::std::os::raw::c_char,
     pub n_inputs: u64,
     pub n_outputs: u64,
-    pub input_types: *mut OrcTypeId,
-    pub output_types: *mut OrcTypeId,
+    pub input_args: *mut OrcArgumentInfo,
+    pub output_args: *mut OrcArgumentInfo,
     pub func: OrcPluginFunction,
 }
 #[allow(clippy::unnecessary_operation, clippy::identity_op)]
@@ -111,10 +138,10 @@ const _: () = {
         [::std::mem::offset_of!(OrcFuncInfo, n_inputs) - 16usize];
     ["Offset of field: OrcFuncInfo::n_outputs"]
         [::std::mem::offset_of!(OrcFuncInfo, n_outputs) - 24usize];
-    ["Offset of field: OrcFuncInfo::input_types"]
-        [::std::mem::offset_of!(OrcFuncInfo, input_types) - 32usize];
-    ["Offset of field: OrcFuncInfo::output_types"]
-        [::std::mem::offset_of!(OrcFuncInfo, output_types) - 40usize];
+    ["Offset of field: OrcFuncInfo::input_args"]
+        [::std::mem::offset_of!(OrcFuncInfo, input_args) - 32usize];
+    ["Offset of field: OrcFuncInfo::output_args"]
+        [::std::mem::offset_of!(OrcFuncInfo, output_args) - 40usize];
     ["Offset of field: OrcFuncInfo::func"][::std::mem::offset_of!(OrcFuncInfo, func) - 48usize];
 };
 impl Default for OrcFuncInfo {
