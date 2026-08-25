@@ -173,6 +173,25 @@ impl OrcHandle {
     }
 }
 
+/// # SAFETY
+///
+/// `OrcHandle` is a handle to data that crosses the FFI boundary between the host and plugins.
+/// The handle data must be treated carefully: `Drop` provides a convenience for freeing the
+/// backing memory, and `borrowed()` lets the borrow checker enforce lifetimes at the call site,
+/// but beyond that it is the caller's responsibility to uphold safety. Transferring an
+/// `OrcHandle` between threads is safe as long as the caller maintains exclusive ownership —
+/// the ABI contract assumes no concurrent mutable access to the same handle.
+unsafe impl Send for OrcHandle {}
+
+/// # SAFETY
+///
+/// `OrcHandle` is a handle to data that crosses the FFI boundary between the host and plugins.
+/// Sharing `&OrcHandle` across threads is safe because it only exposes metadata fields
+/// (type_id, n_items, item_size, dims) and the raw `items` pointer value — no mutation occurs
+/// through a shared reference. The caller remains responsible for ensuring no mutable aliasing
+/// via the `items` pointer occurs concurrently.
+unsafe impl Sync for OrcHandle {}
+
 impl Drop for OrcHandle {
     fn drop(&mut self) {
         self.free();

@@ -27,9 +27,9 @@ pub use util::{
 
 mod dag;
 pub use dag::{
-    DagError, IH, InputPropBuf, InputProperty, LH, LinkPropBuf, LinkProperty, NH, NodeInfo,
-    NodePropBuf, NodeProperty, OH, OutputPropBuf, OutputProperty, Property, Workflow,
+    DagError, Handle as DagHandle, IH, InputPropBuf, InputProperty, LH, LinkPropBuf, LinkProperty,
+    NH, NodeInfo, NodePropBuf, NodeProperty, OH, OutputPropBuf, OutputProperty, Property, Workflow,
 };
 
 mod host;
-pub use host::{Plugin, PluginSet, TypeOwner, load_plugins};
+pub use host::{Plugin, PluginSet, TypeOwner};

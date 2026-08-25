@@ -406,13 +406,14 @@ impl Workflow {
                     NodeInfo::Constant(_) => {} // Do nothing.
                     NodeInfo::Function(func_info) => match func_info.func {
                         Some(func) => unsafe {
-                            (func)(
+                            let err = (func)(
                                 node.idx as u64,
                                 temp_inputs.as_ptr().cast(),
                                 temp_inputs.len() as u64,
                                 temp_outputs.as_mut_ptr(),
                                 temp_outputs.len() as u64,
                             );
+                            crate::Error::from_raw(err)?; // This returns if error.
                         },
                         None => return Err(DagError::InvalidFunction),
                     },
@@ -540,6 +541,16 @@ impl Workflow {
 
     pub fn num_links(&self) -> usize {
         self.graph.links.len()
+    }
+
+    /// Returns the source output handle connected to the given input, if any.
+    pub fn input_source(&self, ih: IH) -> Option<OH> {
+        self.graph.input_source(ih)
+    }
+
+    /// Returns the workflow input names.
+    pub fn input_names(&self) -> &[String] {
+        &self.workflow_input_names
     }
 }
 

@@ -1,0 +1,16 @@
+[package]
+name = "pyorc"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "orc"
+crate-type = ["cdylib"]
+
+[dependencies]
+orc_sdk = { path = "../orc_sdk" }
+
+# abi3-py37: Use Python's stable ABI (Python 3.7+). One binary works across Python versions.
+# extension-module: Don't link libpython at build time. Symbols resolve at runtime when Python
+#                   loads the extension. Required on Linux/macOS; avoids a warning on Windows.
+pyo3 = { version = "0.24", features = ["abi3-py37", "extension-module"] }

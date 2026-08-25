@@ -7,36 +7,63 @@
 
   For a debug build:
 
-  #+begin_src sh :results drawer
-    # For a debug build - configure then build.
+  #+begin_src compile
     cmake -S c/ -B build/debug -DCMAKE_BUILD_TYPE=Debug
     cmake --build build/debug
   #+end_src
 
   For a release build:
 
-  #+begin_src sh :results drawer
-    # For a release build - configure then build.
+  #+begin_src compile
     cmake -S c/ -B build/release -DCMAKE_BUILD_TYPE=Release
     cmake --build build/release
   #+end_src
 
   To generate compile_commands.json (useful for Clangd LSP):
 
-  #+begin_src sh :results drawer
+  #+begin_src compile
     cmake -S c/ -B build/debug -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DCMAKE_BUILD_TYPE=Debug
   #+end_src
 
   To run C SDK unit tests:
 
-  #+begin_src sh :results drawer
+  #+begin_src compile
     build/debug/orc_sdk_tests
     build/debug/deck_ops_plugin_tests
   #+end_src
 
   or in release:
 
-  #+begin_src sh :results drawer
+  #+begin_src compile
     build/release/orc_sdk_tests
     build/release/deck_ops_plugin_tests
+  #+end_src
+
+* Working with Pyorc
+  :PROPERTIES:
+  :CREATED:  2026-08-23 Sun 21:45
+  :END:
+
+  First time setup:
+
+  #+begin_src compile
+    pip install numpy maturin
+  #+end_src
+
+  Build and install (run after every Rust change):
+
+  #+begin_src compile
+    python -m maturin build --release --manifest-path rust/pyorc/Cargo.toml
+    pip install --force-reinstall --no-deps build/wheels/orc-0.1.0-cp37-abi3-win_amd64.whl
+  #+end_src
+
+  The first command does an incremental cargo build and packages a wheel. The second installs it.
+  ~--no-deps~ skips dependency resolution so the install is near-instant. The glob in the wheel
+  filename works across platforms.
+
+  Run the example, and tests at once:
+
+  #+begin_src compile
+    python python/example.py
+    python python/test.py
   #+end_src

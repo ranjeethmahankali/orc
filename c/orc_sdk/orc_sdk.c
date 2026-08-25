@@ -1217,20 +1217,26 @@ void orc_sdk_deck_calc_strides(_OrcSdk_DeckHeader *h)
   }
 }
 
-void orc_sdk_deck_graft(void *ptr)
+OrcError orc_sdk_deck_graft(void *ptr)
 {
   _OrcSdk_DeckHeader *h = _orc_sdk_deck_header(ptr);
   if (h == NULL)
-    return;
-  size_t const count     = orc_sdk_arr_len(h->marks);
-  OrcMark     *old_marks = h->marks;
-  h->marks               = NULL;
-  OrcError const status  = orc_sdk_arr_reserve(h->marks, count + h->count);
-  ORC_SDK_REQUIRE_WITH_MSG(status == ORC_ERROR_NONE, "Allocation failed.");
-  uint64_t     prev    = 0;
-  size_t const n_marks = orc_sdk_arr_len(old_marks);
-  for (size_t i = 0; i < n_marks; ++i) {
-    ORC_SDK_REQUIRE_WITH_MSG(old_marks[i].depth < 255, "Depth cannot exceed 255");
+    return ORC_ERROR_NULL_PTR;
+  size_t const count = orc_sdk_arr_len(h->marks);
+  for (size_t i = 0; i < count; ++i) {
+    if (h->marks[i].depth >= 254) {
+      return ORC_ERROR_DECK_DEPTH_OVERFLOW;
+    }
+  }
+  OrcMark *old_marks    = h->marks;
+  h->marks              = NULL;
+  OrcError const status = orc_sdk_arr_reserve(h->marks, count + h->count);
+  if (status != ORC_ERROR_NONE) {
+    h->marks = old_marks;
+    return status;
+  }
+  uint64_t prev = 0;
+  for (size_t i = 0; i < count; ++i) {
     uint8_t const  new_depth = old_marks[i].depth + 1;
     uint64_t const current   = old_marks[i].pos;
     for (size_t j = prev; j < current; ++j) {
@@ -1254,6 +1260,7 @@ void orc_sdk_deck_graft(void *ptr)
   }
   orc_sdk_arr_free(old_marks);
   orc_sdk_deck_calc_strides(h);
+  return ORC_ERROR_NONE;
 }
 
 void orc_sdk_deck_simplify(void *ptr)
