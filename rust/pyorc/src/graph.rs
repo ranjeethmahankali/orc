@@ -145,11 +145,15 @@ impl PyWorkflow {
         if n_outputs == 1 {
             Ok(Py::new(py, Handle::new(outputs.pop().unwrap()))?.into_any())
         } else {
-            let handles = outputs
-                .into_iter()
-                .map(|h| Py::new(py, Handle::new(h)))
-                .collect::<PyResult<Vec<_>>>()?;
-            Ok(PyList::new(py, handles)?.into_any().unbind())
+            Ok(PyList::new(
+                py,
+                outputs
+                    .into_iter()
+                    .map(|h| Py::new(py, Handle::new(h)))
+                    .collect::<PyResult<Vec<_>>>()?,
+            )?
+            .into_any()
+            .unbind())
         }
     }
 }
