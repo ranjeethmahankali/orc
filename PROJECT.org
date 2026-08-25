@@ -186,11 +186,13 @@
   Maybe I can write a rasterizer for my curve types, and somehow get the optimizer to export images
   of the sample points in the design space, so that I can visualize them when viewing the DOE.
 
-* NEXT tkcjtv - Function metadata ABI improvements
+* DONE tkcjtv - Function metadata ABI improvements
+  CLOSED: [2026-08-25 Tue 19:41]
   :PROPERTIES:
   :CREATED:  2026-08-15 Sat 13:54
   :END:
   :LOGBOOK:
+  - State "DONE"       from "NEXT"       [2026-08-25 Tue 19:41]
   - State "NEXT"       from "TODO"       [2026-08-25 Tue 18:30]
   :END:
 
@@ -237,6 +239,12 @@
   them. The function's description should take care of describing what the arguments mean in
   different scenarios. Updated the Rust macro to generate the new metadata based on argument names
   used in the Rust function.
+
+  <2026-08-25 Tue 19:40> Took a few small steps in the right direction. But it hard to know if this
+  task is moving in the right direction, and if I am choosing the right ABI for the metadata,
+  without having anything that consumes the ABI, to test with. So I will revisit this topic if it
+  turns into a problem when I build some demo apps. For now, trying to merge what I have in this
+  task so far.
 
 * DONE tkcg1m - Nested workflow support in Python generated DAG
   CLOSED: [2026-08-25 Tue 18:14]
