@@ -192,7 +192,7 @@
   2. Fixed number of arguments, with some of the types known.
   3. Fixed number of arguments, where none of the types are known.
   4. Variadic arguments, all of a single known type.
-  5. Variadic arguments, where none of the types aree known.
+  5. Variadic arguments, where none of the types are known.
 
   Once this is implemented, and used, based on that experience it might be good to add more things
   to this metadata to improve the overall experience. But no matter what, it should remain purely
@@ -211,6 +211,12 @@
 
   <2026-08-25 Tue 13:30> When this changes, all host programs need to be updated to respect the new
   contract. Their input validation code will likely change.
+
+  <2026-08-25 Tue 18:53> Started working on this task. I think I can make meaningful progress if I
+  drop #4 in the above list. That is the most problematic case for a design that relies on static
+  lists to communicate this metadata. And it is not that useful. Removing it lets me move faster,
+  and I can revisit the design if I discover outliers, or if the "metadata as static list" design
+  choice turns into a problem later.
 
 * DONE tkcg1m - Nested workflow support in Python generated DAG
   CLOSED: [2026-08-25 Tue 18:14]
