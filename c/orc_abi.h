@@ -77,7 +77,6 @@ typedef OrcError (*OrcPluginFunction)(uint64_t const   ctx,
 typedef struct
 {
   char const *name;
-  char const *desc;
   OrcTypeId   type_id;
 } OrcArgumentInfo;
 

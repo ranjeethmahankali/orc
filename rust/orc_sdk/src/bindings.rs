@@ -93,19 +93,16 @@ pub type OrcPluginFunction = ::std::option::Option<
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct OrcArgumentInfo {
     pub name: *const ::std::os::raw::c_char,
-    pub desc: *const ::std::os::raw::c_char,
     pub type_id: OrcTypeId,
 }
 #[allow(clippy::unnecessary_operation, clippy::identity_op)]
 const _: () = {
-    ["Size of OrcArgumentInfo"][::std::mem::size_of::<OrcArgumentInfo>() - 24usize];
+    ["Size of OrcArgumentInfo"][::std::mem::size_of::<OrcArgumentInfo>() - 16usize];
     ["Alignment of OrcArgumentInfo"][::std::mem::align_of::<OrcArgumentInfo>() - 8usize];
     ["Offset of field: OrcArgumentInfo::name"]
         [::std::mem::offset_of!(OrcArgumentInfo, name) - 0usize];
-    ["Offset of field: OrcArgumentInfo::desc"]
-        [::std::mem::offset_of!(OrcArgumentInfo, desc) - 8usize];
     ["Offset of field: OrcArgumentInfo::type_id"]
-        [::std::mem::offset_of!(OrcArgumentInfo, type_id) - 16usize];
+        [::std::mem::offset_of!(OrcArgumentInfo, type_id) - 8usize];
 };
 impl Default for OrcArgumentInfo {
     fn default() -> Self {
