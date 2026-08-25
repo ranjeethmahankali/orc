@@ -242,6 +242,9 @@
   title from 'Functions and Scripts - a clear picture' to 'Nested workflow support in Python
   generated DAG'.
 
+  <2026-08-25 Tue 17:54> First pass seems to be working. Will do some more testing, and reviewing
+  before trying to merge this.
+
 * DONE tjvt98 - Constructing a DAG from Python
   CLOSED: [2026-08-25 Tue 16:51]
   :PROPERTIES:
