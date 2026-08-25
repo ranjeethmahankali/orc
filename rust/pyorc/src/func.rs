@@ -135,8 +135,9 @@ impl OrcFunc {
         // Extract WorkflowNode arguments — each is either an Output(OH) or an Input(idx).
         let arg_kinds: Vec<WorkflowNodeKind> = (0..n_args)
             .map(|i| {
-                let node: PyRef<'_, WorkflowNode> = args.get_item(i)?.extract()?;
-                Ok(node.kind)
+                args.get_item(i)?
+                    .extract()
+                    .map(|node: PyRef<'_, WorkflowNode>| node.kind)
             })
             .collect::<PyResult<_>>()?;
         // Lock the building workflow and add the function node.
