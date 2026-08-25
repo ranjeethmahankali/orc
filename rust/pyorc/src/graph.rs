@@ -36,8 +36,8 @@ impl std::ops::DerefMut for SendWorkflow {
 
 #[derive(Clone, Copy)]
 pub(crate) enum WorkflowNodeKind {
-    Output(OH),
-    Input(usize),
+    UpstreamNode(OH),
+    WorkflowInput(usize),
 }
 
 #[pyclass(name = "WorkflowNode")]
@@ -52,8 +52,8 @@ unsafe impl Sync for WorkflowNode {}
 impl WorkflowNode {
     fn __repr__(&self) -> String {
         match self.kind {
-            WorkflowNodeKind::Output(oh) => format!("<Workflow output={}>", oh.index()),
-            WorkflowNodeKind::Input(idx) => format!("<Workflow input={}>", idx),
+            WorkflowNodeKind::UpstreamNode(oh) => format!("<Workflow output={}>", oh.index()),
+            WorkflowNodeKind::WorkflowInput(idx) => format!("<Workflow input={}>", idx),
         }
     }
 }
@@ -216,7 +216,7 @@ pub(crate) fn make_workflow_impl(py: Python<'_>, func: &Bound<'_, PyAny>) -> PyR
             Py::new(
                 py,
                 WorkflowNode {
-                    kind: WorkflowNodeKind::Input(i),
+                    kind: WorkflowNodeKind::WorkflowInput(i),
                 },
             )
         })
@@ -303,8 +303,8 @@ fn extract_output_ohs(value: &Bound<'_, PyAny>) -> PyResult<Vec<OH>> {
 
 fn require_output_oh(node: &WorkflowNode) -> PyResult<OH> {
     match node.kind {
-        WorkflowNodeKind::Output(oh) => Ok(oh),
-        WorkflowNodeKind::Input(_) => Err(pyo3::exceptions::PyTypeError::new_err(
+        WorkflowNodeKind::UpstreamNode(oh) => Ok(oh),
+        WorkflowNodeKind::WorkflowInput(_) => Err(pyo3::exceptions::PyTypeError::new_err(
             "make_workflow function must return function call results, not raw inputs.",
         )),
     }

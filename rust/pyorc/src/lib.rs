@@ -230,7 +230,7 @@ fn make_deck_deferred(
     Ok(Py::new(
         py,
         WorkflowNode {
-            kind: WorkflowNodeKind::Output(oh),
+            kind: WorkflowNodeKind::UpstreamNode(oh),
         },
     )?
     .into_any())

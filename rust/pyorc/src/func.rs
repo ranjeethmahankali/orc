@@ -156,11 +156,11 @@ impl OrcFunc {
             .map_err(|_| pyo3::exceptions::PyRuntimeError::new_err("Lock poisoned"))?;
         for (kind, ih) in arg_kinds.iter().zip(ihs.iter()) {
             match kind {
-                WorkflowNodeKind::Output(oh) => {
+                WorkflowNodeKind::UpstreamNode(oh) => {
                     wf.connect(*oh, *ih)
                         .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("{}", e)))?;
                 }
-                WorkflowNodeKind::Input(param_idx) => {
+                WorkflowNodeKind::WorkflowInput(param_idx) => {
                     wi_guard.push((*ih, *param_idx));
                 }
             }
@@ -170,7 +170,7 @@ impl OrcFunc {
             Ok(Py::new(
                 py,
                 WorkflowNode {
-                    kind: WorkflowNodeKind::Output(ohs[0]),
+                    kind: WorkflowNodeKind::UpstreamNode(ohs[0]),
                 },
             )?
             .into_any())
@@ -180,7 +180,7 @@ impl OrcFunc {
                 list.append(Py::new(
                     py,
                     WorkflowNode {
-                        kind: WorkflowNodeKind::Output(oh),
+                        kind: WorkflowNodeKind::UpstreamNode(oh),
                     },
                 )?)?;
             }
