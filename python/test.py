@@ -1393,6 +1393,147 @@ def t_stubs_contain_plugin_functions():
 
 
 # ============================================================
+# workflow_function / nested workflows
+# ============================================================
+
+@orc.workflow_function
+def _wf_add(a, b):
+    return orc.add(a, b)
+
+
+@orc.workflow_function
+def _wf_double_add(a, b):
+    # Calls another @workflow_function — creates two levels of nesting.
+    return _wf_add(_wf_add(a, b), b)
+
+
+def t_workflow_function_immediate():
+    """@workflow_function called outside make_workflow executes immediately."""
+    a = orc.make_deck([1.0, 2.0, 3.0])
+    b = orc.make_deck([10.0, 20.0, 30.0])
+    out = _wf_add(a, b)
+    assert orc.read_deck(out) == [11.0, 22.0, 33.0]
+
+
+def t_nested_workflow_basic():
+    """A @workflow_function call inside make_workflow creates a nested workflow node."""
+    graph = orc.make_workflow(lambda a, b: _wf_add(a, b))
+    assert graph.has_nested_workflow("_wf_add")
+    a = orc.make_deck([1.0, 2.0, 3.0])
+    b = orc.make_deck([10.0, 20.0, 30.0])
+    out = graph.run(a, b)
+    assert orc.read_deck(out) == [11.0, 22.0, 33.0]
+
+
+def t_nested_workflow_called_twice():
+    """Calling the same @workflow_function twice reuses the nested workflow (no NamingConflict)."""
+    graph = orc.make_workflow(lambda a, b: _wf_add(_wf_add(a, b), b))
+    assert graph.has_nested_workflow("_wf_add")
+    # One nested workflow definition, two call sites.
+    assert graph.count_nested_calls("_wf_add") == 2
+    a = orc.make_deck([1.0, 2.0, 3.0])
+    b = orc.make_deck([10.0, 20.0, 30.0])
+    out = graph.run(a, b)
+    # _wf_add(_wf_add([1,2,3], [10,20,30]), [10,20,30])
+    # = _wf_add([11,22,33], [10,20,30]) = [21,42,63]
+    assert orc.read_deck(out) == [21.0, 42.0, 63.0]
+
+
+def t_nested_workflow_deep():
+    """A @workflow_function that calls another creates two levels of nesting."""
+    graph = orc.make_workflow(lambda a, b: _wf_double_add(a, b))
+    assert graph.has_nested_workflow("_wf_double_add")
+    # Outer graph has one call to _wf_double_add, not _wf_add directly.
+    assert graph.count_nested_calls("_wf_double_add") == 1
+    assert not graph.has_nested_workflow("_wf_add")
+    a = orc.make_deck([1.0, 2.0, 3.0])
+    b = orc.make_deck([10.0, 20.0, 30.0])
+    out = graph.run(a, b)
+    # _wf_double_add(a, b) = _wf_add(_wf_add(a, b), b) = [21, 42, 63]
+    assert orc.read_deck(out) == [21.0, 42.0, 63.0]
+
+
+def t_nested_workflow_serial():
+    """Nested workflow survives a save/load round-trip."""
+    graph = orc.make_workflow(lambda a, b: _wf_add(a, b))
+    with tempfile.NamedTemporaryFile(suffix=".msgpack", delete=False) as f:
+        path = f.name
+    try:
+        orc.save_workflow(graph, path)
+        loaded = orc.load_workflow(path)
+        a = orc.make_deck([1.0, 2.0, 3.0])
+        b = orc.make_deck([10.0, 20.0, 30.0])
+        out = loaded.run(a, b)
+        assert orc.read_deck(out) == [11.0, 22.0, 33.0]
+    finally:
+        os.unlink(path)
+
+
+def t_workflow_func_repr():
+    """WorkflowFunc repr includes the function name."""
+    r = repr(_wf_add)
+    assert "_wf_add" in r
+
+
+def t_nested_workflow_has_not_nested():
+    """has_nested_workflow returns False for a name that was never registered."""
+    graph = orc.make_workflow(lambda a, b: _wf_add(a, b))
+    assert not graph.has_nested_workflow("nonexistent_workflow")
+
+
+def t_nested_workflow_count_nonexistent():
+    """count_nested_calls returns 0 for a name with no calls."""
+    graph = orc.make_workflow(lambda a, b: _wf_add(a, b))
+    assert graph.count_nested_calls("nonexistent_workflow") == 0
+
+
+def t_nested_workflow_serial_metadata():
+    """After save/load, has_nested_workflow and count_nested_calls work correctly."""
+    graph = orc.make_workflow(lambda a, b: _wf_add(a, b))
+    with tempfile.NamedTemporaryFile(suffix=".msgpack", delete=False) as f:
+        path = f.name
+    try:
+        orc.save_workflow(graph, path)
+        loaded = orc.load_workflow(path)
+        assert loaded.has_nested_workflow("_wf_add")
+        assert loaded.count_nested_calls("_wf_add") == 1
+    finally:
+        os.unlink(path)
+
+
+def t_workflow_function_wrong_arg_count_in_workflow():
+    """WorkflowFunc called with wrong arg count inside make_workflow raises ValueError."""
+    try:
+        orc.make_workflow(lambda a, b: _wf_add(a))  # _wf_add needs 2 args
+        assert False, "Expected ValueError"
+    except ValueError:
+        pass
+
+
+def t_nested_workflow_name_based_dedup():
+    """Calling the same @workflow_function multiple times uses name-based dedup (not pointer).
+    Regression test: the old code used the Python object pointer as the cache key, which
+    could collide after GC recycles addresses."""
+    # Call twice in the same workflow — should register _wf_add once, call it twice.
+    graph = orc.make_workflow(lambda a, b: _wf_add(_wf_add(a, b), b))
+    assert graph.has_nested_workflow("_wf_add")
+    assert graph.count_nested_calls("_wf_add") == 2
+    a = orc.make_deck([1.0, 2.0, 3.0])
+    b = orc.make_deck([10.0, 20.0, 30.0])
+    out = graph.run(a, b)
+    assert orc.read_deck(out) == [21.0, 42.0, 63.0]
+
+
+def t_nested_workflow_returns_raw_input():
+    """make_workflow function that returns a raw WorkflowInput raises TypeError."""
+    try:
+        orc.make_workflow(lambda a, b: a)
+        assert False, "Expected TypeError"
+    except TypeError:
+        pass
+
+
+# ============================================================
 # Runner
 # ============================================================
 

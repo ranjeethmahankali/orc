@@ -1,6 +1,9 @@
-use crate::graph::{BUILDING_WORKFLOW, IN_WORKFLOW_MODE, WorkflowNode, WorkflowNodeKind};
+use crate::graph::{
+    BUILDING_WORKFLOW, IN_WORKFLOW_MODE, SendWorkflow, WorkflowBuildState, WorkflowNode,
+    WorkflowNodeKind, build_nested_workflow_impl,
+};
 use crate::handle::Handle;
-use crate::host::HANDLE_COUNTER;
+use crate::host::{HANDLE_COUNTER, PLUGIN_SET};
 use orc_sdk::{FuncInfo, IH, OH, OrcHandle, OrcHandleBorrowed, Workflow};
 use pyo3::prelude::*;
 use pyo3::types::{PyList, PyTuple};
@@ -24,7 +27,7 @@ impl OrcFunc {
         n_out: Option<usize>,
     ) -> PyResult<PyObject> {
         let n_out = self.resolve_n_out(n_out)?;
-        if IN_WORKFLOW_MODE.load(Ordering::Relaxed) {
+        if IN_WORKFLOW_MODE.load(Ordering::Acquire) {
             self.record_workflow_op(py, args, n_out)
         } else {
             self.immediate_call(py, args, n_out)
@@ -149,25 +152,29 @@ impl OrcFunc {
         let mut guard = BUILDING_WORKFLOW
             .lock()
             .map_err(|_| pyo3::exceptions::PyRuntimeError::new_err("Workflow lock poisoned"))?;
-        let state = &mut *guard;
-        let wf: &mut Workflow = state
-            .workflow
-            .as_mut()
+        let state = guard
+            .last_mut()
             .ok_or_else(|| pyo3::exceptions::PyRuntimeError::new_err("No workflow being built"))?;
         let mut ihs = vec![IH::default(); n_args];
         let mut ohs = vec![OH::default(); n_out];
-        wf.add_function(self.info.clone(), &mut ihs, &mut ohs)
-            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("{}", e)))?;
-        // Connect upstream outputs or record workflow inputs.
-        for (kind, ih) in arg_kinds.iter().zip(ihs.iter()) {
-            if let WorkflowNodeKind::UpstreamNode(oh) = kind {
-                wf.connect(*oh, *ih)
-                    .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("{}", e)))?;
-            }
-        }
-        for (kind, ih) in arg_kinds.iter().zip(ihs.iter()) {
-            if let WorkflowNodeKind::WorkflowInput(param_idx) = kind {
-                state.inputs.push((*ih, *param_idx));
+        {
+            let WorkflowBuildState {
+                workflow, inputs, ..
+            } = state;
+            let wf: &mut Workflow = workflow;
+            wf.add_function(self.info.clone(), &mut ihs, &mut ohs)
+                .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
+            for (kind, ih) in arg_kinds.iter().zip(ihs.iter()) {
+                match kind {
+                    WorkflowNodeKind::UpstreamNode(oh) => {
+                        wf.connect(*oh, *ih).map_err(|e| {
+                            pyo3::exceptions::PyRuntimeError::new_err(e.to_string())
+                        })?;
+                    }
+                    WorkflowNodeKind::WorkflowInput(param_idx) => {
+                        inputs.push((*ih, *param_idx));
+                    }
+                }
             }
         }
         // Wrap output OHs as WorkflowNodes.
@@ -197,4 +204,227 @@ impl OrcFunc {
             .unbind())
         }
     }
+}
+
+// =====================================================================
+// WorkflowFunc — @workflow_function decorator
+// =====================================================================
+
+#[pyclass(name = "WorkflowFunc")]
+pub(crate) struct PyWorkflowFunc {
+    pub(crate) func: PyObject,
+    pub(crate) name: String,
+    pub(crate) param_names: Vec<String>,
+}
+
+// PyObject is not Send by default; all access happens under the GIL.
+unsafe impl Send for PyWorkflowFunc {}
+
+#[pymethods]
+impl PyWorkflowFunc {
+    #[pyo3(signature = (*args))]
+    fn __call__<'py>(&self, py: Python<'py>, args: &Bound<'py, PyTuple>) -> PyResult<PyObject> {
+        if IN_WORKFLOW_MODE.load(Ordering::Acquire) {
+            self.record_nested_call(py, args)
+        } else {
+            Ok(self.func.bind(py).call1(args)?.unbind())
+        }
+    }
+
+    fn __repr__(&self) -> String {
+        format!("WorkflowFunc({:?})", self.name)
+    }
+}
+
+impl PyWorkflowFunc {
+    fn record_nested_call<'py>(
+        &self,
+        py: Python<'py>,
+        args: &Bound<'py, PyTuple>,
+    ) -> PyResult<PyObject> {
+        let n_args = args.len();
+        if n_args != self.param_names.len() {
+            return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                "WorkflowFunc '{}' expects {} arguments, got {}.",
+                self.name,
+                self.param_names.len(),
+                n_args
+            )));
+        }
+
+        // Check cache by function name; release lock before any Python call.
+        let cached: Option<usize> = {
+            let stack = BUILDING_WORKFLOW
+                .lock()
+                .map_err(|_| pyo3::exceptions::PyRuntimeError::new_err("Workflow lock poisoned"))?;
+            stack
+                .last()
+                .and_then(|frame| frame.nested_built.get(&self.name).copied())
+        };
+
+        // Extract WorkflowNode kinds from args before taking any lock.
+        let arg_kinds: Vec<WorkflowNodeKind> = (0..n_args)
+            .map(|i| {
+                args.get_item(i)?
+                    .extract()
+                    .map(|node: PyRef<'_, WorkflowNode>| node.kind)
+            })
+            .collect::<PyResult<_>>()?;
+
+        // Build the nested workflow if not already registered (no lock — may recurse).
+        let new_wf: Option<(SendWorkflow, usize)> = if cached.is_none() {
+            Some(build_nested_workflow_impl(
+                py,
+                self.func.bind(py),
+                &self.param_names,
+            )?)
+        } else {
+            None
+        };
+
+        // Single lock: register new workflow (if built) + add call node + wire inputs.
+        let ohs: Vec<OH> = {
+            let mut stack = BUILDING_WORKFLOW
+                .lock()
+                .map_err(|_| pyo3::exceptions::PyRuntimeError::new_err("Workflow lock poisoned"))?;
+            let ps = if new_wf.is_some() {
+                Some(PLUGIN_SET.lock().map_err(|_| {
+                    pyo3::exceptions::PyRuntimeError::new_err("Plugin set lock poisoned")
+                })?)
+            } else {
+                None
+            };
+            let frame = stack
+                .last_mut()
+                .ok_or_else(|| pyo3::exceptions::PyRuntimeError::new_err("No workflow frame"))?;
+            let WorkflowBuildState {
+                workflow,
+                inputs,
+                nested_built,
+                ..
+            } = frame;
+            let wf: &mut Workflow = workflow;
+
+            let n_outputs = if let Some((built_wf, n_out)) = new_wf {
+                wf.push_nested_workflow(self.name.clone(), built_wf.0, &ps.unwrap())
+                    .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
+                nested_built.insert(self.name.clone(), n_out);
+                n_out
+            } else {
+                cached.unwrap()
+            };
+
+            let mut ihs = vec![IH::default(); n_args];
+            let mut ohs = vec![OH::default(); n_outputs];
+            wf.add_nested_workflow_call(&self.name, &mut ihs, &mut ohs)
+                .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
+
+            for (kind, ih) in arg_kinds.iter().zip(ihs.iter()) {
+                match kind {
+                    WorkflowNodeKind::UpstreamNode(oh) => {
+                        wf.connect(*oh, *ih).map_err(|e| {
+                            pyo3::exceptions::PyRuntimeError::new_err(e.to_string())
+                        })?;
+                    }
+                    WorkflowNodeKind::WorkflowInput(param_idx) => {
+                        inputs.push((*ih, *param_idx));
+                    }
+                }
+            }
+            ohs
+        };
+
+        // Wrap outputs as WorkflowNodes (Python, no lock needed).
+        if ohs.len() == 1 {
+            Ok(Py::new(
+                py,
+                WorkflowNode {
+                    kind: WorkflowNodeKind::UpstreamNode(ohs[0]),
+                },
+            )?
+            .into_any())
+        } else {
+            Ok(PyList::new(
+                py,
+                ohs.into_iter()
+                    .map(|oh| {
+                        Py::new(
+                            py,
+                            WorkflowNode {
+                                kind: WorkflowNodeKind::UpstreamNode(oh),
+                            },
+                        )
+                    })
+                    .collect::<PyResult<Vec<_>>>()?,
+            )?
+            .into_any()
+            .unbind())
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use orc_sdk::FuncInfo;
+
+    fn make_func(n_outputs: Option<usize>) -> OrcFunc {
+        OrcFunc {
+            info: FuncInfo {
+                name: "test_fn".to_string(),
+                n_outputs,
+                ..Default::default()
+            },
+        }
+    }
+
+    #[test]
+    fn t_resolve_n_out_defaults_to_one() {
+        assert_eq!(make_func(None).resolve_n_out(None).unwrap(), 1);
+    }
+
+    #[test]
+    fn t_resolve_n_out_uses_declared_when_no_request() {
+        assert_eq!(make_func(Some(3)).resolve_n_out(None).unwrap(), 3);
+    }
+
+    #[test]
+    fn t_resolve_n_out_uses_requested_when_no_declaration() {
+        assert_eq!(make_func(None).resolve_n_out(Some(5)).unwrap(), 5);
+    }
+
+    #[test]
+    fn t_resolve_n_out_matching_declared_and_requested() {
+        assert_eq!(make_func(Some(2)).resolve_n_out(Some(2)).unwrap(), 2);
+    }
+
+    #[test]
+    fn t_resolve_n_out_conflict_returns_err() {
+        assert!(make_func(Some(2)).resolve_n_out(Some(3)).is_err());
+    }
+}
+
+/// Decorator that wraps a Python function as a `WorkflowFunc`.
+/// When called inside `make_workflow`, records a nested workflow call node instead of
+/// executing immediately. When called outside, behaves like the original function.
+#[pyfunction]
+pub(crate) fn workflow_function(py: Python<'_>, func: &Bound<'_, PyAny>) -> PyResult<PyObject> {
+    let inspect = py.import("inspect")?;
+    let sig = inspect.call_method1("signature", (func,))?;
+    let params = sig.getattr("parameters")?;
+    let param_names: Vec<String> = params
+        .call_method0("keys")?
+        .try_iter()?
+        .map(|k| k.and_then(|k| k.extract::<String>()))
+        .collect::<PyResult<_>>()?;
+    let name: String = func.getattr("__name__")?.extract()?;
+    Ok(Py::new(
+        py,
+        PyWorkflowFunc {
+            func: func.clone().into(),
+            name,
+            param_names,
+        },
+    )?
+    .into_any())
 }

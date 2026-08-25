@@ -4,7 +4,7 @@ mod handle;
 mod host;
 mod stubs;
 
-use func::OrcFunc;
+use func::{OrcFunc, PyWorkflowFunc, workflow_function};
 use graph::{BUILDING_WORKFLOW, IN_WORKFLOW_MODE, PyWorkflow, WorkflowNode, WorkflowNodeKind};
 use handle::Handle;
 use host::{HANDLE_COUNTER, PLUGIN_SET, REGISTRY};
@@ -21,7 +21,9 @@ fn pyorc(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<Handle>()?;
     m.add_class::<WorkflowNode>()?;
     m.add_class::<PyWorkflow>()?;
+    m.add_class::<PyWorkflowFunc>()?;
     m.add_function(wrap_pyfunction!(load_plugins, m)?)?;
+    m.add_function(wrap_pyfunction!(workflow_function, m)?)?;
     m.add_function(wrap_pyfunction!(make_deck, m)?)?;
     m.add_function(wrap_pyfunction!(read_deck, m)?)?;
     m.add_function(wrap_pyfunction!(make_workflow, m)?)?;
@@ -80,7 +82,7 @@ fn load_plugins(py: Python<'_>, search_dir: &str) -> PyResult<()> {
 #[pyo3(signature = (data, dtype=None))]
 fn make_deck(py: Python<'_>, data: &Bound<'_, PyAny>, dtype: Option<&str>) -> PyResult<PyObject> {
     let type_id = dtype.map(parse_dtype).transpose()?;
-    if IN_WORKFLOW_MODE.load(Ordering::Relaxed) {
+    if IN_WORKFLOW_MODE.load(Ordering::Acquire) {
         make_deck_deferred(py, data, type_id)
     } else {
         let handle = create_orc_handle(py, data, type_id)?;
@@ -231,10 +233,10 @@ fn make_deck_deferred(
     let mut wf_guard = BUILDING_WORKFLOW
         .lock()
         .map_err(|_| pyo3::exceptions::PyRuntimeError::new_err("Workflow lock poisoned"))?;
-    let wf: &mut Workflow = wf_guard
-        .workflow
-        .as_mut()
-        .ok_or_else(|| pyo3::exceptions::PyRuntimeError::new_err("No workflow being built"))?;
+    let wf: &mut Workflow = &mut wf_guard
+        .last_mut()
+        .ok_or_else(|| pyo3::exceptions::PyRuntimeError::new_err("No workflow being built"))?
+        .workflow;
     let oh = wf
         .add_constant(handle)
         .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("{}", e)))?
@@ -374,4 +376,30 @@ fn build_nested_list(
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn t_parse_dtype_all_known_types() {
+        assert_eq!(parse_dtype("u8").unwrap(), ORC_TYPE_U8);
+        assert_eq!(parse_dtype("u16").unwrap(), ORC_TYPE_U16);
+        assert_eq!(parse_dtype("u32").unwrap(), ORC_TYPE_U32);
+        assert_eq!(parse_dtype("u64").unwrap(), ORC_TYPE_U64);
+        assert_eq!(parse_dtype("i8").unwrap(), ORC_TYPE_I8);
+        assert_eq!(parse_dtype("i16").unwrap(), ORC_TYPE_I16);
+        assert_eq!(parse_dtype("i32").unwrap(), ORC_TYPE_I32);
+        assert_eq!(parse_dtype("i64").unwrap(), ORC_TYPE_I64);
+        assert_eq!(parse_dtype("f32").unwrap(), ORC_TYPE_F32);
+        assert_eq!(parse_dtype("f64").unwrap(), ORC_TYPE_F64);
+    }
+
+    #[test]
+    fn t_parse_dtype_unknown_returns_err() {
+        assert!(parse_dtype("float32").is_err());
+        assert!(parse_dtype("int").is_err());
+        assert!(parse_dtype("").is_err());
+    }
 }

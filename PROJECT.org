@@ -209,9 +209,14 @@
   <2026-08-25 Tue 13:30> When this changes, all host programs need to be updated to respect the new
   contract. Their input validation code will likely change.
 
-* TODO Functions and Scripts - a clear picture
+* DONE tkcg1m - Nested workflow support in Python generated DAG
+  CLOSED: [2026-08-25 Tue 18:14]
   :PROPERTIES:
   :CREATED:  2026-08-16 Sun 14:36
+  :END:
+  :LOGBOOK:
+  - State "DONE"       from "NEXT"       [2026-08-25 Tue 18:14]
+  - State "NEXT"       from "TODO"       [2026-08-25 Tue 17:08]
   :END:
 
   Need a way to define incomplete fragments of a workflow DAG, and reuse those fragments by
@@ -234,6 +239,17 @@
   generalizes for all scripting languages. This is nice. Much better way than parsing a language and
   converting it to a graph. Allows idiomatic programming in each language. The Graph can then be
   transpiled back into any scripting language (usual code gen).
+
+  <2026-08-25 Tue 17:04> Repurposing this task in light of the other features I implemented. Changed
+  title from 'Functions and Scripts - a clear picture' to 'Nested workflow support in Python
+  generated DAG'.
+
+  <2026-08-25 Tue 17:54> First pass seems to be working. Will do some more testing, and reviewing
+  before trying to merge this.
+
+  <2026-08-25 Tue 18:14> Testing as much as I can via unit tests for now. But the real test for this
+  feature will be after I implement a visualization tool for the DAG. For now, this is ready to
+  merge.
 
 * DONE tjvt98 - Constructing a DAG from Python
   CLOSED: [2026-08-25 Tue 16:51]

@@ -41,6 +41,17 @@ fn write_stub_content(w: &mut impl Write, ps: &PluginSet) -> std::io::Result<()>
         w,
         "    def run(self, *args: Handle, **kwargs: Handle) -> Handle | list[Handle]: ..."
     )?;
+    writeln!(
+        w,
+        "    def has_nested_workflow(self, name: str) -> bool: ..."
+    )?;
+    writeln!(w, "    def count_nested_calls(self, name: str) -> int: ...")?;
+    writeln!(w)?;
+    writeln!(w, "class WorkflowFunc:")?;
+    writeln!(
+        w,
+        "    def __call__(self, *args: WorkflowNode) -> WorkflowNode | list[WorkflowNode]: ..."
+    )?;
     writeln!(w)?;
     writeln!(w, "def load_plugins(search_dir: str) -> None: ...")?;
     writeln!(
@@ -58,6 +69,10 @@ fn write_stub_content(w: &mut impl Write, ps: &PluginSet) -> std::io::Result<()>
         "def save_workflow(graph: Workflow, path: str) -> None: ..."
     )?;
     writeln!(w, "def load_workflow(path: str) -> Workflow: ...")?;
+    writeln!(
+        w,
+        "def workflow_function(func: Callable) -> WorkflowFunc: ..."
+    )?;
     writeln!(w)?;
     writeln!(w, "# --- Plugin functions (auto-generated) ---")?;
     for plugin in ps.plugins() {
