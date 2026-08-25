@@ -175,6 +175,10 @@ pub unsafe extern "C" fn orc_deck_free(handle: *mut OrcHandle) -> OrcError {
     }
 }
 
+/// Clone an `OrcHandle` by creating a full copy of its backing data via the proxy mechanism.
+///
+/// `ORC_DECK_PROXY_COPY_ALL` performs a deep copy and ignores the `proxy` parameter entirely,
+/// so an empty default handle is passed as a harmless placeholder.
 pub fn host_clone_orc_handle(src: OrcHandleBorrowed) -> Result<OrcHandle, Error> {
     let mut out = OrcHandle::default();
     let err = unsafe {
@@ -182,7 +186,7 @@ pub fn host_clone_orc_handle(src: OrcHandleBorrowed) -> Result<OrcHandle, Error>
             src.inner(),
             1,
             ORC_DECK_PROXY_COPY_ALL,
-            &OrcHandle::default(),
+            &OrcHandle::default(), // ignored by CopyAll
             &mut out,
         )
     };

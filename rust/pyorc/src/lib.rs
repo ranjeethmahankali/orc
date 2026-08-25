@@ -28,6 +28,17 @@ fn pyorc(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(run_workflow, m)?)?;
     m.add_function(wrap_pyfunction!(save_workflow, m)?)?;
     m.add_function(wrap_pyfunction!(load_workflow, m)?)?;
+    // Builtin type ID constants — mirrors the ORC_TYPE_* values from orc_abi.h.
+    m.add("ORC_TYPE_U8", ORC_TYPE_U8)?;
+    m.add("ORC_TYPE_U16", ORC_TYPE_U16)?;
+    m.add("ORC_TYPE_U32", ORC_TYPE_U32)?;
+    m.add("ORC_TYPE_U64", ORC_TYPE_U64)?;
+    m.add("ORC_TYPE_I8", ORC_TYPE_I8)?;
+    m.add("ORC_TYPE_I16", ORC_TYPE_I16)?;
+    m.add("ORC_TYPE_I32", ORC_TYPE_I32)?;
+    m.add("ORC_TYPE_I64", ORC_TYPE_I64)?;
+    m.add("ORC_TYPE_F32", ORC_TYPE_F32)?;
+    m.add("ORC_TYPE_F64", ORC_TYPE_F64)?;
     Ok(())
 }
 
@@ -165,7 +176,7 @@ fn create_orc_handle(
     // Flatten nested lists into leaf values and their nesting depths.
     let mut leaf_values: Vec<Bound<'_, PyAny>> = Vec::new();
     let mut depths: Vec<u8> = Vec::new();
-    py_list_to_deck(data, 0, &mut leaf_values, &mut depths)?;
+    py_to_deck(data, 0, &mut leaf_values, &mut depths)?;
     // Detect or use the provided type.
     let type_id = match type_id {
         Some(id) => id,
@@ -243,15 +254,15 @@ fn make_deck_deferred(
 /// Recursively flatten a Python value (scalar or nested list) into leaf values
 /// and per-value nesting depths. First element of each list inherits depth + 1;
 /// subsequent elements get depth 0 (continuation).
-fn py_list_to_deck<'py>(
+fn py_to_deck<'py>(
     data: &Bound<'py, PyAny>,
     depth: u8,
     items: &mut Vec<Bound<'py, PyAny>>,
     depths: &mut Vec<u8>,
 ) -> PyResult<()> {
-    if let Ok(list) = data.downcast::<PyList>() {
-        for (i, elem) in list.iter().enumerate() {
-            py_list_to_deck(&elem, if i == 0 { depth + 1 } else { 0 }, items, depths)?;
+    if data.is_instance_of::<PyList>() || data.is_instance_of::<PyTuple>() {
+        for (i, elem) in data.try_iter()?.enumerate() {
+            py_to_deck(&elem?, if i == 0 { depth + 1 } else { 0 }, items, depths)?;
         }
     } else {
         items.push(data.clone());

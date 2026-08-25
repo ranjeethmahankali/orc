@@ -27,7 +27,7 @@ fn write_stub_content(w: &mut impl Write, ps: &PluginSet) -> std::io::Result<()>
     writeln!(w, "    @property")?;
     writeln!(w, "    def item_size(self) -> int: ...")?;
     writeln!(w, "    @property")?;
-    writeln!(w, "    def dims(self) -> tuple[int, ...]: ...")?;
+    writeln!(w, "    def dims(self) -> tuple[int, int, int, int, int, int, int]: ...")?;
     writeln!(w, "    @property")?;
     writeln!(w, "    def __array_interface__(self) -> dict: ...")?;
     writeln!(w)?;

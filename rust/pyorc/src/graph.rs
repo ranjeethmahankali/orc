@@ -48,9 +48,6 @@ pub(crate) struct WorkflowNode {
     pub(crate) kind: WorkflowNodeKind,
 }
 
-unsafe impl Send for WorkflowNode {}
-unsafe impl Sync for WorkflowNode {}
-
 #[pymethods]
 impl WorkflowNode {
     fn __repr__(&self) -> String {
