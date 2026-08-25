@@ -235,11 +235,13 @@
   converting it to a graph. Allows idiomatic programming in each language. The Graph can then be
   transpiled back into any scripting language (usual code gen).
 
-* NEXT tjvt98 - Constructing a DAG from Python
+* DONE tjvt98 - Constructing a DAG from Python
+  CLOSED: [2026-08-25 Tue 16:51]
   :PROPERTIES:
   :CREATED:  2026-08-16 Sun 14:40
   :END:
   :LOGBOOK:
+  - State "DONE"       from "NEXT"       [2026-08-25 Tue 16:51]
   - State "NEXT"       from "TODO"       [2026-08-23 Sun 14:21]
   :END:
 
@@ -263,8 +265,10 @@
   the remaining files in the same way.
 
   - [X] Fix all the gratuitous .unwraps and .expects.
-  - [ ] Consolidate the mutexes being locked to build a workflow. This will make deadlocks and
+  - [X] Consolidate the mutexes being locked to build a workflow. This will make deadlocks and
     mistakes less likely.
+
+  <2026-08-25 Tue 16:51> Ready to merge.
 
 ** Plan using PyO3
    :PROPERTIES:
