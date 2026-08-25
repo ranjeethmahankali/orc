@@ -21,7 +21,7 @@ impl OrcFunc {
     #[pyo3(signature = (*args))]
     fn __call__<'py>(&self, py: Python<'py>, args: &Bound<'py, PyTuple>) -> PyResult<PyObject> {
         if IN_WORKFLOW_MODE.load(Ordering::Relaxed) {
-            self.deferred_call(py, args)
+            self.record_workflow_op(py, args)
         } else {
             self.immediate_call(py, args)
         }
@@ -94,7 +94,7 @@ impl OrcFunc {
         }
     }
 
-    fn deferred_call<'py>(
+    fn record_workflow_op<'py>(
         &self,
         py: Python<'py>,
         args: &Bound<'py, PyTuple>,
@@ -135,9 +135,8 @@ impl OrcFunc {
         for (kind, ih) in arg_kinds.iter().zip(ihs.iter()) {
             match kind {
                 WorkflowNodeKind::Output(oh) => {
-                    wf.connect(*oh, *ih).map_err(|e| {
-                        pyo3::exceptions::PyRuntimeError::new_err(format!("{}", e))
-                    })?;
+                    wf.connect(*oh, *ih)
+                        .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("{}", e)))?;
                 }
                 WorkflowNodeKind::Input(param_idx) => {
                     wi_guard.push((*ih, *param_idx));
