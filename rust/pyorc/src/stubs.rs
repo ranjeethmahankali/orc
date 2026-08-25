@@ -1,7 +1,6 @@
 use orc_sdk::PluginSet;
 use pyo3::prelude::*;
-use std::fmt::Write as FmtWrite;
-use std::io::Write;
+use std::io::{BufWriter, Write};
 use std::path::PathBuf;
 
 pub(crate) fn generate_stubs(py: Python<'_>, ps: &PluginSet) -> PyResult<()> {
@@ -10,85 +9,76 @@ pub(crate) fn generate_stubs(py: Python<'_>, ps: &PluginSet) -> PyResult<()> {
         return Ok(());
     };
     let stub_path = PathBuf::from(file_attr.extract::<String>()?).with_extension("pyi");
-    let content = build_stub_content(ps);
     let io_err = |e| pyo3::exceptions::PyIOError::new_err(format!("Cannot write stub file: {}", e));
-    std::fs::File::create(&stub_path)
-        .map_err(&io_err)?
-        .write_all(content.as_bytes())
-        .map_err(io_err)
+    let file = std::fs::File::create(&stub_path).map_err(&io_err)?;
+    let mut w = BufWriter::new(file);
+    write_stub_content(&mut w, ps).map_err(io_err)?;
+    w.flush().map_err(io_err)
 }
 
-fn build_stub_content(ps: &PluginSet) -> String {
-    let mut s = String::new();
-    writeln!(s, "from typing import Callable").unwrap();
-    writeln!(s).unwrap();
-    writeln!(s, "class Handle:").unwrap();
-    writeln!(s, "    @property").unwrap();
-    writeln!(s, "    def type_id(self) -> int: ...").unwrap();
-    writeln!(s, "    @property").unwrap();
-    writeln!(s, "    def n_items(self) -> int: ...").unwrap();
-    writeln!(s, "    @property").unwrap();
-    writeln!(s, "    def item_size(self) -> int: ...").unwrap();
-    writeln!(s, "    @property").unwrap();
-    writeln!(s, "    def dims(self) -> tuple[int, ...]: ...").unwrap();
-    writeln!(s, "    @property").unwrap();
-    writeln!(s, "    def __array_interface__(self) -> dict: ...").unwrap();
-    writeln!(s).unwrap();
-    writeln!(s, "class WorkflowNode: ...").unwrap();
-    writeln!(s).unwrap();
-    writeln!(s, "class Workflow:").unwrap();
+fn write_stub_content(w: &mut impl Write, ps: &PluginSet) -> std::io::Result<()> {
+    writeln!(w, "from typing import Callable")?;
+    writeln!(w)?;
+    writeln!(w, "class Handle:")?;
+    writeln!(w, "    @property")?;
+    writeln!(w, "    def type_id(self) -> int: ...")?;
+    writeln!(w, "    @property")?;
+    writeln!(w, "    def n_items(self) -> int: ...")?;
+    writeln!(w, "    @property")?;
+    writeln!(w, "    def item_size(self) -> int: ...")?;
+    writeln!(w, "    @property")?;
+    writeln!(w, "    def dims(self) -> tuple[int, ...]: ...")?;
+    writeln!(w, "    @property")?;
+    writeln!(w, "    def __array_interface__(self) -> dict: ...")?;
+    writeln!(w)?;
+    writeln!(w, "class WorkflowNode: ...")?;
+    writeln!(w)?;
+    writeln!(w, "class Workflow:")?;
     writeln!(
-        s,
+        w,
         "    def run(self, *args: Handle, **kwargs: Handle) -> Handle | list[Handle]: ..."
-    )
-    .unwrap();
-    writeln!(s).unwrap();
-    writeln!(s, "def load_plugins(search_dir: str) -> None: ...").unwrap();
+    )?;
+    writeln!(w)?;
+    writeln!(w, "def load_plugins(search_dir: str) -> None: ...")?;
     writeln!(
-        s,
+        w,
         "def make_deck(data: object, dtype: str | None = None) -> Handle: ..."
-    )
-    .unwrap();
-    writeln!(s, "def read_deck(handle: Handle) -> object: ...").unwrap();
-    writeln!(s, "def make_workflow(fn: Callable) -> Workflow: ...").unwrap();
+    )?;
+    writeln!(w, "def read_deck(handle: Handle) -> object: ...")?;
+    writeln!(w, "def make_workflow(fn: Callable) -> Workflow: ...")?;
     writeln!(
-        s,
+        w,
         "def run_workflow(graph: Workflow, *args: Handle, **kwargs: Handle) -> Handle | list[Handle]: ..."
-    )
-    .unwrap();
+    )?;
     writeln!(
-        s,
+        w,
         "def save_workflow(graph: Workflow, path: str) -> None: ..."
-    )
-    .unwrap();
-    writeln!(s, "def load_workflow(path: str) -> Workflow: ...").unwrap();
-    writeln!(s).unwrap();
-
-    // Plugin functions — write directly into `s`, no intermediate string.
-    writeln!(s, "# --- Plugin functions (auto-generated) ---").unwrap();
+    )?;
+    writeln!(w, "def load_workflow(path: str) -> Workflow: ...")?;
+    writeln!(w)?;
+    writeln!(w, "# --- Plugin functions (auto-generated) ---")?;
     for plugin in ps.plugins() {
         for func in plugin.functions() {
-            write!(s, "def {}(", func.name).unwrap();
+            write!(w, "def {}(", func.name)?;
             match func.n_inputs {
                 Some(n) => {
                     for i in 0..n {
                         if i > 0 {
-                            write!(s, ", ").unwrap();
+                            write!(w, ", ")?;
                         }
-                        write!(s, "arg{}: Handle", i).unwrap();
+                        write!(w, "arg{}: Handle", i)?;
                     }
                 }
-                None => write!(s, "*args: Handle").unwrap(),
+                None => write!(w, "*args: Handle")?,
             }
-            write!(s, ") -> ").unwrap();
+            write!(w, ") -> ")?;
             match func.n_outputs {
-                Some(1) => write!(s, "Handle").unwrap(),
-                Some(n) if n > 1 => write!(s, "list[Handle]").unwrap(),
-                _ => write!(s, "Handle | list[Handle]").unwrap(),
+                Some(1) => write!(w, "Handle")?,
+                Some(n) if n > 1 => write!(w, "list[Handle]")?,
+                _ => write!(w, "Handle | list[Handle]")?,
             }
-            writeln!(s, ": ...").unwrap();
+            writeln!(w, ": ...")?;
         }
     }
-
-    s
+    Ok(())
 }
