@@ -173,6 +173,18 @@ impl OrcHandle {
     }
 }
 
+/// # SAFETY
+///
+/// The basic contract of the ABI, between plugins and hosts assumes exclusive ownership of
+/// the data backing an `OrcHandle`. This needs to be manually enforced.
+unsafe impl Send for OrcHandle {}
+
+/// # SAFETY
+///
+/// The basic contract of the ABI, between plugins and hosts assumes exclusive ownership of
+/// the data backing an `OrcHandle`. This needs to be manually enforced.
+unsafe impl Sync for OrcHandle {}
+
 impl Drop for OrcHandle {
     fn drop(&mut self) {
         self.free();

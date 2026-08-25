@@ -59,7 +59,7 @@ impl OrcFunc {
             .collect::<PyResult<_>>()?;
         let raw_inputs: Vec<OrcHandleBorrowed<'_>> =
             input_refs.iter().map(|h| h.inner.borrowed()).collect();
-        // Allocate output handles.
+        // Allocate output handles - here we're claiming all the outputs we need with a single fetch_add.
         let base_id = HANDLE_COUNTER.fetch_add(n_out as u64, Ordering::Relaxed);
         let mut raw_outputs: Vec<OrcHandle> = (0..n_out)
             .map(|i| OrcHandle {
@@ -67,19 +67,13 @@ impl OrcFunc {
                 ..Default::default()
             })
             .collect();
-        // Call the plugin function with the GIL released.
-        // Pointers are cast to usize so the closure satisfies Ungil (raw ptrs are !Sync).
-        let in_addr = raw_inputs.as_ptr() as usize;
-        let n_in = raw_inputs.len() as u64;
-        let out_addr = raw_outputs.as_mut_ptr() as usize;
-        let n_out_u64 = n_out as u64;
         let err = py.allow_threads(|| unsafe {
             func(
                 0,
-                in_addr as *const OrcHandle,
-                n_in,
-                out_addr as *mut OrcHandle,
-                n_out_u64,
+                raw_inputs.as_ptr().cast(),
+                raw_inputs.len() as u64,
+                raw_outputs.as_mut_ptr().cast(),
+                n_out as u64,
             )
         });
         if err != orc_sdk::ORC_ERROR_NONE {
