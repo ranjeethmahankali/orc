@@ -922,6 +922,7 @@ fn generate_orc_fn(cfg: FnConfig<'_>) -> proc_macro2::TokenStream {
                 .cast_mut()
         }
     };
+    let input_indices: Vec<usize> = (0..n_inputs).collect();
     quote! {
         pub const #info_name: orc_sdk::OrcFuncInfo = orc_sdk::OrcFuncInfo {
             name: #name_lit.as_ptr(),
@@ -967,6 +968,13 @@ fn generate_orc_fn(cfg: FnConfig<'_>) -> proc_macro2::TokenStream {
             );
             let inputs_ = unsafe { orc_sdk::slice_from_ptr(inputs_ptr_, #n_inputs) };
             let outputs_ = unsafe { orc_sdk::slice_from_ptr_mut(outputs_ptr_, #n_outputs) };
+            #(orc_sdk::orc_check_return!(
+                host_,
+                orc_sdk::ORC_ERROR_INVALID_ARGUMENTS,
+                !inputs_[#input_indices].is_empty(),
+                "Input {} is empty",
+                #input_indices
+            );)*
             #dims_call
             #dispatch_fn
             #type_dispatch
@@ -1495,6 +1503,12 @@ fn generate_orc_map_fn(cfg: FnConfig<'_>) -> proc_macro2::TokenStream {
             );
             let inputs_ = unsafe { orc_sdk::slice_from_ptr(inputs_ptr_, 1) };
             let outputs_ = unsafe { orc_sdk::slice_from_ptr_mut(outputs_ptr_, 1) };
+            orc_sdk::orc_check_return!(
+                host_,
+                orc_sdk::ORC_ERROR_INVALID_ARGUMENTS,
+                !inputs_[0].is_empty(),
+                "Input 0 is empty"
+            );
             #dims_call
             #dispatch_fn
             #type_dispatch
