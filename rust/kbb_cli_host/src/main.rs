@@ -228,7 +228,7 @@ fn main() -> Result<(), Error> {
          (const [10.0, 20.0, 30.0]))
     })?;
     println!(
-        "math_plugin add([1,2,3], [10,20,30]):\n{}",
+        "example_rust_plugin add([1,2,3], [10,20,30]):\n{}",
         a_plus_b.display::<f64>()
     );
     let len_a = orc_inline_dag!(plugin_set, &HANDLE_COUNTER, &*REGISTRY, {

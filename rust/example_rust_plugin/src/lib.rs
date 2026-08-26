@@ -42,7 +42,7 @@ impl TOrcPluginAdaptor for Adaptor {
         }
         // Tell the host about the plugin provided types and functions
         out.abi_version = ORC_ABI_VERSION;
-        out.name = c"math_plugin".as_ptr();
+        out.name = c"example_rust_plugin".as_ptr();
         out.desc = c"Math plugin to test and flesh out the SDK".as_ptr();
         out.n_types = ORC_EXPORTED_TYPES.len() as u64;
         out.types = ORC_EXPORTED_TYPES.as_ptr();

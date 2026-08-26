@@ -29,14 +29,14 @@
 
   #+begin_src compile
     build/debug/orc_sdk_tests
-    build/debug/deck_ops_plugin_tests
+    build/debug/example_c_plugin_tests
   #+end_src
 
   or in release:
 
   #+begin_src compile
     build/release/orc_sdk_tests
-    build/release/deck_ops_plugin_tests
+    build/release/example_c_plugin_tests
   #+end_src
 
 * Working with Pyorc
