@@ -3946,20 +3946,20 @@ static void test_que_capacity_and_growth(void)
 {
   int *q = NULL;
   // Test growth behavior
-  const int GROWTH_SIZE = 10;
-  for (int i = 0; i < GROWTH_SIZE; i++) {
-    OrcError result = orc_sdk_que_push(q, i);
+  const size_t GROWTH_SIZE = 10;
+  for (size_t i = 0; i < GROWTH_SIZE; i++) {
+    OrcError result = orc_sdk_que_push(q, (int)i);
     TEST_ASSERT_TRUE_MESSAGE(result == ORC_ERROR_NONE,
                              "Push should succeed during growth");
   }
   TEST_ASSERT_TRUE_MESSAGE(orc_sdk_que_len(q) == GROWTH_SIZE,
                            "Queue should have all pushed elements");
   // Pop some elements to create gap but don't compact
-  int       val       = 0;
-  const int POP_COUNT = 5;
-  for (int i = 0; i < POP_COUNT; i++) {
+  int          val       = 0;
+  const size_t POP_COUNT = 5;
+  for (size_t i = 0; i < POP_COUNT; i++) {
     orc_sdk_que_pop(q, &val);
-    TEST_ASSERT_TRUE_MESSAGE(val == i, "Popped values should be in FIFO order");
+    TEST_ASSERT_TRUE_MESSAGE(val == (int)i, "Popped values should be in FIFO order");
   }
   _OrcSdk_QueueHeader *h               = _orc_sdk_que_header(q);
   size_t               capacity_before = h->capacity;
@@ -3981,9 +3981,10 @@ static void test_que_capacity_and_growth(void)
   TEST_ASSERT_TRUE_MESSAGE(orc_sdk_que_len(q) == expected_len,
                            "Queue length should account for all operations");
   // Pop remaining original elements
-  for (int i = POP_COUNT; i < GROWTH_SIZE; i++) {
+  for (size_t i = POP_COUNT; i < GROWTH_SIZE; i++) {
     orc_sdk_que_pop(q, &val);
-    TEST_ASSERT_TRUE_MESSAGE(val == i, "Original elements should be in correct order");
+    TEST_ASSERT_TRUE_MESSAGE(val == (int)i,
+                             "Original elements should be in correct order");
   }
   // Pop the newly added elements
   for (int i = 100; i < 105; i++) {
@@ -4129,37 +4130,37 @@ static void test_que_multiple_growths(void)
   int *q   = NULL;
   int  val = 0;
   // Test multiple growth cycles
-  const int NUM_ELEMENTS = 20;
+  const size_t NUM_ELEMENTS = 20;
   // Fill queue with elements
-  for (int i = 0; i < NUM_ELEMENTS; i++) {
-    orc_sdk_que_push(q, i * 10);
+  for (size_t i = 0; i < NUM_ELEMENTS; i++) {
+    orc_sdk_que_push(q, (int)i * 10);
   }
   _OrcSdk_QueueHeader *h = _orc_sdk_que_header(q);
   TEST_ASSERT_TRUE_MESSAGE(orc_sdk_que_len(q) == NUM_ELEMENTS,
                            "Queue should have all elements");
   TEST_ASSERT_TRUE_MESSAGE(h->capacity >= NUM_ELEMENTS, "Capacity should be sufficient");
   // Pop half the elements to advance front
-  for (int i = 0; i < NUM_ELEMENTS / 2; i++) {
+  for (size_t i = 0; i < NUM_ELEMENTS / 2; i++) {
     orc_sdk_que_pop(q, &val);
-    TEST_ASSERT_TRUE_MESSAGE(val == i * 10, "Elements should pop in FIFO order");
+    TEST_ASSERT_TRUE_MESSAGE(val == (int)i * 10, "Elements should pop in FIFO order");
   }
   size_t remaining = NUM_ELEMENTS - NUM_ELEMENTS / 2;
   TEST_ASSERT_TRUE_MESSAGE(orc_sdk_que_len(q) == remaining,
                            "Correct number of elements should remain");
   // Add more elements to potentially trigger another growth
-  for (int i = NUM_ELEMENTS; i < NUM_ELEMENTS + 10; i++) {
-    orc_sdk_que_push(q, i * 10);
+  for (size_t i = NUM_ELEMENTS; i < NUM_ELEMENTS + 10; i++) {
+    orc_sdk_que_push(q, (int)i * 10);
   }
   TEST_ASSERT_TRUE_MESSAGE(orc_sdk_que_len(q) == remaining + 10,
                            "Queue should have correct length");
   // Verify all remaining elements are in correct order
-  for (int i = NUM_ELEMENTS / 2; i < NUM_ELEMENTS; i++) {
+  for (size_t i = NUM_ELEMENTS / 2; i < NUM_ELEMENTS; i++) {
     orc_sdk_que_pop(q, &val);
-    TEST_ASSERT_TRUE_MESSAGE(val == i * 10, "Original elements should be in order");
+    TEST_ASSERT_TRUE_MESSAGE(val == (int)i * 10, "Original elements should be in order");
   }
-  for (int i = NUM_ELEMENTS; i < NUM_ELEMENTS + 10; i++) {
+  for (size_t i = NUM_ELEMENTS; i < NUM_ELEMENTS + 10; i++) {
     orc_sdk_que_pop(q, &val);
-    TEST_ASSERT_TRUE_MESSAGE(val == i * 10, "New elements should be in order");
+    TEST_ASSERT_TRUE_MESSAGE(val == (int)i * 10, "New elements should be in order");
   }
   TEST_ASSERT_TRUE_MESSAGE(orc_sdk_que_is_empty(q), "Queue should be empty");
   orc_sdk_que_free(q);
