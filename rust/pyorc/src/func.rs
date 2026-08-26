@@ -65,7 +65,7 @@ impl OrcFunc {
         // Validate input count.
         let n_args = args.len();
         if let Some(expected) = self.info.n_inputs
-            && n_args != expected
+            && n_args > expected
         {
             return Err(pyo3::exceptions::PyValueError::new_err(format!(
                 "The function '{}' expects {} arguments, got {}.",
@@ -77,11 +77,15 @@ impl OrcFunc {
             .func
             .ok_or_else(|| pyo3::exceptions::PyRuntimeError::new_err("Null function pointer"))?;
         // Borrow input handles into a contiguous array.
-        let input_refs: Vec<PyRef<'_, Handle>> = (0..n_args)
-            .map(|i| args.get_item(i)?.extract())
-            .collect::<PyResult<_>>()?;
-        let raw_inputs: Vec<OrcHandleBorrowed<'_>> =
-            input_refs.iter().map(|h| h.inner.borrowed()).collect();
+        let input_refs: Vec<PyRef<'_, Handle>> =
+            args.iter().map(|a| a.extract()).collect::<PyResult<_>>()?;
+        let empty = OrcHandle::default();
+        let raw_inputs: Vec<OrcHandleBorrowed<'_>> = input_refs
+            .iter()
+            .map(|h| h.inner.borrowed())
+            .chain(std::iter::repeat(empty.borrowed()))
+            .take(self.info.n_inputs.unwrap_or(n_args))
+            .collect();
         // Allocate output handles - here we're claiming all the outputs we need with a single fetch_add.
         let base_id = HANDLE_COUNTER.fetch_add(n_out as u64, Ordering::Relaxed);
         let mut raw_outputs: Vec<OrcHandle> = (0..n_out)
@@ -99,11 +103,19 @@ impl OrcFunc {
                 n_out as u64,
             )
         });
-        orc_sdk::Error::from_raw(err).map_err(|e| {
-            pyo3::exceptions::PyRuntimeError::new_err(format!(
-                "Plugin function '{}' failed with error: {}.",
+        orc_sdk::Error::from_raw(err).map_err(|e| match e {
+            orc_sdk::Error::NullPointer => pyo3::exceptions::PyValueError::new_err(format!(
+                "Plugin function '{}' has a missing input: {}",
                 self.info.name, e
-            ))
+            )),
+            orc_sdk::Error::DeckTypeMismatch => pyo3::exceptions::PyTypeError::new_err(format!(
+                "Plugin function '{}' failed with error: {}",
+                self.info.name, e
+            )),
+            _ => pyo3::exceptions::PyRuntimeError::new_err(format!(
+                "Plugin function '{}' failed with error: {}",
+                self.info.name, e
+            )),
         })?;
         // Wrap outputs.
         if let Some(last) = raw_outputs.pop() {

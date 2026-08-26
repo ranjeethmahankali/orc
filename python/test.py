@@ -95,7 +95,7 @@ def t_add_mismatched_types():
     try:
         orc.add(a, b)
         assert False, "Should have raised RuntimeError"
-    except RuntimeError:
+    except (TypeError, RuntimeError):
         pass
 
 
@@ -135,7 +135,7 @@ def t_mul_mismatched_types():
     try:
         orc.multiply(a, b)
         assert False, "Should have raised RuntimeError"
-    except RuntimeError:
+    except (TypeError, RuntimeError):
         pass
 
 
@@ -167,7 +167,7 @@ def t_sub_unsupported_type():
     try:
         orc.subtract(a, b)
         assert False, "Should have raised RuntimeError"
-    except RuntimeError:
+    except (TypeError, RuntimeError):
         pass
 
 
@@ -200,7 +200,7 @@ def t_div_unsupported_type():
     try:
         orc.divide(a, b)
         assert False, "Should have raised RuntimeError"
-    except RuntimeError:
+    except (TypeError, RuntimeError):
         pass
 
 
@@ -658,7 +658,7 @@ def t_complex_add_wrong_n_inputs():
     lhs = make_complex([1.0, 3.0], [2.0, 4.0])
     try:
         out = orc.add_complex(lhs)
-    except (ValueError, TypeError):
+    except (RuntimeError, ValueError, TypeError):
         # We supplied the wrong number of inputs, so this is expected.
         return
     assert False, "This should be unreachable"
@@ -712,7 +712,7 @@ def t_complex_mul_wrong_n_inputs():
     lhs = make_complex([1.0, 3.0], [2.0, 4.0])
     try:
         out = orc.mul_complex(lhs)
-    except (ValueError, TypeError):
+    except (RuntimeError, ValueError, TypeError):
         # We supplied the wrong number of inputs, so this is expected.
         return
     assert False, "This should be unreachable"

@@ -975,6 +975,13 @@ fn generate_orc_fn(cfg: FnConfig<'_>) -> proc_macro2::TokenStream {
                 "Input {} is empty",
                 #input_indices
             );)*
+            #(orc_sdk::orc_check_return!(
+                host_,
+                orc_sdk::ORC_ERROR_NULL_PTR,
+                !inputs_[#input_indices].items.is_null(),
+                "Input {} has null items pointer",
+                #input_indices
+            );)*
             #dims_call
             #dispatch_fn
             #type_dispatch
@@ -1508,6 +1515,12 @@ fn generate_orc_map_fn(cfg: FnConfig<'_>) -> proc_macro2::TokenStream {
                 orc_sdk::ORC_ERROR_INVALID_ARGUMENTS,
                 !inputs_[0].is_empty(),
                 "Input 0 is empty"
+            );
+            orc_sdk::orc_check_return!(
+                host_,
+                orc_sdk::ORC_ERROR_NULL_PTR,
+                !inputs_[0].items.is_null(),
+                "Input 0 has null items pointer"
             );
             #dims_call
             #dispatch_fn
