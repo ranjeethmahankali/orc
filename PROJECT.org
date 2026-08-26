@@ -142,6 +142,28 @@
   - Update all the host programs to not be very strict about the number of inputs.
   - Python host in pyorc will require some special attention to support sparse, named inputs.
 
+** Vague LLM Plan
+   :PROPERTIES:
+   :CREATED:  2026-08-25 Tue 20:07
+   :END:
+
+   1. ~Combinations~: when iterating, treat empty handles as producing a single ~None~ item (depth
+      irrelevant). Propagate this into ~ReadCursor~ (yields ~None~ when the underlying handle is
+      empty) and ~DeckView~ (constructed as empty/absent).
+
+   2. ~orc_sdk/derive_macros~: add ~optional: bool~ to ~ParamInfo~. Recognise ~Option<&T>~ in
+      ~is_output_param~ / ~inner_type~ / ~infer_depth~ (restrict to depth-0 only; reject
+      ~Option<&[T]>~ etc.). Skip the non-empty assertion for optional inputs. Exclude optional inputs
+      from the type-dispatch scrutinee. In the generated ~dispatch_~ fn, pass all handles (including
+      empty ones) to ~Combinations~; the updated ~Combinations~ handles them transparently. Optional
+      call-args become ~Option<&T>~ drawn from the cursor's ~None~-or-~Some~ result.
+
+   3. Host side: relax the strict input-count checks so callers can omit trailing optional inputs
+      (pass fewer handles than ~n_inputs~; the remainder are treated as empty).
+
+   4. ~pyorc~: support sparse / named inputs — allow passing a ~dict~ mapping parameter name →
+      deck, leaving unmentioned optional inputs as empty handles.
+
 * TODO tiwkbm - Create Toy Demo Apps
   :PROPERTIES:
   :CREATED:  2026-07-28 Tue 16:45
