@@ -968,6 +968,80 @@ OrcError orc_sdk_sv_read_bytes(OrcStrView *sv, void *dst, size_t const count)
   return ORC_ERROR_NONE;
 }
 
+// ========== Queue ==========
+
+void *_orc_sdk_que_push_grow(void *ptr, size_t const elemsize)
+{
+  _OrcSdk_QueueHeader *h = _orc_sdk_que_header(ptr);
+  if (h == NULL) {
+    // Having a min size that is larger than 1, avoids a bunch of edge cases in the ring
+    // buffer logic.
+    size_t const MIN_QUEUE_SIZE = 2;
+    h                           = malloc(sizeof *h + elemsize * MIN_QUEUE_SIZE);
+    if (h == NULL)
+      return NULL;
+    h->back     = 0;
+    h->capacity = MIN_QUEUE_SIZE;
+    h->front    = 0;
+    ptr         = h + 1;
+  }
+  else if ((1 + h->back) % h->capacity == h->front) {  // Need to grow.
+    size_t const newcap = h->capacity * 2;
+    h                   = realloc(h, sizeof *h + newcap * elemsize);
+    if (h == NULL)
+      return NULL;
+    ptr = h + 1;
+    if (h->back < h->front) {
+      memmove((char *)ptr + h->capacity * elemsize, ptr, h->back * elemsize);
+      h->back += h->capacity;
+    }
+    h->capacity = newcap;
+  }
+  return ptr;
+}
+
+size_t _orc_sdk_que_pushed_back(void *ptr)
+{
+  _OrcSdk_QueueHeader *h = _orc_sdk_que_header(ptr);
+  ORC_SDK_REQUIRE_WITH_MSG(h != NULL && ptr != NULL,
+                           "This function shouldn't be called on empty queues");
+  size_t const newback = (1 + h->back) % h->capacity;
+  ORC_SDK_REQUIRE_WITH_MSG(
+    newback != h->front,
+    "This should never be called on a queue that doesn't have a large enough buffer");
+  size_t const back = h->back;
+  h->back           = newback;
+  return back;
+}
+
+size_t _orc_sdk_que_popped_front(void *ptr)
+{
+  _OrcSdk_QueueHeader *h = _orc_sdk_que_header(ptr);
+  ORC_SDK_REQUIRE_WITH_MSG(h != NULL && ptr != NULL && h->front != h->back,
+                           "This function shouldn't be called on empty queues");
+  size_t const front = h->front;
+  h->front           = (1 + h->front) % h->capacity;
+  return front;
+}
+
+bool orc_sdk_que_is_empty(void *ptr)
+{
+  _OrcSdk_QueueHeader *h = _orc_sdk_que_header(ptr);
+  return h == NULL || h->front == h->back;
+}
+
+size_t orc_sdk_que_len(void *ptr)
+{
+  _OrcSdk_QueueHeader *h = _orc_sdk_que_header(ptr);
+  if (h) {
+    if (h->front < h->back)
+      return h->back - h->front;
+    else if (h->front > h->back)
+      return (h->capacity - h->front) + h->back;
+  }
+  return 0;
+}
+
 // ========== Deck ==========
 
 void _orc_sdk_deck_free_impl(void *ptr)

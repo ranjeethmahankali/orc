@@ -497,6 +497,68 @@ bool orc_sv_eq(OrcStrView const a, OrcStrView const b);
 
 OrcError orc_sdk_sv_read_bytes(OrcStrView *sv, void *dst, size_t const count);
 
+// ========== Queue ==========
+
+typedef struct
+{
+  size_t back;
+  size_t capacity;
+  size_t front;
+  size_t _padding;
+} _OrcSdk_QueueHeader;
+
+static inline _OrcSdk_QueueHeader *_orc_sdk_que_header(void *ptr)
+{
+  _OrcSdk_QueueHeader *h = (_OrcSdk_QueueHeader *)ptr;
+  if (h)
+    return --h;
+  return NULL;
+}
+
+void *_orc_sdk_que_push_grow(void *ptr, size_t const elemsize);
+
+/**
+ * @brief Check if the queue is empty.
+ *
+ * @param ptr Pointer to the queue.
+ * @return bool True if the queue is empty.
+ */
+bool orc_sdk_que_is_empty(void *ptr);
+
+size_t _orc_sdk_que_pushed_back(void *ptr);
+
+/**
+ * Push the new value to the back of the queue. Status is returned indicating whether the
+ * operation was successful.
+ */
+#define orc_sdk_que_push(ptr, val)                                      \
+  (((ptr) = _orc_sdk_que_push_grow(ptr, sizeof *(ptr)))                 \
+     ? ((ptr)[_orc_sdk_que_pushed_back((ptr))] = (val), ORC_ERROR_NONE) \
+     : ORC_ERROR_ALLOC_FAILED)
+
+size_t _orc_sdk_que_popped_front(void *ptr);
+
+/**
+ * Remove an element from the front of the queue and
+ */
+#define orc_sdk_que_pop(ptr, dst) \
+  (orc_sdk_que_is_empty((ptr))    \
+     ? ORC_ERROR_OUT_OF_BOUNDS    \
+     : (*(dst) = (ptr)[_orc_sdk_que_popped_front((ptr))], ORC_ERROR_NONE))
+
+/**
+ * @brief Get the length of the queue. This is the remaining items in the queue.
+ *
+ * @param ptr The pointer to the queue.
+ * @return size_t The length.
+ */
+size_t orc_sdk_que_len(void *ptr);
+
+/**
+ * Free the queue, and set the pointer to NULL.
+ */
+#define orc_sdk_que_free(ptr) (free(_orc_sdk_que_header((ptr))), (ptr) = NULL)
+
 // ========== Deck ==========
 
 typedef struct
