@@ -280,6 +280,27 @@
    Comparing this to the host programs I have now, each session will have it's own OrcHost instance,
    registry, allocators, etc.
 
+*** C program using mongoose and a simple handrolled thread pool
+    :PROPERTIES:
+    :CREATED:  2026-08-26 Wed 11:38
+    :END:
+
+    Drop mongoose.c + mongoose.h into the repo. HTTP parsing, routing, and cross-platform socket
+    handling are provided by mongoose. Thread pool is pthreads + a job queue (mutex + condvar).
+    Plugin calls run directly through the C SDK with no FFI boundary. Each session owns an OrcHost
+    instance, stored in a hashtable keyed by session id. Fully cross-platform (Windows, Linux,
+    macOS).
+
+*** Rust program using tiny_http and a simple handrolled thread pool
+    :PROPERTIES:
+    :CREATED:  2026-08-26 Wed 11:38
+    :END:
+
+    tiny_http crate provides a synchronous HTTP server — no async, no tokio. Thread pool is
+    std-only: N threads pulling jobs from an mpsc channel. Plugin calls go through FFI into the C
+    SDK, run on the thread pool, results returned as HTTP responses. Each session owns an OrcHost
+    instance, stored in an Arc<Mutex<HashMap>>. Cross-platform via std and tiny_http.
+
 * DONE tkcjtv - Function metadata ABI improvements
   CLOSED: [2026-08-25 Tue 19:41]
   :PROPERTIES:
