@@ -36,13 +36,13 @@ add_library(orc_sdk_obj OBJECT orc_sdk/orc_sdk.c)
 target_include_directories(orc_sdk_obj PUBLIC .)
 set_target_properties(orc_sdk_obj PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
-# deck_ops_plugin — shared library
-add_library(deck_ops_plugin SHARED
-    deck_ops_plugin/plugin.c
-    deck_ops_plugin/functions.c
+# example_c_plugin — shared library
+add_library(example_c_plugin SHARED
+    example_c_plugin/plugin.c
+    example_c_plugin/functions.c
     $<TARGET_OBJECTS:orc_sdk_obj>
 )
-target_include_directories(deck_ops_plugin PRIVATE .)
+target_include_directories(example_c_plugin PRIVATE .)
 
 # orc_sdk_tests — executable
 add_executable(orc_sdk_tests
@@ -56,21 +56,21 @@ if(NOT MSVC)
 endif()
 if(NOT WIN32)
     target_link_libraries(orc_sdk_tests PRIVATE pthread)
-    target_link_libraries(deck_ops_plugin PRIVATE pthread)
+    target_link_libraries(example_c_plugin PRIVATE pthread)
 endif()
 
-# deck_ops_plugin_tests — executable
-add_executable(deck_ops_plugin_tests
-    deck_ops_plugin/test.c
-    deck_ops_plugin/plugin.c
-    deck_ops_plugin/functions.c
+# example_c_plugin_tests — executable
+add_executable(example_c_plugin_tests
+    example_c_plugin/test.c
+    example_c_plugin/plugin.c
+    example_c_plugin/functions.c
     $<TARGET_OBJECTS:orc_sdk_obj>
 )
-target_include_directories(deck_ops_plugin_tests PRIVATE .)
-target_link_libraries(deck_ops_plugin_tests PRIVATE unity)
+target_include_directories(example_c_plugin_tests PRIVATE .)
+target_link_libraries(example_c_plugin_tests PRIVATE unity)
 if(NOT MSVC)
-    target_link_libraries(deck_ops_plugin_tests PRIVATE m)
+    target_link_libraries(example_c_plugin_tests PRIVATE m)
 endif()
 if(NOT WIN32)
-    target_link_libraries(deck_ops_plugin_tests PRIVATE pthread)
+    target_link_libraries(example_c_plugin_tests PRIVATE pthread)
 endif()
