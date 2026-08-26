@@ -227,6 +227,46 @@
   questions through all the tasks I finished during this time. Trying to attempt to make a UI app
   once again.
 
+** TODO Node Editor UI App
+   :PROPERTIES:
+   :CREATED:  2026-08-26 Wed 10:47
+   :END:
+
+   To lower the scope of the node editor demo app, I think it should not have a dedicated viewer,
+   that stays in sync with the node graph. Instead the node graph should have a set of no-op
+   "inspect" nodes, that visualize the data as either text or graphics, potentially with an
+   interactive camera. Maybe they support a maximize / minimize option to temporarily fill the
+   screen, and explore. Maybe there is a button that pops this view out into a separate window if
+   the user wants to keep it around as they move around the canvas. This is still much simpler than
+   a general viewer, since it only displays a single output, with no need for concepts such as
+   selection.
+
+** TODO Host program that runs as a service
+   :PROPERTIES:
+   :CREATED:  2026-08-26 Wed 10:52
+   :END:
+
+   Server / service that listens for requests, and performs work by calling plugin functions when it
+   receives a request. This is interesting, as I can probably run a workflow on multiple threads
+   using make, of course, assuming the host program can schedule the jobs it receives on all
+   available threads.
+
+   A client would:
+   - Start a session, and receive a session id from the service. This helps the service distinguish
+     the requests it receives from different clients in the future.
+   - Create constants containing primitive datatypes, by passing them in as either binary blobs or
+     strings. The server returns an id representing the constant that lives in the server's memory,
+     associated with that particular sesion.
+   - Call functions with specific inputs. The client specifies inputs by their ids. The server runs
+     the funciton, and returns ids corresponding to the inputs.
+   - Presumably some of these functions export files, that are received by the client as the output
+     of their workflow.
+   - The client can then close the session, which will cause all the session data, variables,
+     registry etc. to be cleaned up.
+
+   Comparing this to the host programs I have now, each session will have it's own OrcHost instance,
+   registry, allocators, etc.
+
 * DONE tkcjtv - Function metadata ABI improvements
   CLOSED: [2026-08-25 Tue 19:41]
   :PROPERTIES:
