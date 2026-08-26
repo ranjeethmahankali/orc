@@ -192,11 +192,13 @@
   questions through all the tasks I finished during this time. Trying to attempt to make a UI app
   once again.
 
-** NEXT Support and testing for optional inputs for plugin functions
+** DONE Support and testing for optional inputs for plugin functions
+   CLOSED: [2026-08-26 Wed 13:30]
    :PROPERTIES:
    :CREATED:  2026-08-25 Tue 20:04
    :END:
    :LOGBOOK:
+   - State "DONE"       from "NEXT"       [2026-08-26 Wed 13:30]
    - State "NEXT"       from "TODO"       [2026-08-26 Wed 13:02]
    :END:
 
@@ -213,6 +215,11 @@
    handles. And I will implement strict checks on the plugin side. Tolerating empty inputs on the
    plugin side is not a priority at this time, and likely not for a while, and even later, it can be
    done without touching anything outside the plugin.
+
+   <2026-08-26 Wed 13:24> Updated the immediate calls in the Python host, and updated the expected
+  errors in tests.
+
+  <2026-08-26 Wed 13:29> Now the graph mode also matches the behavior. This task is done.
 
 ** TODO Node Editor UI App
    :PROPERTIES:
