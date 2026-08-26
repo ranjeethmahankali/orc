@@ -129,69 +129,6 @@
   implementing blocks will require some thought. I went with macros as the first pass in Rust. It is
   not clear to me what I should go with in C++.
 
-* TODO Support and testing for optional inputs for plugin functions
-  :PROPERTIES:
-  :CREATED:  2026-08-25 Tue 20:04
-  :END:
-
-  In theory, the host/caller can simply pass emtpy orc handles, and let the function decide what
-  they want to do. This should be easy to get working, just a bit tedious, and not super urgent.
-
-  - Update ~Combinations~ to support and ignore empty handles.
-  - The Rust proc macros should be updated to support Optional inputs.
-  - Update all the host programs to not be very strict about the number of inputs.
-  - Python host in pyorc will require some special attention to support sparse, named inputs.
-
-** Vague LLM Plan
-   :PROPERTIES:
-   :CREATED:  2026-08-25 Tue 20:07
-   :END:
-
-   1. ~Combinations~: when iterating, treat empty handles as producing a single ~None~ item (depth
-      irrelevant). Propagate this into ~ReadCursor~ (yields ~None~ when the underlying handle is
-      empty) and ~DeckView~ (constructed as empty/absent).
-
-   2. ~orc_sdk/derive_macros~: add ~optional: bool~ to ~ParamInfo~. Recognise ~Option<&T>~ in
-      ~is_output_param~ / ~inner_type~ / ~infer_depth~ (restrict to depth-0 only; reject
-      ~Option<&[T]>~ etc.). Skip the non-empty assertion for optional inputs. Exclude optional inputs
-      from the type-dispatch scrutinee. In the generated ~dispatch_~ fn, pass all handles (including
-      empty ones) to ~Combinations~; the updated ~Combinations~ handles them transparently. Optional
-      call-args become ~Option<&T>~ drawn from the cursor's ~None~-or-~Some~ result.
-
-   3. Host side: relax the strict input-count checks so callers can omit trailing optional inputs
-      (pass fewer handles than ~n_inputs~; the remainder are treated as empty).
-
-   4. ~pyorc~: support sparse / named inputs — allow passing a ~dict~ mapping parameter name →
-      deck, leaving unmentioned optional inputs as empty handles.
-
-* TODO tiwkbm - Create Toy Demo Apps
-  :PROPERTIES:
-  :CREATED:  2026-07-28 Tue 16:45
-  :END:
-  :LOGBOOK:
-  - State "TODO"       from "NEXT"       [2026-07-31 Fri 20:46]
-  - State "NEXT"       from "TODO"       [2026-07-30 Thu 18:36]
-  :END:
-
-  Not that the plugin architecture is fleshed out, I can build a few toy host applications, and toy
-  plugins, and demonstrate the flexibility and power of this design to both Product / Customer
-  facing side as well as the engineering side.
-
-  <2026-07-30 Thu 18:35> Made quite some progress with the orc_fn macro to make it easier to
-  implement simple blocks. The macro is now able to handle templated Rust functions too, but still
-  requires some more testing before I feel confident about it.
-
-  <2026-07-31 Fri 18:22> The orc_fn proc macro mostly took shape. Trying to simplify the code a bit,
-  and maybe add some tests. The proxy deck functions need more thought, and need to be fleshed
-  out. Also the type ids require more thought. Plugins will need the ability to work with arbitrary
-  types defined in other plugins. Which means plugins cannot rely on their own type ids. The handle
-  cannot just communicate OrcTypeId. It needs to have a unique integer id that the host assigns to
-  that type, after loading all the plugins, and the plugins need to know that mapped id for their
-  own types after plugin_init.... It will get a bit more complicated than it currently is.
-
-  <2026-07-31 Fri 20:45> Trying to temporarily stop on this task, and finish a few other smaller
-  tasks before continuing.
-
 * TODO Demo with a server host application
   :PROPERTIES:
   :CREATED:  2026-08-09 Sun 00:49
@@ -220,6 +157,203 @@
 
   Maybe I can write a rasterizer for my curve types, and somehow get the optimizer to export images
   of the sample points in the design space, so that I can visualize them when viewing the DOE.
+
+* NEXT tiwkbm - Create Toy Demo Apps
+  :PROPERTIES:
+  :CREATED:  2026-07-28 Tue 16:45
+  :END:
+  :LOGBOOK:
+  - State "NEXT"       from "TODO"       [2026-08-25 Tue 20:13]
+  - State "TODO"       from "NEXT"       [2026-07-31 Fri 20:46]
+  - State "NEXT"       from "TODO"       [2026-07-30 Thu 18:36]
+  :END:
+
+  Not that the plugin architecture is fleshed out, I can build a few toy host applications, and toy
+  plugins, and demonstrate the flexibility and power of this design to both Product / Customer
+  facing side as well as the engineering side.
+
+  <2026-07-30 Thu 18:35> Made quite some progress with the orc_fn macro to make it easier to
+  implement simple blocks. The macro is now able to handle templated Rust functions too, but still
+  requires some more testing before I feel confident about it.
+
+  <2026-07-31 Fri 18:22> The orc_fn proc macro mostly took shape. Trying to simplify the code a bit,
+  and maybe add some tests. The proxy deck functions need more thought, and need to be fleshed
+  out. Also the type ids require more thought. Plugins will need the ability to work with arbitrary
+  types defined in other plugins. Which means plugins cannot rely on their own type ids. The handle
+  cannot just communicate OrcTypeId. It needs to have a unique integer id that the host assigns to
+  that type, after loading all the plugins, and the plugins need to know that mapped id for their
+  own types after plugin_init.... It will get a bit more complicated than it currently is.
+
+  <2026-07-31 Fri 20:45> Trying to temporarily stop on this task, and finish a few other smaller
+  tasks before continuing.
+
+  <2026-08-25 Tue 20:19> Last time I attempted this task, questions about type_ids, ownership, DAGs,
+  versioning, and serialization were all completely unanswered. I have since answered those
+  questions through all the tasks I finished during this time. Trying to attempt to make a UI app
+  once again.
+
+* DONE tke36o - Support and testing for optional inputs for plugin functions
+  CLOSED: [2026-08-26 Wed 13:30]
+  :PROPERTIES:
+  :CREATED:  2026-08-25 Tue 20:04
+  :END:
+  :LOGBOOK:
+  - State "DONE"       from "NEXT"       [2026-08-26 Wed 13:30]
+  - State "NEXT"       from "TODO"       [2026-08-26 Wed 13:02]
+  :END:
+
+  In theory, the host/caller can simply pass emtpy orc handles, and let the function decide what
+  they want to do. This should be easy to get working, just a bit tedious, and not super urgent.
+
+  - Update ~Combinations~ to support and ignore empty handles.
+  - The Rust proc macros should be updated to support Optional inputs.
+  - Update all the host programs to not be very strict about the number of inputs.
+  - Python host in pyorc will require some special attention to support sparse, named inputs.
+
+  <2026-08-26 Wed 12:59> Reducing scope for this. Scrapping the above Combinations work. For now, I
+  will just implement some leniency on the host side to call the plugin functions with empty
+  handles. And I will implement strict checks on the plugin side. Tolerating empty inputs on the
+  plugin side is not a priority at this time, and likely not for a while, and even later, it can be
+  done without touching anything outside the plugin.
+
+  <2026-08-26 Wed 13:24> Updated the immediate calls in the Python host, and updated the expected
+ errors in tests.
+
+ <2026-08-26 Wed 13:29> Now the graph mode also matches the behavior. This task is done.
+
+ <2026-08-26 Wed 14:25> Also sneaking in a queue implementation into the C SDK that I copied over
+ from another project. Will need it in another task soon.
+
+*** CLOSED Vague LLM Plan
+    CLOSED: [2026-08-26 Wed 13:59]
+    :PROPERTIES:
+    :CREATED:  2026-08-25 Tue 20:07
+    :END:
+    :LOGBOOK:
+    - State "CLOSED"     from              [2026-08-26 Wed 13:59]
+    :END:
+
+    1. ~Combinations~: when iterating, treat empty handles as producing a single ~None~ item (depth
+       irrelevant). Propagate this into ~ReadCursor~ (yields ~None~ when the underlying handle is
+       empty) and ~DeckView~ (constructed as empty/absent).
+
+    2. ~orc_sdk/derive_macros~: add ~optional: bool~ to ~ParamInfo~. Recognise ~Option<&T>~ in
+       ~is_output_param~ / ~inner_type~ / ~infer_depth~ (restrict to depth-0 only; reject
+       ~Option<&[T]>~ etc.). Skip the non-empty assertion for optional inputs. Exclude optional inputs
+       from the type-dispatch scrutinee. In the generated ~dispatch_~ fn, pass all handles (including
+       empty ones) to ~Combinations~; the updated ~Combinations~ handles them transparently. Optional
+       call-args become ~Option<&T>~ drawn from the cursor's ~None~-or-~Some~ result.
+
+    3. Host side: relax the strict input-count checks so callers can omit trailing optional inputs
+       (pass fewer handles than ~n_inputs~; the remainder are treated as empty).
+
+    4. ~pyorc~: support sparse / named inputs — allow passing a ~dict~ mapping parameter name →
+       deck, leaving unmentioned optional inputs as empty handles.
+
+    <2026-08-26 Wed 13:59> Decided not to do this right now.
+
+  
+
+** TODO Host program that runs as a service
+   :PROPERTIES:
+   :CREATED:  2026-08-26 Wed 10:52
+   :END:
+
+   Server / service that listens for requests, and performs work by calling plugin functions when it
+   receives a request. This is interesting, as I can probably run a workflow on multiple threads
+   using make, of course, assuming the host program can schedule the jobs it receives on all
+   available threads.
+
+   A client would:
+   - Start a session, and receive a session id from the service. This helps the service distinguish
+     the requests it receives from different clients in the future.
+   - Create constants containing primitive datatypes, by passing them in as either binary blobs or
+     strings. The server returns an id representing the constant that lives in the server's memory,
+     associated with that particular sesion.
+   - Call functions with specific inputs. The client specifies inputs by their ids. The server runs
+     the funciton, and returns ids corresponding to the inputs.
+   - Presumably some of these functions export files, that are received by the client as the output
+     of their workflow.
+   - Client can request to download the workflow they built up during this session as a serialized
+     workflow.
+   - The client can then close the session, which will cause all the session data, variables,
+     registry etc. to be cleaned up.
+
+   Comparing this to the host programs I have now, each session will have it's own OrcHost instance,
+   registry, allocators, etc.
+
+*** TODO Rust server plus C client
+    :PROPERTIES:
+    :CREATED:  2026-08-26 Wed 11:38
+    :END:
+    :LOGBOOK:
+    - State "TODO"       from              [2026-08-26 Wed 14:09]
+    :END:
+
+    Make a server in Rust: tiny_http crate provides a synchronous HTTP server — no async, no
+    tokio. Thread pool is std-only: N threads pulling jobs from an mpsc channel. Plugin calls go
+    through FFI into the C SDK, run on the thread pool, results returned as HTTP responses. Each
+    session owns an OrcHost instance, stored in an Arc<Mutex<HashMap>>. Cross-platform via std and
+    tiny_http.
+
+    Make a simple client program in C:
+    - It should be able to do all the client things listed in the parent task.
+    - Needs a special --save-image <path> CLI option to save output data that is downloaded as
+      serialized OrcHandle data. Say, if three handles (decks) of the same length are returned, save
+      them as RGB. If 1 deck is returned, save it as grayscale.
+    - Similar option (--save-text <path>) to save a downloaded serialized OrcHandle of type u8 as
+      text to a file.
+    - Should parse the numerical data passed in via CLI to create constant decks. Maybe the parsing
+      can be done on the server side. Or maybe the client should create a deck, a handle, serialize
+      it, then send it over to the server? Not sure which is better.
+
+*** CLOSED C program using mongoose and a simple handrolled thread pool
+    CLOSED: [2026-08-26 Wed 13:58]
+    :PROPERTIES:
+    :CREATED:  2026-08-26 Wed 11:38
+    :END:
+    :LOGBOOK:
+    - State "CLOSED"     from              [2026-08-26 Wed 13:58]
+    :END:
+
+    Drop mongoose.c + mongoose.h into the repo. HTTP parsing, routing, and cross-platform socket
+    handling are provided by mongoose. Thread pool is pthreads + a job queue (mutex + condvar).
+    Plugin calls run directly through the C SDK with no FFI boundary. Each session owns an OrcHost
+    instance, stored in a hashtable keyed by session id. Fully cross-platform (Windows, Linux,
+    macOS).
+
+    <2026-08-26 Wed 13:58> Replicating the workflow, its property system etc. in C is a good idea,
+    but too much overhead for a quick demo. So I will scrap this idea and go ahead with the Rust
+    alternative.
+
+    <2026-08-26 Wed 14:10> Instead maybe, I can use mongoose to make a simple client program.
+
+** TODO Node Editor UI App
+   :PROPERTIES:
+   :CREATED:  2026-08-26 Wed 10:47
+   :END:
+
+   To lower the scope of the node editor demo app, I think it should not have a dedicated viewer,
+   that stays in sync with the node graph. Instead the node graph should have a set of no-op
+   "inspect" nodes, that visualize the data as either text or graphics, potentially with an
+   interactive camera. Maybe they support a maximize / minimize option to temporarily fill the
+   screen, and explore. Maybe there is a button that pops this view out into a separate window if
+   the user wants to keep it around as they move around the canvas. This is still much simpler than
+   a general viewer, since it only displays a single output, with no need for concepts such as
+   selection.
+
+*** Vague sketch using egui + eframe + wgpu
+    :PROPERTIES:
+    :CREATED:  2026-08-26 Wed 11:22
+    :END:
+
+    Rust app using eframe (windowing + event loop), egui (immediate-mode UI), and wgpu (GPU
+    rendering). The node canvas and all widgets are egui. Inspect nodes embed custom wgpu render
+    passes for 2D/3D viewports via egui's PaintCallback. Inspect views can be maximized as a
+    floating egui::Window panel, or on native, popped out into a real OS window. On WASM the same
+    code runs in a browser tab — the only difference is that pop-out becomes a floating panel
+    instead of an OS window. The whole stack compiles to both native and WASM without forking the
+    codebase.
 
 * DONE tkcjtv - Function metadata ABI improvements
   CLOSED: [2026-08-25 Tue 19:41]
