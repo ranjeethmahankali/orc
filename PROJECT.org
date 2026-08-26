@@ -271,21 +271,38 @@
      the funciton, and returns ids corresponding to the inputs.
    - Presumably some of these functions export files, that are received by the client as the output
      of their workflow.
+   - Client can request to download the workflow they built up during this session as a serialized
+     workflow.
    - The client can then close the session, which will cause all the session data, variables,
      registry etc. to be cleaned up.
 
    Comparing this to the host programs I have now, each session will have it's own OrcHost instance,
    registry, allocators, etc.
 
-*** Rust server using tiny_http and a simple handrolled thread pool
+*** TODO Rust server plus C client
     :PROPERTIES:
     :CREATED:  2026-08-26 Wed 11:38
     :END:
+    :LOGBOOK:
+    - State "TODO"       from              [2026-08-26 Wed 14:09]
+    :END:
 
-    tiny_http crate provides a synchronous HTTP server — no async, no tokio. Thread pool is
-    std-only: N threads pulling jobs from an mpsc channel. Plugin calls go through FFI into the C
-    SDK, run on the thread pool, results returned as HTTP responses. Each session owns an OrcHost
-    instance, stored in an Arc<Mutex<HashMap>>. Cross-platform via std and tiny_http.
+    Make a server in Rust: tiny_http crate provides a synchronous HTTP server — no async, no
+    tokio. Thread pool is std-only: N threads pulling jobs from an mpsc channel. Plugin calls go
+    through FFI into the C SDK, run on the thread pool, results returned as HTTP responses. Each
+    session owns an OrcHost instance, stored in an Arc<Mutex<HashMap>>. Cross-platform via std and
+    tiny_http.
+
+    Make a simple client program in C:
+    - It should be able to do all the client things listed in the parent task.
+    - Needs a special --save-image <path> CLI option to save output data that is downloaded as
+      serialized OrcHandle data. Say, if three handles (decks) of the same length are returned, save
+      them as RGB. If 1 deck is returned, save it as grayscale.
+    - Similar option (--save-text <path>) to save a downloaded serialized OrcHandle of type u8 as
+      text to a file.
+    - Should parse the numerical data passed in via CLI to create constant decks. Maybe the parsing
+      can be done on the server side. Or maybe the client should create a deck, a handle, serialize
+      it, then send it over to the server? Not sure which is better.
 
 *** CLOSED C program using mongoose and a simple handrolled thread pool
     CLOSED: [2026-08-26 Wed 13:58]
@@ -305,6 +322,8 @@
     <2026-08-26 Wed 13:58> Replicating the workflow, its property system etc. in C is a good idea,
     but too much overhead for a quick demo. So I will scrap this idea and go ahead with the Rust
     alternative.
+
+    <2026-08-26 Wed 14:10> Instead maybe, I can use mongoose to make a simple client program.
 
 ** TODO Node Editor UI App
    :PROPERTIES:
