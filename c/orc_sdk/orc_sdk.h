@@ -539,7 +539,8 @@ size_t _orc_sdk_que_pushed_back(void *ptr);
 size_t _orc_sdk_que_popped_front(void *ptr);
 
 /**
- * Remove an element from the front of the queue and
+ * Remove an element from the front of the queue and store it in dst.
+ * Returns ORC_ERROR_OUT_OF_BOUNDS if the queue is empty, ORC_ERROR_NONE otherwise.
  */
 #define orc_sdk_que_pop(ptr, dst) \
   (orc_sdk_que_is_empty((ptr))    \
@@ -557,7 +558,15 @@ size_t orc_sdk_que_len(void *ptr);
 /**
  * Free the queue, and set the pointer to NULL.
  */
-#define orc_sdk_que_free(ptr) (free(_orc_sdk_que_header((ptr))), (ptr) = NULL)
+#define orc_sdk_que_free(ptr)                                     \
+  do {                                                            \
+    _OrcSdk_QueueHeader *_h_ = _orc_sdk_que_header((ptr));        \
+    if (_h_)                                                      \
+      orc_sdk_free(_h_,                                           \
+                   sizeof(*_h_) + _h_->capacity * sizeof(*(ptr)), \
+                   ORC_SDK_MALLOC_DEFAULT_ALIGN);                 \
+    (ptr) = NULL;                                                 \
+  } while (0)
 
 // ========== Deck ==========
 

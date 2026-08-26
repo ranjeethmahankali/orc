@@ -977,7 +977,8 @@ void *_orc_sdk_que_push_grow(void *ptr, size_t const elemsize)
     // Having a min size that is larger than 1, avoids a bunch of edge cases in the ring
     // buffer logic.
     size_t const MIN_QUEUE_SIZE = 2;
-    h                           = malloc(sizeof *h + elemsize * MIN_QUEUE_SIZE);
+    h =
+      orc_sdk_alloc(sizeof *h + elemsize * MIN_QUEUE_SIZE, ORC_SDK_MALLOC_DEFAULT_ALIGN);
     if (h == NULL)
       return NULL;
     h->back     = 0;
@@ -986,10 +987,14 @@ void *_orc_sdk_que_push_grow(void *ptr, size_t const elemsize)
     ptr         = h + 1;
   }
   else if ((1 + h->back) % h->capacity == h->front) {  // Need to grow.
-    size_t const newcap = h->capacity * 2;
-    h                   = realloc(h, sizeof *h + newcap * elemsize);
-    if (h == NULL)
+    size_t const         newcap   = h->capacity * 2;
+    size_t const         old_size = sizeof *h + h->capacity * elemsize;
+    size_t const         new_size = sizeof *h + newcap * elemsize;
+    _OrcSdk_QueueHeader *new_h =
+      orc_sdk_realloc(h, old_size, new_size, ORC_SDK_MALLOC_DEFAULT_ALIGN);
+    if (new_h == NULL)
       return NULL;
+    h   = new_h;
     ptr = h + 1;
     if (h->back < h->front) {
       memmove((char *)ptr + h->capacity * elemsize, ptr, h->back * elemsize);
