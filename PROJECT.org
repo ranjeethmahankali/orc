@@ -222,6 +222,11 @@
   <2026-07-31 Fri 20:45> Trying to temporarily stop on this task, and finish a few other smaller
   tasks before continuing.
 
+  <2026-08-25 Tue 20:19> Last time I attempted this task, questions about type_ids, ownership, DAGs,
+  versioning, and serialization were all completely unanswered. I have since answered those
+  questions through all the tasks I finished during this time. Trying to attempt to make a UI app
+  once again.
+
 * DONE tkcjtv - Function metadata ABI improvements
   CLOSED: [2026-08-25 Tue 19:41]
   :PROPERTIES:
