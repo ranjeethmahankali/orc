@@ -241,6 +241,19 @@
    a general viewer, since it only displays a single output, with no need for concepts such as
    selection.
 
+*** Vague sketch using egui + eframe + wgpu
+    :PROPERTIES:
+    :CREATED:  2026-08-26 Wed 11:22
+    :END:
+
+    Rust app using eframe (windowing + event loop), egui (immediate-mode UI), and wgpu (GPU
+    rendering). The node canvas and all widgets are egui. Inspect nodes embed custom wgpu render
+    passes for 2D/3D viewports via egui's PaintCallback. Inspect views can be maximized as a
+    floating egui::Window panel, or on native, popped out into a real OS window. On WASM the same
+    code runs in a browser tab — the only difference is that pop-out becomes a floating panel
+    instead of an OS window. The whole stack compiles to both native and WASM without forking the
+    codebase.
+
 ** TODO Host program that runs as a service
    :PROPERTIES:
    :CREATED:  2026-08-26 Wed 10:52
