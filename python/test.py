@@ -1526,6 +1526,53 @@ def t_nested_workflow_returns_raw_input():
 
 
 # ============================================================
+# Partial-input (fewer args than n_inputs) behavior
+# ============================================================
+
+
+def t_immediate_fewer_args_padded_with_empty():
+    """Passing fewer args than n_inputs in immediate mode pads with empty handles.
+    The plugin (not Python) decides what to do with the empty input."""
+    lhs = orc.make_deck([1.0, 2.0])
+    # add expects 2 inputs but we supply 1; the second is padded with an empty handle.
+    # The macro-generated null-ptr or is-empty check fires, raising a plugin error.
+    try:
+        orc.add(lhs)
+        assert False, "Plugin should error on empty second input"
+    except (ValueError, RuntimeError):
+        pass  # expected: plugin rejected the empty handle
+
+
+def t_workflow_construct_with_fewer_args_than_expected():
+    """Building a workflow where an OrcFunc receives fewer args than it declares
+    should succeed. Unconnected input slots are fed empty handles at runtime."""
+    def partial(x):
+        # add declares n_inputs=2 but we only wire 1 argument.
+        return orc.add(x)
+    # Construction must not raise.
+    wf = orc.make_workflow(partial)
+    a = orc.make_deck([1.0])
+    # Running will fail because the second input is an empty handle.
+    try:
+        wf.run(a)
+        assert False, "Plugin should error on empty second input"
+    except (ValueError, RuntimeError):
+        pass  # expected
+
+
+def t_workflow_construct_with_more_args_than_expected_raises():
+    """Building a workflow where an OrcFunc receives more args than it declares
+    must raise ValueError during graph construction."""
+    def too_many(x, y, z):
+        return orc.add(x, y, z)  # add expects 2, not 3
+    try:
+        orc.make_workflow(too_many)
+        assert False, "Should have raised ValueError"
+    except ValueError:
+        pass
+
+
+# ============================================================
 # Runner
 # ============================================================
 

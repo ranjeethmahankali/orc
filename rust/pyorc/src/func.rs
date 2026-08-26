@@ -144,12 +144,11 @@ impl OrcFunc {
     ) -> PyResult<PyObject> {
         // Validate input count.
         let n_args = args.len();
-        if let Some(expected) = self.info.n_inputs
-            && n_args != expected
-        {
+        let n_ihs = self.info.n_inputs.unwrap_or(n_args);
+        if n_args > n_ihs {
             return Err(pyo3::exceptions::PyValueError::new_err(format!(
                 "The function '{}' expects {} arguments, got {}.",
-                self.info.name, expected, n_args
+                self.info.name, n_ihs, n_args
             )));
         }
         // Extract WorkflowNode arguments — each is either an Output(OH) or an Input(idx).
@@ -167,7 +166,9 @@ impl OrcFunc {
         let state = guard
             .last_mut()
             .ok_or_else(|| pyo3::exceptions::PyRuntimeError::new_err("No workflow being built"))?;
-        let mut ihs = vec![IH::default(); n_args];
+        // Node gets n_ihs input slots. We only wire the ones the caller provided;
+        // the remaining slots stay unconnected and Workflow::run feeds them empty handles.
+        let mut ihs = vec![IH::default(); n_ihs];
         let mut ohs = vec![OH::default(); n_out];
         {
             let WorkflowBuildState {
