@@ -158,20 +158,6 @@
   Maybe I can write a rasterizer for my curve types, and somehow get the optimizer to export images
   of the sample points in the design space, so that I can visualize them when viewing the DOE.
 
-* NEXT tke7ks - Rename plugins to be more generic
-  :PROPERTIES:
-  :CREATED:  2026-08-26 Wed 16:00
-  :END:
-  :LOGBOOK:
-  - State "NEXT"       from "TODO"       [2026-08-26 Wed 16:01]
-  :END:
-
-  math_plugin -> example_rust_plugin.
-  deck_ops_plugin -> example_c_plugin.
-
-  Because I want to add random blocks that make for interesting demos. Actual plugins will be built
-  outside this project. The ones inside the project are just examples.
-
 * NEXT tiwkbm - Create Toy Demo Apps
   :PROPERTIES:
   :CREATED:  2026-07-28 Tue 16:45
@@ -306,6 +292,24 @@
     code runs in a browser tab — the only difference is that pop-out becomes a floating panel
     instead of an OS window. The whole stack compiles to both native and WASM without forking the
     codebase.
+
+* DONE tke7ks - Rename plugins to be more generic
+  CLOSED: [2026-08-26 Wed 16:07]
+  :PROPERTIES:
+  :CREATED:  2026-08-26 Wed 16:00
+  :END:
+  :LOGBOOK:
+  - State "DONE"       from "NEXT"       [2026-08-26 Wed 16:07]
+  - State "NEXT"       from "TODO"       [2026-08-26 Wed 16:01]
+  :END:
+
+  math_plugin -> example_rust_plugin.
+  deck_ops_plugin -> example_c_plugin.
+
+  Because I want to add random blocks that make for interesting demos. Actual plugins will be built
+  outside this project. The ones inside the project are just examples.
+
+  <2026-08-26 Wed 16:07> Done.
 
 * DONE tke36o - Support and testing for optional inputs for plugin functions
   CLOSED: [2026-08-26 Wed 13:30]
