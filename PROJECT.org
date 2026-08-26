@@ -221,6 +221,36 @@
 
   <2026-08-26 Wed 13:29> Now the graph mode also matches the behavior. This task is done.
 
+*** CLOSED Vague LLM Plan
+    CLOSED: [2026-08-26 Wed 13:59]
+    :PROPERTIES:
+    :CREATED:  2026-08-25 Tue 20:07
+    :END:
+    :LOGBOOK:
+    - State "CLOSED"     from              [2026-08-26 Wed 13:59]
+    :END:
+
+    1. ~Combinations~: when iterating, treat empty handles as producing a single ~None~ item (depth
+       irrelevant). Propagate this into ~ReadCursor~ (yields ~None~ when the underlying handle is
+       empty) and ~DeckView~ (constructed as empty/absent).
+
+    2. ~orc_sdk/derive_macros~: add ~optional: bool~ to ~ParamInfo~. Recognise ~Option<&T>~ in
+       ~is_output_param~ / ~inner_type~ / ~infer_depth~ (restrict to depth-0 only; reject
+       ~Option<&[T]>~ etc.). Skip the non-empty assertion for optional inputs. Exclude optional inputs
+       from the type-dispatch scrutinee. In the generated ~dispatch_~ fn, pass all handles (including
+       empty ones) to ~Combinations~; the updated ~Combinations~ handles them transparently. Optional
+       call-args become ~Option<&T>~ drawn from the cursor's ~None~-or-~Some~ result.
+
+    3. Host side: relax the strict input-count checks so callers can omit trailing optional inputs
+       (pass fewer handles than ~n_inputs~; the remainder are treated as empty).
+
+    4. ~pyorc~: support sparse / named inputs — allow passing a ~dict~ mapping parameter name →
+       deck, leaving unmentioned optional inputs as empty handles.
+
+    <2026-08-26 Wed 13:59> Decided not to do this right now.
+
+  
+
 ** TODO Node Editor UI App
    :PROPERTIES:
    :CREATED:  2026-08-26 Wed 10:47
@@ -274,17 +304,6 @@
    Comparing this to the host programs I have now, each session will have it's own OrcHost instance,
    registry, allocators, etc.
 
-*** C program using mongoose and a simple handrolled thread pool
-    :PROPERTIES:
-    :CREATED:  2026-08-26 Wed 11:38
-    :END:
-
-    Drop mongoose.c + mongoose.h into the repo. HTTP parsing, routing, and cross-platform socket
-    handling are provided by mongoose. Thread pool is pthreads + a job queue (mutex + condvar).
-    Plugin calls run directly through the C SDK with no FFI boundary. Each session owns an OrcHost
-    instance, stored in a hashtable keyed by session id. Fully cross-platform (Windows, Linux,
-    macOS).
-
 *** Rust program using tiny_http and a simple handrolled thread pool
     :PROPERTIES:
     :CREATED:  2026-08-26 Wed 11:38
@@ -295,27 +314,24 @@
     SDK, run on the thread pool, results returned as HTTP responses. Each session owns an OrcHost
     instance, stored in an Arc<Mutex<HashMap>>. Cross-platform via std and tiny_http.
 
-** Vague LLM Plan
-   :PROPERTIES:
-   :CREATED:  2026-08-25 Tue 20:07
-   :END:
+*** CLOSED C program using mongoose and a simple handrolled thread pool
+    CLOSED: [2026-08-26 Wed 13:58]
+    :PROPERTIES:
+    :CREATED:  2026-08-26 Wed 11:38
+    :END:
+    :LOGBOOK:
+    - State "CLOSED"     from              [2026-08-26 Wed 13:58]
+    :END:
 
-   1. ~Combinations~: when iterating, treat empty handles as producing a single ~None~ item (depth
-      irrelevant). Propagate this into ~ReadCursor~ (yields ~None~ when the underlying handle is
-      empty) and ~DeckView~ (constructed as empty/absent).
+    Drop mongoose.c + mongoose.h into the repo. HTTP parsing, routing, and cross-platform socket
+    handling are provided by mongoose. Thread pool is pthreads + a job queue (mutex + condvar).
+    Plugin calls run directly through the C SDK with no FFI boundary. Each session owns an OrcHost
+    instance, stored in a hashtable keyed by session id. Fully cross-platform (Windows, Linux,
+    macOS).
 
-   2. ~orc_sdk/derive_macros~: add ~optional: bool~ to ~ParamInfo~. Recognise ~Option<&T>~ in
-      ~is_output_param~ / ~inner_type~ / ~infer_depth~ (restrict to depth-0 only; reject
-      ~Option<&[T]>~ etc.). Skip the non-empty assertion for optional inputs. Exclude optional inputs
-      from the type-dispatch scrutinee. In the generated ~dispatch_~ fn, pass all handles (including
-      empty ones) to ~Combinations~; the updated ~Combinations~ handles them transparently. Optional
-      call-args become ~Option<&T>~ drawn from the cursor's ~None~-or-~Some~ result.
-
-   3. Host side: relax the strict input-count checks so callers can omit trailing optional inputs
-      (pass fewer handles than ~n_inputs~; the remainder are treated as empty).
-
-   4. ~pyorc~: support sparse / named inputs — allow passing a ~dict~ mapping parameter name →
-      deck, leaving unmentioned optional inputs as empty handles.
+    <2026-08-26 Wed 13:58> Replicating the workflow, its property system etc. in C is a good idea,
+    but too much overhead for a quick demo. So I will scrap this idea and go ahead with the Rust
+    alternative.
 
 * DONE tkcjtv - Function metadata ABI improvements
   CLOSED: [2026-08-25 Tue 19:41]
