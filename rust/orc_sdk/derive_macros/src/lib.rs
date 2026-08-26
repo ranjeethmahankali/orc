@@ -880,52 +880,57 @@ fn generate_orc_fn(cfg: FnConfig<'_>) -> proc_macro2::TokenStream {
     let registry_expr = registry_expr.map(|r| quote! { #r }).unwrap_or_default();
     let type_dispatch = generate_type_dispatch(run_fn, types, params, &registry_expr);
     let all_generics: Vec<&syn::GenericParam> = run_fn.sig.generics.params.iter().collect();
-    let fn_type_id_expr = |p: &ParamInfo| -> proc_macro2::TokenStream {
-        if is_generic_type(&p.inner_type, &all_generics) {
+    let fn_arg_info_expr = |p: &ParamInfo| -> proc_macro2::TokenStream {
+        let type_id_expr = if is_generic_type(&p.inner_type, &all_generics) {
             quote! { orc_sdk::ORC_TYPE_ANY }
         } else {
             let ty = &p.inner_type;
             quote! { <#ty as orc_sdk::TOrcData>::TYPE_INFO.type_id }
+        };
+        let name_str = if let syn::Pat::Ident(pi) = p.param.pat.as_ref() {
+            pi.ident.to_string()
+        } else {
+            String::new()
+        };
+        let name_lit = proc_macro2::Literal::c_string(
+            &std::ffi::CString::new(name_str).expect("param name contains null byte"),
+        );
+        quote! {
+            orc_sdk::OrcArgumentInfo {
+                name: #name_lit.as_ptr(),
+                type_id: #type_id_expr,
+            }
         }
     };
-    let input_types_ptr = if n_inputs == 0
-        || params
-            .inputs
-            .iter()
-            .all(|p| is_generic_type(&p.inner_type, &all_generics))
-    {
+    let input_args_ptr = if n_inputs == 0 {
         quote! { ::std::ptr::null_mut() }
     } else {
-        let exprs: Vec<_> = params.inputs.iter().map(&fn_type_id_expr).collect();
+        let exprs: Vec<_> = params.inputs.iter().map(&fn_arg_info_expr).collect();
         quote! {
-            (&[#(#exprs),*] as *const [orc_sdk::OrcTypeId; #n_inputs])
-                .cast::<orc_sdk::OrcTypeId>()
+            (&[#(#exprs),*] as *const [orc_sdk::OrcArgumentInfo; #n_inputs])
+                .cast::<orc_sdk::OrcArgumentInfo>()
                 .cast_mut()
         }
     };
-    let output_types_ptr = if n_outputs == 0
-        || params
-            .outputs
-            .iter()
-            .all(|p| is_generic_type(&p.inner_type, &all_generics))
-    {
+    let output_args_ptr = if n_outputs == 0 {
         quote! { ::std::ptr::null_mut() }
     } else {
-        let exprs: Vec<_> = params.outputs.iter().map(&fn_type_id_expr).collect();
+        let exprs: Vec<_> = params.outputs.iter().map(&fn_arg_info_expr).collect();
         quote! {
-            (&[#(#exprs),*] as *const [orc_sdk::OrcTypeId; #n_outputs])
-                .cast::<orc_sdk::OrcTypeId>()
+            (&[#(#exprs),*] as *const [orc_sdk::OrcArgumentInfo; #n_outputs])
+                .cast::<orc_sdk::OrcArgumentInfo>()
                 .cast_mut()
         }
     };
+    let input_indices: Vec<usize> = (0..n_inputs).collect();
     quote! {
         pub const #info_name: orc_sdk::OrcFuncInfo = orc_sdk::OrcFuncInfo {
             name: #name_lit.as_ptr(),
             desc: #desc_lit.as_ptr(),
             n_inputs: #n_inputs as u64,
             n_outputs: #n_outputs as u64,
-            input_types: #input_types_ptr,
-            output_types: #output_types_ptr,
+            input_args: #input_args_ptr,
+            output_args: #output_args_ptr,
             func: Some(#name),
         };
         unsafe extern "C" fn #name(
@@ -963,6 +968,13 @@ fn generate_orc_fn(cfg: FnConfig<'_>) -> proc_macro2::TokenStream {
             );
             let inputs_ = unsafe { orc_sdk::slice_from_ptr(inputs_ptr_, #n_inputs) };
             let outputs_ = unsafe { orc_sdk::slice_from_ptr_mut(outputs_ptr_, #n_outputs) };
+            #(orc_sdk::orc_check_return!(
+                host_,
+                orc_sdk::ORC_ERROR_INVALID_ARGUMENTS,
+                !inputs_[#input_indices].is_empty(),
+                "Input {} is empty",
+                #input_indices
+            );)*
             #dims_call
             #dispatch_fn
             #type_dispatch
@@ -1408,23 +1420,47 @@ fn generate_orc_map_fn(cfg: FnConfig<'_>) -> proc_macro2::TokenStream {
     let all_generics: Vec<&syn::GenericParam> = run_fn.sig.generics.params.iter().collect();
     let in_ty = &params.inputs[0].inner_type;
     let out_ty = &params.outputs[0].inner_type;
-    let input_types_ptr = if is_generic_type(in_ty, &all_generics) {
-        quote! { ::std::ptr::null_mut() }
+    let in_name_str = if let syn::Pat::Ident(pi) = params.inputs[0].param.pat.as_ref() {
+        pi.ident.to_string()
     } else {
-        quote! {
-            (&[<#in_ty as orc_sdk::TOrcData>::TYPE_INFO.type_id] as *const [orc_sdk::OrcTypeId; 1])
-                .cast::<orc_sdk::OrcTypeId>()
-                .cast_mut()
-        }
+        String::new()
     };
-    let output_types_ptr = if is_generic_type(out_ty, &all_generics) {
-        quote! { ::std::ptr::null_mut() }
+    let out_name_str = if let syn::Pat::Ident(pi) = params.outputs[0].param.pat.as_ref() {
+        pi.ident.to_string()
     } else {
-        quote! {
-            (&[<#out_ty as orc_sdk::TOrcData>::TYPE_INFO.type_id] as *const [orc_sdk::OrcTypeId; 1])
-                .cast::<orc_sdk::OrcTypeId>()
-                .cast_mut()
-        }
+        String::new()
+    };
+    let in_name_lit = proc_macro2::Literal::c_string(
+        &std::ffi::CString::new(in_name_str).expect("param name contains null byte"),
+    );
+    let out_name_lit = proc_macro2::Literal::c_string(
+        &std::ffi::CString::new(out_name_str).expect("param name contains null byte"),
+    );
+    let in_type_id_expr = if is_generic_type(in_ty, &all_generics) {
+        quote! { orc_sdk::ORC_TYPE_ANY }
+    } else {
+        quote! { <#in_ty as orc_sdk::TOrcData>::TYPE_INFO.type_id }
+    };
+    let out_type_id_expr = if is_generic_type(out_ty, &all_generics) {
+        quote! { orc_sdk::ORC_TYPE_ANY }
+    } else {
+        quote! { <#out_ty as orc_sdk::TOrcData>::TYPE_INFO.type_id }
+    };
+    let input_args_ptr = quote! {
+        (&[orc_sdk::OrcArgumentInfo {
+            name: #in_name_lit.as_ptr(),
+            type_id: #in_type_id_expr,
+        }] as *const [orc_sdk::OrcArgumentInfo; 1])
+            .cast::<orc_sdk::OrcArgumentInfo>()
+            .cast_mut()
+    };
+    let output_args_ptr = quote! {
+        (&[orc_sdk::OrcArgumentInfo {
+            name: #out_name_lit.as_ptr(),
+            type_id: #out_type_id_expr,
+        }] as *const [orc_sdk::OrcArgumentInfo; 1])
+            .cast::<orc_sdk::OrcArgumentInfo>()
+            .cast_mut()
     };
     quote! {
         pub const #info_name: orc_sdk::OrcFuncInfo = orc_sdk::OrcFuncInfo {
@@ -1432,8 +1468,8 @@ fn generate_orc_map_fn(cfg: FnConfig<'_>) -> proc_macro2::TokenStream {
             desc: #desc_lit.as_ptr(),
             n_inputs: 1u64,
             n_outputs: 1u64,
-            input_types: #input_types_ptr,
-            output_types: #output_types_ptr,
+            input_args: #input_args_ptr,
+            output_args: #output_args_ptr,
             func: Some(#name),
         };
         unsafe extern "C" fn #name(
@@ -1467,6 +1503,12 @@ fn generate_orc_map_fn(cfg: FnConfig<'_>) -> proc_macro2::TokenStream {
             );
             let inputs_ = unsafe { orc_sdk::slice_from_ptr(inputs_ptr_, 1) };
             let outputs_ = unsafe { orc_sdk::slice_from_ptr_mut(outputs_ptr_, 1) };
+            orc_sdk::orc_check_return!(
+                host_,
+                orc_sdk::ORC_ERROR_INVALID_ARGUMENTS,
+                !inputs_[0].is_empty(),
+                "Input 0 is empty"
+            );
             #dims_call
             #dispatch_fn
             #type_dispatch

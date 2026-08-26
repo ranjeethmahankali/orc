@@ -243,7 +243,7 @@ fn t_multiple_lets() {
         (let a (const [2.0f64, 3.0]))
         (let b (const [5.0f64, 10.0]))
         (let sum (add a b))
-        (mul sum sum)
+        (multiply sum sum)
     })
     .unwrap();
     let view = DeckView::<f64>::from_handle(&out).unwrap();
@@ -255,7 +255,7 @@ fn t_multiple_lets() {
 fn t_nested_call() {
     // (a * b) + c = (10, 30) + (1, 1) = (11, 31)
     let out = orc_inline_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, {
-        (add (mul (const [2.0f64, 3.0]) (const [5.0f64, 10.0])) (const [1.0f64, 1.0]))
+        (add (multiply (const [2.0f64, 3.0]) (const [5.0f64, 10.0])) (const [1.0f64, 1.0]))
     })
     .unwrap();
     let view = DeckView::<f64>::from_handle(&out).unwrap();
@@ -267,7 +267,7 @@ fn t_nested_call() {
 fn t_deep_nesting() {
     // (a + b) * c = (4, 6) * (10, 10) = (40, 60)
     let out = orc_inline_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, {
-        (mul (add (const [1.0f64, 2.0]) (const [3.0f64, 4.0])) (const [10.0f64, 10.0]))
+        (multiply (add (const [1.0f64, 2.0]) (const [3.0f64, 4.0])) (const [10.0f64, 10.0]))
     })
     .unwrap();
     let view = DeckView::<f64>::from_handle(&out).unwrap();
@@ -279,8 +279,8 @@ fn t_deep_nesting() {
 fn t_let_with_nested() {
     // let prod = a * b = 6; prod + c = 16; result - prod = 16 - 6 = 10
     let out = orc_inline_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, {
-        (let prod (mul (const 2.0f64) (const 3.0f64)))
-        (sub (add prod (const 10.0f64)) prod)
+        (let prod (multiply (const 2.0f64) (const 3.0f64)))
+        (subtract (add prod (const 10.0f64)) prod)
     })
     .unwrap();
     let view = DeckView::<f64>::from_handle(&out).unwrap();
@@ -291,7 +291,7 @@ fn t_let_with_nested() {
 #[test]
 fn t_const_inputs() {
     let out = orc_inline_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, {
-        (sub (const 100.0f64) (const 1.0f64))
+        (subtract (const 100.0f64) (const 1.0f64))
     })
     .unwrap();
     let view = DeckView::<f64>::from_handle(&out).unwrap();
@@ -408,7 +408,7 @@ fn t_return_multiple() {
         (let a (const [1.0f64, 2.0]))
         (let b (const [10.0f64, 20.0]))
         (let s (add a b))
-        (let p (mul a b))
+        (let p (multiply a b))
         (return s p)
     })
     .unwrap();
@@ -440,7 +440,7 @@ fn t_return_single() {
 fn t_const_reused() {
     let out = orc_inline_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, {
         (let x (const [3.0f64, 4.0]))
-        (mul x x)
+        (multiply x x)
     })
     .unwrap();
     let view = DeckView::<f64>::from_handle(&out).unwrap();
@@ -504,7 +504,7 @@ fn t_dag_multiple_lets() {
         (let a (const [2.0f64, 3.0]))
         (let b (const [5.0f64, 10.0]))
         (let sum (add a b))
-        (mul sum sum)
+        (multiply sum sum)
     })
     .unwrap();
     assert_dag_output_f64(run_dag_single(&wf), &[49.0, 169.0], 1);
@@ -515,7 +515,7 @@ fn t_dag_multiple_lets() {
 fn t_dag_nested_call() {
     let mut wf = Workflow::default();
     let _oh = orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
-        (add (mul (const [2.0f64, 3.0]) (const [5.0f64, 10.0])) (const [1.0f64, 1.0]))
+        (add (multiply (const [2.0f64, 3.0]) (const [5.0f64, 10.0])) (const [1.0f64, 1.0]))
     })
     .unwrap();
     assert_dag_output_f64(run_dag_single(&wf), &[11.0, 31.0], 1);
@@ -526,7 +526,7 @@ fn t_dag_nested_call() {
 fn t_dag_deep_nesting() {
     let mut wf = Workflow::default();
     let _oh = orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
-        (mul (add (const [1.0f64, 2.0]) (const [3.0f64, 4.0])) (const [10.0f64, 10.0]))
+        (multiply (add (const [1.0f64, 2.0]) (const [3.0f64, 4.0])) (const [10.0f64, 10.0]))
     })
     .unwrap();
     assert_dag_output_f64(run_dag_single(&wf), &[40.0, 60.0], 1);
@@ -537,8 +537,8 @@ fn t_dag_deep_nesting() {
 fn t_dag_let_with_nested() {
     let mut wf = Workflow::default();
     let _oh = orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
-        (let prod (mul (const 2.0f64) (const 3.0f64)))
-        (sub (add prod (const 10.0f64)) prod)
+        (let prod (multiply (const 2.0f64) (const 3.0f64)))
+        (subtract (add prod (const 10.0f64)) prod)
     })
     .unwrap();
     assert_dag_output_f64(run_dag_single(&wf), &[10.0], 0);
@@ -549,7 +549,7 @@ fn t_dag_let_with_nested() {
 fn t_dag_const_inputs() {
     let mut wf = Workflow::default();
     let _oh = orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
-        (sub (const 100.0f64) (const 1.0f64))
+        (subtract (const 100.0f64) (const 1.0f64))
     })
     .unwrap();
     assert_dag_output_f64(run_dag_single(&wf), &[99.0], 0);
@@ -638,7 +638,7 @@ fn t_dag_return_multiple() {
         (let a (const [1.0f64, 2.0]))
         (let b (const [10.0f64, 20.0]))
         (let s (add a b))
-        (let p (mul a b))
+        (let p (multiply a b))
         (return s p)
     })
     .unwrap();
@@ -677,7 +677,7 @@ fn t_dag_const_reused() {
     let mut wf = Workflow::default();
     let _oh = orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
         (let x (const [3.0f64, 4.0]))
-        (mul x x)
+        (multiply x x)
     })
     .unwrap();
     assert_dag_output_f64(run_dag_single(&wf), &[9.0, 16.0], 1);
@@ -744,7 +744,7 @@ fn t_dag_diamond_no_cycle() {
     let _oh = orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
         (let x (const [2.0f64, 3.0]))
         (let a (add x x))
-        (let b (mul x x))
+        (let b (multiply x x))
         (add a b)
     })
     .unwrap();
@@ -792,7 +792,7 @@ fn t_dag_input_rerun() {
     let mut wf = Workflow::default();
     // 'x used twice — both inputs of mul receive the same workflow input (x * x).
     orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
-        (mul 'x 'x)
+        (multiply 'x 'x)
     })
     .unwrap();
     // Two IHs both named "x" at index 0 (deduped). One unnamed output.
@@ -841,7 +841,7 @@ fn t_dag_gc_outputs_preserved() {
         (let a (const [1.0f64, 2.0]))
         (let b (const [10.0f64, 20.0]))
         (let s (add a b))
-        (let p (mul a b))
+        (let p (multiply a b))
         (return s p)
     })
     .unwrap();
@@ -903,7 +903,7 @@ fn t_dag_gc_inputs_preserved() {
 fn t_dag_gc_dedup_inputs_preserved() {
     let mut wf = Workflow::default();
     orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
-        (mul 'x 'x)
+        (multiply 'x 'x)
     })
     .unwrap();
     // Verify before GC.
@@ -959,8 +959,8 @@ fn t_dag_nested_fn_multi_stmt() {
     let mut wf = Workflow::default();
     orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
         (fn sum_of_squares
-            (let a (mul 'x 'x))
-            (let b (mul 'y 'y))
+            (let a (multiply 'x 'x))
+            (let b (multiply 'y 'y))
             (add a b))
         (sum_of_squares (const [3.0f64]) (const [4.0f64]))
     })
@@ -992,7 +992,7 @@ fn t_dag_nested_fn_multi_output() {
     orc_dag!(*PLUGIN_SET, &HANDLE_COUNTER, &*REGISTRY, &mut wf, {
         (fn sum_and_product
             (let s (add 'a 'b))
-            (let p (mul 'a 'b))
+            (let p (multiply 'a 'b))
             (return s p))
         // Now call the nested workflow.
         (let (s p) (sum_and_product (const [3.0f64]) (const [4.0f64])))

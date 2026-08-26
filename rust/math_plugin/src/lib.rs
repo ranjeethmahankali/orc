@@ -166,9 +166,9 @@ mod complex;
 
 const ORC_EXPORTED_FUNCTIONS: &[OrcFuncInfo] = &[
     orc_fn_info!(basic::add),
-    orc_fn_info!(basic::mul),
-    orc_fn_info!(basic::sub),
-    orc_fn_info!(basic::div),
+    orc_fn_info!(basic::multiply),
+    orc_fn_info!(basic::subtract),
+    orc_fn_info!(basic::divide),
     orc_fn_info!(basic::repeat_list),
     orc_fn_info!(basic::collatz_parallel_experiment),
     // Complex numbers.

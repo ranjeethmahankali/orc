@@ -1156,3 +1156,854 @@ Archived entries from file /home/rnjth94/dev/orc/PROJECT.org
 
   <2026-08-19 Wed 19:37> Quite straight forward refactor. All the tests are passing. Getting this
   merged.
+
+* DONE tk1ji0 - ABI - Serializing OrcHandle
+  CLOSED: [2026-08-21 Fri 21:16]
+  :PROPERTIES:
+  :CREATED:  2026-08-19 Wed 18:38
+  :ARCHIVE_TIME: 2026-08-25 Tue 18:59
+  :ARCHIVE_FILE: d:/dev/orc/PROJECT.org
+  :ARCHIVE_CATEGORY: PROJECT
+  :ARCHIVE_TODO: DONE
+  :END:
+  :LOGBOOK:
+  - State "DONE"       from "NEXT"       [2026-08-21 Fri 21:16]
+  - State "NEXT"       from "TODO"       [2026-08-19 Wed 19:52]
+  :END:
+
+  For types that are owned by the plugin, the plugin alone can serialize and deserialize. The ABI
+  needs to be extended to add support for this.
+
+  <2026-08-19 Wed 20:02> Have the basic ABI in place. The design feels solid.
+
+  <2026-08-20 Thu 17:00> Started implementing the serialization. Experimented with some weird plain
+  text file formats for storing the OrcHandle's header (all the structural and metadata) in a format
+  that all hosts and plugins can read and write. But then realized I don't need yet another format
+  that everyone agrees on. I already have the ABI, so I can just write out the bytes compatible with
+  the ABI, for the structural information. For the actual data:
+  - Primitive types are just raw byte dumps. This is safe since the entire run time data sharing
+    across hosts and plugins already relies on this being stable, and it is stable.
+  - Custom types are deferred to the plugin that owns them, they are serialized to the end of the
+    binary, after all the metadata in the header.
+
+  <2026-08-21 Fri 20:17> Finally got everything mostly working. The handles are now being serialized
+  and deserialized per their ABI. I have test coverage for most parts on their own, just need to add
+  some more test coverage for the full serialization machiner from the host side. Need to do it from
+  both the Rust and Python hosts.
+
+  - [X] Add tests in the Rust host for the full roundtrip serialization of all types.
+  - [X] Bring the Python host up to speed with all the serialization stuff, when it loads the
+    plugins etc. and add tests for serialization.
+
+  <2026-08-21 Fri 21:16> Python is all caught up with serialization, and everything is tested. Ready
+  to merge.
+
+** Ideas for host side context handling
+   :PROPERTIES:
+   :CREATED:  2026-08-19 Wed 20:05
+   :END:
+
+   The host needs to maintain per-call state (e.g. serialize buffers, progress tracking) that
+   callbacks can access using the =ctx= token. Use a global concurrent registry keyed by =ctx=, same
+   pattern as =DeckRegistry= (Rust) and the C SDK's handle registry. Each callback looks up =ctx= in
+   the map to find its associated state.
+
+   Thread-local storage is tempting but breaks under re-entrancy (=create_deck_from_proxy=
+   dispatches host -> plugin A -> host -> plugin B) and plugin-spawned worker threads calling
+   callbacks from threads the host didn't set up. A global map keyed by =ctx= handles both cases.
+
+   Lock overhead per callback is negligible (~25ns uncontended). Plugins should batch writes into
+   larger chunks anyway to minimize FFI crossings.
+
+   This should also be the general pattern for how the host handles other callbacks such as progress
+   reporting, etc.
+
+* DONE tk5iyg - Serializing workflows
+  CLOSED: [2026-08-22 Sat 16:58]
+  :PROPERTIES:
+  :CREATED:  2026-08-19 Wed 18:54
+  :ARCHIVE_TIME: 2026-08-25 Tue 18:59
+  :ARCHIVE_FILE: d:/dev/orc/PROJECT.org
+  :ARCHIVE_CATEGORY: PROJECT
+  :ARCHIVE_TODO: DONE
+  :END:
+  :LOGBOOK:
+  - State "DONE"       from "NEXT"       [2026-08-22 Sat 16:58]
+  - State "NEXT"       from "TODO"       [2026-08-21 Fri 23:29]
+  :END:
+
+  [[*Serializing OrcHandle][Serializing OrcHandle]] needs to be solved before this can be properly executed. I workshopped a
+  vague, obviously untested plan with the LLM's help. Just reprsents a vague direction.
+
+  <2026-08-22 Sat 13:21> Scrapping the plan to save the DAG as plain text. Supporting mutliple
+  scripting languages already scratches the plain text itch, and I can revisit this decision later
+  if need be. For now, I am going forward with message pack. It is easy to implement version
+  support, is available in almost every language.
+
+  <2026-08-22 Sat 14:31> Need to figure out how storing constants will affect the design of Python
+  interop of the DAG workflows. Have some ideas, but not full clarity yet.
+
+  <2026-08-22 Sat 16:58> Used message pack. Got everything working. Tested the rountrip
+  serialization of workflows.
+
+** CLOSED Vague Plan
+   CLOSED: [2026-08-22 Sat 13:21]
+   :PROPERTIES:
+   :CREATED:  2026-08-19 Wed 18:55
+   :END:
+   :LOGBOOK:
+   - State "CLOSED"     from              [2026-08-22 Sat 13:21]
+   :END:
+
+*** Overview
+
+    Plain text, SSA-style pseudocode format. No external dependencies. The file is human readable and
+    editable. A loaded ~PluginSet~ is required at parse time to resolve function names to
+    ~FuncInfo~. Fields like ~FuncInfo.desc~, ~FuncInfo.func~, ~FuncInfo.n_inputs~, ~FuncInfo.n_outputs~
+    are all recovered from the ~PluginSet~ — they are not serialized.
+
+*** Reserved Words
+
+    All keywords are prefixed with a dot: ~.workflow~, ~.const~, ~.return~. Property kind tags are
+    also dot-prefixed: ~.input~, ~.output~, ~.node~, ~.link~. User-supplied names (function names,
+    labels, workflow names, parameter names) must not start with a period. This avoids any collision
+    between keywords and identifiers.
+
+*** Workflow Declaration
+
+    #+begin_example
+    .workflow main(x, y):
+      ...
+    #+end_example
+
+    - ~.workflow~ keyword, followed by the workflow name, followed by input parameter names in
+      parentheses, followed by a colon.
+    - Input parameter order in the signature is preserved across round trips.
+    - Empty parentheses ~()~ for workflows with no inputs.
+    - Everything inside a workflow is indented relative to the ~.workflow~ line.
+
+*** Node Lines
+
+    Nodes are listed one per line inside a workflow. Node indices are implicit from position (first
+    line is node 0, second is node 1, etc.), like OBJ vertex indices.
+
+    Output indices are global across all nodes within a workflow, assigned implicitly in declaration
+    order.
+
+**** Function nodes
+
+    #+begin_example
+    2 = add $x 0
+    3 4 = sum_prod 1 2
+    #+end_example
+
+    - LHS lists the global output indices produced by this node.
+    - RHS is the function name followed by arguments.
+    - Arguments are either global output indices (bare integers) or workflow input references
+      (~$name~).
+    - ~_~ means an unconnected input.
+
+**** Constant nodes
+
+    #+begin_example
+    0 = .const "offset"
+    1 = .const
+    #+end_example
+
+    - ~.const~ keyword followed by an optional name string.
+    - The optional name string corresponds to the ~name~ field of ~NodeInfo::Constant~. It is
+      only written when non-empty.
+    - Constant data is stored in a sibling binary file using MessagePack format. For a workflow
+      file named ~foo.orc~, the constants file is ~foo.const~.
+    - The ~.const~ file contains a msgpack array. Each entry is an arbitrary-length byte array
+      containing serialized constant data. The plugins are responsible for deserializing each
+      byte array.
+    - Constants are stored in the array in the same order they appear in the workflow file.
+
+**** Nested workflow calls
+
+    #+begin_example
+    5 = double 2
+    #+end_example
+
+    Syntactically identical to function calls. The parser disambiguates by checking the
+    ~PluginSet~ first; if no function matches, it checks the workflow's nested workflows. This
+    mirrors the runtime behavior and the ~orc_dag!~ macro's fallback logic.
+
+**** Nodes with zero outputs
+
+    #+begin_example
+    fire_missiles 3
+    #+end_example
+
+    No LHS, no ~=~ sign. Just the function name and its arguments.
+
+*** Return Statement
+
+    #+begin_example
+    .return 4 "result"
+    .return 3 "sum" 4 "product"
+    #+end_example
+
+    - Lists the workflow's output(s) by global output index, optionally followed by a name string.
+    - Names correspond to the ~String~ in ~workflow_outputs: Vec<(OH, String)>~.
+    - Names are only written when non-empty.
+    - Omit ~.return~ entirely for workflows with no outputs.
+
+*** Properties
+
+    Properties are nested inside each workflow, after the ~.return~ line. Each property block is a
+    contiguous section. All values of one property are written together — they are not scattered as
+    inline annotations on node lines.
+
+    #+begin_example
+    input_labels .input
+      2:0 "lhs"
+      2:1 "rhs"
+
+    output_labels .output
+      0 "sum"
+
+    comments .node
+      2 "add the constants"
+    #+end_example
+
+    - The property name comes first, then the property kind tag (~.input~, ~.output~, ~.node~,
+      ~.link~).
+    - Input properties are keyed by ~node_index:input_index~ (per-node input index, zero-based).
+    - Output properties are keyed by global output index.
+    - Node properties are keyed by node index.
+    - Link properties are keyed by ~output_index:input_node:input_index~.
+    - Only non-default values are written. Default values (empty strings) are omitted.
+
+*** String Escaping
+
+    - Names of nested workflows, functions, labels of nodes, constants etc. cannot contain double or
+      single quotes. They also cannot start with a period.
+    - Bare strings (identifiers like function names, workflow names, parameter names) are literal.
+      They must not contain whitespace or special characters, and must not start with a period.
+    - Quoted strings (labels, comments, names) use backslash escaping: ~\"~ for a literal quote,
+      ~\\~ for a literal backslash, ~\n~ for newline.
+
+*** Nested Workflows
+
+    Nested workflows are indented inside their parent workflow, after the ~.return~ statement and
+    properties, separated by an empty line for legibility.
+
+    #+begin_example
+    .workflow main(x):
+      0 = .const [3.0f64]
+      1 = add $x 0
+      .return 1
+
+      comments .node
+        1 "offset by input"
+
+      .workflow double(x):
+        0 = mul $x $x
+        .return 0
+
+      .workflow triple(x):
+        0 = mul $x $x
+        1 = mul 0 $x
+        .return 1
+
+        .workflow helper(a):
+          0 = add $a $a
+          .return 0
+    #+end_example
+
+    - Nesting is conveyed by indentation level, mirroring the ~nested_workflows: HashMap<String,
+      Workflow>~ hierarchy in the Rust struct.
+    - Two workflows at different hierarchical paths can share the same name without conflict.
+    - A workflow must be defined before it is called (definition appears before the call site in
+      the node list, or as a nested workflow of an ancestor).
+
+*** What Is NOT Serialized
+
+    - ~FuncInfo.func~ — function pointer, resolved from ~PluginSet~ at load time.
+    - ~FuncInfo.desc~ — recovered from ~PluginSet~.
+    - ~FuncInfo.n_inputs~ / ~FuncInfo.n_outputs~ — recovered from ~PluginSet~.
+    - ~OrcHandle.handle~ — runtime handle ID, reassigned by host at load time.
+    - ~OrcHandle.free_fn~ — destructor, set by the allocating plugin at runtime.
+    - ~OrcHandle.dims~ — units metadata. TODO: decide if this should be serialized.
+
+
+* DONE tjvt98 - Constructing a DAG from Python
+  CLOSED: [2026-08-25 Tue 16:51]
+  :PROPERTIES:
+  :CREATED:  2026-08-16 Sun 14:40
+  :ARCHIVE_TIME: 2026-08-25 Tue 18:59
+  :ARCHIVE_FILE: d:/dev/orc/PROJECT.org
+  :ARCHIVE_CATEGORY: PROJECT
+  :ARCHIVE_TODO: DONE
+  :END:
+  :LOGBOOK:
+  - State "DONE"       from "NEXT"       [2026-08-25 Tue 16:51]
+  - State "NEXT"       from "TODO"       [2026-08-23 Sun 14:21]
+  :END:
+
+  Ideally the same scripts used to run the plugin functions, can be repurposed by running them in a
+  special context, that constructs the DAG instead of immediately doing the work.
+
+  This is potentially a way of overcoming the overhead of calling functions repeatedly with ctypes
+  over FFI. Instead the Python user may choose to construct the DAG and run it many times without
+  the Python's ctypes function call overhead.
+
+  <2026-08-23 Sun 14:26> After some more thought, I think it might be better to consolidate all the
+  Python integration into a single crate built with pyo3.
+
+  <2026-08-23 Sun 23:34> The generated code works, but the quality is horrendous. Working through it
+  slowly, learning the ins and outs of pyo3, and cleaning it all up.
+
+  - [X] Implement Default for PlugiSet, that creates an empty set, and add function to append to
+    it. This is useful when loading plugins in multiple passes, for whatever reason.
+
+  <2026-08-24 Mon 00:39> Slowly reviewed and refactored lib.rs, it is now decent. Need to go through
+  the remaining files in the same way.
+
+  - [X] Fix all the gratuitous .unwraps and .expects.
+  - [X] Consolidate the mutexes being locked to build a workflow. This will make deadlocks and
+    mistakes less likely.
+
+  <2026-08-25 Tue 16:51> Ready to merge.
+
+** Plan using PyO3
+   :PROPERTIES:
+   :CREATED:  2026-08-23 Sun 14:29
+   :END:
+
+   Add a crate that compiles it's binary using PyO3, and acts as a host program written in
+   Rust. Loading the librariers, generating a .pyi on startup when required, and running the user
+   scripts by calling functions inside loaded plugins, are all done by this Rust host, via the
+   Python bindings.
+
+   The function calls return thin wrappers that contain an OrcHandle, and are reference counted by
+   the Python interpreter. When these are dropped, the underlying deck is freed within the plugin
+   via the free_fn callback.
+
+   This library should also expose a method like ~make_graph~, that takes a Python function
+   (lambda). And run it with a different set of function bindings, that construct a workflow DAG
+   instead of running the plugin functions directly, and return a handle to the Workflow graph back
+   to the Python script. Any foreign Python code within that function should run as usual. The
+   'Rebinding' only affects the functions exposed by this crate. The python script can then choose
+   to run said graph with any inputs. This can be potentially faster for repeated incremental runs,
+   if only few inputs are changed. The DAG can skip rerunning the functions whose inputs have not
+   changed. So, this can be faster than just running the Python bindings. The Python script can also
+   choose to serialize the workflow to messsage pack via another binding (uses orc_sdk's
+   serialization under the hood), to open and run the same workflow in other tools. Similarly, the
+   python script can deserialize a graph, that was exported in another tool, and run it with
+   inputs. Basically, the plugin functions can be run either in 'immediate mode', or a deferred DAG
+   evaluation mode.
+
+   This new design should:
+   - Allow the plugin functions to create threads freely, and report progress, messages, and other
+     things from these threads. GIL should not cause complications.
+   - I want to maintain the zero copy numpy integration. Large arrays of numbers owned by my
+     plugins, should be available to numpy, without copying, to be interpreted as arrays and
+     matrices. The current design has this capability, and that should be maintained.
+   - Ownership story of OrcHandle instances should be clear.
+   - Performance and memory efficienct are paramount.
+   - The Python module should feel idiomaticc for Python users, and should prioritize convenience.
+   - The design should conform to Python's stable ABI, with as lower a floor as possible, and be
+     compatible with all versions of Python. Recompiling a binary for every version of Python is
+     just silly.
+
+*** Implementation Plan
+
+    This section is a detailed, self-contained plan for implementing the ~pyorc~ crate. It is
+    intended for an agent or developer who may not have participated in the design discussion. All
+    design decisions and constraints are captured here.
+
+**** Crate Setup
+
+     - Crate name: ~pyorc~. Location: ~rust/pyorc/~.
+     - Python module name: ~orc~. Users write ~import orc~.
+     - Build tool: ~maturin~. Add a ~pyproject.toml~ alongside the crate.
+     - Dependencies: ~orc_sdk~ (path dep), ~pyo3~ with feature ~abi3-py37~ for Python stable ABI
+       (Python 3.7+ floor). No ~rust-numpy~ dependency.
+     - The crate produces a shared library (~.so~ / ~.dylib~ / ~.pyd~) that Python imports directly.
+     - This crate replaces the existing ~python/orc.py~ + ~python/bindings.py~ ctypes approach. Once
+       this crate is working and tested, the ctypes files can be removed.
+
+**** Architecture — Global Statics
+
+     Follow the same pattern as ~rust/kbb_cli_host/src/main.rs~. The PyO3 crate is a Rust host
+     program that happens to be loaded by Python. It uses the same global statics:
+
+     - ~static PLUGIN_SET: OnceLock<PluginSet>~ — initialized on ~load_plugins()~ call from Python.
+       Using ~OnceLock~ (not ~LazyLock~) because the plugin directory is provided at runtime by the
+       user. Must error if called twice.
+     - ~static REGISTRY: LazyLock<DeckRegistry>~ — for host-allocated decks (constants, primitives
+       created by ~make_deck~).
+     - ~static HANDLE_COUNTER: AtomicU64~ — monotonically increasing handle IDs.
+     - ~static SERIAL_CONTEXT_ARENA: LazyLock<ContextArena<Vec<u8>>>~ — scratch space for
+       serialization callbacks.
+
+     Host callbacks (~report_message~, ~serial_write~, ~host_create_proxy_deck~) should be
+     implemented identically to ~kbb_cli_host~. Messages are printed directly from Rust using Rust
+     printing facilities. No routing to Python loggers. The ~HOST~ const is constructed the same way
+     as ~kbb_cli_host::HOST~.
+
+**** Python-Facing Types
+
+***** ~Handle~ (#[pyclass(name = "Handle")])
+
+      Wraps an owned ~OrcHandle~. When Python's reference count drops to zero, the destructor calls
+      ~free_fn~ on the inner handle (same semantics as the ~_handle_del~ function in the current
+      ~python/orc.py~).
+
+      Read-only properties exposed to Python:
+      - ~type_id: int~
+      - ~n_items: int~
+      - ~item_size: int~
+      - ~dims: list[int]~ (length 7)
+
+      Zero-copy numpy integration via ~__array_interface__~:
+      - Implement a ~__array_interface__~ property (Python ~@property~, returns a ~dict~).
+      - The dict contains: ~"shape"~ (tuple), ~"typestr"~ (numpy dtype string like ~"<f8"~),
+        ~"data"~ (tuple of ~(pointer_as_int, False)~), ~"version"~ (3).
+      - Map ~type_id~ to numpy typestr: ~ORC_TYPE_U8 -> "|u1"~, ~ORC_TYPE_F64 -> "<f8"~, etc.
+        Use little-endian (~<~) for multi-byte types, ~|~ for single-byte types.
+      - When numpy calls ~np.asarray(handle)~, it reads ~__array_interface__~ and creates a
+        zero-copy view. The numpy array holds a reference to the ~Handle~ Python object, preventing
+        the handle from being freed while the array is alive.
+      - This approach requires no C-level numpy API, works with stable ABI, and does not require
+        numpy to be installed unless the user actually calls ~np.asarray()~.
+
+      Reference for ~__array_interface__~:
+      https://numpy.org/doc/stable/reference/arrays.interface.html
+
+***** ~GraphNode~ (#[pyclass])
+
+      Thin wrapper around ~OH~ (output handle index in the workflow being built during
+      ~make_graph~). This is what deferred-mode function calls return instead of ~Handle~.
+
+      - Not constructable from Python. Only created internally by deferred-mode function dispatch.
+      - Can be passed as input to other deferred-mode function calls (builds edges in the DAG).
+      - For multi-output functions, the deferred call returns a Python ~list~ of ~GraphNode~, which
+        the user can unpack: ~r, i = orc.complex_get_parts(c)~.
+      - If a user attempts to use a ~GraphNode~ as a real value (comparison, arithmetic, etc.),
+        Python will raise a ~TypeError~ naturally since ~GraphNode~ doesn't implement those
+        protocols. This is the intended behavior — the user's function cannot be turned into a graph
+        if it inspects intermediate values.
+
+***** ~Graph~ (#[pyclass])
+
+      Wraps a ~Workflow~ (from ~orc_sdk::dag~). Produced by ~make_graph~.
+
+      Methods:
+      - ~run(*args, **kwargs) -> Handle | list[Handle]~: Execute the workflow.
+        - Positional args are matched to the workflow inputs by position.
+        - Keyword args are matched by name (the parameter names from the original function passed to
+          ~make_graph~). Named args are sorted into positional order before calling Rust's
+          ~Workflow::run~.
+        - Mixed positional and keyword args are supported (standard Python calling convention).
+        - All args must be ~Handle~ instances.
+        - Returns a single ~Handle~ if the workflow has one output, or a ~list[Handle]~ if multiple.
+        - The GIL should be released during the Rust-side ~Workflow::run~ call.
+      - The ~Graph~ stores the parameter names (from ~inspect~) so that ~run~ can resolve keyword
+        arguments.
+
+**** Module-Level Functions
+
+     These are registered as ~#[pyfunction]~ items in the ~#[pymodule]~:
+
+     - ~load_plugins(search_dir: str)~: Loads all plugin shared libraries from the given directory.
+       Calls ~orc_sdk::load_plugins(dir, &HOST)~ to get a ~PluginSet~. Stores it in the global
+       ~PLUGIN_SET~. For each function in each loaded plugin, creates a callable Python object and
+       sets it as an attribute on the ~orc~ module (so that ~orc.add~, ~orc.mul~, etc. become
+       available). Also triggers ~.pyi~ stub regeneration if needed (see stub generation section).
+       Errors if called more than once.
+
+     - ~make_deck(data, type_id=None) -> Handle~: Creates an ~OrcHandle~ from Python data (numbers,
+       lists, nested lists). Same semantics as ~python/orc.py::make_deck~. Detects the narrowest
+       type from the leaf values if ~type_id~ is not specified. Supports nested lists (creates marks
+       and strides). The resulting handle is allocated in the host's ~REGISTRY~.
+
+     - ~read_deck(handle: Handle) -> object~: Reads values out of a ~Handle~, reconstructing nested
+       structure from marks. Returns Python lists/numbers. Same semantics as
+       ~python/orc.py::read_deck~.
+
+     - ~make_graph(fn: Callable) -> Graph~: Builds a workflow DAG by running ~fn~ in deferred mode.
+       See the dedicated section below for full details.
+
+     - ~run_graph(graph: Graph, *args, **kwargs) -> Handle | list[Handle]~: Convenience wrapper,
+       equivalent to ~graph.run(*args, **kwargs)~. Allows interleaving DAG execution with immediate
+       mode calls without method syntax.
+
+     - ~serialize_workflow(graph: Graph, path: str)~: Serializes the workflow to a msgpack file using
+       ~orc_sdk~'s serialization (the ~io.rs~ code). Uses ~BufWriter<File>~ as the ~RmpWrite~
+       target.
+
+     - ~deserialize_workflow(path: str) -> Graph~: Deserializes a workflow from a msgpack file.
+       Requires ~PLUGIN_SET~ to be initialized (for ~FuncInfo~ recovery). Uses ~BufReader<File>~ as
+       the ~RmpRead~ source.
+
+**** Plugin Function Callables
+
+     When ~load_plugins~ iterates over the functions in the ~PluginSet~, it creates a callable
+     Python object for each one and sets it as a module attribute. This callable object (implemented
+     as a ~#[pyclass]~ with a ~__call__~ method) stores:
+     - The function name.
+     - The ~FuncInfo~ (or a reference/index into the ~PluginSet~).
+     - ~n_inputs~ and ~n_outputs~ (with ~None~ for variadic, matching ~ORC_ARGS_VARIADIC~).
+
+     The ~__call__~ method checks a global ~AtomicBool IN_GRAPH_MODE~ flag:
+
+     *Immediate mode* (~IN_GRAPH_MODE == false~):
+     - Validates input count against ~n_inputs~ (if not variadic).
+     - Releases the GIL via ~Python::allow_threads~.
+     - Allocates output ~OrcHandle~s with fresh handle IDs from ~HANDLE_COUNTER~.
+     - Calls the function pointer directly (same as ~OrcFuncWrapper.__call__~ in ~python/orc.py~).
+     - Wraps each output ~OrcHandle~ in a Python ~Handle~ object.
+     - Returns a single ~Handle~ if ~n_outputs == 1~, or a ~list[Handle]~ otherwise.
+
+     *Deferred mode* (~IN_GRAPH_MODE == true~):
+     - All inputs must be ~GraphNode~ instances (not ~Handle~).
+     - Adds a function node to the workflow being built (stored in a global ~Mutex<Option<Workflow>>~
+       during ~make_graph~).
+     - Connects input ~GraphNode~'s ~OH~ values to the new node's inputs via ~Workflow::connect~.
+     - Returns a ~GraphNode~ wrapping the new node's output ~OH~ (or a ~list[GraphNode]~ for
+       multi-output functions).
+
+     The two-path dispatch via ~AtomicBool~ is simple, correct, and has negligible overhead (a single
+     atomic load per call). No method swapping needed.
+
+**** ~make_graph~ Implementation
+
+     #+begin_src python
+     # Python-visible API:
+     graph = orc.make_graph(lambda x, y: orc.add(x, y))
+     result = graph.run(handle_a, handle_b)
+     #+end_src
+
+     Rust-side implementation of ~make_graph(fn: PyObject) -> Graph~:
+
+     1. Assert ~IN_GRAPH_MODE.compare_exchange(false, true)~ succeeds. If it fails, raise a Python
+        ~RuntimeError~: ~make_graph cannot be called recursively~.
+     2. Create a fresh ~Workflow::default()~ and store it in a global
+        ~static BUILDING_WORKFLOW: Mutex<Option<Workflow>>~.
+     3. Use Python's ~inspect.signature(fn)~ (from the standard library) to get the parameter names.
+        For each parameter:
+        - Create a constant node or a workflow input in the workflow (via ~Workflow::set_inputs~).
+        - Wrap the corresponding ~OH~ in a ~GraphNode~.
+     4. Call ~fn(*graph_nodes)~ from Python. During this call, all ~orc.*~ plugin function calls go
+        through the deferred code path (because ~IN_GRAPH_MODE~ is true), building up the workflow.
+     5. Inspect the return value of ~fn~:
+        - Single ~GraphNode~: one workflow output.
+        - Tuple or list of ~GraphNode~: multiple workflow outputs.
+        - Set these as the workflow outputs via ~Workflow::set_outputs~.
+     6. Take the ~Workflow~ out of ~BUILDING_WORKFLOW~, wrap it in a ~Graph~ Python object.
+     7. Set ~IN_GRAPH_MODE~ back to ~false~.
+     8. Steps 4-7 must be wrapped in a ~try/finally~ equivalent (or Rust drop guard) so that
+        ~IN_GRAPH_MODE~ is always reset and ~BUILDING_WORKFLOW~ is always cleaned up, even if ~fn~
+        raises an exception.
+     9. Return the ~Graph~.
+
+     The ~Graph~ object stores the parameter names alongside the ~Workflow~, so that ~graph.run~ can
+     accept keyword arguments and map them to positional inputs.
+
+**** ~make_deck~ in Deferred Mode
+
+     When ~IN_GRAPH_MODE~ is true and ~make_deck~ is called, it should:
+     1. Create the ~OrcHandle~ as usual (allocate in ~REGISTRY~).
+     2. Add a constant node to the building workflow via ~Workflow::add_constant~, storing the handle.
+     3. Return a ~GraphNode~ wrapping the constant's output ~OH~.
+
+     This allows the same user code to work in both modes:
+     #+begin_src python
+     def my_pipeline(x):
+         offset = orc.make_deck([1.0, 2.0, 3.0])
+         return orc.add(x, offset)
+
+     # Immediate:
+     result = my_pipeline(some_handle)
+
+     # Deferred:
+     graph = orc.make_graph(my_pipeline)
+     result = graph.run(some_handle)
+     #+end_src
+
+**** .pyi Stub Generation
+
+     On every ~load_plugins~ call, check whether the existing ~.pyi~ stub file is up to date:
+
+     1. Find the newest modified time among all loaded plugin shared library files.
+     2. Compare against the modified time of the ~.pyi~ file (located alongside the ~orc~ module's
+        ~.so~ file, named ~orc.pyi~).
+     3. If the ~.pyi~ does not exist, or its mtime is older than the newest plugin mtime, regenerate.
+     4. If the ~.pyi~ is newer, skip regeneration (cheap path).
+
+     Stub content includes:
+     #+begin_src python
+     from typing import Callable
+
+     class Handle:
+         @property
+         def type_id(self) -> int: ...
+         @property
+         def n_items(self) -> int: ...
+         @property
+         def item_size(self) -> int: ...
+         @property
+         def dims(self) -> list[int]: ...
+         @property
+         def __array_interface__(self) -> dict: ...
+
+     class GraphNode: ...
+
+     class Graph:
+         def run(self, *args: Handle, **kwargs: Handle) -> Handle | list[Handle]: ...
+
+     def load_plugins(search_dir: str) -> None: ...
+     def make_deck(data: object, type_id: int | None = None) -> Handle: ...
+     def read_deck(handle: Handle) -> object: ...
+     def make_graph(fn: Callable) -> Graph: ...
+     def run_graph(graph: Graph, *args: Handle, **kwargs: Handle) -> Handle | list[Handle]: ...
+     def serialize_workflow(graph: Graph, path: str) -> None: ...
+     def deserialize_workflow(path: str) -> Graph: ...
+
+     # --- Plugin functions (auto-generated) ---
+     def add(a: Handle, b: Handle) -> Handle: ...
+     def mul(a: Handle, b: Handle) -> Handle: ...
+     def complex_get_parts(c: Handle) -> list[Handle]: ...
+     # ... etc.
+     #+end_src
+
+     Plugin functions with ~n_outputs == 1~ have return type ~Handle~. Functions with ~n_outputs > 1~
+     have return type ~list[Handle]~. Variadic functions use ~*args: Handle~.
+
+**** GIL and Threading
+
+     - Release the GIL (~Python::allow_threads~) during all plugin function calls in immediate mode
+       and during ~Workflow::run~ in DAG mode. Plugin functions are native Rust/C code and do not
+       touch Python objects.
+     - Host callbacks (~report_message~, ~report_progress~, etc.) print directly from Rust. They do
+       NOT acquire the GIL or interact with Python objects. This means plugins can freely spawn
+       threads and call callbacks from those threads without GIL complications.
+     - Plugin developers are trusted to handle their own thread safety.
+
+**** Ownership and Lifetime Rules
+
+     - Every ~OrcHandle~ is owned by exactly one entity at a time: either a Python ~Handle~ object,
+       or a ~Workflow~ constant node, or the host's ~REGISTRY~.
+     - When a Python ~Handle~ is dropped (refcount hits zero), ~free_fn~ is called, which tells the
+       owning plugin to free the backing deck.
+     - Plugin function calls borrow inputs (~*const OrcHandle~) and produce fresh, independently
+       owned outputs. There is no aliasing — outputs do not reference input memory. Dropping an
+       input handle after a function call does not invalidate outputs.
+     - In DAG mode, constants are owned by the ~Workflow~ inside the ~Graph~. Python does not hold
+       ~Handle~ references to these constants. When the ~Graph~ is dropped, its constants are freed.
+     - ~graph.run~ produces fresh output ~Handle~ objects owned by Python. These are independent of
+       the ~Graph~ and can outlive it.
+
+**** Error Handling
+
+     - ~load_plugins~ raises ~RuntimeError~ if called more than once, or if plugin loading fails.
+     - Plugin function calls that return non-zero ~OrcError~ raise ~RuntimeError~ with the error
+       code.
+     - ~make_graph~ raises ~RuntimeError~ if called recursively.
+     - ~graph.run~ raises ~ValueError~ if argument count mismatches, ~TypeError~ if args are not
+       ~Handle~, ~RuntimeError~ for DAG execution errors (cycles, missing functions, etc.).
+     - ~serialize_workflow~ / ~deserialize_workflow~ raise ~IOError~ for file errors, ~RuntimeError~
+       for format errors.
+
+**** What Is NOT In Scope (for now)
+
+     - Conditional or loop-based DAG construction. The function passed to ~make_graph~ must be
+       straight-line code. If it tries to inspect a ~GraphNode~ value, Python will naturally raise
+       ~TypeError~.
+     - Parallel DAG execution. The existing depth-first eval in ~Workflow::run~ is used. Parallelized
+       eval will be added to ~Workflow::run~ in the future, and will automatically benefit ~pyorc~
+       without changes to the Python API.
+     - Python SDK (writing plugins in Python). That is a separate task.
+
+**** Example Usage
+
+     #+begin_src python
+     import orc
+     import numpy as np
+
+     # Load plugins from a directory.
+     orc.load_plugins("/path/to/plugins")
+
+     # --- Immediate mode ---
+     a = orc.make_deck([1.0, 2.0, 3.0])
+     b = orc.make_deck([10.0, 20.0, 30.0])
+     c = orc.add(a, b)
+     print(orc.read_deck(c))  # [11.0, 22.0, 33.0]
+
+     # Zero-copy numpy view.
+     arr = np.asarray(c)
+     print(arr * 2)  # [22.0, 44.0, 66.0]
+
+     # Multi-output function.
+     comp = orc.create_complex(a, b)
+     real, imag = orc.complex_get_parts(comp)
+
+     # --- DAG construction ---
+     def my_pipeline(x, y):
+         offset = orc.make_deck([100.0])
+         total = orc.add(x, y)
+         return orc.add(total, offset)
+
+     graph = orc.make_graph(my_pipeline)
+
+     # Run the graph with actual handles.
+     result = graph.run(a, b)
+     print(orc.read_deck(result))
+
+     # Same graph, different inputs. DAG can cache unchanged branches.
+     result2 = graph.run(b, a)
+
+     # Named arguments also work.
+     result3 = graph.run(x=a, y=b)
+
+     # Interleave immediate and DAG calls freely.
+     doubled = orc.mul(result, orc.make_deck([2.0]))
+
+     # Serialize / deserialize.
+     orc.serialize_workflow(graph, "my_pipeline.mpk")
+     graph2 = orc.deserialize_workflow("my_pipeline.mpk")
+     result4 = graph2.run(a, b)
+     #+end_src
+
+**** Files to Create
+
+     - ~rust/pyorc/Cargo.toml~
+     - ~rust/pyorc/pyproject.toml~ (maturin config)
+     - ~rust/pyorc/src/lib.rs~ (module definition, ~load_plugins~, ~make_deck~, ~read_deck~,
+       ~make_graph~, ~serialize_workflow~, ~deserialize_workflow~, ~run_graph~)
+     - ~rust/pyorc/src/handle.rs~ (~Handle~ pyclass, ~__array_interface__~ property, destructor)
+     - ~rust/pyorc/src/host.rs~ (global statics, ~HOST~ const, callbacks — closely follows
+       ~kbb_cli_host/src/main.rs~)
+     - ~rust/pyorc/src/func.rs~ (plugin function callable pyclass, immediate/deferred dispatch)
+     - ~rust/pyorc/src/graph.rs~ (~Graph~ and ~GraphNode~ pyclasses, ~make_graph~ implementation)
+     - ~rust/pyorc/src/stubs.rs~ (~.pyi~ generation and staleness checking)
+
+** CLOSED Vague Plan from LLM
+   CLOSED: [2026-08-23 Sun 14:26]
+   :PROPERTIES:
+   :CREATED:  2026-08-16 Sun 17:33
+   :END:
+   :LOGBOOK:
+   - State "CLOSED"     from              [2026-08-23 Sun 14:26]
+   :END:
+
+*** Goal
+
+    The same Python scripts that call plugin functions in immediate mode can be run inside a context
+    manager that constructs a DAG instead of executing. The user can then evaluate the DAG natively
+    (without Python's ctypes per-call overhead), or serialize it to a file.
+
+*** Dispatch via method swapping, not runtime checks
+
+    To avoid the cost of checking a global flag on every call, the context manager swaps out the
+    dispatch methods on entry and restores them on exit.
+
+    The two dispatch points are:
+
+    - ~OrcFuncWrapper.__call__~ on the class (affects all plugin function wrappers at once).
+    - ~orc.make_deck~ at module level.
+
+    In DAG mode, the swapped-in versions record nodes and edges in the graph instead of doing work.
+    In normal mode, the original methods are in place and there is zero overhead — no flag, no
+    branch, no import side-effect.
+
+*** Separate file, no changes to orc.py
+
+    All compiled-mode logic lives in a separate file (e.g. ~dag.py~). It imports ~orc~ and
+    monkey-patches the dispatch points inside the context manager. ~orc.py~ never imports or
+    references ~dag.py~. If the user never imports ~dag.py~, no trace of it exists in the system.
+
+*** Native shared library for graph construction and evaluation
+
+    The context manager's constructor takes the name or path of a shared library that it loads via
+    ctypes. All recording calls (~add_constant~, ~add_function~, ~add_link~) and the ~run~ call are
+    dispatched to this library. The ABI of that shared library is to be determined.
+
+*** API sketch
+
+    #+begin_src python
+    import orc
+    from dag import DagContext
+
+    orc.load_plugins(search_dir)
+
+    # ---------- Immediate mode (unchanged) ----------
+    a = orc.make_deck([1.0, 2.0, 3.0])
+    b = orc.make_deck([10.0, 20.0, 30.0])
+    c = orc.add(a, b)
+    print(orc.read_deck(c))
+
+    # ---------- Compiled mode (same user code) ----------
+    with DagContext("path/to/native_dag_lib.so") as g:
+        a = orc.make_deck([1.0, 2.0, 3.0])
+        b = orc.make_deck([10.0, 20.0, 30.0])
+        c = orc.add(a, b)
+        d = orc.mul(c, a)
+
+        # Evaluate inside the context. Takes a list of proxy outputs to compute,
+        # returns a corresponding list of real OrcHandles.
+        results = g.run([c, d])
+
+    # results are real OrcHandles that outlive the context.
+    print(orc.read_deck(results[0]))
+    print(orc.read_deck(results[1]))
+    #+end_src
+
+*** Serialization with ~g.write(path)~
+
+    ~g.write(path)~ writes the entire DAG out to a file using an s-expression syntax with parity to
+    the syntax used by the ~orc_dag!~ and ~orc_inline_dag!~ Rust macros. This file can later be
+    loaded by a Rust program to display the graph in a node editor, re-evaluate it, etc.
+
+*** Context manager internals
+
+    #+begin_src python
+    class DagContext:
+        def __init__(self, lib_path):
+            self._lib = ctypes.CDLL(lib_path)
+            # ... set up argtypes/restype for the native API ...
+            self._orig_call = None
+            self._orig_make_deck = None
+
+        def __enter__(self):
+            self._orig_call = OrcFuncWrapper.__call__
+            self._orig_make_deck = orc.make_deck
+
+            ctx = self
+
+            def recording_call(wrapper_self, *inputs, n_out=None):
+                return ctx._add_function(wrapper_self, inputs, n_out)
+
+            OrcFuncWrapper.__call__ = recording_call
+            orc.make_deck = lambda data, type_id=None: ctx._recording_make_deck(data, type_id)
+            return self
+
+        def __exit__(self, *exc):
+            OrcFuncWrapper.__call__ = self._orig_call
+            orc.make_deck = self._orig_make_deck
+
+        def _recording_make_deck(self, data, type_id=None):
+            handle = self._orig_make_deck(data, type_id)
+            return self._add_constant(handle)
+
+        def _add_constant(self, handle):
+            # Dispatch to native lib: register constant node, return proxy.
+            ...
+
+        def _add_function(self, wrapper, inputs, n_out):
+            # Dispatch to native lib: register function node + edges, return proxy.
+            ...
+
+        def run(self, outputs):
+            # Dispatch to native lib: evaluate the DAG for the requested outputs.
+            # Returns a list of real OrcHandles.
+            ...
+
+        def write(self, path):
+            # Serialize the entire DAG to the given file path.
+            ...
+    #+end_src

@@ -138,6 +138,11 @@ impl OrcHandle {
         }
     }
 
+    /// Empty handles, could represent empty / optional inputs passed to a function.
+    pub fn is_empty(&self) -> bool {
+        self.items.is_null()
+    }
+
     pub fn borrowed(&self) -> OrcHandleBorrowed<'_> {
         OrcHandleBorrowed {
             inner: OrcHandle {
@@ -258,6 +263,11 @@ unsafe impl Sync for OrcHandleBorrowed<'_> {}
 impl<'a> OrcHandleBorrowed<'a> {
     pub fn inner(&self) -> &OrcHandle {
         &self.inner
+    }
+
+    /// Empty handles, could represent empty / optional inputs passed to a function.
+    pub fn is_empty(&self) -> bool {
+        self.inner.is_empty()
     }
 }
 

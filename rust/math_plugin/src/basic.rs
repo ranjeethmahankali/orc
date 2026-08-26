@@ -30,7 +30,7 @@ fn add() {
 }
 
 #[orc_fn]
-fn mul() {
+fn multiply() {
     let host_callbacks = host_callbacks();
     let registry: &ObjectRegistry = registry();
     let types = (run::<f64>, run::<i64>);
@@ -56,7 +56,7 @@ fn mul() {
 }
 
 #[orc_fn]
-fn sub() {
+fn subtract() {
     let host_callbacks = host_callbacks();
     let registry: &ObjectRegistry = registry();
     let types = (run::<f32>, run::<f64>);
@@ -72,7 +72,7 @@ fn sub() {
 }
 
 #[orc_fn]
-fn div() {
+fn divide() {
     let host_callbacks = host_callbacks();
     let registry: &ObjectRegistry = registry();
     let types = (run::<f32>, run::<f64>);
@@ -331,7 +331,7 @@ mod tests {
         let c: Deck<i64> = orc_sdk::deck![3i64];
         let d: Deck<i64> = orc_sdk::deck![4i64];
         let inputs2 = [view(&c), view(&d)];
-        unsafe { mul(0, inputs2.as_ptr(), 2, &mut out, 1) };
+        unsafe { multiply(0, inputs2.as_ptr(), 2, &mut out, 1) };
         assert_eq!(out.type_id, i64::TYPE_INFO.type_id);
         assert_eq!(out.handle, out_id);
         assert_eq!(
@@ -348,7 +348,7 @@ mod tests {
         let rhs: Deck<f64> = orc_sdk::deck![5.0, 6.0, 7.0];
         let mut out = out_handle();
         let inputs = [view(&lhs), view(&rhs)];
-        unsafe { mul(0, inputs.as_ptr(), 2, &mut out, 1) };
+        unsafe { multiply(0, inputs.as_ptr(), 2, &mut out, 1) };
         assert_eq!(
             DeckView::<f64>::from_handle(&out).unwrap().items(),
             &[10.0, 18.0, 28.0]
@@ -361,7 +361,7 @@ mod tests {
         let rhs: Deck<i64> = orc_sdk::deck![7i64, 8];
         let mut out = out_handle();
         let inputs = [view(&lhs), view(&rhs)];
-        unsafe { mul(0, inputs.as_ptr(), 2, &mut out, 1) };
+        unsafe { multiply(0, inputs.as_ptr(), 2, &mut out, 1) };
         assert_eq!(
             DeckView::<i64>::from_handle(&out).unwrap().items(),
             &[21i64, 32]
@@ -374,7 +374,7 @@ mod tests {
         let rhs: Deck<f64> = orc_sdk::deck![3.0f64];
         let mut out = out_handle();
         let inputs = [view(&lhs), view(&rhs)];
-        unsafe { mul(0, inputs.as_ptr(), 2, &mut out, 1) };
+        unsafe { multiply(0, inputs.as_ptr(), 2, &mut out, 1) };
         assert!(out.free_fn.is_none());
         assert!(out.items.is_null());
     }
@@ -387,7 +387,7 @@ mod tests {
         let rhs: Deck<f64> = orc_sdk::deck![3.0, 7.0];
         let mut out = out_handle();
         let inputs = [view(&lhs), view(&rhs)];
-        unsafe { sub(0, inputs.as_ptr(), 2, &mut out, 1) };
+        unsafe { subtract(0, inputs.as_ptr(), 2, &mut out, 1) };
         assert_eq!(
             DeckView::<f64>::from_handle(&out).unwrap().items(),
             &[7.0, 13.0]
@@ -401,7 +401,7 @@ mod tests {
         let rhs: Deck<u32> = orc_sdk::deck![3u32];
         let mut out = out_handle();
         let inputs = [view(&lhs), view(&rhs)];
-        unsafe { sub(0, inputs.as_ptr(), 2, &mut out, 1) };
+        unsafe { subtract(0, inputs.as_ptr(), 2, &mut out, 1) };
         assert!(out.free_fn.is_none());
         assert!(out.items.is_null());
     }
@@ -414,7 +414,7 @@ mod tests {
         let rhs: Deck<f64> = orc_sdk::deck![2.0, 3.0];
         let mut out = out_handle();
         let inputs = [view(&lhs), view(&rhs)];
-        unsafe { div(0, inputs.as_ptr(), 2, &mut out, 1) };
+        unsafe { divide(0, inputs.as_ptr(), 2, &mut out, 1) };
         assert_eq!(
             DeckView::<f64>::from_handle(&out).unwrap().items(),
             &[5.0, 3.0]
@@ -428,7 +428,7 @@ mod tests {
         let rhs: Deck<f64> = orc_sdk::deck![0.0];
         let mut out = out_handle();
         let inputs = [view(&lhs), view(&rhs)];
-        unsafe { div(0, inputs.as_ptr(), 2, &mut out, 1) };
+        unsafe { divide(0, inputs.as_ptr(), 2, &mut out, 1) };
         let result = DeckView::<f64>::from_handle(&out).unwrap().items()[0];
         assert!(result.is_infinite() && result > 0.0);
     }
@@ -439,7 +439,7 @@ mod tests {
         let rhs: Deck<i32> = orc_sdk::deck![2i32];
         let mut out = out_handle();
         let inputs = [view(&lhs), view(&rhs)];
-        unsafe { div(0, inputs.as_ptr(), 2, &mut out, 1) };
+        unsafe { divide(0, inputs.as_ptr(), 2, &mut out, 1) };
         assert!(out.free_fn.is_none());
         assert!(out.items.is_null());
     }

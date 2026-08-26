@@ -1,6 +1,3 @@
-
-
-
 import gc
 import math
 import os
@@ -21,11 +18,6 @@ project_root = os.path.dirname(script_dir)
 search_dir = os.path.join(project_root, "build", "debug")
 
 
-def make_handle(data, dtype=None):
-    """Create a handle via orc.make_deck."""
-    return orc.make_deck(data, dtype=dtype)
-
-
 # ============================================================
 # add — Correctness
 # ============================================================
@@ -33,16 +25,16 @@ def make_handle(data, dtype=None):
 
 def t_add_f64_flat():
     """Add two flat f64 lists element-wise."""
-    a = make_handle([1.0, 2.0, 3.0])
-    b = make_handle([10.0, 20.0, 30.0])
+    a = orc.make_deck([1.0, 2.0, 3.0])
+    b = orc.make_deck([10.0, 20.0, 30.0])
     out = orc.add(a, b)
     assert orc.read_deck(out) == [11.0, 22.0, 33.0]
 
 
 def t_add_f64_nested():
     """Add nested list with broadcast flat list."""
-    a = make_handle([[1.0, 2.0, 3.0], [2.0, 4.0, 6.0, 8.0]])
-    b = make_handle([10.0, 20.0, 30.0])
+    a = orc.make_deck([[1.0, 2.0, 3.0], [2.0, 4.0, 6.0, 8.0]])
+    b = orc.make_deck([10.0, 20.0, 30.0])
     out = orc.add(a, b)
     result = orc.read_deck(out)
     assert result == [[11.0, 22.0, 33.0], [12.0, 24.0, 36.0, 38.0]]
@@ -50,24 +42,24 @@ def t_add_f64_nested():
 
 def t_add_broadcast_scalar():
     """Add a scalar to each element of a list."""
-    a = make_handle([1.0, 2.0, 3.0])
-    b = make_handle([10.0])
+    a = orc.make_deck([1.0, 2.0, 3.0])
+    b = orc.make_deck([10.0])
     out = orc.add(a, b)
     assert orc.read_deck(out) == [11.0, 12.0, 13.0]
 
 
 def t_add_single_element():
     """Add two single-element lists."""
-    a = make_handle([5.0])
-    b = make_handle([3.0])
+    a = orc.make_deck([5.0])
+    b = orc.make_deck([3.0])
     out = orc.add(a, b)
     assert orc.read_deck(out) == [8.0]
 
 
 def t_add_depth3():
     """Add a scalar to a depth-3 nested list."""
-    a = make_handle([[[1.0, 2.0], [3.0, 4.0]], [[5.0, 6.0], [7.0, 8.0]]])
-    b = make_handle([10.0])
+    a = orc.make_deck([[[1.0, 2.0], [3.0, 4.0]], [[5.0, 6.0], [7.0, 8.0]]])
+    b = orc.make_deck([10.0])
     out = orc.add(a, b)
     result = orc.read_deck(out)
     expected = [
@@ -84,8 +76,8 @@ def t_add_depth3():
 
 def t_add_i64():
     """Add two i64 lists element-wise."""
-    a = make_handle([-5, -3, 0, 3, 5], dtype="i64")
-    b = make_handle([10, 20, 30, 40, 50], dtype="i64")
+    a = orc.make_deck([-5, -3, 0, 3, 5], dtype="i64")
+    b = orc.make_deck([10, 20, 30, 40, 50], dtype="i64")
     assert a.type_id == orc.ORC_TYPE_I64
     out = orc.add(a, b)
     assert orc.read_deck(out) == [5, 17, 30, 43, 55]
@@ -97,8 +89,8 @@ def t_add_i64():
 
 def t_add_mismatched_types():
     """Add U8 and F64 lists raises RuntimeError."""
-    a = make_handle([1, 2, 3])  # U8
-    b = make_handle([1.0, 2.0, 3.0])  # F64
+    a = orc.make_deck([1, 2, 3])  # U8
+    b = orc.make_deck([1.0, 2.0, 3.0])  # F64
     assert a.type_id != b.type_id
     try:
         orc.add(a, b)
@@ -114,34 +106,34 @@ def t_add_mismatched_types():
 
 def t_mul_f64():
     """Multiply two flat f64 lists element-wise."""
-    a = make_handle([2.0, 3.0, 4.0])
-    b = make_handle([5.0, 6.0, 7.0])
-    out = orc.mul(a, b)
+    a = orc.make_deck([2.0, 3.0, 4.0])
+    b = orc.make_deck([5.0, 6.0, 7.0])
+    out = orc.multiply(a, b)
     assert orc.read_deck(out) == [10.0, 18.0, 28.0]
 
 
 def t_mul_i64():
     """Multiply two U8 lists element-wise."""
-    a = make_handle([3, 4], dtype="i64")
-    b = make_handle([7, 8], dtype="i64")
-    out = orc.mul(a, b)
+    a = orc.make_deck([3, 4], dtype="i64")
+    b = orc.make_deck([7, 8], dtype="i64")
+    out = orc.multiply(a, b)
     assert orc.read_deck(out) == [21, 32]
 
 
 def t_mul_nested():
     """Multiply nested list by broadcast scalar."""
-    a = make_handle([[2.0, 3.0], [4.0]])
-    b = make_handle([10.0])
-    out = orc.mul(a, b)
+    a = orc.make_deck([[2.0, 3.0], [4.0]])
+    b = orc.make_deck([10.0])
+    out = orc.multiply(a, b)
     assert orc.read_deck(out) == [[20.0, 30.0], [40.0]]
 
 
 def t_mul_mismatched_types():
     """Multiply U8 and F64 lists raises RuntimeError."""
-    a = make_handle([2, 3])  # U8
-    b = make_handle([3.0, 4.0])  # F64
+    a = orc.make_deck([2, 3])  # U8
+    b = orc.make_deck([3.0, 4.0])  # F64
     try:
-        orc.mul(a, b)
+        orc.multiply(a, b)
         assert False, "Should have raised RuntimeError"
     except RuntimeError:
         pass
@@ -154,26 +146,26 @@ def t_mul_mismatched_types():
 
 def t_sub_f64():
     """Subtract two flat f64 lists element-wise."""
-    a = make_handle([10.0, 20.0])
-    b = make_handle([3.0, 7.0])
-    out = orc.sub(a, b)
+    a = orc.make_deck([10.0, 20.0])
+    b = orc.make_deck([3.0, 7.0])
+    out = orc.subtract(a, b)
     assert orc.read_deck(out) == [7.0, 13.0]
 
 
 def t_sub_nested():
     """Subtract broadcast scalar from nested list."""
-    a = make_handle([[10.0, 20.0], [30.0]])
-    b = make_handle([1.0])
-    out = orc.sub(a, b)
+    a = orc.make_deck([[10.0, 20.0], [30.0]])
+    b = orc.make_deck([1.0])
+    out = orc.subtract(a, b)
     assert orc.read_deck(out) == [[9.0, 19.0], [29.0]]
 
 
 def t_sub_unsupported_type():
     """Sub on U8 is unsupported, raises RuntimeError."""
-    a = make_handle([5, 3])  # U8
-    b = make_handle([3, 1])
+    a = orc.make_deck([5, 3])  # U8
+    b = orc.make_deck([3, 1])
     try:
-        orc.sub(a, b)
+        orc.subtract(a, b)
         assert False, "Should have raised RuntimeError"
     except RuntimeError:
         pass
@@ -186,27 +178,27 @@ def t_sub_unsupported_type():
 
 def t_div_f64():
     """Divide two flat f64 lists element-wise."""
-    a = make_handle([10.0, 9.0])
-    b = make_handle([2.0, 3.0])
-    out = orc.div(a, b)
+    a = orc.make_deck([10.0, 9.0])
+    b = orc.make_deck([2.0, 3.0])
+    out = orc.divide(a, b)
     assert orc.read_deck(out) == [5.0, 3.0]
 
 
 def t_div_by_zero():
     """Divide by zero produces positive infinity."""
-    a = make_handle([1.0])
-    b = make_handle([0.0])
-    out = orc.div(a, b)
+    a = orc.make_deck([1.0])
+    b = orc.make_deck([0.0])
+    out = orc.divide(a, b)
     result = orc.read_deck(out)
     assert math.isinf(result[0]) and result[0] > 0
 
 
 def t_div_unsupported_type():
     """Div on U8 is unsupported, raises RuntimeError."""
-    a = make_handle([6, 2])  # U8
-    b = make_handle([2, 1])
+    a = orc.make_deck([6, 2])  # U8
+    b = orc.make_deck([2, 1])
     try:
-        orc.div(a, b)
+        orc.divide(a, b)
         assert False, "Should have raised RuntimeError"
     except RuntimeError:
         pass
@@ -219,8 +211,8 @@ def t_div_unsupported_type():
 
 def t_repeat_list_f64():
     """Repeat a flat f64 list 3 times."""
-    a = make_handle([1.0, 2.0, 3.0])
-    count = make_handle(3, dtype="u64")
+    a = orc.make_deck([1.0, 2.0, 3.0])
+    count = orc.make_deck(3, dtype="u64")
     out = orc.repeat_list(a, count)
     result = orc.read_deck(out)
     assert result == [1.0, 2.0, 3.0, 1.0, 2.0, 3.0, 1.0, 2.0, 3.0]
@@ -228,8 +220,8 @@ def t_repeat_list_f64():
 
 def t_repeat_list_u8():
     """Repeat a U8 list 2 times."""
-    a = make_handle([10, 20])
-    count = make_handle([2], dtype="u64")
+    a = orc.make_deck([10, 20])
+    count = orc.make_deck([2], dtype="u64")
     out = orc.repeat_list(a, count)
     # We expect a nested list because the second input is a list.
     assert orc.read_deck(out) == [[10, 20, 10, 20]]
@@ -237,33 +229,33 @@ def t_repeat_list_u8():
 
 def t_repeat_list_single_element():
     """Repeat a single-element list 4 times."""
-    a = make_handle([42.0])
-    count = make_handle([4], dtype="u64")
+    a = orc.make_deck([42.0])
+    count = orc.make_deck([4], dtype="u64")
     out = orc.repeat_list(a, count)
     assert orc.read_deck(out) == [[42.0, 42.0, 42.0, 42.0]]
 
 
 def t_repeat_list_one_repeat():
     """Repeating once returns the same items."""
-    a = make_handle([5.0, 6.0])
-    count = make_handle(1, dtype="u64")
+    a = orc.make_deck([5.0, 6.0])
+    count = orc.make_deck(1, dtype="u64")
     out = orc.repeat_list(a, count)
     assert orc.read_deck(out) == [5.0, 6.0]
 
 
 def t_repeat_list_zero_repeats():
     """Repeating zero times produces an empty output."""
-    a = make_handle([1.0, 2.0])
-    count = make_handle(0, dtype="u64")
+    a = orc.make_deck([1.0, 2.0])
+    count = orc.make_deck(0, dtype="u64")
     out = orc.repeat_list(a, count)
     assert orc.read_deck(out) == []
 
 
 def t_repeat_list_output_type_matches_input():
     """Output type matches the list input type."""
-    a = make_handle([100000, 200000])  # U32
+    a = orc.make_deck([100000, 200000])  # U32
     assert a.type_id == orc.ORC_TYPE_U32
-    count = make_handle(2, dtype="u64")
+    count = orc.make_deck(2, dtype="u64")
     out = orc.repeat_list(a, count)
     assert out.type_id == orc.ORC_TYPE_U32
     assert orc.read_deck(out) == [100000, 200000, 100000, 200000]
@@ -271,8 +263,8 @@ def t_repeat_list_output_type_matches_input():
 
 def t_repeat_list_output_free_fn_set():
     """Plugin output has valid ownership (Rust RAII manages lifetime)."""
-    a = make_handle([1.0])
-    count = make_handle(1, dtype="u64")
+    a = orc.make_deck([1.0])
+    count = orc.make_deck(1, dtype="u64")
     out = orc.repeat_list(a, count)
     # Skipped: no free_fn attribute in the new Handle. Rust manages lifetime.
     assert out.n_items > 0
@@ -280,8 +272,8 @@ def t_repeat_list_output_free_fn_set():
 
 def t_repeat_list_nested_input():
     """Repeat each sublist of a nested input."""
-    a = make_handle([[1.0, 2.0], [3.0]])
-    count = make_handle([2], dtype="u64")
+    a = orc.make_deck([[1.0, 2.0], [3.0]])
+    count = orc.make_deck([2], dtype="u64")
     out = orc.repeat_list(a, count)
     result = orc.read_deck(out)
     # Each sublist repeated: [1,2,1,2] and [3,3]
@@ -295,7 +287,7 @@ def t_repeat_list_nested_input():
 
 def t_list_length_basic():
     """List length of two sublists returns their sizes."""
-    a = make_handle([[1.0, 2.0, 3.0], [4.0, 5.0]])
+    a = orc.make_deck([[1.0, 2.0, 3.0], [4.0, 5.0]])
     out = orc.list_length(a)
     result = orc.read_deck(out)
     assert result == [3, 2]
@@ -304,14 +296,14 @@ def t_list_length_basic():
 
 def t_list_length_single_list():
     """List length of one single-element sublist."""
-    a = make_handle([[42.0]])
+    a = orc.make_deck([[42.0]])
     out = orc.list_length(a)
     assert orc.read_deck(out) == [1]
 
 
 def t_list_length_depth3():
     """List length at depth-3 returns nested lengths."""
-    a = make_handle([[[1.0, 2.0], [3.0]], [[4.0, 5.0, 6.0]]])
+    a = orc.make_deck([[[1.0, 2.0], [3.0]], [[4.0, 5.0, 6.0]]])
     out = orc.list_length(a)
     result = orc.read_deck(out)
     assert result == [[2, 1], [3]]
@@ -324,7 +316,7 @@ def t_list_length_depth3():
 
 def t_flatten_basic():
     """Flatten a nested list into a flat list."""
-    a = make_handle([[1.0, 2.0, 3.0], [4.0, 5.0]])
+    a = orc.make_deck([[1.0, 2.0, 3.0], [4.0, 5.0]])
     out = orc.flatten_deck(a)
     result = orc.read_deck(out)
     assert result == [1.0, 2.0, 3.0, 4.0, 5.0]
@@ -332,15 +324,15 @@ def t_flatten_basic():
 
 def t_flatten_already_flat():
     """Flatten an already-flat list is a no-op."""
-    a = make_handle([1.0, 2.0, 3.0])
+    a = orc.make_deck([1.0, 2.0, 3.0])
     out = orc.flatten_deck(a)
     assert orc.read_deck(out) == [1.0, 2.0, 3.0]
 
 
 def t_flatten_multiple_io():
     """Flatten with multiple inputs and outputs using n_out=."""
-    a = make_handle([[1.0, 2.0], [3.0]])
-    b = make_handle([[4.0, 5.0, 6.0]])
+    a = orc.make_deck([[1.0, 2.0], [3.0]])
+    b = orc.make_deck([[4.0, 5.0, 6.0]])
     outs = orc.flatten_deck(a, b, n_out=2)
     assert orc.read_deck(outs[0]) == [1.0, 2.0, 3.0]
     assert orc.read_deck(outs[1]) == [4.0, 5.0, 6.0]
@@ -348,7 +340,7 @@ def t_flatten_multiple_io():
 
 def t_flatten_integer_type():
     """Flatten preserves the integer element type."""
-    a = make_handle([[10, 20], [30]])
+    a = orc.make_deck([[10, 20], [30]])
     assert a.type_id == orc.ORC_TYPE_U8
     out = orc.flatten_deck(a)
     assert out.type_id == orc.ORC_TYPE_U8
@@ -362,7 +354,7 @@ def t_flatten_integer_type():
 
 def t_flatten_mismatched_counts():
     """Flatten errors when n_inputs != n_outputs."""
-    a = make_handle([[1.0, 2.0]])
+    a = orc.make_deck([[1.0, 2.0]])
     try:
         orc.flatten_deck(a, n_out=2)
         assert False, "Expected RuntimeError"
@@ -377,8 +369,8 @@ def t_flatten_mismatched_counts():
 
 def t_output_free_fn_set():
     """Plugin output handles have valid ownership (Rust RAII manages lifetime)."""
-    a = make_handle([1.0])
-    b = make_handle([2.0])
+    a = orc.make_deck([1.0])
+    b = orc.make_deck([2.0])
     out = orc.add(a, b)
     # Skipped: no free_fn attribute in the new Handle. Rust manages lifetime via RAII.
     assert out.n_items > 0
@@ -392,7 +384,7 @@ def t_output_handle_id_preserved():
 
 def t_output_type_matches_input_for_flatten():
     """Flatten output type matches the input type."""
-    a = make_handle([[1.0, 2.0]])
+    a = orc.make_deck([[1.0, 2.0]])
     assert a.type_id == orc.ORC_TYPE_F64
     out = orc.flatten_deck(a)
     assert out.type_id == orc.ORC_TYPE_F64
@@ -400,102 +392,102 @@ def t_output_type_matches_input_for_flatten():
 
 def t_list_length_output_is_u64():
     """List length always outputs U64."""
-    a = make_handle([[1.0, 2.0]])
+    a = orc.make_deck([[1.0, 2.0]])
     out = orc.list_length(a)
     assert out.type_id == orc.ORC_TYPE_U64
 
 
 # ============================================================
-# make_handle / read_handle roundtrip
+# orc.make_deck / read_deck roundtrip
 # ============================================================
 
 
 def t_roundtrip_flat():
     """Roundtrip a flat list through make/read."""
     data = [1.0, 2.0, 3.0]
-    h = make_handle(data)
+    h = orc.make_deck(data)
     assert orc.read_deck(h) == data
 
 
 def t_roundtrip_nested():
     """Roundtrip a nested list through make/read."""
     data = [[1.0, 2.0], [3.0, 4.0]]
-    h = make_handle(data)
+    h = orc.make_deck(data)
     assert orc.read_deck(h) == data
 
 
 def t_roundtrip_depth3():
     """Roundtrip a depth-3 nested list through make/read."""
     data = [[[1.0, 2.0], [3.0, 4.0]], [[5.0, 6.0], [7.0, 8.0]]]
-    h = make_handle(data)
+    h = orc.make_deck(data)
     assert orc.read_deck(h) == data
 
 
 def t_roundtrip_ragged():
     """Roundtrip a ragged nested list through make/read."""
     data = [[1.0, 2.0, 3.0], [4.0, 5.0]]
-    h = make_handle(data)
+    h = orc.make_deck(data)
     assert orc.read_deck(h) == data
 
 
 def t_roundtrip_single_element():
     """Roundtrip a single-element list through make/read."""
     data = [42.0]
-    h = make_handle(data)
+    h = orc.make_deck(data)
     assert orc.read_deck(h) == data
 
 
 def t_type_detection_u8():
     """Values in [0, 255] are detected as U8."""
-    h = make_handle([0, 127, 255])
+    h = orc.make_deck([0, 127, 255])
     assert h.type_id == orc.ORC_TYPE_U8
 
 
 def t_type_detection_u16():
     """Values exceeding U8 range are detected as U16."""
-    h = make_handle([0, 256])
+    h = orc.make_deck([0, 256])
     assert h.type_id == orc.ORC_TYPE_U16
 
 
 def t_type_detection_u32():
     """Values exceeding U16 range are detected as U32."""
-    h = make_handle([0, 0x10000])
+    h = orc.make_deck([0, 0x10000])
     assert h.type_id == orc.ORC_TYPE_U32
 
 
 def t_type_detection_u64():
     """Values exceeding U32 range are detected as U64."""
-    h = make_handle([0, 0x100000000])
+    h = orc.make_deck([0, 0x100000000])
     assert h.type_id == orc.ORC_TYPE_U64
 
 
 def t_type_detection_i8():
     """Signed values in [-128, 127] are detected as I8."""
-    h = make_handle([-128, 127])
+    h = orc.make_deck([-128, 127])
     assert h.type_id == orc.ORC_TYPE_I8
 
 
 def t_type_detection_i16():
     """Signed values exceeding I8 range are detected as I16."""
-    h = make_handle([-129, 0])
+    h = orc.make_deck([-129, 0])
     assert h.type_id == orc.ORC_TYPE_I16
 
 
 def t_type_detection_i32():
     """Signed values exceeding I16 range are detected as I32."""
-    h = make_handle([-0x8000_0000, 0])
+    h = orc.make_deck([-0x8000_0000, 0])
     assert h.type_id == orc.ORC_TYPE_I32
 
 
 def t_type_detection_i64():
     """Signed values exceeding I32 range are detected as I64."""
-    h = make_handle([-0x8000_0001, 0])
+    h = orc.make_deck([-0x8000_0001, 0])
     assert h.type_id == orc.ORC_TYPE_I64
 
 
 def t_type_detection_f64():
     """Any float value triggers F64 detection."""
-    h = make_handle([1.0, 2, 3])
+    h = orc.make_deck([1.0, 2, 3])
     assert h.type_id == orc.ORC_TYPE_F64
 
 
@@ -508,14 +500,14 @@ def t_dtype_forces_type():
         ("i32", orc.ORC_TYPE_I32), ("i64", orc.ORC_TYPE_I64),
         ("f32", orc.ORC_TYPE_F32), ("f64", orc.ORC_TYPE_F64),
     ]:
-        h = make_handle([0], dtype=dtype)
+        h = orc.make_deck([0], dtype=dtype)
         assert h.type_id == expected, f"dtype={dtype}: expected {expected:#x}, got {h.type_id:#x}"
 
 
 def t_dtype_invalid_raises():
     """An invalid dtype string raises ValueError."""
     try:
-        make_handle([1, 2, 3], dtype="complex128")
+        orc.make_deck([1, 2, 3], dtype="complex128")
         assert False, "Should have raised ValueError"
     except ValueError:
         pass
@@ -528,8 +520,8 @@ def t_dtype_invalid_raises():
 
 def t_numpy_f64():
     """Convert f64 handle to numpy, verify dtype and arithmetic."""
-    a = make_handle([1.0, 2.0, 3.0])
-    b = make_handle([10.0, 20.0, 30.0])
+    a = orc.make_deck([1.0, 2.0, 3.0])
+    b = orc.make_deck([10.0, 20.0, 30.0])
     out = orc.add(a, b)
     arr = np.asarray(out)
     assert arr.dtype == np.float64
@@ -539,7 +531,7 @@ def t_numpy_f64():
 
 def t_numpy_i64():
     """Convert i64 handle to numpy, verify dtype and arithmetic."""
-    h = make_handle([-2**40, 0, 2**40], dtype="i64")
+    h = orc.make_deck([-2**40, 0, 2**40], dtype="i64")
     arr = np.asarray(h)
     assert arr.dtype == np.int64
     assert arr.__array_interface__['data'][0] == h.__array_interface__['data'][0]
@@ -549,7 +541,7 @@ def t_numpy_i64():
 def t_numpy_3x3_matrix():
     """Convert a 3x3 nested handle to a numpy matrix, verify arithmetic."""
     data = [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]]
-    h = make_handle(data)
+    h = orc.make_deck(data)
     arr = np.asarray(h)
     assert arr.__array_interface__['data'][0] == h.__array_interface__['data'][0]
     # Flat view of 9 items
@@ -566,8 +558,8 @@ def t_numpy_3x3_matrix():
 
 def t_numpy_3x3_from_plugin():
     """Plugin output of nested 3x3, converted to numpy matrix."""
-    a = make_handle([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]])
-    b = make_handle([1.0])
+    a = orc.make_deck([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]])
+    b = orc.make_deck([1.0])
     out = orc.add(a, b)
     arr = np.asarray(out)
     assert arr.__array_interface__['data'][0] == out.__array_interface__['data'][0]
@@ -584,7 +576,7 @@ def t_numpy_survives_handle_gc():
     """Numpy array must remain valid after the handle is GC'd."""
 
     def get_arr():
-        h = make_handle([1.0, 2.0, 3.0])
+        h = orc.make_deck([1.0, 2.0, 3.0])
         return np.asarray(h)
 
     arr = get_arr()
@@ -598,7 +590,7 @@ def t_numpy_and_handle_both_freed():
     """Handle is freed when both numpy array and handle go out of scope."""
 
     def create_and_drop():
-        h = make_handle([1.0, 2.0, 3.0])
+        h = orc.make_deck([1.0, 2.0, 3.0])
         arr = np.asarray(h)
         assert list(arr) == [1.0, 2.0, 3.0]
         # Both h and arr go out of scope here.
@@ -614,8 +606,8 @@ def t_numpy_and_handle_both_freed():
 
 def make_complex(real_data, imag_data):
     """Create a Complex deck from real and imaginary f64 lists."""
-    real = make_handle(real_data)
-    imag = make_handle(imag_data)
+    real = orc.make_deck(real_data)
+    imag = orc.make_deck(imag_data)
     out = orc.create_complex(real, imag)
     return out
 
@@ -971,18 +963,18 @@ def t_serial_preserves_dims():
 
 def t_workflow_basic():
     """Basic workflow: add two inputs."""
-    a = make_handle([1.0, 2.0, 3.0])
-    b = make_handle([10.0, 20.0, 30.0])
+    a = orc.make_deck([1.0, 2.0, 3.0])
+    b = orc.make_deck([10.0, 20.0, 30.0])
     wf = orc.make_workflow(lambda x, y: orc.add(x, y))
     assert orc.read_deck(wf.run(a, b)) == [11.0, 22.0, 33.0]
 
 
 def t_workflow_chain():
     """Chained operations: mul then add."""
-    a = make_handle([2.0, 3.0])
-    b = make_handle([10.0, 20.0])
+    a = orc.make_deck([2.0, 3.0])
+    b = orc.make_deck([10.0, 20.0])
     def chain(x, y):
-        product = orc.mul(x, y)
+        product = orc.multiply(x, y)
         return orc.add(product, x)
     wf = orc.make_workflow(chain)
     assert orc.read_deck(wf.run(a, b)) == [22.0, 63.0]
@@ -990,7 +982,7 @@ def t_workflow_chain():
 
 def t_workflow_with_constant():
     """Workflow with an internal make_deck constant."""
-    a = make_handle([1.0, 2.0, 3.0])
+    a = orc.make_deck([1.0, 2.0, 3.0])
     def fn_with_const(x):
         offset = orc.make_deck([100.0])
         return orc.add(x, offset)
@@ -1000,7 +992,7 @@ def t_workflow_with_constant():
 
 def t_workflow_multiple_constants():
     """Workflow with several constants."""
-    a = make_handle([1.0])
+    a = orc.make_deck([1.0])
     def fn_multi_const(x):
         a = orc.make_deck([10.0])
         b = orc.make_deck([100.0])
@@ -1013,8 +1005,8 @@ def t_workflow_n_out():
     """n_out= on a variadic function works inside make_workflow."""
     def fn(x, y):
         return orc.flatten_deck(x, y, n_out=2)
-    a = make_handle([[1.0, 2.0], [3.0]])
-    b = make_handle([[4.0, 5.0, 6.0]])
+    a = orc.make_deck([[1.0, 2.0], [3.0]])
+    b = orc.make_deck([[4.0, 5.0, 6.0]])
     wf = orc.make_workflow(fn)
     out0, out1 = wf.run(a, b)
     assert orc.read_deck(out0) == [1.0, 2.0, 3.0]
@@ -1023,18 +1015,18 @@ def t_workflow_n_out():
 
 def t_workflow_fan_out():
     """Same input feeds into multiple function arguments."""
-    a = make_handle([3.0, 4.0])
-    wf = orc.make_workflow(lambda x: orc.mul(x, x))
+    a = orc.make_deck([3.0, 4.0])
+    wf = orc.make_workflow(lambda x: orc.multiply(x, x))
     assert orc.read_deck(wf.run(a)) == [9.0, 16.0]
 
 
 def t_workflow_diamond():
     """Diamond topology: input → two branches → merge."""
-    a = make_handle([5.0])
+    a = orc.make_deck([5.0])
     def diamond(x):
         doubled = orc.add(x, x)
-        squared = orc.mul(x, x)
-        return orc.sub(squared, doubled)
+        squared = orc.multiply(x, x)
+        return orc.subtract(squared, doubled)
     wf = orc.make_workflow(diamond)
     # 5^2 - 5*2 = 25 - 10 = 15
     assert orc.read_deck(wf.run(a)) == [15.0]
@@ -1042,8 +1034,8 @@ def t_workflow_diamond():
 
 def t_workflow_multi_output():
     """Workflow returning multiple outputs via a multi-output function."""
-    a = make_handle([1.0, 2.0])
-    b = make_handle([3.0, 4.0])
+    a = orc.make_deck([1.0, 2.0])
+    b = orc.make_deck([3.0, 4.0])
     def fn_multi_out(x, y):
         c = orc.create_complex(x, y)
         return orc.complex_get_parts(c)
@@ -1065,8 +1057,8 @@ def t_workflow_no_inputs():
 
 def t_workflow_nested_data():
     """Workflow operates on nested deck structure."""
-    a = make_handle([[1.0, 2.0], [3.0]])
-    b = make_handle([10.0])
+    a = orc.make_deck([[1.0, 2.0], [3.0]])
+    b = orc.make_deck([10.0])
     wf = orc.make_workflow(lambda x, y: orc.add(x, y))
     assert orc.read_deck(wf.run(a, b)) == [[11.0, 12.0], [13.0]]
 
@@ -1078,28 +1070,28 @@ def t_workflow_nested_data():
 
 def t_workflow_run_kwargs():
     """Run a workflow with keyword arguments."""
-    a = make_handle([1.0])
-    b = make_handle([2.0])
-    wf = orc.make_workflow(lambda x, y: orc.sub(x, y))
+    a = orc.make_deck([1.0])
+    b = orc.make_deck([2.0])
+    wf = orc.make_workflow(lambda x, y: orc.subtract(x, y))
     assert orc.read_deck(wf.run(x=a, y=b)) == [-1.0]
     assert orc.read_deck(wf.run(y=a, x=b)) == [1.0]
 
 
 def t_workflow_run_mixed_args():
     """Run a workflow with positional + keyword arguments."""
-    a = make_handle([5.0])
-    b = make_handle([3.0])
-    wf = orc.make_workflow(lambda x, y: orc.sub(x, y))
+    a = orc.make_deck([5.0])
+    b = orc.make_deck([3.0])
+    wf = orc.make_workflow(lambda x, y: orc.subtract(x, y))
     assert orc.read_deck(wf.run(a, y=b)) == [2.0]
 
 
 def t_workflow_run_reuse():
     """Run the same workflow multiple times with different inputs."""
     wf = orc.make_workflow(lambda x, y: orc.add(x, y))
-    a1 = make_handle([1.0])
-    b1 = make_handle([10.0])
-    a2 = make_handle([100.0])
-    b2 = make_handle([200.0])
+    a1 = orc.make_deck([1.0])
+    b1 = orc.make_deck([10.0])
+    a2 = orc.make_deck([100.0])
+    b2 = orc.make_deck([200.0])
     assert orc.read_deck(wf.run(a1, b1)) == [11.0]
     assert orc.read_deck(wf.run(a2, b2)) == [300.0]
 
@@ -1138,7 +1130,7 @@ def t_workflow_node_not_comparable():
     def bad_fn(x, y):
         if x > y:  # WorkflowNode has no __gt__
             return orc.add(x, y)
-        return orc.sub(x, y)
+        return orc.subtract(x, y)
     try:
         orc.make_workflow(bad_fn)
         assert False, "Should have raised TypeError"
@@ -1161,8 +1153,8 @@ def t_workflow_node_not_readable():
 def t_workflow_run_too_many_args():
     """Running a workflow with too many positional args raises ValueError."""
     wf = orc.make_workflow(lambda x: orc.add(x, x))
-    a = make_handle([1.0])
-    b = make_handle([2.0])
+    a = orc.make_deck([1.0])
+    b = orc.make_deck([2.0])
     try:
         wf.run(a, b)
         assert False, "Should have raised ValueError"
@@ -1173,7 +1165,7 @@ def t_workflow_run_too_many_args():
 def t_workflow_run_missing_arg():
     """Missing arguments become empty handles. The plugin errors on type mismatch."""
     wf = orc.make_workflow(lambda x, y: orc.add(x, y))
-    a = make_handle([1.0])
+    a = orc.make_deck([1.0])
     # add(a, <empty>) — type mismatch between f64 and type_id 0.
     # Workflow::run propagates the plugin error.
     try:
@@ -1186,7 +1178,7 @@ def t_workflow_run_missing_arg():
 def t_workflow_run_none_arg():
     """Passing None as an argument maps to an empty handle."""
     wf = orc.make_workflow(lambda x, y: orc.add(x, y))
-    a = make_handle([1.0])
+    a = orc.make_deck([1.0])
     # add(a, None) — None becomes an empty handle, same as a missing arg.
     try:
         wf.run(a, None)
@@ -1198,7 +1190,7 @@ def t_workflow_run_none_arg():
 def t_workflow_run_unknown_kwarg():
     """Running a workflow with unknown keyword raises ValueError."""
     wf = orc.make_workflow(lambda x: orc.add(x, x))
-    a = make_handle([1.0])
+    a = orc.make_deck([1.0])
     try:
         wf.run(z=a)
         assert False, "Should have raised ValueError"
@@ -1209,7 +1201,7 @@ def t_workflow_run_unknown_kwarg():
 def t_workflow_run_duplicate_arg():
     """Running with both positional and keyword for same param raises ValueError."""
     wf = orc.make_workflow(lambda x: orc.add(x, x))
-    a = make_handle([1.0])
+    a = orc.make_deck([1.0])
     try:
         wf.run(a, x=a)
         assert False, "Should have raised ValueError"
@@ -1224,8 +1216,8 @@ def t_workflow_run_duplicate_arg():
 
 def t_run_workflow_convenience():
     """run_workflow is equivalent to graph.run."""
-    a = make_handle([1.0, 2.0, 3.0])
-    b = make_handle([10.0, 20.0, 30.0])
+    a = orc.make_deck([1.0, 2.0, 3.0])
+    b = orc.make_deck([10.0, 20.0, 30.0])
     wf = orc.make_workflow(lambda x, y: orc.add(x, y))
     assert orc.read_deck(orc.run_workflow(wf, a, b)) == [11.0, 22.0, 33.0]
     assert orc.read_deck(orc.run_workflow(wf, x=a, y=b)) == [11.0, 22.0, 33.0]
@@ -1238,8 +1230,8 @@ def t_run_workflow_convenience():
 
 def t_workflow_save_load_roundtrip():
     """Workflow survives save/load round-trip."""
-    a = make_handle([1.0, 2.0, 3.0])
-    b = make_handle([10.0, 20.0, 30.0])
+    a = orc.make_deck([1.0, 2.0, 3.0])
+    b = orc.make_deck([10.0, 20.0, 30.0])
     wf = orc.make_workflow(lambda x, y: orc.add(x, y))
     with tempfile.NamedTemporaryFile(suffix=".orcflow", delete=False) as f:
         path = f.name
@@ -1253,7 +1245,7 @@ def t_workflow_save_load_roundtrip():
 
 def t_workflow_save_load_with_constants():
     """Workflow with internal constants survives save/load."""
-    a = make_handle([5.0])
+    a = orc.make_deck([5.0])
     def fn(x):
         return orc.add(x, orc.make_deck([95.0]))
     wf = orc.make_workflow(fn)
@@ -1308,18 +1300,18 @@ def t_workflow_save_load_multi_output():
 def t_workflow_interleave():
     """Immediate-mode calls work between and after make_workflow calls."""
     # Before.
-    a = make_handle([1.0, 2.0])
-    b = make_handle([10.0, 20.0])
+    a = orc.make_deck([1.0, 2.0])
+    b = orc.make_deck([10.0, 20.0])
     assert orc.read_deck(orc.add(a, b)) == [11.0, 22.0]
     # Build a workflow.
     wf = orc.make_workflow(lambda x: orc.add(x, orc.make_deck([100.0])))
     # Between.
-    assert orc.read_deck(orc.mul(a, b)) == [10.0, 40.0]
+    assert orc.read_deck(orc.multiply(a, b)) == [10.0, 40.0]
     # Run the workflow.
     result = wf.run(a)
     assert orc.read_deck(result) == [101.0, 102.0]
     # After — use the workflow output in immediate mode.
-    doubled = orc.mul(result, make_handle([2.0]))
+    doubled = orc.multiply(result, orc.make_deck([2.0]))
     assert orc.read_deck(doubled) == [202.0, 204.0]
 
 
@@ -1330,8 +1322,8 @@ def t_workflow_error_does_not_poison_immediate_mode():
     except TypeError:
         pass
     # Immediate mode should still work.
-    a = make_handle([1.0])
-    b = make_handle([2.0])
+    a = orc.make_deck([1.0])
+    b = orc.make_deck([2.0])
     assert orc.read_deck(orc.add(a, b)) == [3.0]
 
 
@@ -1343,7 +1335,7 @@ def t_workflow_error_does_not_poison_next_workflow():
         pass
     # Next make_workflow should work.
     wf = orc.make_workflow(lambda x: orc.add(x, x))
-    a = make_handle([5.0])
+    a = orc.make_deck([5.0])
     assert orc.read_deck(wf.run(a)) == [10.0]
 
 

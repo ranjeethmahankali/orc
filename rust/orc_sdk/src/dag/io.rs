@@ -712,7 +712,7 @@ mod test {
             (let b (const 3.0f64))
             (let sum (add a b))
             (let c (const 10.0f64))
-            (let product (mul sum c))
+            (let product (multiply sum c))
             (return product)
         })
         .unwrap();
@@ -732,8 +732,8 @@ mod test {
             (let a (const 5.0f64))
             (let b (const 3.0f64))
             (let sum (add a b))
-            (let product (mul a b))
-            (let diff (sub sum product))
+            (let product (multiply a b))
+            (let diff (subtract sum product))
             (return diff)
         })
         .unwrap();
@@ -850,7 +850,7 @@ mod test {
         let mut wf = Workflow::default();
         orc_dag!(&*PLUGINS, &h.handle_counter, &h.registry, &mut wf, {
             (fn square
-                (let result (mul 'v 'v))
+                (let result (multiply 'v 'v))
                 (return result)
             )
             (fn double
@@ -937,7 +937,7 @@ mod test {
         let mut wf = Workflow::default();
         orc_dag!(&*PLUGINS, &h.handle_counter, &h.registry, &mut wf, {
             (fn inner
-                (let result (mul 'a 'a))
+                (let result (multiply 'a 'a))
                 (return result)
             )
             (let x (const 7.0f64))
@@ -1063,7 +1063,7 @@ mod test {
         let mut wf = Workflow::default();
         orc_dag!(&*PLUGINS, &h.handle_counter, &h.registry, &mut wf, {
             (fn scale
-                (let result (mul 'val 'factor))
+                (let result (multiply 'val 'factor))
                 (return result)
             )
             (let bias (const 100.0f64))
@@ -1150,7 +1150,7 @@ mod test {
             (let a (const 1.0f64))
             (let b (const 2.0f64))
             (let sum (add a b))
-            (let product (mul a b))
+            (let product (multiply a b))
             (return sum product)
         })
         .unwrap();
@@ -1182,8 +1182,8 @@ mod test {
         orc_dag!(&*PLUGINS, &h.handle_counter, &h.registry, &mut wf, {
             (let x (const 5.0f64))
             (let sum (add x x))
-            (let product (mul x x))
-            (let result (sub sum product))
+            (let product (multiply x x))
+            (let result (subtract sum product))
             (return result)
         })
         .unwrap();

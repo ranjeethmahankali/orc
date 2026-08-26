@@ -74,6 +74,12 @@ typedef OrcError (*OrcPluginFunction)(uint64_t const   ctx,
                                       OrcHandle       *outputs,
                                       uint64_t const   n_outputs);
 
+typedef struct
+{
+  char const *name;
+  OrcTypeId   type_id;
+} OrcArgumentInfo;
+
 /**
 Metadata for a function exposed by the plugin. All plugin functions have the same
 signature. The metadata encodes information about the inputs, outputs, and the function
@@ -102,8 +108,8 @@ typedef struct
   char const       *desc;
   uint64_t          n_inputs;
   uint64_t          n_outputs;
-  OrcTypeId        *input_types;
-  OrcTypeId        *output_types;
+  OrcArgumentInfo  *input_args;
+  OrcArgumentInfo  *output_args;
   OrcPluginFunction func;
 } OrcFuncInfo;
 
