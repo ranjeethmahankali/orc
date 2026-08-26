@@ -9,4 +9,4 @@ tiny_http = "0.12"
 tinyjson = "2.5"
 
 [dev-dependencies]
-minreq = { version = "3", features = ["https"] }
+minreq = "3"

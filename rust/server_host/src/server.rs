@@ -1,10 +1,10 @@
 use orc_sdk::{
-    ContextArena, Deck, DeckRegistry, DeckView, Error, ORC_ABI_VERSION, ORC_DECK_PROXY_COPY_ALL,
+    ContextArena, Deck, DeckRegistry, Error, ORC_ABI_VERSION, ORC_DECK_PROXY_COPY_ALL,
     ORC_DECK_PROXY_COPY_ITEMS, ORC_DECK_PROXY_SHUFFLE, ORC_ERROR_INVALID_PROXY, ORC_ERROR_NONE,
     ORC_TYPE_F32, ORC_TYPE_F64, ORC_TYPE_I8, ORC_TYPE_I16, ORC_TYPE_I32, ORC_TYPE_I64, ORC_TYPE_U8,
     ORC_TYPE_U16, ORC_TYPE_U32, ORC_TYPE_U64, OrcError, OrcHandle, OrcHandleBorrowed, OrcHost,
-    OrcHostCallbackAPI, OrcHostMemoryAPI, OrcProxyType, PluginSet, ProxyType, TOrcData,
-    reset_handle, slice_from_ptr,
+    OrcHostCallbackAPI, OrcHostMemoryAPI, OrcProxyType, OrcTypeId, Plugin, PluginSet, ProxyType,
+    TOrcData, TypeOwner, reset_handle, slice_from_ptr,
 };
 use std::{
     alloc::{Layout, alloc, dealloc},
@@ -79,25 +79,39 @@ const HOST: OrcHost = OrcHost {
     create_deck_from_proxy: Some(host_create_proxy_deck),
 };
 
+// --- Globals ---
+
+fn plugin_dir() -> std::path::PathBuf {
+    let exe = std::env::current_exe().expect("Cannot determine executable path");
+    let dir = exe.parent().expect("Executable has no parent directory");
+    if dir.ends_with("deps") {
+        dir.parent().unwrap().to_path_buf()
+    } else {
+        dir.to_path_buf()
+    }
+}
+
+pub static PLUGIN_SET: std::sync::LazyLock<PluginSet> = std::sync::LazyLock::new(|| {
+    PluginSet::load_from_dir(&plugin_dir(), &HOST).expect("Failed to load plugins")
+});
+
+pub static HANDLE_COUNTER: AtomicU64 = AtomicU64::new(1);
+
+pub fn next_handle_id() -> u64 {
+    HANDLE_COUNTER.fetch_add(1, Ordering::Relaxed)
+}
+
 // --- Session state ---
 
 struct Session {
     handles: HashMap<u64, OrcHandle>,
-    handle_counter: AtomicU64,
-    registry: DeckRegistry,
 }
 
 impl Session {
     fn new() -> Self {
         Self {
             handles: HashMap::new(),
-            handle_counter: AtomicU64::new(1),
-            registry: DeckRegistry::new(),
         }
-    }
-
-    fn next_id(&self) -> u64 {
-        self.handle_counter.fetch_add(1, Ordering::Relaxed)
     }
 }
 
@@ -113,22 +127,23 @@ impl Drop for Session {
 
 pub struct OrcServer {
     thread: Option<JoinHandle<()>>,
+    port: u16,
 }
 
 struct ServerInner {
-    plugin_set: PluginSet,
     sessions: Mutex<HashMap<u64, Session>>,
     session_counter: AtomicU64,
 }
 
 impl OrcServer {
-    pub fn start(plugin_dir: &str, port: u16) -> Result<Self, String> {
-        let plugin_set = PluginSet::load_from_dir(std::path::Path::new(plugin_dir), &HOST)
-            .map_err(|e| format!("Failed to load plugins: {e}"))?;
-        let addr = format!("0.0.0.0:{port}");
+    pub fn start(port: u16) -> Result<Self, String> {
+        // Force plugin loading before binding the port.
+        let _ = &*PLUGIN_SET;
+        let addr = format!("127.0.0.1:{port}");
         let server = Server::http(&addr).map_err(|e| format!("Failed to bind {addr}: {e}"))?;
+        let tiny_http::ListenAddr::IP(bound_addr) = server.server_addr();
+        let port = bound_addr.port();
         let inner = Arc::new(ServerInner {
-            plugin_set,
             sessions: Mutex::new(HashMap::new()),
             session_counter: AtomicU64::new(1),
         });
@@ -142,7 +157,12 @@ impl OrcServer {
         });
         Ok(OrcServer {
             thread: Some(thread),
+            port,
         })
+    }
+
+    pub fn port(&self) -> u16 {
+        self.port
     }
 
     pub fn join(mut self) {
@@ -163,6 +183,7 @@ impl ServerInner {
             (Method::Post, "/call") => self.call_function(&mut request),
             (Method::Get, "/functions") => self.list_functions(),
             (Method::Post, "/download") => self.download_handle(&mut request),
+            (Method::Post, "/upload") => self.upload_handle(&mut request),
             _ => Err((404, "Not found".to_string())),
         };
         match result {
@@ -261,22 +282,22 @@ impl ServerInner {
         let session = sessions
             .get_mut(&session_id)
             .ok_or((404, "Session not found".to_string()))?;
-        let handle_id = session.next_id();
+        let handle_id = next_handle_id();
         let mut handle = OrcHandle {
             handle: handle_id,
             ..Default::default()
         };
         match type_name {
-            "f64" => create_deck_from_json::<f64>(values, &mut handle, &session.registry)?,
-            "f32" => create_deck_from_json::<f32>(values, &mut handle, &session.registry)?,
-            "u8" => create_deck_from_json::<u8>(values, &mut handle, &session.registry)?,
-            "u16" => create_deck_from_json::<u16>(values, &mut handle, &session.registry)?,
-            "u32" => create_deck_from_json::<u32>(values, &mut handle, &session.registry)?,
-            "u64" => create_deck_from_json::<u64>(values, &mut handle, &session.registry)?,
-            "i8" => create_deck_from_json::<i8>(values, &mut handle, &session.registry)?,
-            "i16" => create_deck_from_json::<i16>(values, &mut handle, &session.registry)?,
-            "i32" => create_deck_from_json::<i32>(values, &mut handle, &session.registry)?,
-            "i64" => create_deck_from_json::<i64>(values, &mut handle, &session.registry)?,
+            "f64" => create_deck_from_json::<f64>(values, &mut handle, &DECK_REGISTRY)?,
+            "f32" => create_deck_from_json::<f32>(values, &mut handle, &DECK_REGISTRY)?,
+            "u8" => create_deck_from_json::<u8>(values, &mut handle, &DECK_REGISTRY)?,
+            "u16" => create_deck_from_json::<u16>(values, &mut handle, &DECK_REGISTRY)?,
+            "u32" => create_deck_from_json::<u32>(values, &mut handle, &DECK_REGISTRY)?,
+            "u64" => create_deck_from_json::<u64>(values, &mut handle, &DECK_REGISTRY)?,
+            "i8" => create_deck_from_json::<i8>(values, &mut handle, &DECK_REGISTRY)?,
+            "i16" => create_deck_from_json::<i16>(values, &mut handle, &DECK_REGISTRY)?,
+            "i32" => create_deck_from_json::<i32>(values, &mut handle, &DECK_REGISTRY)?,
+            "i64" => create_deck_from_json::<i64>(values, &mut handle, &DECK_REGISTRY)?,
             _ => return Err((400, format!("Unknown type: {type_name}"))),
         }
         session.handles.insert(handle_id, handle);
@@ -294,8 +315,7 @@ impl ServerInner {
             obj.get("inputs")
                 .ok_or((400, "Missing field: inputs".to_string()))?,
         )?;
-        let func_info = self
-            .plugin_set
+        let func_info = PLUGIN_SET
             .get_function(func_name)
             .ok_or((404, format!("Function not found: {func_name}")))?;
         let n_outputs = func_info.n_outputs.unwrap_or(1);
@@ -320,7 +340,7 @@ impl ServerInner {
         // Prepare output handles.
         let mut outputs: Vec<OrcHandle> = (0..n_outputs)
             .map(|_| {
-                let id = session.next_id();
+                let id = next_handle_id();
                 OrcHandle {
                     handle: id,
                     ..Default::default()
@@ -348,7 +368,7 @@ impl ServerInner {
     // GET /functions -> list of available functions
     fn list_functions(&self) -> Result<String, (i32, String)> {
         let mut entries = Vec::new();
-        for plugin in self.plugin_set.plugins() {
+        for plugin in PLUGIN_SET.plugins() {
             for func in plugin.functions() {
                 let name = func.name.replace('"', r#"\""#);
                 let desc = func.desc.replace('"', r#"\""#);
@@ -368,14 +388,15 @@ impl ServerInner {
         Ok(format!(r#"{{"functions": [{}]}}"#, entries.join(", ")))
     }
 
-    // POST /download {"session_id": <id>, "handle_id": <id>, "type": "f64"}
+    // POST /download {"session_id": <id>, "handle_id": <id>}
+    // Returns raw serialized bytes with Content-Type: application/octet-stream
+    // and X-Orc-Type-Id header.
     fn download_handle(&self, request: &mut Request) -> Result<String, (i32, String)> {
         let body = Self::read_body(request)?;
         let json = Self::parse_json(&body)?;
         let obj = json_as_object(&json)?;
         let session_id = Self::json_get_u64(obj, "session_id")?;
         let handle_id = Self::json_get_u64(obj, "handle_id")?;
-        let type_name = Self::json_get_str(obj, "type")?;
         let sessions = self.sessions.lock().unwrap();
         let session = sessions
             .get(&session_id)
@@ -384,19 +405,52 @@ impl ServerInner {
             .handles
             .get(&handle_id)
             .ok_or((404, "Handle not found".to_string()))?;
-        match type_name {
-            "f64" => download_as_json::<f64>(handle),
-            "f32" => download_as_json::<f32>(handle),
-            "u8" => download_as_json::<u8>(handle),
-            "u16" => download_as_json::<u16>(handle),
-            "u32" => download_as_json::<u32>(handle),
-            "u64" => download_as_json::<u64>(handle),
-            "i8" => download_as_json::<i8>(handle),
-            "i16" => download_as_json::<i16>(handle),
-            "i32" => download_as_json::<i32>(handle),
-            "i64" => download_as_json::<i64>(handle),
-            _ => Err((400, format!("Unknown type: {type_name}"))),
-        }
+        let plugin = plugin_for_type(handle.type_id).map_err(|e| (400, e))?;
+        let bytes = plugin
+            .serialize_deck(&SERIAL_CONTEXT_ARENA, handle, |buf| buf.clone())
+            .map_err(|e| (500, format!("Serialization failed: {e}")))?;
+        let type_id = handle.type_id;
+        let byte_vals: Vec<String> = bytes.iter().map(|b| b.to_string()).collect();
+        Ok(format!(
+            r#"{{"type_id": {type_id}, "data": [{}]}}"#,
+            byte_vals.join(", ")
+        ))
+    }
+
+    // POST /upload {"session_id": <id>, "type_id": <id>, "data": [<bytes>]}
+    // Deserialize raw bytes into a new handle.
+    fn upload_handle(&self, request: &mut Request) -> Result<String, (i32, String)> {
+        let body = Self::read_body(request)?;
+        let json = Self::parse_json(&body)?;
+        let obj = json_as_object(&json)?;
+        let session_id = Self::json_get_u64(obj, "session_id")?;
+        let type_id = Self::json_get_u64(obj, "type_id")?;
+        let data_arr = match obj.get("data") {
+            Some(JsonValue::Array(arr)) => arr,
+            _ => return Err((400, "Missing or invalid field: data".to_string())),
+        };
+        let bytes: Vec<u8> = data_arr
+            .iter()
+            .map(|v| match v {
+                JsonValue::Number(n) => Ok(*n as u8),
+                _ => Err((400, "data must be array of byte values".to_string())),
+            })
+            .collect::<Result<_, _>>()?;
+        let plugin = plugin_for_type(type_id).map_err(|e| (400, e))?;
+        let handle_id = next_handle_id();
+        let mut handle = OrcHandle {
+            handle: handle_id,
+            ..Default::default()
+        };
+        plugin
+            .deserialize_deck(0, &bytes, &mut handle)
+            .map_err(|e| (500, format!("Deserialization failed: {e}")))?;
+        let mut sessions = self.sessions.lock().unwrap();
+        let session = sessions
+            .get_mut(&session_id)
+            .ok_or((404, "Session not found".to_string()))?;
+        session.handles.insert(handle_id, handle);
+        Ok(format!(r#"{{"handle_id": {handle_id}}}"#))
     }
 }
 
@@ -488,45 +542,15 @@ fn create_deck_from_json<T: TOrcData + Any + Send + Sync + Default + FromJsonNum
     Ok(())
 }
 
-trait ToJsonNumber {
-    fn to_f64(self) -> f64;
-}
-
-macro_rules! impl_to_json_number {
-    ($($t:ty),*) => {
-        $(impl ToJsonNumber for $t {
-            fn to_f64(self) -> f64 { self as f64 }
-        })*
+fn plugin_for_type(type_id: OrcTypeId) -> Result<&'static Plugin, String> {
+    match PLUGIN_SET.get_type_owner(type_id) {
+        Some(TypeOwner::Plugin(plugin_index, _)) => Ok(&PLUGIN_SET.plugins()[*plugin_index]),
+        Some(TypeOwner::BuiltIn(_)) => PLUGIN_SET
+            .plugins()
+            .first()
+            .ok_or_else(|| "No plugins loaded".to_string()),
+        None => Err(format!("No plugin found for type_id {type_id}")),
     }
-}
-
-impl_to_json_number!(f64, f32, u8, u16, u32, u64, i8, i16, i32, i64);
-
-fn deck_view_to_json<T: Default + Copy + ToJsonNumber>(view: &DeckView<T>) -> String {
-    if view.depth() <= 1 {
-        let items: Vec<String> = view
-            .as_slice()
-            .iter()
-            .map(|v| format!("{}", v.to_f64()))
-            .collect();
-        format!("[{}]", items.join(", "))
-    } else {
-        let children: Vec<String> = view
-            .child()
-            .advance_iter()
-            .map(|child| deck_view_to_json(&child))
-            .collect();
-        format!("[{}]", children.join(", "))
-    }
-}
-
-fn download_as_json<T: TOrcData + Default + Copy + ToJsonNumber>(
-    handle: &OrcHandle,
-) -> Result<String, (i32, String)> {
-    let view = DeckView::<T>::from_handle(handle)
-        .map_err(|e| (500, format!("Failed to create deck view: {e}")))?;
-    let values = deck_view_to_json(&view);
-    Ok(format!(r#"{{"values": {values}}}"#))
 }
 
 // --- Proxy deck creation (required by the host) ---
@@ -561,40 +585,47 @@ unsafe extern "C" fn host_create_proxy_deck(
         ORC_DECK_PROXY_SHUFFLE => ProxyType::Shuffle,
         _ => return ORC_ERROR_INVALID_PROXY,
     };
-    // For the server host, we only handle primitive types in the proxy callback.
-    // Plugin types are handled by the plugin itself.
-    let result = match type_id {
-        ORC_TYPE_U8 => {
-            orc_sdk::deck_from_proxy::<u8>(inputs, proxy_type, proxy, out, &DECK_REGISTRY)
-        }
-        ORC_TYPE_U16 => {
-            orc_sdk::deck_from_proxy::<u16>(inputs, proxy_type, proxy, out, &DECK_REGISTRY)
-        }
-        ORC_TYPE_U32 => {
-            orc_sdk::deck_from_proxy::<u32>(inputs, proxy_type, proxy, out, &DECK_REGISTRY)
-        }
-        ORC_TYPE_U64 => {
-            orc_sdk::deck_from_proxy::<u64>(inputs, proxy_type, proxy, out, &DECK_REGISTRY)
-        }
-        ORC_TYPE_I8 => {
-            orc_sdk::deck_from_proxy::<i8>(inputs, proxy_type, proxy, out, &DECK_REGISTRY)
-        }
-        ORC_TYPE_I16 => {
-            orc_sdk::deck_from_proxy::<i16>(inputs, proxy_type, proxy, out, &DECK_REGISTRY)
-        }
-        ORC_TYPE_I32 => {
-            orc_sdk::deck_from_proxy::<i32>(inputs, proxy_type, proxy, out, &DECK_REGISTRY)
-        }
-        ORC_TYPE_I64 => {
-            orc_sdk::deck_from_proxy::<i64>(inputs, proxy_type, proxy, out, &DECK_REGISTRY)
-        }
-        ORC_TYPE_F32 => {
-            orc_sdk::deck_from_proxy::<f32>(inputs, proxy_type, proxy, out, &DECK_REGISTRY)
-        }
-        ORC_TYPE_F64 => {
-            orc_sdk::deck_from_proxy::<f64>(inputs, proxy_type, proxy, out, &DECK_REGISTRY)
-        }
-        _ => return ORC_ERROR_INVALID_PROXY,
+    let result = match PLUGIN_SET.get_type_owner(type_id) {
+        Some(type_owner) => match type_owner {
+            TypeOwner::BuiltIn(_) => match type_id {
+                ORC_TYPE_U8 => {
+                    orc_sdk::deck_from_proxy::<u8>(inputs, proxy_type, proxy, out, &DECK_REGISTRY)
+                }
+                ORC_TYPE_U16 => {
+                    orc_sdk::deck_from_proxy::<u16>(inputs, proxy_type, proxy, out, &DECK_REGISTRY)
+                }
+                ORC_TYPE_U32 => {
+                    orc_sdk::deck_from_proxy::<u32>(inputs, proxy_type, proxy, out, &DECK_REGISTRY)
+                }
+                ORC_TYPE_U64 => {
+                    orc_sdk::deck_from_proxy::<u64>(inputs, proxy_type, proxy, out, &DECK_REGISTRY)
+                }
+                ORC_TYPE_I8 => {
+                    orc_sdk::deck_from_proxy::<i8>(inputs, proxy_type, proxy, out, &DECK_REGISTRY)
+                }
+                ORC_TYPE_I16 => {
+                    orc_sdk::deck_from_proxy::<i16>(inputs, proxy_type, proxy, out, &DECK_REGISTRY)
+                }
+                ORC_TYPE_I32 => {
+                    orc_sdk::deck_from_proxy::<i32>(inputs, proxy_type, proxy, out, &DECK_REGISTRY)
+                }
+                ORC_TYPE_I64 => {
+                    orc_sdk::deck_from_proxy::<i64>(inputs, proxy_type, proxy, out, &DECK_REGISTRY)
+                }
+                ORC_TYPE_F32 => {
+                    orc_sdk::deck_from_proxy::<f32>(inputs, proxy_type, proxy, out, &DECK_REGISTRY)
+                }
+                ORC_TYPE_F64 => {
+                    orc_sdk::deck_from_proxy::<f64>(inputs, proxy_type, proxy, out, &DECK_REGISTRY)
+                }
+                _ => return ORC_ERROR_INVALID_PROXY,
+            },
+            TypeOwner::Plugin(plugin_index, _) => {
+                let plugin = &PLUGIN_SET.plugins()[*plugin_index];
+                plugin.create_proxy_deck(inputs, proxy_type, proxy, out)
+            }
+        },
+        None => return ORC_ERROR_INVALID_PROXY,
     };
     if let Err(e) = result {
         return e.into();
