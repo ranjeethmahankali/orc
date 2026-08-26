@@ -129,6 +129,19 @@
   implementing blocks will require some thought. I went with macros as the first pass in Rust. It is
   not clear to me what I should go with in C++.
 
+* TODO Support and testing for optional inputs for plugin functions
+  :PROPERTIES:
+  :CREATED:  2026-08-25 Tue 20:04
+  :END:
+
+  In theory, the host/caller can simply pass emtpy orc handles, and let the function decide what
+  they want to do. This should be easy to get working, just a bit tedious, and not super urgent.
+
+  - Update ~Combinations~ to support and ignore empty handles.
+  - The Rust proc macros should be updated to support Optional inputs.
+  - Update all the host programs to not be very strict about the number of inputs.
+  - Python host in pyorc will require some special attention to support sparse, named inputs.
+
 * TODO tiwkbm - Create Toy Demo Apps
   :PROPERTIES:
   :CREATED:  2026-07-28 Tue 16:45
