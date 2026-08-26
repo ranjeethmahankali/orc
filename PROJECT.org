@@ -120,15 +120,6 @@
   - Creating proxy decks: Grafting, flattening, simplifying and copying decks using the proxy
     callbacks should be fast. This should be compared with native code that does the same thing.
 
-* TODO tj45qx - C++ SDK
-  :PROPERTIES:
-  :CREATED:  2026-08-01 Sat 18:58
-  :END:
-
-  LLMs can easily port the Deck implementation etc. But the abstractions to remove friction in
-  implementing blocks will require some thought. I went with macros as the first pass in Rust. It is
-  not clear to me what I should go with in C++.
-
 * TODO Demo with a server host application
   :PROPERTIES:
   :CREATED:  2026-08-09 Sun 00:49
@@ -157,6 +148,18 @@
 
   Maybe I can write a rasterizer for my curve types, and somehow get the optimizer to export images
   of the sample points in the design space, so that I can visualize them when viewing the DOE.
+
+* NEXT tj45qx - C++ SDK
+  :PROPERTIES:
+  :CREATED:  2026-08-01 Sat 18:58
+  :END:
+  :LOGBOOK:
+  - State "NEXT"       from "TODO"       [2026-08-26 Wed 19:45]
+  :END:
+
+  LLMs can easily port the Deck implementation etc. But the abstractions to remove friction in
+  implementing blocks will require some thought. I went with macros as the first pass in Rust. It is
+  not clear to me what I should go with in C++.
 
 * NEXT tiwkbm - Create Toy Demo Apps
   :PROPERTIES:
@@ -371,7 +374,6 @@
 
     <2026-08-26 Wed 13:59> Decided not to do this right now.
 
-  
 
 * DONE tkcjtv - Function metadata ABI improvements
   CLOSED: [2026-08-25 Tue 19:41]
