@@ -129,41 +129,6 @@
   implementing blocks will require some thought. I went with macros as the first pass in Rust. It is
   not clear to me what I should go with in C++.
 
-* TODO Support and testing for optional inputs for plugin functions
-  :PROPERTIES:
-  :CREATED:  2026-08-25 Tue 20:04
-  :END:
-
-  In theory, the host/caller can simply pass emtpy orc handles, and let the function decide what
-  they want to do. This should be easy to get working, just a bit tedious, and not super urgent.
-
-  - Update ~Combinations~ to support and ignore empty handles.
-  - The Rust proc macros should be updated to support Optional inputs.
-  - Update all the host programs to not be very strict about the number of inputs.
-  - Python host in pyorc will require some special attention to support sparse, named inputs.
-
-** Vague LLM Plan
-   :PROPERTIES:
-   :CREATED:  2026-08-25 Tue 20:07
-   :END:
-
-   1. ~Combinations~: when iterating, treat empty handles as producing a single ~None~ item (depth
-      irrelevant). Propagate this into ~ReadCursor~ (yields ~None~ when the underlying handle is
-      empty) and ~DeckView~ (constructed as empty/absent).
-
-   2. ~orc_sdk/derive_macros~: add ~optional: bool~ to ~ParamInfo~. Recognise ~Option<&T>~ in
-      ~is_output_param~ / ~inner_type~ / ~infer_depth~ (restrict to depth-0 only; reject
-      ~Option<&[T]>~ etc.). Skip the non-empty assertion for optional inputs. Exclude optional inputs
-      from the type-dispatch scrutinee. In the generated ~dispatch_~ fn, pass all handles (including
-      empty ones) to ~Combinations~; the updated ~Combinations~ handles them transparently. Optional
-      call-args become ~Option<&T>~ drawn from the cursor's ~None~-or-~Some~ result.
-
-   3. Host side: relax the strict input-count checks so callers can omit trailing optional inputs
-      (pass fewer handles than ~n_inputs~; the remainder are treated as empty).
-
-   4. ~pyorc~: support sparse / named inputs — allow passing a ~dict~ mapping parameter name →
-      deck, leaving unmentioned optional inputs as empty handles.
-
 * TODO Demo with a server host application
   :PROPERTIES:
   :CREATED:  2026-08-09 Sun 00:49
@@ -226,6 +191,28 @@
   versioning, and serialization were all completely unanswered. I have since answered those
   questions through all the tasks I finished during this time. Trying to attempt to make a UI app
   once again.
+
+** NEXT Support and testing for optional inputs for plugin functions
+   :PROPERTIES:
+   :CREATED:  2026-08-25 Tue 20:04
+   :END:
+   :LOGBOOK:
+   - State "NEXT"       from "TODO"       [2026-08-26 Wed 13:02]
+   :END:
+
+   In theory, the host/caller can simply pass emtpy orc handles, and let the function decide what
+   they want to do. This should be easy to get working, just a bit tedious, and not super urgent.
+
+   - Update ~Combinations~ to support and ignore empty handles.
+   - The Rust proc macros should be updated to support Optional inputs.
+   - Update all the host programs to not be very strict about the number of inputs.
+   - Python host in pyorc will require some special attention to support sparse, named inputs.
+
+   <2026-08-26 Wed 12:59> Reducing scope for this. Scrapping the above Combinations work. For now, I
+   will just implement some leniency on the host side to call the plugin functions with empty
+   handles. And I will implement strict checks on the plugin side. Tolerating empty inputs on the
+   plugin side is not a priority at this time, and likely not for a while, and even later, it can be
+   done without touching anything outside the plugin.
 
 ** TODO Node Editor UI App
    :PROPERTIES:
@@ -300,6 +287,28 @@
     std-only: N threads pulling jobs from an mpsc channel. Plugin calls go through FFI into the C
     SDK, run on the thread pool, results returned as HTTP responses. Each session owns an OrcHost
     instance, stored in an Arc<Mutex<HashMap>>. Cross-platform via std and tiny_http.
+
+** Vague LLM Plan
+   :PROPERTIES:
+   :CREATED:  2026-08-25 Tue 20:07
+   :END:
+
+   1. ~Combinations~: when iterating, treat empty handles as producing a single ~None~ item (depth
+      irrelevant). Propagate this into ~ReadCursor~ (yields ~None~ when the underlying handle is
+      empty) and ~DeckView~ (constructed as empty/absent).
+
+   2. ~orc_sdk/derive_macros~: add ~optional: bool~ to ~ParamInfo~. Recognise ~Option<&T>~ in
+      ~is_output_param~ / ~inner_type~ / ~infer_depth~ (restrict to depth-0 only; reject
+      ~Option<&[T]>~ etc.). Skip the non-empty assertion for optional inputs. Exclude optional inputs
+      from the type-dispatch scrutinee. In the generated ~dispatch_~ fn, pass all handles (including
+      empty ones) to ~Combinations~; the updated ~Combinations~ handles them transparently. Optional
+      call-args become ~Option<&T>~ drawn from the cursor's ~None~-or-~Some~ result.
+
+   3. Host side: relax the strict input-count checks so callers can omit trailing optional inputs
+      (pass fewer handles than ~n_inputs~; the remainder are treated as empty).
+
+   4. ~pyorc~: support sparse / named inputs — allow passing a ~dict~ mapping parameter name →
+      deck, leaving unmentioned optional inputs as empty handles.
 
 * DONE tkcjtv - Function metadata ABI improvements
   CLOSED: [2026-08-25 Tue 19:41]
