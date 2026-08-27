@@ -95,6 +95,21 @@
   :CREATED:  2026-08-08 Sat 08:56
   :END:
 
+* TODO C++ SDK - Host and Plugin Utilities
+  :PROPERTIES:
+  :CREATED:  2026-08-26 Wed 22:42
+  :END:
+
+  The equivalent of ffi.rs, util.rs, and host.rs in C++
+
+* TODO C++ SDK - Plugin function helpers
+  :PROPERTIES:
+  :CREATED:  2026-08-26 Wed 22:42
+  :END:
+
+  The equivalent of orc_fn and orc_map_fn macros. Something that makes it easy to implement plugin
+  functions in C++.
+
 * TODO Python SDK
   :PROPERTIES:
   :CREATED:  2026-08-08 Sat 08:51
