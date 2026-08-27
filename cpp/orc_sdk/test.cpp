@@ -1397,6 +1397,360 @@ static void test_writer_roundtrip()
 
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Combinations helpers
+// ---------------------------------------------------------------------------
+
+static OrcHandle make_handle(uint64_t id)
+{
+  OrcHandle h {};
+  h.handle = id;
+  return h;
+}
+
+// ---------------------------------------------------------------------------
+// Combinations tests
+// ---------------------------------------------------------------------------
+
+static void test_comb_add_flat_equal(void)
+{
+  // Flat equal-length inputs: a and b each have 3 scalars.
+  Deck<double> a = Deck<double>::build<1>({1.0, 2.0, 3.0});
+  Deck<double> b = Deck<double>::build<1>({10.0, 20.0, 30.0});
+  Deck<double> out;
+
+  OrcHandle a_handle = make_handle(0);
+  OrcHandle b_handle = make_handle(1);
+  orc_sdk::update_handle_from_deck(a, a_handle);
+  orc_sdk::update_handle_from_deck(b, b_handle);
+
+  OrcHandle inputs[]        = {a_handle, b_handle};
+  uint8_t   input_depths[]  = {0, 0};
+  uint8_t   output_depths[] = {0};
+  auto [comb, err] =
+    orc_sdk::Combinations::from_handles(inputs, input_depths, output_depths);
+  TEST_ASSERT_EQUAL(static_cast<int>(orc_sdk::Error::NONE), static_cast<int>(err));
+
+  do {
+    DeckView<double>   av = comb.get_input<double>(a.items(), 0);
+    DeckView<double>   bv = comb.get_input<double>(b.items(), 1);
+    DeckWriter<double> ov = comb.get_output(out, 0);
+    TEST_ASSERT_EQUAL_UINT8(0, av.depth());
+    TEST_ASSERT_EQUAL_UINT8(0, bv.depth());
+    TEST_ASSERT_EQUAL_UINT8(0, ov.depth());
+    double &item = ov.push_default_mut();
+    item         = av.as_ref() + bv.as_ref();
+  } while (comb.advance());
+
+  TEST_ASSERT_EQUAL(3, static_cast<int>(out.size()));
+  TEST_ASSERT_EQUAL_DOUBLE(11.0, out[0]);
+  TEST_ASSERT_EQUAL_DOUBLE(22.0, out[1]);
+  TEST_ASSERT_EQUAL_DOUBLE(33.0, out[2]);
+}
+
+static void test_comb_add_flat_broadcast(void)
+{
+  // Flat inputs, broadcast-last: a has 4 scalars, b has 2.
+  Deck<double> a = Deck<double>::build<1>({1.0, 2.0, 3.0, 4.0});
+  Deck<double> b = Deck<double>::build<1>({10.0, 20.0});
+  Deck<double> out;
+
+  OrcHandle a_handle = make_handle(0);
+  OrcHandle b_handle = make_handle(1);
+  orc_sdk::update_handle_from_deck(a, a_handle);
+  orc_sdk::update_handle_from_deck(b, b_handle);
+
+  OrcHandle inputs[]        = {a_handle, b_handle};
+  uint8_t   input_depths[]  = {0, 0};
+  uint8_t   output_depths[] = {0};
+  auto [comb, err] =
+    orc_sdk::Combinations::from_handles(inputs, input_depths, output_depths);
+  TEST_ASSERT_EQUAL(static_cast<int>(orc_sdk::Error::NONE), static_cast<int>(err));
+
+  do {
+    DeckView<double>   av   = comb.get_input<double>(a.items(), 0);
+    DeckView<double>   bv   = comb.get_input<double>(b.items(), 1);
+    DeckWriter<double> ov   = comb.get_output(out, 0);
+    double            &item = ov.push_default_mut();
+    item                    = av.as_ref() + bv.as_ref();
+  } while (comb.advance());
+
+  TEST_ASSERT_EQUAL(4, static_cast<int>(out.size()));
+  TEST_ASSERT_EQUAL_DOUBLE(11.0, out[0]);
+  TEST_ASSERT_EQUAL_DOUBLE(22.0, out[1]);
+  TEST_ASSERT_EQUAL_DOUBLE(23.0, out[2]);
+  TEST_ASSERT_EQUAL_DOUBLE(24.0, out[3]);
+}
+
+static void test_comb_add_depth2_equal(void)
+{
+  // Depth-2 inputs, equal groups: 2 inner groups of 2 items each.
+  Deck<double> a = Deck<double>::build<2>({{1.0, 2.0}, {3.0, 4.0}});
+  Deck<double> b = Deck<double>::build<2>({{10.0, 20.0}, {30.0, 40.0}});
+  Deck<double> out;
+
+  OrcHandle a_handle = make_handle(0);
+  OrcHandle b_handle = make_handle(1);
+  orc_sdk::update_handle_from_deck(a, a_handle);
+  orc_sdk::update_handle_from_deck(b, b_handle);
+
+  OrcHandle inputs[]        = {a_handle, b_handle};
+  uint8_t   input_depths[]  = {0, 0};
+  uint8_t   output_depths[] = {0};
+  auto [comb, err] =
+    orc_sdk::Combinations::from_handles(inputs, input_depths, output_depths);
+  TEST_ASSERT_EQUAL(static_cast<int>(orc_sdk::Error::NONE), static_cast<int>(err));
+
+  do {
+    DeckView<double>   av   = comb.get_input<double>(a.items(), 0);
+    DeckView<double>   bv   = comb.get_input<double>(b.items(), 1);
+    DeckWriter<double> ov   = comb.get_output(out, 0);
+    double            &item = ov.push_default_mut();
+    item                    = av.as_ref() + bv.as_ref();
+  } while (comb.advance());
+
+  Deck<double> expected = Deck<double>::build<2>({{11.0, 22.0}, {33.0, 44.0}});
+  TEST_ASSERT_TRUE(out == expected);
+}
+
+static void test_comb_add_depth_mismatch(void)
+{
+  // Depth-2 a, depth-3 b: b's single inner group broadcasts across a's two groups.
+  Deck<double> a = Deck<double>::build<2>({{1.0, 2.0}, {3.0, 4.0}});
+  Deck<double> b = Deck<double>::build<3>({{{10.0, 20.0}}});
+  Deck<double> out;
+
+  OrcHandle a_handle = make_handle(0);
+  OrcHandle b_handle = make_handle(1);
+  orc_sdk::update_handle_from_deck(a, a_handle);
+  orc_sdk::update_handle_from_deck(b, b_handle);
+
+  OrcHandle inputs[]        = {a_handle, b_handle};
+  uint8_t   input_depths[]  = {0, 0};
+  uint8_t   output_depths[] = {0};
+  auto [comb, err] =
+    orc_sdk::Combinations::from_handles(inputs, input_depths, output_depths);
+  TEST_ASSERT_EQUAL(static_cast<int>(orc_sdk::Error::NONE), static_cast<int>(err));
+
+  do {
+    DeckView<double>   av   = comb.get_input<double>(a.items(), 0);
+    DeckView<double>   bv   = comb.get_input<double>(b.items(), 1);
+    DeckWriter<double> ov   = comb.get_output(out, 0);
+    double            &item = ov.push_default_mut();
+    item                    = av.as_ref() + bv.as_ref();
+  } while (comb.advance());
+
+  Deck<double> expected = Deck<double>::build<3>({{{11.0, 22.0}, {13.0, 24.0}}});
+  TEST_ASSERT_TRUE(out == expected);
+}
+
+static void test_comb_list_length(void)
+{
+  // Depth-2 input: 5 lists, some empty.
+  Deck<double> input;
+  {
+    DeckWriter<double> w = input.writer(2);
+    {
+      DeckWriter<double> c = w.child();
+      c.push(1.0);
+      c.push(2.0);
+      c.push(3.0);
+    }
+    {
+      DeckWriter<double> c = w.child();
+    }
+    {
+      DeckWriter<double> c = w.child();
+      c.push(4.0);
+    }
+    {
+      DeckWriter<double> c = w.child();
+    }
+    {
+      DeckWriter<double> c = w.child();
+      c.push(5.0);
+      c.push(6.0);
+    }
+  }
+  Deck<uint64_t> out;
+
+  OrcHandle in_handle = make_handle(0);
+  orc_sdk::update_handle_from_deck(input, in_handle);
+
+  OrcHandle inputs[]        = {in_handle};
+  uint8_t   input_depths[]  = {1};
+  uint8_t   output_depths[] = {0};
+  auto [comb, err] =
+    orc_sdk::Combinations::from_handles(inputs, input_depths, output_depths);
+  TEST_ASSERT_EQUAL(static_cast<int>(orc_sdk::Error::NONE), static_cast<int>(err));
+
+  do {
+    DeckView<double>     list_view = comb.get_input<double>(input.items(), 0);
+    DeckWriter<uint64_t> out_view  = comb.get_output(out, 0);
+    TEST_ASSERT_EQUAL_UINT8(1, list_view.depth());
+    TEST_ASSERT_EQUAL_UINT8(0, out_view.depth());
+    uint64_t &item = out_view.push_default_mut();
+    item           = static_cast<uint64_t>(list_view.size());
+  } while (comb.advance());
+
+  TEST_ASSERT_EQUAL(5, static_cast<int>(out.size()));
+  TEST_ASSERT_EQUAL_UINT64(3, out[0]);
+  TEST_ASSERT_EQUAL_UINT64(0, out[1]);
+  TEST_ASSERT_EQUAL_UINT64(1, out[2]);
+  TEST_ASSERT_EQUAL_UINT64(0, out[3]);
+  TEST_ASSERT_EQUAL_UINT64(2, out[4]);
+}
+
+static void test_comb_two_outputs(void)
+{
+  // One input, two outputs: square and cube of 3 scalars.
+  Deck<double> input = Deck<double>::build<1>({2.0, 3.0, 4.0});
+  Deck<double> sq;
+  Deck<double> cb;
+
+  OrcHandle in_handle = make_handle(0);
+  orc_sdk::update_handle_from_deck(input, in_handle);
+
+  OrcHandle inputs[]        = {in_handle};
+  uint8_t   input_depths[]  = {0};
+  uint8_t   output_depths[] = {0, 0};
+  auto [comb, err] =
+    orc_sdk::Combinations::from_handles(inputs, input_depths, output_depths);
+  TEST_ASSERT_EQUAL(static_cast<int>(orc_sdk::Error::NONE), static_cast<int>(err));
+
+  do {
+    DeckView<double>   in_view = comb.get_input<double>(input.items(), 0);
+    DeckWriter<double> sq_view = comb.get_output(sq, 0);
+    DeckWriter<double> cb_view = comb.get_output(cb, 1);
+    double             x       = in_view.as_ref();
+    double            &sq_item = sq_view.push_default_mut();
+    double            &cb_item = cb_view.push_default_mut();
+    sq_item                    = x * x;
+    cb_item                    = x * x * x;
+  } while (comb.advance());
+
+  TEST_ASSERT_EQUAL(3, static_cast<int>(sq.size()));
+  TEST_ASSERT_EQUAL(3, static_cast<int>(cb.size()));
+  TEST_ASSERT_EQUAL_DOUBLE(4.0, sq[0]);
+  TEST_ASSERT_EQUAL_DOUBLE(9.0, sq[1]);
+  TEST_ASSERT_EQUAL_DOUBLE(16.0, sq[2]);
+  TEST_ASSERT_EQUAL_DOUBLE(8.0, cb[0]);
+  TEST_ASSERT_EQUAL_DOUBLE(27.0, cb[1]);
+  TEST_ASSERT_EQUAL_DOUBLE(64.0, cb[2]);
+}
+
+static void test_comb_first_add_equal(void)
+{
+  // Equal-length: a and b each have 3 depth-1 groups. input_depths=[1,1],
+  // output_depths=[0].
+  Deck<double> a = Deck<double>::build<2>({{1.0, 99.0}, {2.0, 99.0}, {3.0, 99.0}});
+  Deck<double> b = Deck<double>::build<2>({{10.0, 99.0}, {20.0, 99.0}, {30.0, 99.0}});
+  Deck<double> out;
+
+  OrcHandle a_handle = make_handle(0);
+  OrcHandle b_handle = make_handle(1);
+  orc_sdk::update_handle_from_deck(a, a_handle);
+  orc_sdk::update_handle_from_deck(b, b_handle);
+
+  OrcHandle inputs[]        = {a_handle, b_handle};
+  uint8_t   input_depths[]  = {1, 1};
+  uint8_t   output_depths[] = {0};
+  auto [comb, err] =
+    orc_sdk::Combinations::from_handles(inputs, input_depths, output_depths);
+  TEST_ASSERT_EQUAL(static_cast<int>(orc_sdk::Error::NONE), static_cast<int>(err));
+
+  do {
+    DeckView<double>   av = comb.get_input<double>(a.items(), 0);
+    DeckView<double>   bv = comb.get_input<double>(b.items(), 1);
+    DeckWriter<double> ov = comb.get_output(out, 0);
+    TEST_ASSERT_EQUAL_UINT8(1, av.depth());
+    TEST_ASSERT_EQUAL_UINT8(1, bv.depth());
+    TEST_ASSERT_EQUAL_UINT8(0, ov.depth());
+    double &item = ov.push_default_mut();
+    item         = av.as_ref() + bv.as_ref();
+  } while (comb.advance());
+
+  TEST_ASSERT_EQUAL(3, static_cast<int>(out.size()));
+  TEST_ASSERT_EQUAL_DOUBLE(11.0, out[0]);
+  TEST_ASSERT_EQUAL_DOUBLE(22.0, out[1]);
+  TEST_ASSERT_EQUAL_DOUBLE(33.0, out[2]);
+}
+
+static void test_comb_first_add_broadcast(void)
+{
+  // Broadcast-last at group level: a has 4 groups, b has 2.
+  Deck<double> a =
+    Deck<double>::build<2>({{1.0, 99.0}, {2.0, 99.0}, {3.0, 99.0}, {4.0, 99.0}});
+  Deck<double> b = Deck<double>::build<2>({{10.0, 99.0}, {20.0, 99.0}});
+  Deck<double> out;
+
+  OrcHandle a_handle = make_handle(0);
+  OrcHandle b_handle = make_handle(1);
+  orc_sdk::update_handle_from_deck(a, a_handle);
+  orc_sdk::update_handle_from_deck(b, b_handle);
+
+  OrcHandle inputs[]        = {a_handle, b_handle};
+  uint8_t   input_depths[]  = {1, 1};
+  uint8_t   output_depths[] = {0};
+  auto [comb, err] =
+    orc_sdk::Combinations::from_handles(inputs, input_depths, output_depths);
+  TEST_ASSERT_EQUAL(static_cast<int>(orc_sdk::Error::NONE), static_cast<int>(err));
+
+  do {
+    DeckView<double>   av   = comb.get_input<double>(a.items(), 0);
+    DeckView<double>   bv   = comb.get_input<double>(b.items(), 1);
+    DeckWriter<double> ov   = comb.get_output(out, 0);
+    double            &item = ov.push_default_mut();
+    item                    = av.as_ref() + bv.as_ref();
+  } while (comb.advance());
+
+  TEST_ASSERT_EQUAL(4, static_cast<int>(out.size()));
+  TEST_ASSERT_EQUAL_DOUBLE(11.0, out[0]);
+  TEST_ASSERT_EQUAL_DOUBLE(22.0, out[1]);
+  TEST_ASSERT_EQUAL_DOUBLE(23.0, out[2]);
+  TEST_ASSERT_EQUAL_DOUBLE(24.0, out[3]);
+}
+
+static void test_comb_list_item(void)
+{
+  // Order 2 list, single index.
+  Deck<double> lists =
+    Deck<double>::build<2>({{3.1, 6.2, 9.42}, {1.11, 2.21, 3.31}, {4.45, 3.35, 2.25}});
+  Deck<uint64_t> indices = Deck<uint64_t>::build<1>({2});
+  Deck<double>   items;
+
+  OrcHandle list_handle  = make_handle(0);
+  OrcHandle index_handle = make_handle(1);
+  orc_sdk::update_handle_from_deck(lists, list_handle);
+  orc_sdk::update_handle_from_deck(indices, index_handle);
+
+  OrcHandle inputs[]        = {list_handle, index_handle};
+  uint8_t   input_depths[]  = {1, 0};
+  uint8_t   output_depths[] = {0};
+  auto [comb, err] =
+    orc_sdk::Combinations::from_handles(inputs, input_depths, output_depths);
+  TEST_ASSERT_EQUAL(static_cast<int>(orc_sdk::Error::NONE), static_cast<int>(err));
+
+  do {
+    DeckView<double>   list_view  = comb.get_input<double>(lists.items(), 0);
+    DeckView<uint64_t> index_view = comb.get_input<uint64_t>(indices.items(), 1);
+    DeckWriter<double> item_view  = comb.get_output(items, 0);
+    TEST_ASSERT_EQUAL_UINT8(1, list_view.depth());
+    TEST_ASSERT_EQUAL_UINT8(0, index_view.depth());
+    std::span<double const> list = list_view.as_slice();
+    uint64_t                idx  = index_view.as_ref();
+    double                 &item = item_view.push_default_mut();
+    item                         = list[static_cast<size_t>(idx)];
+  } while (comb.advance());
+
+  TEST_ASSERT_EQUAL(3, static_cast<int>(items.size()));
+  TEST_ASSERT_EQUAL_DOUBLE(9.42, items[0]);
+  TEST_ASSERT_EQUAL_DOUBLE(3.31, items[1]);
+  TEST_ASSERT_EQUAL_DOUBLE(2.25, items[2]);
+}
+
+// ---------------------------------------------------------------------------
+
 void setUp(void) {}
 void tearDown(void) {}
 
@@ -1450,5 +1804,15 @@ int main(void)
   RUN_TEST(test_writer_all_empty);
   RUN_TEST(test_writer_len_at_each_level);
   RUN_TEST(test_writer_roundtrip);
+  // Combinations
+  RUN_TEST(test_comb_add_flat_equal);
+  RUN_TEST(test_comb_add_flat_broadcast);
+  RUN_TEST(test_comb_add_depth2_equal);
+  RUN_TEST(test_comb_add_depth_mismatch);
+  RUN_TEST(test_comb_list_length);
+  RUN_TEST(test_comb_two_outputs);
+  RUN_TEST(test_comb_first_add_equal);
+  RUN_TEST(test_comb_first_add_broadcast);
+  RUN_TEST(test_comb_list_item);
   return UNITY_END();
 }

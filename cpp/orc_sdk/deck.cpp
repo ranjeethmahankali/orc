@@ -1,5 +1,7 @@
 #include "deck.hpp"
 
+#include <span>
+
 namespace orc_sdk {
 
 size_t calc_stride_count(std::vector<OrcMark> const  &marks,
@@ -41,6 +43,14 @@ void calc_strides(std::vector<OrcMark> const &marks,
       pegs[j] = i;
     }
   }
+}
+
+size_t calc_stride_count(std::span<OrcMark const>  marks,
+                         std::span<uint64_t const> stride_offset)
+{
+  if (marks.empty())
+    return 0;
+  return static_cast<size_t>(stride_offset.back()) + marks.back().depth;
 }
 
 }  // namespace orc_sdk
