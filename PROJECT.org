@@ -164,13 +164,15 @@
   not clear to me what I should go with in C++.
 
   <2026-08-26 Wed 21:52> Setup a simple C++ static library, and a test executable, ported the error
-  type, and the deck type, with some basic functionality, and testing. Will try to get this merged.
+  type, and the deck type, with some basic functionality, and testing. Will try to get this merged
+  after I port the cursors, views, writers and combinations.
 
 * NEXT tiwkbm - Create Toy Demo Apps
   :PROPERTIES:
   :CREATED:  2026-07-28 Tue 16:45
   :END:
   :LOGBOOK:
+  - State "NEXT"       from "NEXT"       [2026-08-26 Wed 21:54]
   - State "NEXT"       from "TODO"       [2026-08-25 Tue 20:13]
   - State "TODO"       from "NEXT"       [2026-07-31 Fri 20:46]
   - State "NEXT"       from "TODO"       [2026-07-30 Thu 18:36]
