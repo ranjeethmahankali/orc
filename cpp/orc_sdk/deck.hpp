@@ -15,18 +15,6 @@ extern "C"
 
 namespace orc_sdk {
 
-template<typename U>
-struct NestingDepth
-{
-  static constexpr uint8_t value = 0;
-};
-
-template<typename U>
-struct NestingDepth<std::initializer_list<U>>
-{
-  static constexpr uint8_t value = 1 + NestingDepth<U>::value;
-};
-
 // Maps a depth to the corresponding nested std::initializer_list type.
 template<typename T, uint8_t Depth>
 struct NestedInitList
@@ -105,6 +93,7 @@ public:
   }
 
   // Terminal case: list of T values.
+  template<uint8_t>
   static void build_impl(Deck &d, std::initializer_list<T> list, uint8_t depth)
   {
     if (list.size() == 0) {
@@ -118,12 +107,12 @@ public:
   }
 
   // Recursive case: list of lists.
-  template<typename Inner>
+  template<uint8_t GroupDepth, typename Inner>
   static void build_impl(Deck &d, std::initializer_list<Inner> list, uint8_t depth)
   {
     for (auto const &group : list) {
-      build_impl(d, group, depth);
-      depth = NestingDepth<Inner>::value;
+      build_impl<GroupDepth - 1>(d, group, depth);
+      depth = GroupDepth - 1;
     }
   }
 
@@ -131,7 +120,7 @@ public:
   static Deck build(typename NestedInitList<T, Depth>::type list)
   {
     Deck d;
-    build_impl(d, list, Depth);
+    build_impl<Depth>(d, list, Depth);
     return d;
   }
 
