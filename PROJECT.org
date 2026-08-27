@@ -149,12 +149,12 @@
   Maybe I can write a rasterizer for my curve types, and somehow get the optimizer to export images
   of the sample points in the design space, so that I can visualize them when viewing the DOE.
 
-* DONE tj45qx - C++ SDK
-  CLOSED: [2026-08-26 Wed 21:53]
+* NEXT tj45qx - C++ SDK - Deck implementation and helpers
   :PROPERTIES:
   :CREATED:  2026-08-01 Sat 18:58
   :END:
   :LOGBOOK:
+  - State "NEXT"       from "DONE"       [2026-08-26 Wed 22:22]
   - State "DONE"       from "NEXT"       [2026-08-26 Wed 21:53]
   - State "NEXT"       from "TODO"       [2026-08-26 Wed 19:45]
   :END:
@@ -166,6 +166,9 @@
   <2026-08-26 Wed 21:52> Setup a simple C++ static library, and a test executable, ported the error
   type, and the deck type, with some basic functionality, and testing. Will try to get this merged
   after I port the cursors, views, writers and combinations.
+
+  <2026-08-26 Wed 22:22> Just ported the cursors, writers, views, and the corresponding test
+  coverage.
 
 * NEXT tiwkbm - Create Toy Demo Apps
   :PROPERTIES:
