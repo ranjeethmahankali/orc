@@ -3,8 +3,8 @@ use orc_sdk::{
     ORC_DECK_PROXY_COPY_ITEMS, ORC_DECK_PROXY_SHUFFLE, ORC_ERROR_INVALID_PROXY, ORC_ERROR_NONE,
     ORC_TYPE_F32, ORC_TYPE_F64, ORC_TYPE_I8, ORC_TYPE_I16, ORC_TYPE_I32, ORC_TYPE_I64, ORC_TYPE_U8,
     ORC_TYPE_U16, ORC_TYPE_U32, ORC_TYPE_U64, OrcError, OrcHandle, OrcHandleBorrowed, OrcHost,
-    OrcHostCallbackAPI, OrcHostMemoryAPI, OrcProxyType, PluginSet, ProxyType,
-    TypeOwner, reset_handle, slice_from_ptr, try_deserialize_handle, try_serialize_handle,
+    OrcHostCallbackAPI, OrcHostMemoryAPI, OrcProxyType, PluginSet, ProxyType, TypeOwner,
+    reset_handle, slice_from_ptr, try_deserialize_handle, try_serialize_handle,
 };
 use std::{
     alloc::{Layout, alloc, dealloc},
@@ -190,14 +190,12 @@ impl ServerInner {
             (Method::Post, "/session/close") => {
                 self.close_session(&mut request).map(ApiResponse::Json)
             }
-            (Method::Post, "/constant") => {
-                self.create_constant(&mut request, query).map(ApiResponse::Json)
-            }
+            (Method::Post, "/constant") => self
+                .create_constant(&mut request, query)
+                .map(ApiResponse::Json),
             (Method::Post, "/call") => self.call_function(&mut request).map(ApiResponse::Json),
             (Method::Get, "/functions") => self.list_functions().map(ApiResponse::Json),
-            (Method::Post, "/download") => {
-                self.download_handle(query).map(ApiResponse::Bytes)
-            }
+            (Method::Post, "/download") => self.download_handle(query).map(ApiResponse::Bytes),
             _ => Err((404, "Not found".to_string())),
         };
         match result {
@@ -303,11 +301,7 @@ impl ServerInner {
     }
 
     // POST /constant?session_id=N  body=raw serialized bytes
-    fn create_constant(
-        &self,
-        request: &mut Request,
-        query: &str,
-    ) -> Result<String, (i32, String)> {
+    fn create_constant(&self, request: &mut Request, query: &str) -> Result<String, (i32, String)> {
         let params = parse_query(query);
         let session_id = query_get_u64(&params, "session_id")?;
         let bytes = Self::read_body_bytes(request)?;

@@ -147,10 +147,7 @@ fn t_create_constant_and_download() {
         .expect("Failed to allocate deck");
     let data = serialize_handle(&handle);
     handle.free();
-    let (code, json) = post_bytes_json(
-        &format!("{base}/constant?session_id={sid}"),
-        &data,
-    );
+    let (code, json) = post_bytes_json(&format!("{base}/constant?session_id={sid}"), &data);
     assert_eq!(code, 200);
     let hid = json_u64(&json, "handle_id");
     // Download the serialized handle.
@@ -159,12 +156,12 @@ fn t_create_constant_and_download() {
         &[],
     );
     assert_eq!(code, 200);
-    assert!(!downloaded.is_empty(), "Serialized data should not be empty");
-    // Upload the downloaded bytes as a new constant.
-    let (code, json) = post_bytes_json(
-        &format!("{base}/constant?session_id={sid}"),
-        &downloaded,
+    assert!(
+        !downloaded.is_empty(),
+        "Serialized data should not be empty"
     );
+    // Upload the downloaded bytes as a new constant.
+    let (code, json) = post_bytes_json(&format!("{base}/constant?session_id={sid}"), &downloaded);
     assert_eq!(code, 200);
     let hid2 = json_u64(&json, "handle_id");
     assert_ne!(hid, hid2);
@@ -184,26 +181,26 @@ fn t_call_add_function() {
     let sid = json_u64(&json, "session_id");
     // Create two constants.
     let d1: orc_sdk::Deck<f64> = deck![1.0, 2.0, 3.0];
-    let mut h1 = OrcHandle { handle: next_handle_id(), ..Default::default() };
+    let mut h1 = OrcHandle {
+        handle: next_handle_id(),
+        ..Default::default()
+    };
     DECK_REGISTRY.alloc_with_value(Some(d1), &mut h1).unwrap();
     let data1 = serialize_handle(&h1);
     h1.free();
 
     let d2: orc_sdk::Deck<f64> = deck![10.0, 20.0, 30.0];
-    let mut h2 = OrcHandle { handle: next_handle_id(), ..Default::default() };
+    let mut h2 = OrcHandle {
+        handle: next_handle_id(),
+        ..Default::default()
+    };
     DECK_REGISTRY.alloc_with_value(Some(d2), &mut h2).unwrap();
     let data2 = serialize_handle(&h2);
     h2.free();
 
-    let (_, json) = post_bytes_json(
-        &format!("{base}/constant?session_id={sid}"),
-        &data1,
-    );
+    let (_, json) = post_bytes_json(&format!("{base}/constant?session_id={sid}"), &data1);
     let a_id = json_u64(&json, "handle_id");
-    let (_, json) = post_bytes_json(
-        &format!("{base}/constant?session_id={sid}"),
-        &data2,
-    );
+    let (_, json) = post_bytes_json(&format!("{base}/constant?session_id={sid}"), &data2);
     let b_id = json_u64(&json, "handle_id");
     // Call add(a, b).
     let (code, json) = post_json(
