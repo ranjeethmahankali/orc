@@ -10,7 +10,7 @@ fn main() -> ExitCode {
         .unwrap_or(DEFAULT_PORT);
     match OrcServer::start(port) {
         Ok(server) => {
-            println!("orc server listening on port {port}");
+            println!("orc server listening on port {}", server.port());
             server.join();
             ExitCode::SUCCESS
         }
