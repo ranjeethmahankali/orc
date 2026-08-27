@@ -20,7 +20,7 @@ void calc_strides(std::vector<OrcMark> const &marks,
   strides.clear();
   // Exclusive prefix sum of depth.
   uint64_t acc = 0;
-  for (auto const &m : marks) {
+  for (OrcMark const &m : marks) {
     stride_offset.push_back(acc);
     acc += m.depth;
   }
@@ -29,13 +29,13 @@ void calc_strides(std::vector<OrcMark> const &marks,
   strides.assign(total, UINT64_MAX);
   // Fill strides using pegs.
   for (size_t i = 0; i < marks.size(); ++i) {
-    auto d = static_cast<size_t>(marks[i].depth);
+    size_t d = static_cast<size_t>(marks[i].depth);
     if (d > pegs.size())
       pegs.resize(d, 0);
     for (size_t j = 0; j < d; ++j) {
       size_t peg = pegs[j];
       if (peg < i) {
-        auto &dst = strides[static_cast<size_t>(stride_offset[peg]) + j];
+        uint64_t &dst = strides[static_cast<size_t>(stride_offset[peg]) + j];
         dst       = std::min(dst, static_cast<uint64_t>(i - peg));
       }
       pegs[j] = i;
