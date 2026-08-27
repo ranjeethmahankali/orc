@@ -21,10 +21,12 @@ jobs:
         run: rustup update stable
       - name: Check bindings
         run: cargo run -p bindings_generator -- c/orc_abi.h --rust-check rust/orc_sdk/src/bindings.rs
-      - name: Build C (Debug)
-        run: cmake -S c/ -B build/debug -DCMAKE_BUILD_TYPE=Debug && cmake --build build/debug
+      - name: Build C and C++ (Debug)
+        run: cmake -S . -B build/debug -DCMAKE_BUILD_TYPE=Debug && cmake --build build/debug
       - name: Run C tests
         run: build/debug/orc_sdk_tests && build/debug/example_c_plugin_tests
+      - name: Run C++ tests
+        run: build/debug/orc_sdk_cpp_tests
       - name: Build Rust
         run: cargo build --verbose --all-targets --all-features
       - name: Check Rust formatting
@@ -52,10 +54,12 @@ jobs:
         run: rustup update stable
       - name: Check bindings
         run: cargo run -p bindings_generator -- c/orc_abi.h --rust-check rust/orc_sdk/src/bindings.rs
-      - name: Build C (Debug)
-        run: cmake -S c/ -B build/debug -DCMAKE_BUILD_TYPE=Debug && cmake --build build/debug --config Debug
+      - name: Build C and C++ (Debug)
+        run: cmake -S . -B build/debug -DCMAKE_BUILD_TYPE=Debug && cmake --build build/debug --config Debug
       - name: Run C tests
         run: build/debug/orc_sdk_tests.exe && build/debug/example_c_plugin_tests.exe
+      - name: Run C++ tests
+        run: build/debug/orc_sdk_cpp_tests.exe
       - name: Build Rust
         run: cargo build --verbose --all-targets --all-features
       - name: Check Rust formatting
@@ -83,10 +87,12 @@ jobs:
         run: rustup update stable
       - name: Check bindings
         run: cargo run -p bindings_generator -- c/orc_abi.h --rust-check rust/orc_sdk/src/bindings.rs
-      - name: Build C (Debug)
-        run: cmake -B build/debug -S c -DCMAKE_BUILD_TYPE=Debug && cmake --build build/debug
+      - name: Build C and C++ (Debug)
+        run: cmake -S . -B build/debug -DCMAKE_BUILD_TYPE=Debug && cmake --build build/debug
       - name: Run C tests
         run: build/debug/orc_sdk_tests && build/debug/example_c_plugin_tests
+      - name: Run C++ tests
+        run: build/debug/orc_sdk_cpp_tests
       - name: Build Rust
         run: cargo build --verbose --all-targets --all-features
       - name: Check Rust formatting
