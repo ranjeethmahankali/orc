@@ -10,6 +10,7 @@ extern "C"
 #include <cstddef>
 #include <cstdint>
 #include <initializer_list>
+#include <ostream>
 #include <span>
 #include <vector>
 
@@ -251,5 +252,76 @@ public:
                       });
   }
 };
+
+template<typename T>
+void fmt_raw_deck(std::span<T const>       items,
+                  std::span<OrcMark const> marks,
+                  std::ostream            &os)
+{
+  if (items.empty() && marks.empty()) {
+    os << "<empty_deck>\n";
+    return;
+  }
+  constexpr size_t TAB = 3;
+  auto dmax    = marks.empty() ? uint8_t{0} : marks.front().depth;
+  auto n_items = static_cast<uint64_t>(items.size());
+  uint64_t tail_start = 0;
+
+  auto spaces = [&](size_t n) {
+    for (size_t i = 0; i < n; ++i)
+      os << ' ';
+  };
+  auto dashes = [&](size_t n) {
+    for (size_t i = 0; i < n; ++i)
+      os << '-';
+  };
+  auto write_depth = [&](uint8_t d) {
+    if (d < 10)
+      os << "  " << static_cast<int>(d);
+    else if (d < 100)
+      os << ' ' << static_cast<int>(d);
+    else
+      os << static_cast<int>(d);
+  };
+  auto write_continuation = [&](uint64_t idx) {
+    spaces((static_cast<size_t>(dmax) + 1) * TAB);
+    os << "    | " << items[idx] << '\n';
+  };
+  auto write_mark_line = [&](OrcMark const &m, uint64_t next_pos) {
+    spaces(static_cast<size_t>(dmax - m.depth) * TAB);
+    auto d_current = static_cast<uint8_t>(m.depth + 1);
+    write_depth(d_current);
+    os << ' ';
+    dashes(static_cast<size_t>(d_current) * TAB);
+    os << '|';
+    if (m.pos < next_pos) {
+      auto end = std::min(next_pos, n_items);
+      os << ' ' << items[m.pos] << '\n';
+      for (uint64_t i = m.pos + 1; i < end; ++i)
+        write_continuation(i);
+    }
+    else {
+      os << '\n';
+    }
+  };
+
+  for (size_t i = 0; i + 1 < marks.size(); ++i) {
+    write_mark_line(marks[i], marks[i + 1].pos);
+    tail_start = marks[i + 1].pos;
+  }
+  if (!marks.empty()) {
+    write_mark_line(marks.back(), n_items);
+    tail_start = n_items;
+  }
+  for (auto i = tail_start; i < n_items; ++i)
+    write_continuation(i);
+}
+
+template<typename T>
+std::ostream &operator<<(std::ostream &os, Deck<T> const &deck)
+{
+  fmt_raw_deck(deck.items(), deck.marks(), os);
+  return os;
+}
 
 }  // namespace orc_sdk
