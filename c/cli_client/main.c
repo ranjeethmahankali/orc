@@ -24,6 +24,8 @@
 #include <ws2tcpip.h>
 #pragma comment(lib, "ws2_32.lib")
 typedef SOCKET sock_t;
+typedef int    sockio_len_t;  /* send/recv length param type */
+typedef int    sockio_ret_t;  /* send/recv return type */
 #define SOCK_INVALID INVALID_SOCKET
 #define sock_close closesocket
 static int sock_init(void)
@@ -40,7 +42,9 @@ static void sock_cleanup(void)
 #include <netdb.h>
 #include <sys/socket.h>
 #include <unistd.h>
-typedef int sock_t;
+typedef int     sock_t;
+typedef size_t  sockio_len_t;  /* send/recv length param type */
+typedef ssize_t sockio_ret_t;  /* send/recv return type */
 #define SOCK_INVALID (-1)
 #define sock_close close
 static int  sock_init(void)
@@ -131,7 +135,7 @@ static sock_t tcp_connect(char const *host, uint16_t port)
     freeaddrinfo(res);
     return SOCK_INVALID;
   }
-  if (connect(s, res->ai_addr, (int)res->ai_addrlen) != 0) {
+  if (connect(s, res->ai_addr, (socklen_t)res->ai_addrlen) != 0) {
     sock_close(s);
     freeaddrinfo(res);
     return SOCK_INVALID;
@@ -143,7 +147,7 @@ static sock_t tcp_connect(char const *host, uint16_t port)
 static int send_all(sock_t s, char const *data, size_t len)
 {
   while (len > 0) {
-    int n = send(s, data, (int)len, 0);
+    sockio_ret_t n = send(s, data, (sockio_len_t)len, 0);
     if (n <= 0)
       return -1;
     data += n;
@@ -164,7 +168,7 @@ static int recv_response(sock_t s, HttpResponse *out)
       buf_free(&raw);
       return -1;
     }
-    int n = recv(s, raw.data + raw.len, 1024, 0);
+    sockio_ret_t n = recv(s, raw.data + raw.len, (sockio_len_t)1024, 0);
     if (n <= 0) {
       if (n == 0)
         break;
@@ -225,7 +229,7 @@ static int recv_response(sock_t s, HttpResponse *out)
       buf_free(&raw);
       return -1;
     }
-    int n = recv(s, raw.data + raw.len, (int)need, 0);
+    sockio_ret_t n = recv(s, raw.data + raw.len, (sockio_len_t)need, 0);
     if (n <= 0) {
       buf_free(&raw);
       return -1;
