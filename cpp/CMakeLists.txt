@@ -27,3 +27,11 @@ add_library(orc_sdk_cpp STATIC
     orc_sdk/error.cpp
 )
 target_include_directories(orc_sdk_cpp PUBLIC . ../c)
+
+# orc_sdk_cpp_tests — executable
+add_executable(orc_sdk_cpp_tests
+    orc_sdk/test.cpp
+    ../c/third_party/unity.c
+)
+target_compile_definitions(orc_sdk_cpp_tests PRIVATE UNITY_INCLUDE_DOUBLE)
+target_link_libraries(orc_sdk_cpp_tests PRIVATE orc_sdk_cpp)
