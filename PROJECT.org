@@ -149,11 +149,13 @@
   Maybe I can write a rasterizer for my curve types, and somehow get the optimizer to export images
   of the sample points in the design space, so that I can visualize them when viewing the DOE.
 
-* NEXT tj45qx - C++ SDK - Deck implementation and helpers
+* DONE tj45qx - C++ SDK - Deck implementation and helpers
+  CLOSED: [2026-08-26 Wed 22:33]
   :PROPERTIES:
   :CREATED:  2026-08-01 Sat 18:58
   :END:
   :LOGBOOK:
+  - State "DONE"       from "NEXT"       [2026-08-26 Wed 22:33]
   - State "NEXT"       from "DONE"       [2026-08-26 Wed 22:22]
   - State "DONE"       from "NEXT"       [2026-08-26 Wed 21:53]
   - State "NEXT"       from "TODO"       [2026-08-26 Wed 19:45]
@@ -169,6 +171,9 @@
 
   <2026-08-26 Wed 22:22> Just ported the cursors, writers, views, and the corresponding test
   coverage.
+
+  <2026-08-26 Wed 22:33> The porting story of ffi.rs is not fully clear in my head. I will put that
+  off for later. Merging what I have so far.
 
 * NEXT tiwkbm - Create Toy Demo Apps
   :PROPERTIES:
