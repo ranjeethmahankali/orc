@@ -1,6 +1,9 @@
 #pragma once
 
+extern "C"
+{
 #include "orc_abi.h"
+}
 
 #include <iostream>
 
