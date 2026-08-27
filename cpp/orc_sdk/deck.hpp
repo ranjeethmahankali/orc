@@ -14,6 +14,18 @@ extern "C"
 
 namespace orc_sdk {
 
+template<typename U>
+struct NestingDepth
+{
+  static constexpr uint8_t value = 0;
+};
+
+template<typename U>
+struct NestingDepth<std::initializer_list<U>>
+{
+  static constexpr uint8_t value = 1 + NestingDepth<U>::value;
+};
+
 size_t calc_stride_count(std::vector<OrcMark> const  &marks,
                          std::vector<uint64_t> const &stride_offset);
 
@@ -76,6 +88,33 @@ public:
     out.m_items.push_back(std::move(item));
     out.recalc_strides();
     return out;
+  }
+
+  // Terminal case: list of T values.
+  static void build_impl(Deck &d, std::initializer_list<T> list, uint8_t depth)
+  {
+    for (auto const &item : list) {
+      d.push(item, depth);
+      depth = 0;
+    }
+  }
+
+  // Recursive case: list of lists.
+  template<typename Inner>
+  static void build_impl(Deck &d, std::initializer_list<Inner> list, uint8_t depth)
+  {
+    for (auto const &group : list) {
+      build_impl(d, group, depth);
+      depth = NestingDepth<Inner>::value;
+    }
+  }
+
+  template<typename List>
+  static Deck build(List list)
+  {
+    Deck d;
+    build_impl(d, list, NestingDepth<List>::value);
+    return d;
   }
 
   void assign_from_raw_data(std::vector<T> items, std::vector<OrcMark> marks)
