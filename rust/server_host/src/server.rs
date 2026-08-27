@@ -140,7 +140,7 @@ impl OrcServer {
     pub fn start(port: u16) -> Result<Self, String> {
         // Force plugin loading before binding the port.
         let _ = &*PLUGIN_SET;
-        let addr = format!("127.0.0.1:{port}");
+        let addr = format!("0.0.0.0:{port}");
         let server = Server::http(&addr).map_err(|e| format!("Failed to bind {addr}: {e}"))?;
         let tiny_http::ListenAddr::IP(bound_addr) = server.server_addr();
         let port = bound_addr.port();
