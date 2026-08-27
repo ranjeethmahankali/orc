@@ -60,6 +60,18 @@
     cmake --build build/release
   #+end_src
 
+  To run C++ SDK unit tests:
+
+  #+begin_src compile
+    build/debug/orc_sdk_cpp_tests
+  #+end_src
+
+  or in release:
+
+  #+begin_src compile
+    build/release/orc_sdk_cpp_tests
+  #+end_src
+
 * Building C and C++ together
   :PROPERTIES:
   :CREATED:  2026-08-26 Wed
