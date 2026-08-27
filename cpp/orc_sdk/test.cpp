@@ -46,7 +46,7 @@ static void test_build_flat()
 
 static void test_build_depth2()
 {
-  auto d = Deck<int>::build({{0, 1}, {2, 3}});
+  auto d = Deck<int>::build<2>({{0, 1}, {2, 3}});
   TEST_ASSERT_EQUAL_UINT64(4, d.len());
   TEST_ASSERT_EQUAL_UINT8(2, d.max_depth());
   TEST_ASSERT_EQUAL_INT(0, d[0]);
@@ -65,7 +65,7 @@ static void test_build_depth2()
 
 static void test_build_depth3()
 {
-  auto d = Deck<int>::build({{{0, 1}, {2, 3}}, {{4, 5}, {6, 7}}});
+  auto d = Deck<int>::build<3>({{{0, 1}, {2, 3}}, {{4, 5}, {6, 7}}});
   TEST_ASSERT_EQUAL_UINT64(8, d.len());
   TEST_ASSERT_EQUAL_UINT8(3, d.max_depth());
   for (int i = 0; i < 8; ++i)
@@ -85,7 +85,7 @@ static void test_build_depth3()
 
 static void test_build_depth3_3way()
 {
-  auto d = Deck<int>::build({{{0, 1}, {2, 3}}, {{4, 5}, {6, 7}}, {{8, 9}, {10, 11}}});
+  auto d = Deck<int>::build<3>({{{0, 1}, {2, 3}}, {{4, 5}, {6, 7}}, {{8, 9}, {10, 11}}});
   TEST_ASSERT_EQUAL_UINT64(12, d.len());
   TEST_ASSERT_EQUAL_UINT8(3, d.max_depth());
   auto depths = mark_depths(d);
@@ -115,7 +115,7 @@ static void test_build_single()
 static void test_build_empty_groups()
 {
   // Depth 2 with an empty first group.
-  auto d = Deck<int>::build({{}, {1, 2}});
+  auto d = Deck<int>::build<2>({{}, {1, 2}});
   TEST_ASSERT_EQUAL_UINT64(2, d.len());
   TEST_ASSERT_EQUAL_UINT8(2, d.max_depth());
   TEST_ASSERT_EQUAL_INT(1, d[0]);
@@ -125,7 +125,7 @@ static void test_build_empty_groups()
 static void test_build_ragged()
 {
   // Groups of different sizes.
-  auto d = Deck<int>::build({{1}, {2, 3, 4}, {5, 6}});
+  auto d = Deck<int>::build<2>({{1}, {2, 3, 4}, {5, 6}});
   TEST_ASSERT_EQUAL_UINT64(6, d.len());
   TEST_ASSERT_EQUAL_UINT8(2, d.max_depth());
   auto pos = mark_positions(d);
@@ -137,7 +137,7 @@ static void test_build_ragged()
 
 static void test_flatten()
 {
-  auto d = Deck<int>::build({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+  auto d = Deck<int>::build<2>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
   d.flatten();
   auto expected = Deck<int>::build({1, 2, 3, 4, 5, 6, 7, 8, 9});
   TEST_ASSERT_TRUE(d == expected);
@@ -145,7 +145,7 @@ static void test_flatten()
 
 static void test_graft()
 {
-  auto d = Deck<int>::build({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+  auto d = Deck<int>::build<2>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
   d.graft();
   // Verify via manual push — single-element inner lists are ambiguous for build().
   Deck<int> expected;
@@ -159,15 +159,15 @@ static void test_graft()
 
 static void test_simplify()
 {
-  auto d = Deck<int>::build({{{1, 2, 3}}, {{4, 5, 6}}, {{7, 8, 9}}});
+  auto d = Deck<int>::build<3>({{{1, 2, 3}}, {{4, 5, 6}}, {{7, 8, 9}}});
   d.simplify();
-  auto expected = Deck<int>::build({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+  auto expected = Deck<int>::build<2>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
   TEST_ASSERT_TRUE(d == expected);
 }
 
 static void test_clear()
 {
-  auto d = Deck<int>::build({{1, 2}, {3, 4}});
+  auto d = Deck<int>::build<2>({{1, 2}, {3, 4}});
   d.clear();
   TEST_ASSERT_EQUAL_UINT64(0, d.len());
   TEST_ASSERT_TRUE(d.is_empty());
@@ -182,7 +182,7 @@ static void test_push_manual()
   d.push(2, 0);
   d.push(3, 1);
   d.push(4, 0);
-  auto expected = Deck<int>::build({{1, 2}, {3, 4}});
+  auto expected = Deck<int>::build<2>({{1, 2}, {3, 4}});
   TEST_ASSERT_TRUE(d == expected);
 }
 

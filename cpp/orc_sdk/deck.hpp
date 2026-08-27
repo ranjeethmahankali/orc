@@ -9,6 +9,7 @@ extern "C"
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <initializer_list>
 #include <span>
 #include <vector>
 
@@ -24,6 +25,19 @@ template<typename U>
 struct NestingDepth<std::initializer_list<U>>
 {
   static constexpr uint8_t value = 1 + NestingDepth<U>::value;
+};
+
+// Maps a depth to the corresponding nested std::initializer_list type.
+template<typename T, uint8_t Depth>
+struct NestedInitList
+{
+  using type = std::initializer_list<typename NestedInitList<T, Depth - 1>::type>;
+};
+
+template<typename T>
+struct NestedInitList<T, 1>
+{
+  using type = std::initializer_list<T>;
 };
 
 size_t calc_stride_count(std::vector<OrcMark> const  &marks,
@@ -113,28 +127,11 @@ public:
     }
   }
 
-  // Depth 1
-  static Deck build(std::initializer_list<T> list)
+  template<uint8_t Depth = 1>
+  static Deck build(typename NestedInitList<T, Depth>::type list)
   {
     Deck d;
-    build_impl(d, list, 1);
-    return d;
-  }
-
-  // Depth 2
-  static Deck build(std::initializer_list<std::initializer_list<T>> list)
-  {
-    Deck d;
-    build_impl(d, list, 2);
-    return d;
-  }
-
-  // Depth 3
-  static Deck build(
-    std::initializer_list<std::initializer_list<std::initializer_list<T>>> list)
-  {
-    Deck d;
-    build_impl(d, list, 3);
+    build_impl(d, list, Depth);
     return d;
   }
 
