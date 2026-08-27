@@ -39,8 +39,10 @@ void calc_strides(std::vector<OrcMark> const &marks,
                   std::vector<uint64_t>      &strides);
 
 // Forward declarations.
-template<typename T> class DeckView;
-template<typename T> class DeckWriter;
+template<typename T>
+class DeckView;
+template<typename T>
+class DeckWriter;
 
 // ---------------------------------------------------------------------------
 // Free helper functions used by ReadCursor.
@@ -49,7 +51,8 @@ template<typename T> class DeckWriter;
 inline size_t stride(std::span<OrcMark const>  marks,
                      std::span<uint64_t const> strides,
                      std::span<uint64_t const> stride_offset,
-                     size_t mark_idx, uint8_t depth)
+                     size_t                    mark_idx,
+                     uint8_t                   depth)
 {
   if (mark_idx >= marks.size())
     return 0;
@@ -58,7 +61,8 @@ inline size_t stride(std::span<OrcMark const>  marks,
   if (depth > marks[mark_idx].depth)
     return marks.size() - mark_idx;
   uint64_t val = strides[static_cast<size_t>(stride_offset[mark_idx]) + (depth - 1)];
-  return static_cast<size_t>(std::min(val, static_cast<uint64_t>(marks.size() - mark_idx)));
+  return static_cast<size_t>(
+    std::min(val, static_cast<uint64_t>(marks.size() - mark_idx)));
 }
 
 inline size_t mark_pos(std::span<OrcMark const> marks, size_t n_items, size_t idx)
@@ -83,16 +87,26 @@ class ReadCursor
   size_t                    m_end;
 
 public:
-  ReadCursor(size_t n_items, std::span<OrcMark const> marks,
-             std::span<uint64_t const> strides, std::span<uint64_t const> stride_offset,
-             uint8_t depth, size_t start, size_t end)
-    : m_n_items(n_items), m_marks(marks), m_strides(strides),
-      m_stride_offset(stride_offset), m_depth(depth), m_start(start), m_end(end) {}
+  ReadCursor(size_t                    n_items,
+             std::span<OrcMark const>  marks,
+             std::span<uint64_t const> strides,
+             std::span<uint64_t const> stride_offset,
+             uint8_t                   depth,
+             size_t                    start,
+             size_t                    end)
+      : m_n_items(n_items)
+      , m_marks(marks)
+      , m_strides(strides)
+      , m_stride_offset(stride_offset)
+      , m_depth(depth)
+      , m_start(start)
+      , m_end(end)
+  {}
 
-  uint8_t depth() const { return m_depth; }
-  size_t  start() const { return m_start; }
-  size_t  end() const { return m_end; }
-  bool    empty() const { return m_start >= m_end; }
+  uint8_t                  depth() const { return m_depth; }
+  size_t                   start() const { return m_start; }
+  size_t                   end() const { return m_end; }
+  bool                     empty() const { return m_start >= m_end; }
   std::span<OrcMark const> marks() const { return m_marks; }
 
   size_t size() const
@@ -102,8 +116,13 @@ public:
     if (m_depth == 0)
       return 1;
     size_t s = mark_pos(m_marks, m_n_items, m_start);
-    size_t e = mark_pos(m_marks, m_n_items,
-      m_start + stride(m_marks, m_strides, m_stride_offset, m_start, static_cast<uint8_t>(m_depth - 1)));
+    size_t e = mark_pos(m_marks,
+                        m_n_items,
+                        m_start + stride(m_marks,
+                                         m_strides,
+                                         m_stride_offset,
+                                         m_start,
+                                         static_cast<uint8_t>(m_depth - 1)));
     return e - s;
   }
 
@@ -113,27 +132,44 @@ public:
     if (m_depth == 0)
       return {m_start, m_start + 1};
     size_t s = mark_pos(m_marks, m_n_items, m_start);
-    size_t e = mark_pos(m_marks, m_n_items,
-      m_start + stride(m_marks, m_strides, m_stride_offset, m_start, static_cast<uint8_t>(m_depth - 1)));
+    size_t e = mark_pos(m_marks,
+                        m_n_items,
+                        m_start + stride(m_marks,
+                                         m_strides,
+                                         m_stride_offset,
+                                         m_start,
+                                         static_cast<uint8_t>(m_depth - 1)));
     return {s, e};
   }
 
   ReadCursor child() const
   {
     if (m_depth == 0) {
-      return ReadCursor(m_n_items, m_marks, m_strides, m_stride_offset,
-                        m_depth, m_start, m_end);
+      return ReadCursor(
+        m_n_items, m_marks, m_strides, m_stride_offset, m_depth, m_start, m_end);
     }
     if (m_depth < 2) {
       size_t s = mark_pos(m_marks, m_n_items, m_start);
-      size_t e = mark_pos(m_marks, m_n_items,
-        m_start + stride(m_marks, m_strides, m_stride_offset, m_start, static_cast<uint8_t>(m_depth - 1)));
+      size_t e = mark_pos(m_marks,
+                          m_n_items,
+                          m_start + stride(m_marks,
+                                           m_strides,
+                                           m_stride_offset,
+                                           m_start,
+                                           static_cast<uint8_t>(m_depth - 1)));
       return ReadCursor(m_n_items, m_marks, m_strides, m_stride_offset, 0, s, e);
     }
-    size_t new_end = m_start + stride(m_marks, m_strides, m_stride_offset,
-                                       m_start, static_cast<uint8_t>(m_depth - 1));
-    return ReadCursor(m_n_items, m_marks, m_strides, m_stride_offset,
-                      static_cast<uint8_t>(m_depth - 1), m_start, new_end);
+    size_t new_end =
+      m_start +
+      stride(
+        m_marks, m_strides, m_stride_offset, m_start, static_cast<uint8_t>(m_depth - 1));
+    return ReadCursor(m_n_items,
+                      m_marks,
+                      m_strides,
+                      m_stride_offset,
+                      static_cast<uint8_t>(m_depth - 1),
+                      m_start,
+                      new_end);
   }
 
   bool advance()
@@ -143,9 +179,10 @@ public:
     size_t new_start = m_start;
     if (m_depth == 0) {
       new_start += 1;
-    } else {
-      new_start += stride(m_marks, m_strides, m_stride_offset,
-                          m_start, static_cast<uint8_t>(m_depth - 1));
+    }
+    else {
+      new_start += stride(
+        m_marks, m_strides, m_stride_offset, m_start, static_cast<uint8_t>(m_depth - 1));
     }
     if (new_start < m_end) {
       m_start = new_start;
@@ -166,7 +203,9 @@ class WriteCursor
 
 public:
   WriteCursor(uint8_t depth, std::optional<uint8_t> next_depth)
-    : m_depth(depth), m_next_depth(next_depth) {}
+      : m_depth(depth)
+      , m_next_depth(next_depth)
+  {}
 
   uint8_t                depth() const { return m_depth; }
   std::optional<uint8_t> next_depth() const { return m_next_depth; }
@@ -182,19 +221,17 @@ public:
 
   WriteCursor child()
   {
-    uint8_t d = m_depth > 0 ? static_cast<uint8_t>(m_depth - 1) : uint8_t{0};
-    std::optional<uint8_t> nd = m_next_depth.has_value()
-      ? m_next_depth
-      : std::optional<uint8_t>{d};
+    uint8_t d = m_depth > 0 ? static_cast<uint8_t>(m_depth - 1) : uint8_t {0};
+    std::optional<uint8_t> nd =
+      m_next_depth.has_value() ? m_next_depth : std::optional<uint8_t> {d};
     m_next_depth.reset();
     return WriteCursor(d, nd);
   }
 
   WriteCursor take()
   {
-    std::optional<uint8_t> nd = m_next_depth.has_value()
-      ? m_next_depth
-      : std::optional<uint8_t>{m_depth};
+    std::optional<uint8_t> nd =
+      m_next_depth.has_value() ? m_next_depth : std::optional<uint8_t> {m_depth};
     m_next_depth.reset();
     return WriteCursor(m_depth, nd);
   }
@@ -207,7 +244,8 @@ public:
 template<typename T>
 class Deck
 {
-  template<typename U> friend class DeckWriter;
+  template<typename U>
+  friend class DeckWriter;
 
   std::vector<T>        m_items;
   std::vector<OrcMark>  m_marks;
@@ -235,7 +273,7 @@ class Deck
       size_t peg = m_pegs[i];
       if (peg < m_marks.size()) {
         uint64_t &dst = m_strides[static_cast<size_t>(m_stride_offset[peg]) + i];
-        dst       = std::min(dst, static_cast<uint64_t>(m_marks.size() - peg));
+        dst           = std::min(dst, static_cast<uint64_t>(m_marks.size() - peg));
       }
       m_pegs[i] = m_marks.size();
     }
@@ -360,7 +398,7 @@ public:
       if (m.depth >= 254)
         return Error::DECK_DEPTH_OVERFLOW;
     }
-    size_t             count     = m_marks.size();
+    size_t               count     = m_marks.size();
     std::vector<OrcMark> old_marks = std::move(m_marks);
     m_marks.clear();
     m_marks.reserve(count + m_items.size());
@@ -438,7 +476,9 @@ class DeckView
 
 public:
   DeckView(std::span<T const> items, ReadCursor cursor)
-    : m_items(items), m_cursor(cursor) {}
+      : m_items(items)
+      , m_cursor(cursor)
+  {}
 
   uint8_t depth() const { return m_cursor.depth(); }
 
@@ -459,10 +499,7 @@ public:
     return m_items.subspan(r.first, r.second - r.first);
   }
 
-  DeckView child() const
-  {
-    return DeckView(m_items, m_cursor.child());
-  }
+  DeckView child() const { return DeckView(m_items, m_cursor.child()); }
 
   bool advance() { return m_cursor.advance(); }
 
@@ -485,7 +522,10 @@ class DeckWriter
 
 public:
   DeckWriter(Deck<T> *deck, WriteCursor cursor, size_t start)
-    : m_deck(deck), m_cursor(cursor), m_start(start) {}
+      : m_deck(deck)
+      , m_cursor(cursor)
+      , m_start(start)
+  {}
 
   ~DeckWriter()
   {
@@ -502,7 +542,9 @@ public:
 
   // Movable.
   DeckWriter(DeckWriter &&other) noexcept
-    : m_deck(other.m_deck), m_cursor(other.m_cursor), m_start(other.m_start)
+      : m_deck(other.m_deck)
+      , m_cursor(other.m_cursor)
+      , m_start(other.m_start)
   {
     other.m_deck = nullptr;
   }
@@ -546,15 +588,12 @@ public:
     return std::span<T const>(m_deck->m_items).subspan(m_start);
   }
 
-  std::span<T> as_slice_mut()
-  {
-    return std::span<T>(m_deck->m_items).subspan(m_start);
-  }
+  std::span<T> as_slice_mut() { return std::span<T>(m_deck->m_items).subspan(m_start); }
 
   T &push_default_mut()
   {
     size_t i = m_deck->m_items.size();
-    push(T{});
+    push(T {});
     return m_deck->m_items[i];
   }
 
@@ -562,7 +601,7 @@ public:
   {
     size_t start = m_deck->m_items.size();
     for (size_t i = 0; i < n_items; ++i)
-      push(T{});
+      push(T {});
     return std::span<T>(m_deck->m_items).subspan(start);
   }
 
@@ -580,8 +619,7 @@ DeckView<T> Deck<T>::view(uint8_t depth) const
   size_t end = (depth == 0) ? m_items.size() : m_marks.size();
   return DeckView<T>(
     m_items,
-    ReadCursor(m_items.size(), m_marks, m_strides, m_stride_offset,
-               depth, 0, end));
+    ReadCursor(m_items.size(), m_marks, m_strides, m_stride_offset, depth, 0, end));
 }
 
 template<typename T>
@@ -604,10 +642,10 @@ void fmt_raw_deck(std::span<T const>       items,
     os << "<empty_deck>\n";
     return;
   }
-  constexpr size_t TAB = 3;
-  uint8_t  dmax    = marks.empty() ? uint8_t{0} : marks.front().depth;
-  uint64_t n_items = static_cast<uint64_t>(items.size());
-  uint64_t tail_start = 0;
+  constexpr size_t TAB        = 3;
+  uint8_t          dmax       = marks.empty() ? uint8_t {0} : marks.front().depth;
+  uint64_t         n_items    = static_cast<uint64_t>(items.size());
+  uint64_t         tail_start = 0;
 
   auto spaces = [&](size_t n) {
     for (size_t i = 0; i < n; ++i)
