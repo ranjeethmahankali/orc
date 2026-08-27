@@ -199,6 +199,11 @@
   questions through all the tasks I finished during this time. Trying to attempt to make a UI app
   once again.
 
+  <2026-08-27 Thu 17:45> The server client is working locally. Tried testing across machines on a
+  local network. That did not work. Will try again later.
+
+  - [ ] Add integration tests for the client / server interactions.
+
 ** TODO Host program that runs as a service
    :PROPERTIES:
    :CREATED:  2026-08-26 Wed 10:52
