@@ -1,14 +1,17 @@
 /*
- * cli_client — A simple C client that talks to the orc server.
+ * cli_client — CLI client for the orc server.
  *
- * Usage: cli_client [host] [port]
+ * Usage: cli_client <host> <port> <command> [args...]
  *
- * Demonstrates:
- *   1. Starting a session
- *   2. Creating f64 deck constants via raw ABI serialization
- *   3. Calling the "add" function
- *   4. Downloading and deserializing the result
- *   5. Closing the session
+ * Commands:
+ *   session start                              -> prints session_id
+ *   session close <session_id>
+ *   functions                                  -> prints function list
+ *   constant <session_id> <type> <val>...      -> prints handle_id
+ *   call <session_id> <func> <input_id>...     -> prints output_ids
+ *   download <session_id> <handle_id>          -> prints type and values
+ *
+ * Supported types for 'constant': u8 u16 u32 u64 i8 i16 i32 i64 f32 f64
  */
 
 #include <orc_sdk/orc_sdk.h>
@@ -458,173 +461,306 @@ static void free_deserialized_handle(OrcHandle *h)
   memset(h, 0, sizeof(*h));
 }
 
-/* ==================== Main ==================== */
+/* ==================== Type name <-> type_id mapping ==================== */
 
-static void error_abort(char const *msg)
+typedef struct
+{
+  char const *name;
+  OrcTypeId   type_id;
+  size_t      item_size;
+} TypeEntry;
+
+static TypeEntry const TYPE_TABLE[] = {
+  {"u8",  ORC_TYPE_U8,  1}, {"u16", ORC_TYPE_U16, 2}, {"u32", ORC_TYPE_U32, 4},
+  {"u64", ORC_TYPE_U64, 8}, {"i8",  ORC_TYPE_I8,  1}, {"i16", ORC_TYPE_I16, 2},
+  {"i32", ORC_TYPE_I32, 4}, {"i64", ORC_TYPE_I64, 8}, {"f32", ORC_TYPE_F32, 4},
+  {"f64", ORC_TYPE_F64, 8},
+};
+#define N_TYPES (sizeof(TYPE_TABLE) / sizeof(TYPE_TABLE[0]))
+
+static TypeEntry const *type_by_name(char const *name)
+{
+  for (size_t i = 0; i < N_TYPES; i++)
+    if (strcmp(TYPE_TABLE[i].name, name) == 0)
+      return &TYPE_TABLE[i];
+  return NULL;
+}
+
+static TypeEntry const *type_by_id(OrcTypeId id)
+{
+  for (size_t i = 0; i < N_TYPES; i++)
+    if (TYPE_TABLE[i].type_id == id)
+      return &TYPE_TABLE[i];
+  return NULL;
+}
+
+/* ==================== Print helpers ==================== */
+
+static void print_handle_values(OrcHandle const *h)
+{
+  TypeEntry const *te = type_by_id(h->type_id);
+  if (!te) {
+    printf("(unknown type 0x%llx)\n", (unsigned long long)h->type_id);
+    return;
+  }
+  for (uint64_t i = 0; i < h->n_items; i++) {
+    if (i > 0) printf(" ");
+    void const *p = (char const *)h->items + i * te->item_size;
+    if (te->type_id == ORC_TYPE_U8)  printf("%u",   (unsigned)*(uint8_t  *)p);
+    if (te->type_id == ORC_TYPE_U16) printf("%u",   (unsigned)*(uint16_t *)p);
+    if (te->type_id == ORC_TYPE_U32) printf("%u",   *(uint32_t *)p);
+    if (te->type_id == ORC_TYPE_U64) printf("%llu", (unsigned long long)*(uint64_t *)p);
+    if (te->type_id == ORC_TYPE_I8)  printf("%d",   (int)*(int8_t  *)p);
+    if (te->type_id == ORC_TYPE_I16) printf("%d",   (int)*(int16_t *)p);
+    if (te->type_id == ORC_TYPE_I32) printf("%d",   *(int32_t *)p);
+    if (te->type_id == ORC_TYPE_I64) printf("%lld", (long long)*(int64_t *)p);
+    if (te->type_id == ORC_TYPE_F32) printf("%g",   (double)*(float *)p);
+    if (te->type_id == ORC_TYPE_F64) printf("%g",   *(double *)p);
+  }
+  printf("\n");
+}
+
+/* ==================== Usage ==================== */
+
+static void usage(void)
+{
+  fprintf(stderr,
+    "Usage: cli_client <host> <port> <command> [args...]\n"
+    "\n"
+    "Commands:\n"
+    "  session start                              Print session_id\n"
+    "  session close <session_id>                 Close session\n"
+    "  functions                                  Print function list\n"
+    "  constant <session_id> <type> <val>...      Print handle_id\n"
+    "  call <session_id> <func> <input_id>...     Print output handle_ids\n"
+    "  download <session_id> <handle_id>          Print type and values\n"
+    "\n"
+    "Types: u8 u16 u32 u64 i8 i16 i32 i64 f32 f64\n");
+  exit(1);
+}
+
+static void die(char const *msg)
 {
   fprintf(stderr, "ERROR: %s\n", msg);
   exit(1);
 }
 
-int main(int argc, char **argv)
+/* ==================== Command implementations ==================== */
+
+static void cmd_session_start(char const *host, uint16_t port)
 {
-  char const *host = "127.0.0.1";
-  uint16_t    port = 8222;
-  if (argc > 1)
-    host = argv[1];
-  if (argc > 2)
-    port = (uint16_t)atoi(argv[2]);
-
-  sdk_init_once();
-  if (sock_init() != 0)
-    error_abort("Failed to initialize sockets");
-
-  printf("Connecting to %s:%u...\n", host, port);
   HttpResponse resp;
-
-  /* 1. List functions. */
-  if (http_get_json(host, port, "/functions", &resp) != 0)
-    error_abort("GET /functions failed");
-  printf("Functions: %s\n", resp.body);
-  http_response_free(&resp);
-
-  /* 2. Start session. */
   if (http_post_json(host, port, "/session/start", "{}", &resp) != 0)
-    error_abort("POST /session/start failed");
+    die("POST /session/start failed");
   if (resp.status != 200) {
-    fprintf(stderr, "Start session failed: %d %s\n", resp.status, resp.body);
+    fprintf(stderr, "%s\n", resp.body);
     http_response_free(&resp);
-    error_abort("Session start failed");
+    die("session start failed");
   }
   uint64_t session_id;
   if (json_get_u64(resp.body, "session_id", &session_id) != 0)
-    error_abort("Failed to parse session_id");
-  printf("Session started: %llu\n", (unsigned long long)session_id);
+    die("Failed to parse session_id");
+  printf("%llu\n", (unsigned long long)session_id);
   http_response_free(&resp);
+}
 
-  /* 3. Create constant: [1.0, 2.0, 3.0] */
-  double    a_values[] = {1.0, 2.0, 3.0};
-  OrcHandle a_handle;
-  memset(&a_handle, 0, sizeof(a_handle));
-  a_handle.type_id   = ORC_TYPE_F64;
-  a_handle.n_items   = 3;
-  a_handle.item_size = sizeof(double);
-  a_handle.items     = a_values;
-  Buf a_buf;
-  buf_init(&a_buf);
-  if (serialize_handle(&a_handle, &a_buf) != 0)
-    error_abort("Failed to serialize deck A");
+static void cmd_session_close(char const *host, uint16_t port, char const *sid_str)
+{
+  char body[128];
+  snprintf(body, sizeof(body), "{\"session_id\": %s}", sid_str);
+  HttpResponse resp;
+  if (http_post_json(host, port, "/session/close", body, &resp) != 0)
+    die("POST /session/close failed");
+  if (resp.status != 200) {
+    fprintf(stderr, "%s\n", resp.body);
+    http_response_free(&resp);
+    die("session close failed");
+  }
+  http_response_free(&resp);
+}
+
+static void cmd_functions(char const *host, uint16_t port)
+{
+  HttpResponse resp;
+  if (http_get_json(host, port, "/functions", &resp) != 0)
+    die("GET /functions failed");
+  printf("%s\n", resp.body);
+  http_response_free(&resp);
+}
+
+static void cmd_constant(char const *host,
+                          uint16_t    port,
+                          char const *sid_str,
+                          char const *type_name,
+                          int         n_values,
+                          char      **value_strs)
+{
+  TypeEntry const *te = type_by_name(type_name);
+  if (!te) {
+    fprintf(stderr, "Unknown type: %s\n", type_name);
+    usage();
+  }
+  /* Parse values into a raw buffer. */
+  void *items = malloc(te->item_size * (size_t)n_values);
+  if (!items) die("alloc failed");
+  for (int i = 0; i < n_values; i++) {
+    void *dst = (char *)items + (size_t)i * te->item_size;
+    double v  = strtod(value_strs[i], NULL);
+    switch (te->type_id) {
+      case ORC_TYPE_U8:  *(uint8_t  *)dst = (uint8_t)v;  break;
+      case ORC_TYPE_U16: *(uint16_t *)dst = (uint16_t)v;  break;
+      case ORC_TYPE_U32: *(uint32_t *)dst = (uint32_t)v;  break;
+      case ORC_TYPE_U64: *(uint64_t *)dst = (uint64_t)v;  break;
+      case ORC_TYPE_I8:  *(int8_t   *)dst = (int8_t)v;   break;
+      case ORC_TYPE_I16: *(int16_t  *)dst = (int16_t)v;  break;
+      case ORC_TYPE_I32: *(int32_t  *)dst = (int32_t)v;  break;
+      case ORC_TYPE_I64: *(int64_t  *)dst = (int64_t)v;  break;
+      case ORC_TYPE_F32: *(float    *)dst = (float)v;    break;
+      case ORC_TYPE_F64: *(double   *)dst = v;           break;
+      default: break;
+    }
+  }
+  OrcHandle handle;
+  memset(&handle, 0, sizeof(handle));
+  handle.type_id   = te->type_id;
+  handle.n_items   = (uint64_t)n_values;
+  handle.item_size = (uint64_t)te->item_size;
+  handle.items     = items;
+  Buf ser;
+  buf_init(&ser);
+  if (serialize_handle(&handle, &ser) != 0) {
+    free(items);
+    die("Failed to serialize handle");
+  }
+  free(items);
   char path[256];
-  snprintf(
-    path, sizeof(path), "/constant?session_id=%llu", (unsigned long long)session_id);
-  if (http_post_bytes(host, port, path, a_buf.data, a_buf.len, &resp) != 0)
-    error_abort("POST /constant (A) failed");
-  buf_free(&a_buf);
-  if (resp.status != 200) {
-    fprintf(stderr, "Constant A failed: %d %s\n", resp.status, resp.body);
-    http_response_free(&resp);
-    error_abort("Constant A failed");
+  snprintf(path, sizeof(path), "/constant?session_id=%s", sid_str);
+  HttpResponse resp;
+  if (http_post_bytes(host, port, path, ser.data, ser.len, &resp) != 0) {
+    buf_free(&ser);
+    die("POST /constant failed");
   }
-  uint64_t a_id;
-  if (json_get_u64(resp.body, "handle_id", &a_id) != 0)
-    error_abort("Failed to parse handle_id for A");
-  printf("Constant A (handle %llu): [1.0, 2.0, 3.0]\n", (unsigned long long)a_id);
-  http_response_free(&resp);
-
-  /* 4. Create constant: [10.0, 20.0, 30.0] */
-  double    b_values[] = {10.0, 20.0, 30.0};
-  OrcHandle b_handle;
-  memset(&b_handle, 0, sizeof(b_handle));
-  b_handle.type_id   = ORC_TYPE_F64;
-  b_handle.n_items   = 3;
-  b_handle.item_size = sizeof(double);
-  b_handle.items     = b_values;
-  Buf b_buf;
-  buf_init(&b_buf);
-  if (serialize_handle(&b_handle, &b_buf) != 0)
-    error_abort("Failed to serialize deck B");
-  if (http_post_bytes(host, port, path, b_buf.data, b_buf.len, &resp) != 0)
-    error_abort("POST /constant (B) failed");
-  buf_free(&b_buf);
+  buf_free(&ser);
   if (resp.status != 200) {
-    fprintf(stderr, "Constant B failed: %d %s\n", resp.status, resp.body);
+    fprintf(stderr, "%s\n", resp.body);
     http_response_free(&resp);
-    error_abort("Constant B failed");
+    die("constant failed");
   }
-  uint64_t b_id;
-  if (json_get_u64(resp.body, "handle_id", &b_id) != 0)
-    error_abort("Failed to parse handle_id for B");
-  printf("Constant B (handle %llu): [10.0, 20.0, 30.0]\n", (unsigned long long)b_id);
+  uint64_t handle_id;
+  if (json_get_u64(resp.body, "handle_id", &handle_id) != 0)
+    die("Failed to parse handle_id");
+  printf("%llu\n", (unsigned long long)handle_id);
   http_response_free(&resp);
+}
 
-  /* 5. Call add(A, B). */
-  char call_body[256];
-  snprintf(call_body,
-           sizeof(call_body),
-           "{\"session_id\": %llu, \"function\": \"add\", \"inputs\": [%llu, %llu]}",
-           (unsigned long long)session_id,
-           (unsigned long long)a_id,
-           (unsigned long long)b_id);
-  if (http_post_json(host, port, "/call", call_body, &resp) != 0)
-    error_abort("POST /call failed");
+static void cmd_call(char const *host,
+                      uint16_t    port,
+                      char const *sid_str,
+                      char const *func_name,
+                      int         n_inputs,
+                      char      **input_strs)
+{
+  Buf body;
+  buf_init(&body);
+  buf_append_str(&body, "{\"session_id\": ");
+  buf_append_str(&body, sid_str);
+  buf_append_str(&body, ", \"function\": \"");
+  buf_append_str(&body, func_name);
+  buf_append_str(&body, "\", \"inputs\": [");
+  for (int i = 0; i < n_inputs; i++) {
+    if (i > 0) buf_append_str(&body, ", ");
+    buf_append_str(&body, input_strs[i]);
+  }
+  buf_append_str(&body, "]}");
+  /* Null-terminate for http_post_json. */
+  buf_append(&body, "\0", 1);
+  HttpResponse resp;
+  if (http_post_json(host, port, "/call", body.data, &resp) != 0) {
+    buf_free(&body);
+    die("POST /call failed");
+  }
+  buf_free(&body);
   if (resp.status != 200) {
-    fprintf(stderr, "Call failed: %d %s\n", resp.status, resp.body);
+    fprintf(stderr, "%s\n", resp.body);
     http_response_free(&resp);
-    error_abort("Call failed");
+    die("call failed");
   }
-  uint64_t output_ids[16];
-  int      n_outputs = json_get_u64_arr(resp.body, "output_ids", output_ids, 16);
-  if (n_outputs < 1)
-    error_abort("No output_ids in call response");
-  printf("add() returned handle %llu\n", (unsigned long long)output_ids[0]);
+  uint64_t output_ids[64];
+  int n_outputs = json_get_u64_arr(resp.body, "output_ids", output_ids, 64);
+  for (int i = 0; i < n_outputs; i++) {
+    if (i > 0) printf(" ");
+    printf("%llu", (unsigned long long)output_ids[i]);
+  }
+  printf("\n");
   http_response_free(&resp);
+}
 
-  /* 6. Download result. */
-  snprintf(path,
-           sizeof(path),
-           "/download?session_id=%llu&handle_id=%llu",
-           (unsigned long long)session_id,
-           (unsigned long long)output_ids[0]);
+static void cmd_download(char const *host,
+                          uint16_t    port,
+                          char const *sid_str,
+                          char const *hid_str)
+{
+  char path[256];
+  snprintf(path, sizeof(path), "/download?session_id=%s&handle_id=%s", sid_str, hid_str);
+  HttpResponse resp;
   if (http_post_bytes(host, port, path, NULL, 0, &resp) != 0)
-    error_abort("POST /download failed");
+    die("POST /download failed");
   if (resp.status != 200) {
-    fprintf(stderr, "Download failed: %d %s\n", resp.status, resp.body);
+    fprintf(stderr, "%s\n", resp.body);
     http_response_free(&resp);
-    error_abort("Download failed");
+    die("download failed");
   }
   OrcHandle result;
   memset(&result, 0, sizeof(result));
   if (deserialize_handle(resp.body, resp.body_len, &result) != 0) {
     http_response_free(&resp);
-    error_abort("Failed to deserialize result");
+    die("Failed to deserialize result");
   }
   http_response_free(&resp);
-  printf("Result (type_id=0x%llx, n_items=%llu): [",
-         (unsigned long long)result.type_id,
-         (unsigned long long)result.n_items);
-  if (result.type_id == ORC_TYPE_F64) {
-    double const *vals = (double const *)result.items;
-    for (uint64_t i = 0; i < result.n_items; i++) {
-      if (i > 0)
-        printf(", ");
-      printf("%.1f", vals[i]);
-    }
-  }
-  printf("]\n");
+  TypeEntry const *te = type_by_id(result.type_id);
+  printf("%s ", te ? te->name : "unknown");
+  print_handle_values(&result);
   free_deserialized_handle(&result);
+}
 
-  /* 7. Close session. */
-  char close_body[128];
-  snprintf(close_body,
-           sizeof(close_body),
-           "{\"session_id\": %llu}",
-           (unsigned long long)session_id);
-  if (http_post_json(host, port, "/session/close", close_body, &resp) != 0)
-    error_abort("POST /session/close failed");
-  printf("Session closed (status %d).\n", resp.status);
-  http_response_free(&resp);
+/* ==================== Main ==================== */
+
+int main(int argc, char **argv)
+{
+  if (argc < 4) usage();
+  char const *host = argv[1];
+  uint16_t    port = (uint16_t)atoi(argv[2]);
+  char const *cmd  = argv[3];
+
+  sdk_init_once();
+  if (sock_init() != 0)
+    die("Failed to initialize sockets");
+
+  if (strcmp(cmd, "session") == 0) {
+    if (argc < 5) usage();
+    if (strcmp(argv[4], "start") == 0) {
+      cmd_session_start(host, port);
+    } else if (strcmp(argv[4], "close") == 0) {
+      if (argc < 6) usage();
+      cmd_session_close(host, port, argv[5]);
+    } else {
+      usage();
+    }
+  } else if (strcmp(cmd, "functions") == 0) {
+    cmd_functions(host, port);
+  } else if (strcmp(cmd, "constant") == 0) {
+    if (argc < 7) usage();  /* host port constant sid type val... */
+    cmd_constant(host, port, argv[4], argv[5], argc - 6, &argv[6]);
+  } else if (strcmp(cmd, "call") == 0) {
+    if (argc < 6) usage();  /* host port call sid func [inputs...] */
+    cmd_call(host, port, argv[4], argv[5], argc - 6, &argv[6]);
+  } else if (strcmp(cmd, "download") == 0) {
+    if (argc < 6) usage();  /* host port download sid hid */
+    cmd_download(host, port, argv[4], argv[5]);
+  } else {
+    usage();
+  }
 
   sock_cleanup();
-  printf("Done.\n");
   return 0;
 }
