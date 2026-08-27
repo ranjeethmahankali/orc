@@ -25,6 +25,7 @@ endif()
 # orc_sdk — static library
 add_library(orc_sdk_cpp STATIC
     orc_sdk/error.cpp
+    orc_sdk/deck.cpp
 )
 target_include_directories(orc_sdk_cpp PUBLIC . ../c)
 
