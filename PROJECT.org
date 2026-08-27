@@ -149,32 +149,6 @@
   Maybe I can write a rasterizer for my curve types, and somehow get the optimizer to export images
   of the sample points in the design space, so that I can visualize them when viewing the DOE.
 
-* DONE tj45qx - C++ SDK - Deck implementation and helpers
-  CLOSED: [2026-08-26 Wed 22:33]
-  :PROPERTIES:
-  :CREATED:  2026-08-01 Sat 18:58
-  :END:
-  :LOGBOOK:
-  - State "DONE"       from "NEXT"       [2026-08-26 Wed 22:33]
-  - State "NEXT"       from "DONE"       [2026-08-26 Wed 22:22]
-  - State "DONE"       from "NEXT"       [2026-08-26 Wed 21:53]
-  - State "NEXT"       from "TODO"       [2026-08-26 Wed 19:45]
-  :END:
-
-  LLMs can easily port the Deck implementation etc. But the abstractions to remove friction in
-  implementing blocks will require some thought. I went with macros as the first pass in Rust. It is
-  not clear to me what I should go with in C++.
-
-  <2026-08-26 Wed 21:52> Setup a simple C++ static library, and a test executable, ported the error
-  type, and the deck type, with some basic functionality, and testing. Will try to get this merged
-  after I port the cursors, views, writers and combinations.
-
-  <2026-08-26 Wed 22:22> Just ported the cursors, writers, views, and the corresponding test
-  coverage.
-
-  <2026-08-26 Wed 22:33> The porting story of ffi.rs is not fully clear in my head. I will put that
-  off for later. Merging what I have so far.
-
 * NEXT tiwkbm - Create Toy Demo Apps
   :PROPERTIES:
   :CREATED:  2026-07-28 Tue 16:45
@@ -310,6 +284,32 @@
     code runs in a browser tab — the only difference is that pop-out becomes a floating panel
     instead of an OS window. The whole stack compiles to both native and WASM without forking the
     codebase.
+
+* DONE tj45qx - C++ SDK - Deck implementation and helpers
+  CLOSED: [2026-08-26 Wed 22:33]
+  :PROPERTIES:
+  :CREATED:  2026-08-01 Sat 18:58
+  :END:
+  :LOGBOOK:
+  - State "DONE"       from "NEXT"       [2026-08-26 Wed 22:33]
+  - State "NEXT"       from "DONE"       [2026-08-26 Wed 22:22]
+  - State "DONE"       from "NEXT"       [2026-08-26 Wed 21:53]
+  - State "NEXT"       from "TODO"       [2026-08-26 Wed 19:45]
+  :END:
+
+  LLMs can easily port the Deck implementation etc. But the abstractions to remove friction in
+  implementing blocks will require some thought. I went with macros as the first pass in Rust. It is
+  not clear to me what I should go with in C++.
+
+  <2026-08-26 Wed 21:52> Setup a simple C++ static library, and a test executable, ported the error
+  type, and the deck type, with some basic functionality, and testing. Will try to get this merged
+  after I port the cursors, views, writers and combinations.
+
+  <2026-08-26 Wed 22:22> Just ported the cursors, writers, views, and the corresponding test
+  coverage.
+
+  <2026-08-26 Wed 22:33> The porting story of ffi.rs is not fully clear in my head. I will put that
+  off for later. Merging what I have so far.
 
 * DONE tke7ks - Rename plugins to be more generic
   CLOSED: [2026-08-26 Wed 16:07]
