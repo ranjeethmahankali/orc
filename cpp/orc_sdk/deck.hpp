@@ -93,6 +93,10 @@ public:
   // Terminal case: list of T values.
   static void build_impl(Deck &d, std::initializer_list<T> list, uint8_t depth)
   {
+    if (list.size() == 0) {
+      d.start_new_arr(depth);
+      return;
+    }
     for (auto const &item : list) {
       d.push(item, depth);
       depth = 0;
@@ -109,11 +113,28 @@ public:
     }
   }
 
-  template<typename List>
-  static Deck build(List list)
+  // Depth 1
+  static Deck build(std::initializer_list<T> list)
   {
     Deck d;
-    build_impl(d, list, NestingDepth<List>::value);
+    build_impl(d, list, 1);
+    return d;
+  }
+
+  // Depth 2
+  static Deck build(std::initializer_list<std::initializer_list<T>> list)
+  {
+    Deck d;
+    build_impl(d, list, 2);
+    return d;
+  }
+
+  // Depth 3
+  static Deck build(
+    std::initializer_list<std::initializer_list<std::initializer_list<T>>> list)
+  {
+    Deck d;
+    build_impl(d, list, 3);
     return d;
   }
 
