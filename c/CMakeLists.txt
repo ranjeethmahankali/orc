@@ -74,3 +74,16 @@ endif()
 if(NOT WIN32)
     target_link_libraries(example_c_plugin_tests PRIVATE pthread)
 endif()
+
+# cli_client — executable
+add_executable(cli_client
+    cli_client/main.c
+    $<TARGET_OBJECTS:orc_sdk_obj>
+)
+target_include_directories(cli_client PRIVATE .)
+if(MSVC)
+    target_compile_definitions(cli_client PRIVATE _CRT_SECURE_NO_WARNINGS)
+endif()
+if(WIN32)
+    target_link_libraries(cli_client PRIVATE ws2_32)
+endif()
