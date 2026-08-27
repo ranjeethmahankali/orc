@@ -39,6 +39,64 @@
     build/release/example_c_plugin_tests
   #+end_src
 
+* C++ SDK and Plugins
+  :PROPERTIES:
+  :CREATED:  2026-08-26 Wed
+  :END:
+
+  Run these commands from the project root.
+
+  For a debug build:
+
+  #+begin_src compile
+    cmake -S cpp/ -B build/debug -DCMAKE_BUILD_TYPE=Debug
+    cmake --build build/debug
+  #+end_src
+
+  For a release build:
+
+  #+begin_src compile
+    cmake -S cpp/ -B build/release -DCMAKE_BUILD_TYPE=Release
+    cmake --build build/release
+  #+end_src
+
+  To run C++ SDK unit tests:
+
+  #+begin_src compile
+    build/debug/orc_sdk_cpp_tests
+  #+end_src
+
+  or in release:
+
+  #+begin_src compile
+    build/release/orc_sdk_cpp_tests
+  #+end_src
+
+* Building C and C++ together
+  :PROPERTIES:
+  :CREATED:  2026-08-26 Wed
+  :END:
+
+  Uses the root CMakeLists.txt to build both projects at once.
+
+  #+begin_src compile
+    cmake -S . -B build/debug -DCMAKE_BUILD_TYPE=Debug
+    cmake --build build/debug
+  #+end_src
+
+  For a release build:
+
+  #+begin_src compile
+    cmake -S . -B build/release -DCMAKE_BUILD_TYPE=Release
+    cmake --build build/release
+  #+end_src
+
+  To generate a unified compile_commands.json (covers both C and C++ for Clangd LSP):
+
+  #+begin_src compile
+    cmake -S . -B build/debug -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DCMAKE_BUILD_TYPE=Debug
+  #+end_src
+
 * Working with Pyorc
   :PROPERTIES:
   :CREATED:  2026-08-23 Sun 21:45

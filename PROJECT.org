@@ -95,6 +95,21 @@
   :CREATED:  2026-08-08 Sat 08:56
   :END:
 
+* TODO C++ SDK - Host and Plugin Utilities
+  :PROPERTIES:
+  :CREATED:  2026-08-26 Wed 22:42
+  :END:
+
+  The equivalent of ffi.rs, util.rs, and host.rs in C++
+
+* TODO C++ SDK - Plugin function helpers
+  :PROPERTIES:
+  :CREATED:  2026-08-26 Wed 22:42
+  :END:
+
+  The equivalent of orc_fn and orc_map_fn macros. Something that makes it easy to implement plugin
+  functions in C++.
+
 * TODO Python SDK
   :PROPERTIES:
   :CREATED:  2026-08-08 Sat 08:51
@@ -119,15 +134,6 @@
     native code that does the same thing.
   - Creating proxy decks: Grafting, flattening, simplifying and copying decks using the proxy
     callbacks should be fast. This should be compared with native code that does the same thing.
-
-* TODO tj45qx - C++ SDK
-  :PROPERTIES:
-  :CREATED:  2026-08-01 Sat 18:58
-  :END:
-
-  LLMs can easily port the Deck implementation etc. But the abstractions to remove friction in
-  implementing blocks will require some thought. I went with macros as the first pass in Rust. It is
-  not clear to me what I should go with in C++.
 
 * TODO Demo with a server host application
   :PROPERTIES:
@@ -163,6 +169,7 @@
   :CREATED:  2026-07-28 Tue 16:45
   :END:
   :LOGBOOK:
+  - State "NEXT"       from "NEXT"       [2026-08-26 Wed 21:54]
   - State "NEXT"       from "TODO"       [2026-08-25 Tue 20:13]
   - State "TODO"       from "NEXT"       [2026-07-31 Fri 20:46]
   - State "NEXT"       from "TODO"       [2026-07-30 Thu 18:36]
@@ -293,6 +300,32 @@
     instead of an OS window. The whole stack compiles to both native and WASM without forking the
     codebase.
 
+* DONE tj45qx - C++ SDK - Deck implementation and helpers
+  CLOSED: [2026-08-26 Wed 22:33]
+  :PROPERTIES:
+  :CREATED:  2026-08-01 Sat 18:58
+  :END:
+  :LOGBOOK:
+  - State "DONE"       from "NEXT"       [2026-08-26 Wed 22:33]
+  - State "NEXT"       from "DONE"       [2026-08-26 Wed 22:22]
+  - State "DONE"       from "NEXT"       [2026-08-26 Wed 21:53]
+  - State "NEXT"       from "TODO"       [2026-08-26 Wed 19:45]
+  :END:
+
+  LLMs can easily port the Deck implementation etc. But the abstractions to remove friction in
+  implementing blocks will require some thought. I went with macros as the first pass in Rust. It is
+  not clear to me what I should go with in C++.
+
+  <2026-08-26 Wed 21:52> Setup a simple C++ static library, and a test executable, ported the error
+  type, and the deck type, with some basic functionality, and testing. Will try to get this merged
+  after I port the cursors, views, writers and combinations.
+
+  <2026-08-26 Wed 22:22> Just ported the cursors, writers, views, and the corresponding test
+  coverage.
+
+  <2026-08-26 Wed 22:33> The porting story of ffi.rs is not fully clear in my head. I will put that
+  off for later. Merging what I have so far.
+
 * DONE tke7ks - Rename plugins to be more generic
   CLOSED: [2026-08-26 Wed 16:07]
   :PROPERTIES:
@@ -371,7 +404,6 @@
 
     <2026-08-26 Wed 13:59> Decided not to do this right now.
 
-  
 
 * DONE tkcjtv - Function metadata ABI improvements
   CLOSED: [2026-08-25 Tue 19:41]
