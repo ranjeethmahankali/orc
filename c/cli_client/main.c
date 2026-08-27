@@ -28,16 +28,22 @@ static int sock_init(void)
   WSADATA wsa;
   return WSAStartup(MAKEWORD(2, 2), &wsa);
 }
-static void sock_cleanup(void) { WSACleanup(); }
+static void sock_cleanup(void)
+{
+  WSACleanup();
+}
 #else
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <sys/socket.h>
 #include <unistd.h>
-typedef int   sock_t;
+typedef int sock_t;
 #define SOCK_INVALID (-1)
 #define sock_close close
-static int  sock_init(void) { return 0; }
+static int  sock_init(void)
+{
+  return 0;
+}
 static void sock_cleanup(void) {}
 #endif
 
@@ -88,7 +94,10 @@ static int buf_append(Buf *b, void const *src, size_t n)
   return 0;
 }
 
-static int buf_append_str(Buf *b, char const *s) { return buf_append(b, s, strlen(s)); }
+static int buf_append_str(Buf *b, char const *s)
+{
+  return buf_append(b, s, strlen(s));
+}
 
 /* ==================== Minimal HTTP client ==================== */
 
@@ -99,7 +108,10 @@ typedef struct
   size_t body_len;
 } HttpResponse;
 
-static void http_response_free(HttpResponse *r) { free(r->body); }
+static void http_response_free(HttpResponse *r)
+{
+  free(r->body);
+}
 
 static sock_t tcp_connect(char const *host, uint16_t port)
 {
@@ -183,18 +195,18 @@ static int recv_response(sock_t s, HttpResponse *out)
     return -1;
   }
   /* Null-terminate header for string ops. */
-  *hdr_end            = '\0';
-  size_t header_len   = (size_t)(hdr_end - raw.data);
-  size_t body_offset  = header_len + 4;
-  size_t body_so_far  = raw.len - body_offset;
+  *hdr_end           = '\0';
+  size_t header_len  = (size_t)(hdr_end - raw.data);
+  size_t body_offset = header_len + 4;
+  size_t body_so_far = raw.len - body_offset;
   /* Parse "HTTP/1.x NNN" */
   if (sscanf(raw.data, "HTTP/%*d.%*d %d", &out->status) != 1) {
     buf_free(&raw);
     return -1;
   }
   /* Find Content-Length. */
-  size_t     content_length = 0;
-  char const *cl            = strstr(raw.data, "Content-Length:");
+  size_t      content_length = 0;
+  char const *cl             = strstr(raw.data, "Content-Length:");
   if (!cl)
     cl = strstr(raw.data, "content-length:");
   if (cl) {
@@ -384,64 +396,71 @@ static void sdk_init_once(void)
   orc_sdk_init(&host, NULL);
 }
 
-static int serialize_f64_deck(double const *values, size_t count, Buf *out)
+static int serialize_handle(OrcHandle const *handle, Buf *out)
 {
-  OrcHandle h;
-  memset(&h, 0, sizeof(h));
-  h.type_id   = ORC_TYPE_F64;
-  h.n_items   = (uint64_t)count;
-  h.item_size = sizeof(double);
-  h.items     = values;
-  OrcError err = orc_sdk_serialize_handle_header((uint64_t)(uintptr_t)out, &h);
+  uint64_t ctx = (uint64_t)(uintptr_t)out;
+  OrcError err = orc_sdk_serialize_handle_header(ctx, handle);
   if (err != ORC_ERROR_NONE)
     return -1;
-  if (count > 0) {
-    err = orc_sdk_host_serial_write(
-      (uint64_t)(uintptr_t)out, values, (uint64_t)(count * sizeof(double)));
+  if (handle->n_items > 0 && handle->items != NULL) {
+    ORC_SDK_REQUIRE(handle->item_size > 0);
+    err =
+      orc_sdk_host_serial_write(ctx, handle->items, handle->n_items * handle->item_size);
     if (err != ORC_ERROR_NONE)
       return -1;
   }
   return 0;
 }
 
-static int deserialize_f64_deck(void const *data,
-                                size_t      data_len,
-                                double    **out_values,
-                                size_t     *out_count)
+static int deserialize_handle(void const *data, size_t data_len, OrcHandle *out)
 {
   OrcStrView src;
-  src.start = (char *)data;
-  src.end   = (char *)data + data_len;
-  OrcHandle h;
-  memset(&h, 0, sizeof(h));
+  src.start      = (char *)data;
+  src.end        = (char *)data + data_len;
   OrcMark *marks = NULL;
-  OrcError err   = orc_sdk_deserialize_handle_header(0, &src, &h, &marks);
-  orc_sdk_arr_free(marks);
+  OrcError err   = orc_sdk_deserialize_handle_header(0, &src, out, &marks);
   if (err != ORC_ERROR_NONE) {
     fprintf(stderr, "Deserialize header failed: 0x%x\n", err);
     return -1;
   }
-  if (h.type_id != ORC_TYPE_F64) {
-    fprintf(stderr, "Expected f64 type, got 0x%llx\n", (unsigned long long)h.type_id);
-    return -1;
+  ORC_SDK_REQUIRE(out->item_size > 0);
+  size_t items_bytes = (size_t)(out->n_items * out->item_size);
+  void  *items       = NULL;
+  if (items_bytes > 0) {
+    items = malloc(items_bytes);
+    if (!items) {
+      orc_sdk_arr_free(marks);
+      return -1;
+    }
+    err = orc_sdk_sv_read_bytes(&src, items, items_bytes);
+    if (err != ORC_ERROR_NONE) {
+      free(items);
+      orc_sdk_arr_free(marks);
+      return -1;
+    }
   }
-  size_t items_bytes = (size_t)(h.n_items * h.item_size);
-  *out_count         = (size_t)h.n_items;
-  *out_values        = (double *)malloc(items_bytes);
-  if (!*out_values)
-    return -1;
-  err = orc_sdk_sv_read_bytes(&src, *out_values, items_bytes);
-  if (err != ORC_ERROR_NONE) {
-    free(*out_values);
-    *out_values = NULL;
+  out->items = items;
+  out->marks = marks;
+  if (!orc_sv_is_empty(src)) {
+    fprintf(stderr, "Trailing bytes after deserialization\n");
+    free(items);
+    orc_sdk_arr_free(marks);
     return -1;
   }
   return 0;
 }
 
+static void free_deserialized_handle(OrcHandle *h)
+{
+  free((void *)h->items);
+  OrcMark *marks = (OrcMark *)h->marks;
+  orc_sdk_arr_free(marks);
+  memset(h, 0, sizeof(*h));
+}
+
 /* ==================== Main ==================== */
 
-static void die(char const *msg)
+static void error_abort(char const *msg)
 {
   fprintf(stderr, "ERROR: %s\n", msg);
   exit(1);
@@ -458,70 +477,83 @@ int main(int argc, char **argv)
 
   sdk_init_once();
   if (sock_init() != 0)
-    die("Failed to initialize sockets");
+    error_abort("Failed to initialize sockets");
 
   printf("Connecting to %s:%u...\n", host, port);
   HttpResponse resp;
 
   /* 1. List functions. */
   if (http_get_json(host, port, "/functions", &resp) != 0)
-    die("GET /functions failed");
+    error_abort("GET /functions failed");
   printf("Functions: %s\n", resp.body);
   http_response_free(&resp);
 
   /* 2. Start session. */
   if (http_post_json(host, port, "/session/start", "{}", &resp) != 0)
-    die("POST /session/start failed");
+    error_abort("POST /session/start failed");
   if (resp.status != 200) {
     fprintf(stderr, "Start session failed: %d %s\n", resp.status, resp.body);
     http_response_free(&resp);
-    die("Session start failed");
+    error_abort("Session start failed");
   }
   uint64_t session_id;
   if (json_get_u64(resp.body, "session_id", &session_id) != 0)
-    die("Failed to parse session_id");
+    error_abort("Failed to parse session_id");
   printf("Session started: %llu\n", (unsigned long long)session_id);
   http_response_free(&resp);
 
   /* 3. Create constant: [1.0, 2.0, 3.0] */
-  double a_values[] = {1.0, 2.0, 3.0};
-  Buf    a_buf;
+  double    a_values[] = {1.0, 2.0, 3.0};
+  OrcHandle a_handle;
+  memset(&a_handle, 0, sizeof(a_handle));
+  a_handle.type_id   = ORC_TYPE_F64;
+  a_handle.n_items   = 3;
+  a_handle.item_size = sizeof(double);
+  a_handle.items     = a_values;
+  Buf a_buf;
   buf_init(&a_buf);
-  if (serialize_f64_deck(a_values, 3, &a_buf) != 0)
-    die("Failed to serialize deck A");
+  if (serialize_handle(&a_handle, &a_buf) != 0)
+    error_abort("Failed to serialize deck A");
   char path[256];
-  snprintf(path, sizeof(path), "/constant?session_id=%llu", (unsigned long long)session_id);
+  snprintf(
+    path, sizeof(path), "/constant?session_id=%llu", (unsigned long long)session_id);
   if (http_post_bytes(host, port, path, a_buf.data, a_buf.len, &resp) != 0)
-    die("POST /constant (A) failed");
+    error_abort("POST /constant (A) failed");
   buf_free(&a_buf);
   if (resp.status != 200) {
     fprintf(stderr, "Constant A failed: %d %s\n", resp.status, resp.body);
     http_response_free(&resp);
-    die("Constant A failed");
+    error_abort("Constant A failed");
   }
   uint64_t a_id;
   if (json_get_u64(resp.body, "handle_id", &a_id) != 0)
-    die("Failed to parse handle_id for A");
+    error_abort("Failed to parse handle_id for A");
   printf("Constant A (handle %llu): [1.0, 2.0, 3.0]\n", (unsigned long long)a_id);
   http_response_free(&resp);
 
   /* 4. Create constant: [10.0, 20.0, 30.0] */
-  double b_values[] = {10.0, 20.0, 30.0};
-  Buf    b_buf;
+  double    b_values[] = {10.0, 20.0, 30.0};
+  OrcHandle b_handle;
+  memset(&b_handle, 0, sizeof(b_handle));
+  b_handle.type_id   = ORC_TYPE_F64;
+  b_handle.n_items   = 3;
+  b_handle.item_size = sizeof(double);
+  b_handle.items     = b_values;
+  Buf b_buf;
   buf_init(&b_buf);
-  if (serialize_f64_deck(b_values, 3, &b_buf) != 0)
-    die("Failed to serialize deck B");
+  if (serialize_handle(&b_handle, &b_buf) != 0)
+    error_abort("Failed to serialize deck B");
   if (http_post_bytes(host, port, path, b_buf.data, b_buf.len, &resp) != 0)
-    die("POST /constant (B) failed");
+    error_abort("POST /constant (B) failed");
   buf_free(&b_buf);
   if (resp.status != 200) {
     fprintf(stderr, "Constant B failed: %d %s\n", resp.status, resp.body);
     http_response_free(&resp);
-    die("Constant B failed");
+    error_abort("Constant B failed");
   }
   uint64_t b_id;
   if (json_get_u64(resp.body, "handle_id", &b_id) != 0)
-    die("Failed to parse handle_id for B");
+    error_abort("Failed to parse handle_id for B");
   printf("Constant B (handle %llu): [10.0, 20.0, 30.0]\n", (unsigned long long)b_id);
   http_response_free(&resp);
 
@@ -534,16 +566,16 @@ int main(int argc, char **argv)
            (unsigned long long)a_id,
            (unsigned long long)b_id);
   if (http_post_json(host, port, "/call", call_body, &resp) != 0)
-    die("POST /call failed");
+    error_abort("POST /call failed");
   if (resp.status != 200) {
     fprintf(stderr, "Call failed: %d %s\n", resp.status, resp.body);
     http_response_free(&resp);
-    die("Call failed");
+    error_abort("Call failed");
   }
   uint64_t output_ids[16];
   int      n_outputs = json_get_u64_arr(resp.body, "output_ids", output_ids, 16);
   if (n_outputs < 1)
-    die("No output_ids in call response");
+    error_abort("No output_ids in call response");
   printf("add() returned handle %llu\n", (unsigned long long)output_ids[0]);
   http_response_free(&resp);
 
@@ -554,27 +586,32 @@ int main(int argc, char **argv)
            (unsigned long long)session_id,
            (unsigned long long)output_ids[0]);
   if (http_post_bytes(host, port, path, NULL, 0, &resp) != 0)
-    die("POST /download failed");
+    error_abort("POST /download failed");
   if (resp.status != 200) {
     fprintf(stderr, "Download failed: %d %s\n", resp.status, resp.body);
     http_response_free(&resp);
-    die("Download failed");
+    error_abort("Download failed");
   }
-  double *result_values = NULL;
-  size_t  result_count  = 0;
-  if (deserialize_f64_deck(resp.body, resp.body_len, &result_values, &result_count) != 0) {
+  OrcHandle result;
+  memset(&result, 0, sizeof(result));
+  if (deserialize_handle(resp.body, resp.body_len, &result) != 0) {
     http_response_free(&resp);
-    die("Failed to deserialize result");
+    error_abort("Failed to deserialize result");
   }
   http_response_free(&resp);
-  printf("Result: [");
-  for (size_t i = 0; i < result_count; i++) {
-    if (i > 0)
-      printf(", ");
-    printf("%.1f", result_values[i]);
+  printf("Result (type_id=0x%llx, n_items=%llu): [",
+         (unsigned long long)result.type_id,
+         (unsigned long long)result.n_items);
+  if (result.type_id == ORC_TYPE_F64) {
+    double const *vals = (double const *)result.items;
+    for (uint64_t i = 0; i < result.n_items; i++) {
+      if (i > 0)
+        printf(", ");
+      printf("%.1f", vals[i]);
+    }
   }
   printf("]\n");
-  free(result_values);
+  free_deserialized_handle(&result);
 
   /* 7. Close session. */
   char close_body[128];
@@ -583,7 +620,7 @@ int main(int argc, char **argv)
            "{\"session_id\": %llu}",
            (unsigned long long)session_id);
   if (http_post_json(host, port, "/session/close", close_body, &resp) != 0)
-    die("POST /session/close failed");
+    error_abort("POST /session/close failed");
   printf("Session closed (status %d).\n", resp.status);
   http_response_free(&resp);
 
