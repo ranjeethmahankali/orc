@@ -1,0 +1,7 @@
+# clangd's bundled clang doesn't recognize gnu++23. Remap to gnu++2b for
+# files under cpp/ so diagnostics work. Only affects clangd, not the build.
+If:
+  PathMatch: .*/cpp/.*
+CompileFlags:
+  Add: [-std=gnu++2b]
+  Remove: [-std=gnu++23]
