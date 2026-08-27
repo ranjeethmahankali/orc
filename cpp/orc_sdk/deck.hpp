@@ -54,7 +54,7 @@ class Deck
     uint8_t depth =
       m_marks.empty() ? mark.depth : std::min(m_marks.front().depth, mark.depth);
     mark.depth = depth;
-    auto d     = static_cast<size_t>(depth);
+    size_t d   = static_cast<size_t>(depth);
     if (d > m_pegs.size())
       m_pegs.resize(d, 0);
     // Update the scan then push the actual marker.
@@ -65,7 +65,7 @@ class Deck
     for (size_t i = 0; i < d; ++i) {
       size_t peg = m_pegs[i];
       if (peg < m_marks.size()) {
-        auto &dst = m_strides[static_cast<size_t>(m_stride_offset[peg]) + i];
+        uint64_t &dst = m_strides[static_cast<size_t>(m_stride_offset[peg]) + i];
         dst       = std::min(dst, static_cast<uint64_t>(m_marks.size() - peg));
       }
       m_pegs[i] = m_marks.size();
@@ -101,7 +101,7 @@ public:
       d.start_new_arr(depth);
       return;
     }
-    for (auto const &item : list) {
+    for (T const &item : list) {
       d.push(item, depth);
       depth = 0;
     }
@@ -111,7 +111,7 @@ public:
   template<uint8_t GroupDepth, typename Inner>
   static void build_impl(Deck &d, std::initializer_list<Inner> list, uint8_t depth)
   {
-    for (auto const &group : list) {
+    for (Inner const &group : list) {
       build_impl<GroupDepth - 1>(d, group, depth);
       depth = GroupDepth - 1;
     }
@@ -187,16 +187,16 @@ public:
 
   Error graft()
   {
-    for (auto const &m : m_marks) {
+    for (OrcMark const &m : m_marks) {
       if (m.depth >= 254)
         return Error::DECK_DEPTH_OVERFLOW;
     }
-    auto count     = m_marks.size();
-    auto old_marks = std::move(m_marks);
+    size_t             count     = m_marks.size();
+    std::vector<OrcMark> old_marks = std::move(m_marks);
     m_marks.clear();
     m_marks.reserve(count + m_items.size());
     uint64_t prev = 0;
-    for (auto &m : old_marks) {
+    for (OrcMark &m : old_marks) {
       m.depth += 1;
       for (uint64_t pos = prev; pos < m.pos; ++pos) {
         m_marks.push_back(OrcMark {.depth = 0, .pos = pos});
@@ -215,18 +215,18 @@ public:
   {
     if (m_marks.empty())
       return;
-    auto                 dmax = static_cast<size_t>(m_marks.front().depth);
+    size_t               dmax = static_cast<size_t>(m_marks.front().depth);
     std::vector<uint8_t> remap(dmax + 1, 0);
-    for (auto const &m : m_marks) {
+    for (OrcMark const &m : m_marks) {
       remap[m.depth] = 1;
     }
     uint8_t acc2 = 0;
-    for (auto &r : remap) {
+    for (uint8_t &r : remap) {
       uint8_t prev2 = acc2;
       acc2 += r;
       r = prev2;
     }
-    for (auto &m : m_marks) {
+    for (OrcMark &m : m_marks) {
       m.depth = remap[m.depth];
     }
     recalc_strides();
@@ -263,8 +263,8 @@ void fmt_raw_deck(std::span<T const>       items,
     return;
   }
   constexpr size_t TAB = 3;
-  auto dmax    = marks.empty() ? uint8_t{0} : marks.front().depth;
-  auto n_items = static_cast<uint64_t>(items.size());
+  uint8_t  dmax    = marks.empty() ? uint8_t{0} : marks.front().depth;
+  uint64_t n_items = static_cast<uint64_t>(items.size());
   uint64_t tail_start = 0;
 
   auto spaces = [&](size_t n) {
@@ -289,13 +289,13 @@ void fmt_raw_deck(std::span<T const>       items,
   };
   auto write_mark_line = [&](OrcMark const &m, uint64_t next_pos) {
     spaces(static_cast<size_t>(dmax - m.depth) * TAB);
-    auto d_current = static_cast<uint8_t>(m.depth + 1);
+    uint8_t d_current = static_cast<uint8_t>(m.depth + 1);
     write_depth(d_current);
     os << ' ';
     dashes(static_cast<size_t>(d_current) * TAB);
     os << '|';
     if (m.pos < next_pos) {
-      auto end = std::min(next_pos, n_items);
+      uint64_t end = std::min(next_pos, n_items);
       os << ' ' << items[m.pos] << '\n';
       for (uint64_t i = m.pos + 1; i < end; ++i)
         write_continuation(i);
@@ -313,7 +313,7 @@ void fmt_raw_deck(std::span<T const>       items,
     write_mark_line(marks.back(), n_items);
     tail_start = n_items;
   }
-  for (auto i = tail_start; i < n_items; ++i)
+  for (uint64_t i = tail_start; i < n_items; ++i)
     write_continuation(i);
 }
 
