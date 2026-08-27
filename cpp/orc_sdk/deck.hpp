@@ -526,8 +526,7 @@ void fmt_raw_deck(std::span<T const>       items,
   uint8_t          dmax       = marks.empty() ? uint8_t {0} : marks.front().depth;
   uint64_t         n_items    = static_cast<uint64_t>(items.size());
   uint64_t         tail_start = 0;
-
-  auto spaces = [&](size_t n) {
+  auto             spaces     = [&](size_t n) {
     for (size_t i = 0; i < n; ++i)
       os << ' ';
   };
@@ -564,7 +563,6 @@ void fmt_raw_deck(std::span<T const>       items,
       os << '\n';
     }
   };
-
   for (size_t i = 0; i + 1 < marks.size(); ++i) {
     write_mark_line(marks[i], marks[i + 1].pos);
     tail_start = marks[i + 1].pos;
@@ -600,6 +598,7 @@ DeckWriter<T> WriteCursor::writer(Deck<T> &deck)
 // update_handle_from_deck
 // ---------------------------------------------------------------------------
 
+// Maybe this should move into a translation unit named 'ffi' to mirror Rust?
 template<typename T>
 void update_handle_from_deck(Deck<T> const &deck, OrcHandle &handle)
 {
