@@ -1,14 +1,13 @@
 use orc_sdk::{
-    ContextArena, Deck, DeckRegistry, Error, ORC_ABI_VERSION, ORC_DECK_PROXY_COPY_ALL,
+    ContextArena, DeckRegistry, Error, ORC_ABI_VERSION, ORC_DECK_PROXY_COPY_ALL,
     ORC_DECK_PROXY_COPY_ITEMS, ORC_DECK_PROXY_SHUFFLE, ORC_ERROR_INVALID_PROXY, ORC_ERROR_NONE,
     ORC_TYPE_F32, ORC_TYPE_F64, ORC_TYPE_I8, ORC_TYPE_I16, ORC_TYPE_I32, ORC_TYPE_I64, ORC_TYPE_U8,
     ORC_TYPE_U16, ORC_TYPE_U32, ORC_TYPE_U64, OrcError, OrcHandle, OrcHandleBorrowed, OrcHost,
-    OrcHostCallbackAPI, OrcHostMemoryAPI, OrcProxyType, OrcTypeId, Plugin, PluginSet, ProxyType,
-    TOrcData, TypeOwner, reset_handle, slice_from_ptr,
+    OrcHostCallbackAPI, OrcHostMemoryAPI, OrcProxyType, PluginSet, ProxyType,
+    TypeOwner, reset_handle, slice_from_ptr, try_deserialize_handle, try_serialize_handle,
 };
 use std::{
     alloc::{Layout, alloc, dealloc},
-    any::Any,
     collections::HashMap,
     ffi::{CStr, c_void},
     sync::{
@@ -33,7 +32,7 @@ unsafe extern "C" fn host_dealloc(ptr: *mut c_void, size: u64, alignment: u64) {
         .map(|layout| unsafe { dealloc(ptr as *mut u8, layout) });
 }
 
-static SERIAL_CONTEXT_ARENA: std::sync::LazyLock<ContextArena<Vec<u8>>> =
+pub static SERIAL_CONTEXT_ARENA: std::sync::LazyLock<ContextArena<Vec<u8>>> =
     std::sync::LazyLock::new(ContextArena::default);
 
 unsafe extern "C" fn serial_write_callback(ctx: u64, data: *const c_void, len: u64) -> OrcError {
@@ -173,27 +172,53 @@ impl OrcServer {
     }
 }
 
+enum ApiResponse {
+    Json(String),
+    Bytes(Vec<u8>),
+}
+
 impl ServerInner {
     fn handle_request(&self, mut request: Request) {
         let url = request.url().to_string();
         let method = request.method().clone();
-        let result = match (method, url.as_str()) {
-            (Method::Post, "/session/start") => self.start_session(),
-            (Method::Post, "/session/close") => self.close_session(&mut request),
-            (Method::Post, "/constant") => self.create_constant(&mut request),
-            (Method::Post, "/call") => self.call_function(&mut request),
-            (Method::Get, "/functions") => self.list_functions(),
-            (Method::Post, "/download") => self.download_handle(&mut request),
-            (Method::Post, "/upload") => self.upload_handle(&mut request),
+        let (path, query) = match url.split_once('?') {
+            Some((p, q)) => (p, q),
+            None => (url.as_str(), ""),
+        };
+        let result = match (method, path) {
+            (Method::Post, "/session/start") => self.start_session().map(ApiResponse::Json),
+            (Method::Post, "/session/close") => {
+                self.close_session(&mut request).map(ApiResponse::Json)
+            }
+            (Method::Post, "/constant") => {
+                self.create_constant(&mut request, query).map(ApiResponse::Json)
+            }
+            (Method::Post, "/call") => self.call_function(&mut request).map(ApiResponse::Json),
+            (Method::Get, "/functions") => self.list_functions().map(ApiResponse::Json),
+            (Method::Post, "/download") => {
+                self.download_handle(query).map(ApiResponse::Bytes)
+            }
             _ => Err((404, "Not found".to_string())),
         };
         match result {
-            Ok(body) => {
+            Ok(ApiResponse::Json(body)) => {
                 let response = Response::from_string(&body)
                     .with_header(
                         tiny_http::Header::from_bytes(
                             b"Content-Type" as &[u8],
                             b"application/json" as &[u8],
+                        )
+                        .unwrap(),
+                    )
+                    .with_status_code(StatusCode(200));
+                let _ = request.respond(response);
+            }
+            Ok(ApiResponse::Bytes(data)) => {
+                let response = Response::from_data(data)
+                    .with_header(
+                        tiny_http::Header::from_bytes(
+                            b"Content-Type" as &[u8],
+                            b"application/octet-stream" as &[u8],
                         )
                         .unwrap(),
                     )
@@ -223,6 +248,15 @@ impl ServerInner {
             .read_to_string(&mut body)
             .map_err(|e| (400, format!("Failed to read body: {e}")))?;
         Ok(body)
+    }
+
+    fn read_body_bytes(request: &mut Request) -> Result<Vec<u8>, (i32, String)> {
+        let mut buf = Vec::new();
+        request
+            .as_reader()
+            .read_to_end(&mut buf)
+            .map_err(|e| (400, format!("Failed to read body: {e}")))?;
+        Ok(buf)
     }
 
     fn parse_json(body: &str) -> Result<JsonValue, (i32, String)> {
@@ -268,39 +302,41 @@ impl ServerInner {
         Ok(r#"{"ok": true}"#.to_string())
     }
 
-    // POST /constant {"session_id": <id>, "type": "f64", "values": [1.0, 2.0, 3.0]}
-    // For nested: {"session_id": <id>, "type": "f64", "values": [[1.0, 2.0], [3.0]]}
-    fn create_constant(&self, request: &mut Request) -> Result<String, (i32, String)> {
-        let body = Self::read_body(request)?;
-        let json = Self::parse_json(&body)?;
-        let obj = json_as_object(&json)?;
-        let session_id = Self::json_get_u64(obj, "session_id")?;
-        let type_name = Self::json_get_str(obj, "type")?;
-        let values = obj
-            .get("values")
-            .ok_or((400, "Missing field: values".to_string()))?;
-        let mut sessions = self.sessions.lock().unwrap();
-        let session = sessions
-            .get_mut(&session_id)
-            .ok_or((404, "Session not found".to_string()))?;
+    // POST /constant?session_id=N  body=raw serialized bytes
+    fn create_constant(
+        &self,
+        request: &mut Request,
+        query: &str,
+    ) -> Result<String, (i32, String)> {
+        let params = parse_query(query);
+        let session_id = query_get_u64(&params, "session_id")?;
+        let bytes = Self::read_body_bytes(request)?;
         let handle_id = next_handle_id();
         let mut handle = OrcHandle {
             handle: handle_id,
             ..Default::default()
         };
-        match type_name {
-            "f64" => create_deck_from_json::<f64>(values, &mut handle, &DECK_REGISTRY)?,
-            "f32" => create_deck_from_json::<f32>(values, &mut handle, &DECK_REGISTRY)?,
-            "u8" => create_deck_from_json::<u8>(values, &mut handle, &DECK_REGISTRY)?,
-            "u16" => create_deck_from_json::<u16>(values, &mut handle, &DECK_REGISTRY)?,
-            "u32" => create_deck_from_json::<u32>(values, &mut handle, &DECK_REGISTRY)?,
-            "u64" => create_deck_from_json::<u64>(values, &mut handle, &DECK_REGISTRY)?,
-            "i8" => create_deck_from_json::<i8>(values, &mut handle, &DECK_REGISTRY)?,
-            "i16" => create_deck_from_json::<i16>(values, &mut handle, &DECK_REGISTRY)?,
-            "i32" => create_deck_from_json::<i32>(values, &mut handle, &DECK_REGISTRY)?,
-            "i64" => create_deck_from_json::<i64>(values, &mut handle, &DECK_REGISTRY)?,
-            _ => return Err((400, format!("Unknown type: {type_name}"))),
+        let mut cursor = std::io::Cursor::new(&bytes);
+        match try_deserialize_handle(&mut cursor, &mut handle, &DECK_REGISTRY) {
+            Ok(()) => {}
+            Err(_marks) => {
+                // Custom type — dispatch to the owning plugin.
+                let type_id = handle.type_id;
+                let plugin = match PLUGIN_SET.get_type_owner(type_id) {
+                    Some(TypeOwner::Plugin(idx, _)) => &PLUGIN_SET.plugins()[*idx],
+                    _ => {
+                        return Err((400, format!("No plugin found for type_id {type_id}")));
+                    }
+                };
+                plugin
+                    .deserialize_deck(0, &bytes, &mut handle)
+                    .map_err(|e| (500, format!("Deserialization failed: {e}")))?;
+            }
         }
+        let mut sessions = self.sessions.lock().unwrap();
+        let session = sessions
+            .get_mut(&session_id)
+            .ok_or((404, "Session not found".to_string()))?;
         session.handles.insert(handle_id, handle);
         Ok(format!(r#"{{"handle_id": {handle_id}}}"#))
     }
@@ -327,7 +363,7 @@ impl ServerInner {
         let session = sessions
             .get_mut(&session_id)
             .ok_or((404, "Session not found".to_string()))?;
-        // Gather input handles (copies for the FFI call).
+        // Gather input handles.
         let inputs: Vec<OrcHandleBorrowed<'_>> = input_ids
             .iter()
             .map(|id| {
@@ -389,15 +425,11 @@ impl ServerInner {
         Ok(format!(r#"{{"functions": [{}]}}"#, entries.join(", ")))
     }
 
-    // POST /download {"session_id": <id>, "handle_id": <id>}
-    // Returns raw serialized bytes with Content-Type: application/octet-stream
-    // and X-Orc-Type-Id header.
-    fn download_handle(&self, request: &mut Request) -> Result<String, (i32, String)> {
-        let body = Self::read_body(request)?;
-        let json = Self::parse_json(&body)?;
-        let obj = json_as_object(&json)?;
-        let session_id = Self::json_get_u64(obj, "session_id")?;
-        let handle_id = Self::json_get_u64(obj, "handle_id")?;
+    // POST /download?session_id=N&handle_id=M -> raw serialized bytes
+    fn download_handle(&self, query: &str) -> Result<Vec<u8>, (i32, String)> {
+        let params = parse_query(query);
+        let session_id = query_get_u64(&params, "session_id")?;
+        let handle_id = query_get_u64(&params, "handle_id")?;
         let sessions = self.sessions.lock().unwrap();
         let session = sessions
             .get(&session_id)
@@ -406,56 +438,43 @@ impl ServerInner {
             .handles
             .get(&handle_id)
             .ok_or((404, "Handle not found".to_string()))?;
-        let plugin = plugin_for_type(handle.type_id).map_err(|e| (400, e))?;
-        let bytes = plugin
-            .serialize_deck(&SERIAL_CONTEXT_ARENA, handle, |buf| buf.clone())
-            .map_err(|e| (500, format!("Serialization failed: {e}")))?;
-        let type_id = handle.type_id;
-        let byte_vals: Vec<String> = bytes.iter().map(|b| b.to_string()).collect();
-        Ok(format!(
-            r#"{{"type_id": {type_id}, "data": [{}]}}"#,
-            byte_vals.join(", ")
-        ))
-    }
-
-    // POST /upload {"session_id": <id>, "type_id": <id>, "data": [<bytes>]}
-    // Deserialize raw bytes into a new handle.
-    fn upload_handle(&self, request: &mut Request) -> Result<String, (i32, String)> {
-        let body = Self::read_body(request)?;
-        let json = Self::parse_json(&body)?;
-        let obj = json_as_object(&json)?;
-        let session_id = Self::json_get_u64(obj, "session_id")?;
-        let type_id = Self::json_get_u64(obj, "type_id")?;
-        let data_arr = match obj.get("data") {
-            Some(JsonValue::Array(arr)) => arr,
-            _ => return Err((400, "Missing or invalid field: data".to_string())),
-        };
-        let bytes: Vec<u8> = data_arr
-            .iter()
-            .map(|v| match v {
-                JsonValue::Number(n) => Ok(*n as u8),
-                _ => Err((400, "data must be array of byte values".to_string())),
-            })
-            .collect::<Result<_, _>>()?;
-        let plugin = plugin_for_type(type_id).map_err(|e| (400, e))?;
-        let handle_id = next_handle_id();
-        let mut handle = OrcHandle {
-            handle: handle_id,
-            ..Default::default()
-        };
-        plugin
-            .deserialize_deck(0, &bytes, &mut handle)
-            .map_err(|e| (500, format!("Deserialization failed: {e}")))?;
-        let mut sessions = self.sessions.lock().unwrap();
-        let session = sessions
-            .get_mut(&session_id)
-            .ok_or((404, "Session not found".to_string()))?;
-        session.handles.insert(handle_id, handle);
-        Ok(format!(r#"{{"handle_id": {handle_id}}}"#))
+        let mut buf = Vec::new();
+        match try_serialize_handle(handle, &mut buf) {
+            Ok(()) => Ok(buf),
+            Err(Error::DeckTypeMismatch) => {
+                // Custom type — dispatch to the owning plugin.
+                let type_id = handle.type_id;
+                let plugin = match PLUGIN_SET.get_type_owner(type_id) {
+                    Some(TypeOwner::Plugin(idx, _)) => &PLUGIN_SET.plugins()[*idx],
+                    _ => {
+                        return Err((400, format!("No plugin found for type_id {type_id}")));
+                    }
+                };
+                plugin
+                    .serialize_deck(&SERIAL_CONTEXT_ARENA, handle, |b| b.clone())
+                    .map_err(|e| (500, format!("Serialization failed: {e}")))
+            }
+            Err(e) => Err((500, format!("Serialization failed: {e}"))),
+        }
     }
 }
 
 // --- Helpers ---
+
+fn parse_query(query: &str) -> HashMap<&str, &str> {
+    query
+        .split('&')
+        .filter(|s| !s.is_empty())
+        .filter_map(|pair| pair.split_once('='))
+        .collect()
+}
+
+fn query_get_u64(params: &HashMap<&str, &str>, key: &str) -> Result<u64, (i32, String)> {
+    params
+        .get(key)
+        .and_then(|v| v.parse::<u64>().ok())
+        .ok_or_else(|| (400, format!("Missing or invalid query param: {key}")))
+}
 
 fn json_as_object(json: &JsonValue) -> Result<&HashMap<String, JsonValue>, (i32, String)> {
     match json {
@@ -474,83 +493,6 @@ fn json_as_u64_array(json: &JsonValue) -> Result<Vec<u64>, (i32, String)> {
             })
             .collect(),
         _ => Err((400, "Expected array".to_string())),
-    }
-}
-
-trait FromJsonNumber: Sized {
-    fn from_f64(v: f64) -> Self;
-}
-
-macro_rules! impl_from_json_number {
-    ($($t:ty),*) => {
-        $(impl FromJsonNumber for $t {
-            fn from_f64(v: f64) -> Self { v as $t }
-        })*
-    }
-}
-
-impl_from_json_number!(f64, f32, u8, u16, u32, u64, i8, i16, i32, i64);
-
-fn collect_json_values<T: FromJsonNumber + Default>(
-    json: &JsonValue,
-    deck: &mut Deck<T>,
-    depth: u8,
-) -> Result<(), (i32, String)> {
-    match json {
-        JsonValue::Array(arr) => {
-            if arr.is_empty() {
-                deck.start_new_arr(depth);
-            } else {
-                for (i, v) in arr.iter().enumerate() {
-                    let child_depth = if i == 0 { depth } else { 0 };
-                    collect_json_values(v, deck, child_depth)?;
-                }
-            }
-            Ok(())
-        }
-        JsonValue::Number(n) => {
-            deck.push(T::from_f64(*n), depth);
-            Ok(())
-        }
-        _ => Err((
-            400,
-            "Values must be numbers or arrays of numbers".to_string(),
-        )),
-    }
-}
-
-fn infer_depth(json: &JsonValue) -> u8 {
-    match json {
-        JsonValue::Array(arr) => match arr.first() {
-            Some(child) => 1 + infer_depth(child),
-            None => 1,
-        },
-        _ => 1,
-    }
-}
-
-fn create_deck_from_json<T: TOrcData + Any + Send + Sync + Default + FromJsonNumber>(
-    values: &JsonValue,
-    handle: &mut OrcHandle,
-    registry: &DeckRegistry,
-) -> Result<(), (i32, String)> {
-    let mut deck = Deck::<T>::default();
-    let depth = infer_depth(values);
-    collect_json_values(values, &mut deck, depth)?;
-    registry
-        .alloc_with_value(Some(deck), handle)
-        .map_err(|e| (500, format!("Failed to allocate deck: {e}")))?;
-    Ok(())
-}
-
-fn plugin_for_type(type_id: OrcTypeId) -> Result<&'static Plugin, String> {
-    match PLUGIN_SET.get_type_owner(type_id) {
-        Some(TypeOwner::Plugin(plugin_index, _)) => Ok(&PLUGIN_SET.plugins()[*plugin_index]),
-        Some(TypeOwner::BuiltIn(_)) => PLUGIN_SET
-            .plugins()
-            .first()
-            .ok_or_else(|| "No plugins loaded".to_string()),
-        None => Err(format!("No plugin found for type_id {type_id}")),
     }
 }
 
@@ -634,7 +576,7 @@ unsafe extern "C" fn host_create_proxy_deck(
     ORC_ERROR_NONE
 }
 
-static DECK_REGISTRY: std::sync::LazyLock<DeckRegistry> =
+pub static DECK_REGISTRY: std::sync::LazyLock<DeckRegistry> =
     std::sync::LazyLock::new(DeckRegistry::new);
 
 #[unsafe(no_mangle)]

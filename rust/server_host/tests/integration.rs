@@ -1,4 +1,5 @@
-use server_host::server::OrcServer;
+use orc_sdk::{OrcHandle, deck, try_serialize_handle};
+use server_host::server::{DECK_REGISTRY, OrcServer, next_handle_id};
 use tinyjson::JsonValue;
 
 fn start_server() -> (OrcServer, String) {
@@ -10,6 +11,31 @@ fn start_server() -> (OrcServer, String) {
 fn post_json(url: &str, body: &str) -> (u16, JsonValue) {
     let resp = minreq::post(url)
         .with_header("Content-Type", "application/json")
+        .with_body(body)
+        .send()
+        .expect("HTTP request failed");
+    let code = resp.status_code as u16;
+    let json: JsonValue = resp
+        .as_str()
+        .expect("Response not UTF-8")
+        .parse()
+        .expect("Response not valid JSON");
+    (code, json)
+}
+
+fn post_bytes(url: &str, body: &[u8]) -> (u16, Vec<u8>) {
+    let resp = minreq::post(url)
+        .with_header("Content-Type", "application/octet-stream")
+        .with_body(body)
+        .send()
+        .expect("HTTP request failed");
+    let code = resp.status_code as u16;
+    (code, resp.into_bytes())
+}
+
+fn post_bytes_json(url: &str, body: &[u8]) -> (u16, JsonValue) {
+    let resp = minreq::post(url)
+        .with_header("Content-Type", "application/octet-stream")
         .with_body(body)
         .send()
         .expect("HTTP request failed");
@@ -63,30 +89,24 @@ fn json_nums(json: &JsonValue, key: &str) -> Vec<f64> {
         .collect()
 }
 
-fn json_bytes(json: &JsonValue, key: &str) -> Vec<u8> {
-    json_arr(json, key)
-        .iter()
-        .map(|v| match v {
-            JsonValue::Number(n) => *n as u8,
-            _ => panic!("Expected number in array"),
-        })
-        .collect()
+fn serialize_handle(handle: &OrcHandle) -> Vec<u8> {
+    let mut buf = Vec::new();
+    try_serialize_handle(handle, &mut buf).expect("Serialization failed");
+    buf
 }
 
 #[test]
-fn start_and_close_session() {
+fn t_start_and_close_session() {
     let (_server, base) = start_server();
     let (code, json) = post_json(&format!("{base}/session/start"), "{}");
     assert_eq!(code, 200);
     let session_id = json_u64(&json, "session_id");
     assert!(session_id > 0);
-    // Close the session.
     let (code, _) = post_json(
         &format!("{base}/session/close"),
         &format!(r#"{{"session_id": {session_id}}}"#),
     );
     assert_eq!(code, 200);
-    // Closing again should 404.
     let (code, _) = post_json(
         &format!("{base}/session/close"),
         &format!(r#"{{"session_id": {session_id}}}"#),
@@ -95,7 +115,7 @@ fn start_and_close_session() {
 }
 
 #[test]
-fn list_functions() {
+fn t_list_functions() {
     let (_server, base) = start_server();
     let (code, json) = get_json(&format!("{base}/functions"));
     assert_eq!(code, 200);
@@ -112,63 +132,77 @@ fn list_functions() {
 }
 
 #[test]
-fn create_constant_and_download() {
+fn t_create_constant_and_download() {
     let (_server, base) = start_server();
     let (_, json) = post_json(&format!("{base}/session/start"), "{}");
     let sid = json_u64(&json, "session_id");
-    // Create a constant [1.0, 2.0, 3.0].
-    let (code, json) = post_json(
-        &format!("{base}/constant"),
-        &format!(r#"{{"session_id": {sid}, "type": "f64", "values": [1.0, 2.0, 3.0]}}"#),
+    // Serialize a deck via ABI and upload as constant.
+    let d: orc_sdk::Deck<f64> = deck![1.0, 2.0, 3.0];
+    let mut handle = OrcHandle {
+        handle: next_handle_id(),
+        ..Default::default()
+    };
+    DECK_REGISTRY
+        .alloc_with_value(Some(d), &mut handle)
+        .expect("Failed to allocate deck");
+    let data = serialize_handle(&handle);
+    handle.free();
+    let (code, json) = post_bytes_json(
+        &format!("{base}/constant?session_id={sid}"),
+        &data,
     );
     assert_eq!(code, 200);
     let hid = json_u64(&json, "handle_id");
     // Download the serialized handle.
-    let (code, json) = post_json(
-        &format!("{base}/download"),
-        &format!(r#"{{"session_id": {sid}, "handle_id": {hid}}}"#),
+    let (code, downloaded) = post_bytes(
+        &format!("{base}/download?session_id={sid}&handle_id={hid}"),
+        &[],
     );
     assert_eq!(code, 200);
-    let type_id = json_u64(&json, "type_id");
-    assert_eq!(type_id, 18); // ORC_TYPE_F64
-    let data = json_bytes(&json, "data");
-    assert!(!data.is_empty(), "Serialized data should not be empty");
-    // Upload the same data back as a new handle.
-    let data_str: Vec<String> = data.iter().map(|b| b.to_string()).collect();
-    let (code, json) = post_json(
-        &format!("{base}/upload"),
-        &format!(
-            r#"{{"session_id": {sid}, "type_id": {type_id}, "data": [{}]}}"#,
-            data_str.join(", ")
-        ),
+    assert!(!downloaded.is_empty(), "Serialized data should not be empty");
+    // Upload the downloaded bytes as a new constant.
+    let (code, json) = post_bytes_json(
+        &format!("{base}/constant?session_id={sid}"),
+        &downloaded,
     );
     assert_eq!(code, 200);
     let hid2 = json_u64(&json, "handle_id");
     assert_ne!(hid, hid2);
     // Download again and verify same bytes.
-    let (code, json2) = post_json(
-        &format!("{base}/download"),
-        &format!(r#"{{"session_id": {sid}, "handle_id": {hid2}}}"#),
+    let (code, downloaded2) = post_bytes(
+        &format!("{base}/download?session_id={sid}&handle_id={hid2}"),
+        &[],
     );
     assert_eq!(code, 200);
-    let data2 = json_bytes(&json2, "data");
-    assert_eq!(data, data2, "Round-tripped data should match");
+    assert_eq!(downloaded, downloaded2, "Round-tripped data should match");
 }
 
 #[test]
-fn call_add_function() {
+fn t_call_add_function() {
     let (_server, base) = start_server();
     let (_, json) = post_json(&format!("{base}/session/start"), "{}");
     let sid = json_u64(&json, "session_id");
     // Create two constants.
-    let (_, json) = post_json(
-        &format!("{base}/constant"),
-        &format!(r#"{{"session_id": {sid}, "type": "f64", "values": [1.0, 2.0, 3.0]}}"#),
+    let d1: orc_sdk::Deck<f64> = deck![1.0, 2.0, 3.0];
+    let mut h1 = OrcHandle { handle: next_handle_id(), ..Default::default() };
+    DECK_REGISTRY.alloc_with_value(Some(d1), &mut h1).unwrap();
+    let data1 = serialize_handle(&h1);
+    h1.free();
+
+    let d2: orc_sdk::Deck<f64> = deck![10.0, 20.0, 30.0];
+    let mut h2 = OrcHandle { handle: next_handle_id(), ..Default::default() };
+    DECK_REGISTRY.alloc_with_value(Some(d2), &mut h2).unwrap();
+    let data2 = serialize_handle(&h2);
+    h2.free();
+
+    let (_, json) = post_bytes_json(
+        &format!("{base}/constant?session_id={sid}"),
+        &data1,
     );
     let a_id = json_u64(&json, "handle_id");
-    let (_, json) = post_json(
-        &format!("{base}/constant"),
-        &format!(r#"{{"session_id": {sid}, "type": "f64", "values": [10.0, 20.0, 30.0]}}"#),
+    let (_, json) = post_bytes_json(
+        &format!("{base}/constant?session_id={sid}"),
+        &data2,
     );
     let b_id = json_u64(&json, "handle_id");
     // Call add(a, b).
@@ -180,16 +214,11 @@ fn call_add_function() {
     let out_ids = json_nums(&json, "output_ids");
     assert_eq!(out_ids.len(), 1);
     let out_id = out_ids[0] as u64;
-    // Download result and verify via round-trip.
-    let (code, json) = post_json(
-        &format!("{base}/download"),
-        &format!(r#"{{"session_id": {sid}, "handle_id": {out_id}}}"#),
+    // Download result.
+    let (code, data) = post_bytes(
+        &format!("{base}/download?session_id={sid}&handle_id={out_id}"),
+        &[],
     );
     assert_eq!(code, 200);
-    let type_id = json_u64(&json, "type_id");
-    assert_eq!(type_id, 18); // ORC_TYPE_F64
-    let data = json_bytes(&json, "data");
-    // Upload into a fresh handle so we can read the bytes back.
-    // Verify the serialized data is non-empty (the actual byte content is ABI-specific).
     assert!(!data.is_empty());
 }
