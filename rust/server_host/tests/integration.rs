@@ -3,7 +3,7 @@ use server_host::server::{DECK_REGISTRY, OrcServer, next_handle_id};
 use tinyjson::JsonValue;
 
 fn start_server() -> (OrcServer, String) {
-    let server = OrcServer::start(0).expect("Failed to start server");
+    let server = OrcServer::start(0, false).expect("Failed to start server");
     let base = format!("http://127.0.0.1:{}", server.port());
     (server, base)
 }

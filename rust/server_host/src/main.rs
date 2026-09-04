@@ -11,11 +11,13 @@ fn local_ip() -> Option<std::net::IpAddr> {
 }
 
 fn main() -> ExitCode {
-    let port = std::env::args()
-        .nth(1)
-        .and_then(|s| s.parse::<u16>().ok())
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    let verbose = !args.iter().any(|a| a == "--no-verbose");
+    let port = args
+        .iter()
+        .find_map(|s| s.parse::<u16>().ok())
         .unwrap_or(DEFAULT_PORT);
-    match OrcServer::start(port) {
+    match OrcServer::start(port, verbose) {
         Ok(server) => {
             let port = server.port();
             if let Some(ip) = local_ip() {

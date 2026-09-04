@@ -136,7 +136,7 @@ struct ServerInner {
 }
 
 impl OrcServer {
-    pub fn start(port: u16) -> Result<Self, String> {
+    pub fn start(port: u16, verbose: bool) -> Result<Self, String> {
         // Force plugin loading before binding the port.
         let _ = &*PLUGIN_SET;
         let addr = format!("0.0.0.0:{port}");
@@ -152,15 +152,17 @@ impl OrcServer {
         });
         let thread = std::thread::spawn(move || {
             for request in server.incoming_requests() {
-                println!(
-                    "{} {} {} (from {})",
-                    request.method(),
-                    request.url(),
-                    request.http_version(),
-                    request
-                        .remote_addr()
-                        .map_or("unknown".to_string(), |a| a.to_string()),
-                );
+                if verbose {
+                    println!(
+                        "{} {} {} (from {})",
+                        request.method(),
+                        request.url(),
+                        request.http_version(),
+                        request
+                            .remote_addr()
+                            .map_or("unknown".to_string(), |a| a.to_string()),
+                    );
+                }
                 let inner = Arc::clone(&inner);
                 std::thread::spawn(move || {
                     inner.handle_request(request);
