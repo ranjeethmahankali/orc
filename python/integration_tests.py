@@ -16,6 +16,7 @@ import os
 import signal
 import subprocess
 import sys
+import tempfile
 
 # ---------------------------------------------------------------------------
 # Setup
@@ -138,6 +139,11 @@ def download_typed(sid, hid):
         return dtype, [float(v) for v in vals]
     else:
         return dtype, [int(v) for v in vals]
+
+
+def download_workflow(sid, path, *output_ids):
+    """Download a workflow .orc file to the given path."""
+    cli("download_workflow", sid, path, *[str(i) for i in output_ids])
 
 
 # ============================================================
@@ -653,6 +659,43 @@ def t_functions_lists_expected():
     ]
     for name in expected:
         assert name in raw, f"Expected function '{name}' in functions list"
+
+
+# ============================================================
+# download_workflow
+# ============================================================
+
+
+def t_download_workflow_add_mul():
+    """Download a workflow and run it locally via pyorc."""
+    import orc
+
+    orc.load_plugins(build_dir)
+
+    sid = session_start()
+    a = constant(sid, "f64", 1, 2, 3)
+    b = constant(sid, "f64", 10, 20, 30)
+    [s] = call(sid, "add", a, b)
+    c = constant(sid, "f64", 2)
+    [out] = call(sid, "multiply", s, c)
+    assert download_values(sid, out) == [22.0, 44.0, 66.0]
+
+    with tempfile.NamedTemporaryFile(suffix=".orc", delete=False) as f:
+        wf_path = f.name
+    try:
+        download_workflow(sid, wf_path, out)
+        graph = orc.load_workflow(wf_path)
+    finally:
+        os.unlink(wf_path)
+    session_close(sid)
+
+    # Run the downloaded workflow locally with the same
+    # constant values baked in — no inputs needed.
+    results = graph.run()
+    if not isinstance(results, list):
+        results = [results]
+    vals = orc.read_deck(results[0])
+    assert vals == [22.0, 44.0, 66.0], f"Expected [22, 44, 66], got {vals}"
 
 
 # ============================================================
