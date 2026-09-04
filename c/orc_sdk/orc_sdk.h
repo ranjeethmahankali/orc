@@ -643,9 +643,11 @@ void orc_sdk_deck_simplify(void *ptr);
 
 void orc_sdk_deck_calc_strides(_OrcSdk_DeckHeader *h);
 
-char *_orc_sdk_deck_to_str(void const  *ptr,
-                           size_t const item_size,
-                           void (*snprint_item)(void *item, char *dst, size_t len));
+typedef void (*OrcSdk_SNPrintItemFn)(void *item, char *dst, size_t len);
+
+char *_orc_sdk_deck_to_str(void const          *ptr,
+                           size_t const         item_size,
+                           OrcSdk_SNPrintItemFn snprint_item);
 
 #define orc_sdk_deck_to_str(ptr, snprint_item) \
   _orc_sdk_deck_to_str((ptr), sizeof(*(ptr)), snprint_item)
@@ -939,4 +941,6 @@ OrcError orc_sdk_deserialize_handle_header(uint64_t const ctx,
                                            OrcMark      **out_marks);
 // ========== Other helpers ==========
 
-OrcError orc_sdk_handle_to_str(OrcHandle const *input, OrcHandle *out);
+OrcError orc_sdk_handle_to_str(OrcHandle const     *input,
+                               OrcHandle           *out,
+                               OrcSdk_SNPrintItemFn snprint_item);
