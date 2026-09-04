@@ -10,6 +10,7 @@
  *   constant <session_id> <type> <val>...      -> prints handle_id
  *   call <session_id> <func> <input_id>...     -> prints output_ids
  *   download <session_id> <handle_id>          -> prints type and values
+ *   download_workflow <sid> <path> [output_ids...] -> writes .orc file
  *
  * Supported types for 'constant': u8 u16 u32 u64 i8 i16 i32 i64 f32 f64
  */
@@ -538,6 +539,7 @@ static void usage(void)
     "  constant <session_id> <type> <val>...      Print handle_id\n"
     "  call <session_id> <func> <input_id>...     Print output handle_ids\n"
     "  download <session_id> <handle_id>          Print type and values\n"
+    "  download_workflow <sid> <path> [ids...]     Write workflow to file\n"
     "\n"
     "Types: u8 u16 u32 u64 i8 i16 i32 i64 f32 f64\n");
   exit(1);
@@ -727,6 +729,46 @@ static void cmd_download(char const *host,
   free_deserialized_handle(&result);
 }
 
+static void cmd_download_workflow(char const *host,
+                                   uint16_t    port,
+                                   char const *sid_str,
+                                   char const *out_path,
+                                   int         n_outputs,
+                                   char      **output_strs)
+{
+  char path[256];
+  snprintf(path, sizeof(path),
+           "/download_workflow?session_id=%s", sid_str);
+  Buf body;
+  buf_init(&body);
+  buf_append_str(&body, "{\"outputs\": [");
+  for (int i = 0; i < n_outputs; i++) {
+    if (i > 0) buf_append_str(&body, ", ");
+    buf_append_str(&body, output_strs[i]);
+  }
+  buf_append_str(&body, "]}");
+  buf_append(&body, "\0", 1);
+  HttpResponse resp;
+  if (http_post_json(host, port, path, body.data, &resp) != 0) {
+    buf_free(&body);
+    die("POST /download_workflow failed");
+  }
+  buf_free(&body);
+  if (resp.status != 200) {
+    fprintf(stderr, "%s\n", resp.body);
+    http_response_free(&resp);
+    die("download_workflow failed");
+  }
+  FILE *f = fopen(out_path, "wb");
+  if (!f) {
+    http_response_free(&resp);
+    die("Failed to open output file");
+  }
+  fwrite(resp.body, 1, resp.body_len, f);
+  fclose(f);
+  http_response_free(&resp);
+}
+
 /* ==================== Main ==================== */
 
 int main(int argc, char **argv)
@@ -761,6 +803,9 @@ int main(int argc, char **argv)
   } else if (strcmp(cmd, "download") == 0) {
     if (argc < 6) usage();  /* host port download sid hid */
     cmd_download(host, port, argv[4], argv[5]);
+  } else if (strcmp(cmd, "download_workflow") == 0) {
+    if (argc < 6) usage();  /* host port download_workflow sid outpath [output_ids...] */
+    cmd_download_workflow(host, port, argv[4], argv[5], argc - 6, &argv[6]);
   } else {
     usage();
   }

@@ -1,9 +1,9 @@
 use orc_sdk::{
-    ContextArena, DeckRegistry, Error, ORC_ABI_VERSION, ORC_DECK_PROXY_COPY_ALL,
+    ContextArena, DeckRegistry, Error, IH, OH, ORC_ABI_VERSION, ORC_DECK_PROXY_COPY_ALL,
     ORC_DECK_PROXY_COPY_ITEMS, ORC_DECK_PROXY_SHUFFLE, ORC_ERROR_INVALID_PROXY, ORC_ERROR_NONE,
     ORC_TYPE_F32, ORC_TYPE_F64, ORC_TYPE_I8, ORC_TYPE_I16, ORC_TYPE_I32, ORC_TYPE_I64, ORC_TYPE_U8,
     ORC_TYPE_U16, ORC_TYPE_U32, ORC_TYPE_U64, OrcError, OrcHandle, OrcHandleBorrowed, OrcHost,
-    OrcHostCallbackAPI, OrcHostMemoryAPI, OrcProxyType, PluginSet, ProxyType, TypeOwner,
+    OrcHostCallbackAPI, OrcHostMemoryAPI, OrcProxyType, PluginSet, ProxyType, TypeOwner, Workflow,
     reset_handle, slice_from_ptr, try_deserialize_handle, try_serialize_handle,
 };
 use std::{
@@ -79,6 +79,24 @@ const HOST: OrcHost = OrcHost {
     create_deck_from_proxy: Some(host_create_proxy_deck),
 };
 
+fn clone_handle(src: OrcHandleBorrowed) -> Result<OrcHandle, Error> {
+    let mut out = OrcHandle {
+        handle: next_handle_id(),
+        ..Default::default()
+    };
+    let err = unsafe {
+        host_create_proxy_deck(
+            src.inner(),
+            1,
+            ORC_DECK_PROXY_COPY_ALL,
+            &OrcHandle::default(),
+            &mut out,
+        )
+    };
+    Error::from_raw(err)?;
+    Ok(out)
+}
+
 // --- Globals ---
 
 fn plugin_dir() -> std::path::PathBuf {
@@ -103,15 +121,92 @@ pub fn next_handle_id() -> u64 {
 
 // --- Session state ---
 
+enum LogEntry {
+    Constant {
+        handle_id: u64,
+    },
+    Call {
+        function: String,
+        input_ids: Vec<u64>,
+        output_ids: Vec<u64>,
+    },
+}
+
 struct Session {
     handles: HashMap<u64, OrcHandle>,
+    log: Vec<LogEntry>,
 }
 
 impl Session {
     fn new() -> Self {
         Self {
             handles: HashMap::new(),
+            log: Vec::new(),
         }
+    }
+
+    fn build_workflow(&self, workflow_output_ids: &[u64]) -> Result<Workflow, String> {
+        let mut wf = Workflow::default();
+        // Maps handle_id -> OH in the workflow graph.
+        let mut handle_to_oh: HashMap<u64, OH> = HashMap::new();
+        for entry in &self.log {
+            match entry {
+                LogEntry::Constant { handle_id } => {
+                    let src = self
+                        .handles
+                        .get(handle_id)
+                        .ok_or(format!("Handle {handle_id} not found"))?;
+                    let cloned = clone_handle(src.borrowed())
+                        .map_err(|e| format!("Failed to clone handle {handle_id}: {e}"))?;
+                    let (_node, oh) = wf
+                        .add_constant(cloned)
+                        .map_err(|e| format!("Failed to add constant: {e}"))?;
+                    handle_to_oh.insert(*handle_id, oh);
+                }
+                LogEntry::Call {
+                    function,
+                    input_ids,
+                    output_ids,
+                } => {
+                    let info = PLUGIN_SET
+                        .get_function(function)
+                        .ok_or(format!("Function not found: {function}"))?
+                        .clone();
+                    let mut ihs = vec![IH::default(); input_ids.len()];
+                    let mut ohs = vec![OH::default(); output_ids.len()];
+                    wf.add_function(info, &mut ihs, &mut ohs)
+                        .map_err(|e| format!("Failed to add function node: {e}"))?;
+                    // Connect inputs.
+                    for (ih, input_id) in ihs.iter().zip(input_ids.iter()) {
+                        let src_oh = handle_to_oh
+                            .get(input_id)
+                            .ok_or(format!("Input handle {input_id} not in workflow"))?;
+                        wf.connect(*src_oh, *ih)
+                            .map_err(|e| format!("Failed to connect: {e}"))?;
+                    }
+                    // Record outputs.
+                    for (oh, output_id) in ohs.iter().zip(output_ids.iter()) {
+                        handle_to_oh.insert(*output_id, *oh);
+                    }
+                }
+            }
+        }
+        // Set workflow outputs.
+        let wf_outputs: Vec<(OH, String)> = workflow_output_ids
+            .iter()
+            .map(|id| {
+                handle_to_oh
+                    .get(id)
+                    .map(|oh| (*oh, String::new()))
+                    .ok_or(format!("Output handle {id} not in workflow"))
+            })
+            .collect::<Result<_, _>>()?;
+        if !wf_outputs.is_empty() {
+            wf.set_outputs(&wf_outputs)
+                .map_err(|e| format!("Failed to set outputs: {e}"))?;
+        }
+
+        Ok(wf)
     }
 }
 
@@ -210,6 +305,9 @@ impl ServerInner {
             (Method::Post, "/call") => self.call_function(&mut request).map(ApiResponse::Json),
             (Method::Get, "/functions") => self.list_functions().map(ApiResponse::Json),
             (Method::Post, "/download") => self.download_handle(query).map(ApiResponse::Bytes),
+            (Method::Post, "/download_workflow") => self
+                .download_workflow(&mut request, query)
+                .map(ApiResponse::Bytes),
             _ => Err((404, "Not found".to_string())),
         };
         match result {
@@ -345,6 +443,7 @@ impl ServerInner {
         let session = sessions
             .get_mut(&session_id)
             .ok_or((404, "Session not found".to_string()))?;
+        session.log.push(LogEntry::Constant { handle_id });
         session.handles.insert(handle_id, handle);
         Ok(format!(r#"{{"handle_id": {handle_id}}}"#))
     }
@@ -406,6 +505,11 @@ impl ServerInner {
         for handle in outputs {
             session.handles.insert(handle.handle, handle);
         }
+        session.log.push(LogEntry::Call {
+            function: func_name.to_string(),
+            input_ids: input_ids.clone(),
+            output_ids: output_ids.clone(),
+        });
         let ids_str: Vec<String> = output_ids.iter().map(|id| id.to_string()).collect();
         Ok(format!(r#"{{"output_ids": [{}]}}"#, ids_str.join(", ")))
     }
@@ -434,6 +538,34 @@ impl ServerInner {
     }
 
     // POST /download?session_id=N&handle_id=M -> raw serialized bytes
+    // POST /download_workflow?session_id=N  body={"outputs": [id1, id2, ...]}
+    fn download_workflow(
+        &self,
+        request: &mut Request,
+        query: &str,
+    ) -> Result<Vec<u8>, (i32, String)> {
+        let params = parse_query(query);
+        let session_id = query_get_u64(&params, "session_id")?;
+        let body = Self::read_body(request)?;
+        let json = Self::parse_json(&body)?;
+        let obj = json_as_object(&json)?;
+        let output_ids = json_as_u64_array(
+            obj.get("outputs")
+                .ok_or((400, "Missing field: outputs".to_string()))?,
+        )?;
+        let sessions = self.sessions.lock().unwrap();
+        let session = sessions
+            .get(&session_id)
+            .ok_or((404, "Session not found".to_string()))?;
+        let wf = session
+            .build_workflow(&output_ids)
+            .map_err(|e| (500, format!("Failed to build workflow: {e}")))?;
+        let mut buf = Vec::new();
+        wf.write_to_msgpack(&PLUGIN_SET, &SERIAL_CONTEXT_ARENA, &mut buf)
+            .map_err(|e| (500, format!("Failed to serialize workflow: {e}")))?;
+        Ok(buf)
+    }
+
     fn download_handle(&self, query: &str) -> Result<Vec<u8>, (i32, String)> {
         let params = parse_query(query);
         let session_id = query_get_u64(&params, "session_id")?;
@@ -538,39 +670,85 @@ unsafe extern "C" fn host_create_proxy_deck(
     };
     let result = match PLUGIN_SET.get_type_owner(type_id) {
         Some(type_owner) => match type_owner {
-            TypeOwner::BuiltIn(_) => match type_id {
-                ORC_TYPE_U8 => {
-                    orc_sdk::deck_from_proxy::<u8>(inputs, proxy_type, proxy, out, &DECK_REGISTRY)
+            TypeOwner::BuiltIn(_) => {
+                let result = match type_id {
+                    ORC_TYPE_U8 => orc_sdk::deck_from_proxy::<u8>(
+                        inputs,
+                        proxy_type,
+                        proxy,
+                        out,
+                        &DECK_REGISTRY,
+                    ),
+                    ORC_TYPE_U16 => orc_sdk::deck_from_proxy::<u16>(
+                        inputs,
+                        proxy_type,
+                        proxy,
+                        out,
+                        &DECK_REGISTRY,
+                    ),
+                    ORC_TYPE_U32 => orc_sdk::deck_from_proxy::<u32>(
+                        inputs,
+                        proxy_type,
+                        proxy,
+                        out,
+                        &DECK_REGISTRY,
+                    ),
+                    ORC_TYPE_U64 => orc_sdk::deck_from_proxy::<u64>(
+                        inputs,
+                        proxy_type,
+                        proxy,
+                        out,
+                        &DECK_REGISTRY,
+                    ),
+                    ORC_TYPE_I8 => orc_sdk::deck_from_proxy::<i8>(
+                        inputs,
+                        proxy_type,
+                        proxy,
+                        out,
+                        &DECK_REGISTRY,
+                    ),
+                    ORC_TYPE_I16 => orc_sdk::deck_from_proxy::<i16>(
+                        inputs,
+                        proxy_type,
+                        proxy,
+                        out,
+                        &DECK_REGISTRY,
+                    ),
+                    ORC_TYPE_I32 => orc_sdk::deck_from_proxy::<i32>(
+                        inputs,
+                        proxy_type,
+                        proxy,
+                        out,
+                        &DECK_REGISTRY,
+                    ),
+                    ORC_TYPE_I64 => orc_sdk::deck_from_proxy::<i64>(
+                        inputs,
+                        proxy_type,
+                        proxy,
+                        out,
+                        &DECK_REGISTRY,
+                    ),
+                    ORC_TYPE_F32 => orc_sdk::deck_from_proxy::<f32>(
+                        inputs,
+                        proxy_type,
+                        proxy,
+                        out,
+                        &DECK_REGISTRY,
+                    ),
+                    ORC_TYPE_F64 => orc_sdk::deck_from_proxy::<f64>(
+                        inputs,
+                        proxy_type,
+                        proxy,
+                        out,
+                        &DECK_REGISTRY,
+                    ),
+                    _ => return ORC_ERROR_INVALID_PROXY,
+                };
+                if result.is_ok() {
+                    out.free_fn = Some(orc_deck_free);
                 }
-                ORC_TYPE_U16 => {
-                    orc_sdk::deck_from_proxy::<u16>(inputs, proxy_type, proxy, out, &DECK_REGISTRY)
-                }
-                ORC_TYPE_U32 => {
-                    orc_sdk::deck_from_proxy::<u32>(inputs, proxy_type, proxy, out, &DECK_REGISTRY)
-                }
-                ORC_TYPE_U64 => {
-                    orc_sdk::deck_from_proxy::<u64>(inputs, proxy_type, proxy, out, &DECK_REGISTRY)
-                }
-                ORC_TYPE_I8 => {
-                    orc_sdk::deck_from_proxy::<i8>(inputs, proxy_type, proxy, out, &DECK_REGISTRY)
-                }
-                ORC_TYPE_I16 => {
-                    orc_sdk::deck_from_proxy::<i16>(inputs, proxy_type, proxy, out, &DECK_REGISTRY)
-                }
-                ORC_TYPE_I32 => {
-                    orc_sdk::deck_from_proxy::<i32>(inputs, proxy_type, proxy, out, &DECK_REGISTRY)
-                }
-                ORC_TYPE_I64 => {
-                    orc_sdk::deck_from_proxy::<i64>(inputs, proxy_type, proxy, out, &DECK_REGISTRY)
-                }
-                ORC_TYPE_F32 => {
-                    orc_sdk::deck_from_proxy::<f32>(inputs, proxy_type, proxy, out, &DECK_REGISTRY)
-                }
-                ORC_TYPE_F64 => {
-                    orc_sdk::deck_from_proxy::<f64>(inputs, proxy_type, proxy, out, &DECK_REGISTRY)
-                }
-                _ => return ORC_ERROR_INVALID_PROXY,
-            },
+                result
+            }
             TypeOwner::Plugin(plugin_index, _) => {
                 let plugin = &PLUGIN_SET.plugins()[*plugin_index];
                 plugin.create_proxy_deck(inputs, proxy_type, proxy, out)

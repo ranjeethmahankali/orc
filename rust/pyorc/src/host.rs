@@ -72,39 +72,45 @@ unsafe extern "C" fn host_create_proxy_deck(
     };
     let result = match plugin_set.get_type_owner(type_id) {
         Some(type_owner) => match type_owner {
-            TypeOwner::BuiltIn(_) => match type_id {
-                ORC_TYPE_U8 => {
-                    orc_sdk::deck_from_proxy::<u8>(inputs, proxy_type, proxy, out, &REGISTRY)
+            TypeOwner::BuiltIn(_) => {
+                let result = match type_id {
+                    ORC_TYPE_U8 => {
+                        orc_sdk::deck_from_proxy::<u8>(inputs, proxy_type, proxy, out, &REGISTRY)
+                    }
+                    ORC_TYPE_U16 => {
+                        orc_sdk::deck_from_proxy::<u16>(inputs, proxy_type, proxy, out, &REGISTRY)
+                    }
+                    ORC_TYPE_U32 => {
+                        orc_sdk::deck_from_proxy::<u32>(inputs, proxy_type, proxy, out, &REGISTRY)
+                    }
+                    ORC_TYPE_U64 => {
+                        orc_sdk::deck_from_proxy::<u64>(inputs, proxy_type, proxy, out, &REGISTRY)
+                    }
+                    ORC_TYPE_I8 => {
+                        orc_sdk::deck_from_proxy::<i8>(inputs, proxy_type, proxy, out, &REGISTRY)
+                    }
+                    ORC_TYPE_I16 => {
+                        orc_sdk::deck_from_proxy::<i16>(inputs, proxy_type, proxy, out, &REGISTRY)
+                    }
+                    ORC_TYPE_I32 => {
+                        orc_sdk::deck_from_proxy::<i32>(inputs, proxy_type, proxy, out, &REGISTRY)
+                    }
+                    ORC_TYPE_I64 => {
+                        orc_sdk::deck_from_proxy::<i64>(inputs, proxy_type, proxy, out, &REGISTRY)
+                    }
+                    ORC_TYPE_F32 => {
+                        orc_sdk::deck_from_proxy::<f32>(inputs, proxy_type, proxy, out, &REGISTRY)
+                    }
+                    ORC_TYPE_F64 => {
+                        orc_sdk::deck_from_proxy::<f64>(inputs, proxy_type, proxy, out, &REGISTRY)
+                    }
+                    _ => return orc_sdk::ORC_ERROR_INVALID_PROXY,
+                };
+                if let Ok(_) = result {
+                    out.free_fn = Some(orc_deck_free);
                 }
-                ORC_TYPE_U16 => {
-                    orc_sdk::deck_from_proxy::<u16>(inputs, proxy_type, proxy, out, &REGISTRY)
-                }
-                ORC_TYPE_U32 => {
-                    orc_sdk::deck_from_proxy::<u32>(inputs, proxy_type, proxy, out, &REGISTRY)
-                }
-                ORC_TYPE_U64 => {
-                    orc_sdk::deck_from_proxy::<u64>(inputs, proxy_type, proxy, out, &REGISTRY)
-                }
-                ORC_TYPE_I8 => {
-                    orc_sdk::deck_from_proxy::<i8>(inputs, proxy_type, proxy, out, &REGISTRY)
-                }
-                ORC_TYPE_I16 => {
-                    orc_sdk::deck_from_proxy::<i16>(inputs, proxy_type, proxy, out, &REGISTRY)
-                }
-                ORC_TYPE_I32 => {
-                    orc_sdk::deck_from_proxy::<i32>(inputs, proxy_type, proxy, out, &REGISTRY)
-                }
-                ORC_TYPE_I64 => {
-                    orc_sdk::deck_from_proxy::<i64>(inputs, proxy_type, proxy, out, &REGISTRY)
-                }
-                ORC_TYPE_F32 => {
-                    orc_sdk::deck_from_proxy::<f32>(inputs, proxy_type, proxy, out, &REGISTRY)
-                }
-                ORC_TYPE_F64 => {
-                    orc_sdk::deck_from_proxy::<f64>(inputs, proxy_type, proxy, out, &REGISTRY)
-                }
-                _ => return orc_sdk::ORC_ERROR_INVALID_PROXY,
-            },
+                result
+            }
             TypeOwner::Plugin(plugin_index, _) => {
                 let plugin = &plugin_set.plugins()[*plugin_index];
                 plugin.create_proxy_deck(inputs, proxy_type, proxy, out)
