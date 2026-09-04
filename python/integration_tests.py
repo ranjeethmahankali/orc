@@ -43,7 +43,7 @@ server_port = None
 def start_server():
     global server_proc, server_port
     server_proc = subprocess.Popen(
-        [server_bin, PORT],
+        [server_bin, PORT, "--no-verbose"],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
@@ -75,9 +75,8 @@ def cli(*args):
     cmd = [client_bin, HOST, server_port] + list(args)
     result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
     if result.returncode != 0:
-        raise RuntimeError(
-            f"cli_client failed: {' '.join(args)}\n"
-            f"stdout: {result.stdout}\nstderr: {result.stderr}")
+        raise RuntimeError(f"cli_client failed: {' '.join(args)}\n"
+                           f"stdout: {result.stdout}\nstderr: {result.stderr}")
     return result.stdout.strip()
 
 
@@ -379,7 +378,6 @@ def t_div_by_zero():
 # repeat_list
 # ============================================================
 
-
 ## repeat_list tests are disabled because the function currently hangs the
 ## server (likely a bug in the plugin's DeckWriter interaction with the
 ## server's threading model). Re-enable once that is fixed.
@@ -399,7 +397,6 @@ def t_div_by_zero():
 #     _, vals = download_typed(sid, out)
 #     assert vals == []
 #     session_close(sid)
-
 
 # ============================================================
 # flatten_deck (from C plugin)
@@ -482,11 +479,9 @@ def t_complex_add():
 def t_complex_add_negative():
     """[1-2i, -3+4i] + [0+3i, 3-4i] = [1+1i, 0+0i]"""
     sid = session_start()
-    [lhs] = call(sid, "create_complex",
-                 constant(sid, "f64", 1, -3),
+    [lhs] = call(sid, "create_complex", constant(sid, "f64", 1, -3),
                  constant(sid, "f64", -2, 4))
-    [rhs] = call(sid, "create_complex",
-                 constant(sid, "f64", 0, 3),
+    [rhs] = call(sid, "create_complex", constant(sid, "f64", 0, 3),
                  constant(sid, "f64", 3, -4))
     [out] = call(sid, "add_complex", lhs, rhs)
     parts = call(sid, "complex_get_parts", out)
@@ -503,11 +498,9 @@ def t_complex_add_negative():
 def t_complex_mul():
     """[1+2i, 2+3i] * [3+4i, 1+0i] = [-5+10i, 2+3i]"""
     sid = session_start()
-    [lhs] = call(sid, "create_complex",
-                 constant(sid, "f64", 1, 2),
+    [lhs] = call(sid, "create_complex", constant(sid, "f64", 1, 2),
                  constant(sid, "f64", 2, 3))
-    [rhs] = call(sid, "create_complex",
-                 constant(sid, "f64", 3, 1),
+    [rhs] = call(sid, "create_complex", constant(sid, "f64", 3, 1),
                  constant(sid, "f64", 4, 0))
     [out] = call(sid, "mul_complex", lhs, rhs)
     parts = call(sid, "complex_get_parts", out)
@@ -519,11 +512,9 @@ def t_complex_mul():
 def t_complex_mul_i_squared():
     """i * i = -1 for three elements."""
     sid = session_start()
-    [lhs] = call(sid, "create_complex",
-                 constant(sid, "f64", 0, 0, 0),
+    [lhs] = call(sid, "create_complex", constant(sid, "f64", 0, 0, 0),
                  constant(sid, "f64", 1, 1, 1))
-    [rhs] = call(sid, "create_complex",
-                 constant(sid, "f64", 0, 0, 0),
+    [rhs] = call(sid, "create_complex", constant(sid, "f64", 0, 0, 0),
                  constant(sid, "f64", 1, 1, 1))
     [out] = call(sid, "mul_complex", lhs, rhs)
     parts = call(sid, "complex_get_parts", out)
@@ -535,11 +526,9 @@ def t_complex_mul_i_squared():
 def t_complex_mul_by_zero():
     """[3+4i, 1+1i] * [0+0i, 0+0i] = [0+0i, 0+0i]"""
     sid = session_start()
-    [lhs] = call(sid, "create_complex",
-                 constant(sid, "f64", 3, 1),
+    [lhs] = call(sid, "create_complex", constant(sid, "f64", 3, 1),
                  constant(sid, "f64", 4, 1))
-    [rhs] = call(sid, "create_complex",
-                 constant(sid, "f64", 0, 0),
+    [rhs] = call(sid, "create_complex", constant(sid, "f64", 0, 0),
                  constant(sid, "f64", 0, 0))
     [out] = call(sid, "mul_complex", lhs, rhs)
     parts = call(sid, "complex_get_parts", out)
@@ -632,9 +621,10 @@ def t_handle_reuse():
 def t_functions_lists_expected():
     """The /functions endpoint returns known function names."""
     raw = cli("functions")
-    expected = ["add", "multiply", "subtract", "divide", "repeat_list",
-                "create_complex", "add_complex", "mul_complex",
-                "complex_get_parts"]
+    expected = [
+        "add", "multiply", "subtract", "divide", "repeat_list",
+        "create_complex", "add_complex", "mul_complex", "complex_get_parts"
+    ]
     for name in expected:
         assert name in raw, f"Expected function '{name}' in functions list"
 
@@ -663,7 +653,11 @@ if __name__ == "__main__":
                 failed += 1
                 print(f"  FAIL  {name}")
                 traceback.print_exc()
-        print(f"\n{passed} passed, {failed} failed, {passed + failed} total")
+                break
+        skipped = len(tests) - passed - failed
+        print(
+            f"\n{passed} passed, {failed} failed, {skipped} skipped, {len(tests)} total"
+        )
     finally:
         stop_server()
     sys.exit(1 if failed else 0)
