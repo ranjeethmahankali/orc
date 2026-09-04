@@ -191,6 +191,21 @@
    instead of an OS window. The whole stack compiles to both native and WASM without forking the
    codebase.
 
+* NEXT tkuwku - Download workflow from the server
+  :PROPERTIES:
+  :CREATED:  2026-09-04 Fri 16:22
+  :END:
+  :LOGBOOK:
+  - State "NEXT"       from "TODO"       [2026-09-04 Fri 16:22]
+  :END:
+
+  Add a ~download_workflow~ command to ~server_host~ that takes a session id and sends the
+  serialized workflow as a .orc file.
+
+  Add an integrateion test (to integration_tests.py), that creates a workflow with some basic math
+  blocks, asserts the output value by downloading the output handle, then downloads the entire
+  workflow and runs it locally via pyorc, and makes sure it runs properly.
+
 * DONE tiwkbm - Server / client demo app
   CLOSED: [2026-09-04 Fri 15:33]
   :PROPERTIES:
@@ -320,209 +335,3 @@
 
     <2026-09-04 Fri 15:32> Ended up not needing mongoose. Just a few hundren lines of boiler plate
     was enough.
-
-* DONE tj45qx - C++ SDK - Deck implementation and helpers
-  CLOSED: [2026-08-26 Wed 22:33]
-  :PROPERTIES:
-  :CREATED:  2026-08-01 Sat 18:58
-  :END:
-  :LOGBOOK:
-  - State "DONE"       from "NEXT"       [2026-08-26 Wed 22:33]
-  - State "NEXT"       from "DONE"       [2026-08-26 Wed 22:22]
-  - State "DONE"       from "NEXT"       [2026-08-26 Wed 21:53]
-  - State "NEXT"       from "TODO"       [2026-08-26 Wed 19:45]
-  :END:
-
-  LLMs can easily port the Deck implementation etc. But the abstractions to remove friction in
-  implementing blocks will require some thought. I went with macros as the first pass in Rust. It is
-  not clear to me what I should go with in C++.
-
-  <2026-08-26 Wed 21:52> Setup a simple C++ static library, and a test executable, ported the error
-  type, and the deck type, with some basic functionality, and testing. Will try to get this merged
-  after I port the cursors, views, writers and combinations.
-
-  <2026-08-26 Wed 22:22> Just ported the cursors, writers, views, and the corresponding test
-  coverage.
-
-  <2026-08-26 Wed 22:33> The porting story of ffi.rs is not fully clear in my head. I will put that
-  off for later. Merging what I have so far.
-
-* DONE tke7ks - Rename plugins to be more generic
-  CLOSED: [2026-08-26 Wed 16:07]
-  :PROPERTIES:
-  :CREATED:  2026-08-26 Wed 16:00
-  :END:
-  :LOGBOOK:
-  - State "DONE"       from "NEXT"       [2026-08-26 Wed 16:07]
-  - State "NEXT"       from "TODO"       [2026-08-26 Wed 16:01]
-  :END:
-
-  math_plugin -> example_rust_plugin.
-  deck_ops_plugin -> example_c_plugin.
-
-  Because I want to add random blocks that make for interesting demos. Actual plugins will be built
-  outside this project. The ones inside the project are just examples.
-
-  <2026-08-26 Wed 16:07> Done.
-
-* DONE tke36o - Support and testing for optional inputs for plugin functions
-  CLOSED: [2026-08-26 Wed 13:30]
-  :PROPERTIES:
-  :CREATED:  2026-08-25 Tue 20:04
-  :END:
-  :LOGBOOK:
-  - State "DONE"       from "NEXT"       [2026-08-26 Wed 13:30]
-  - State "NEXT"       from "TODO"       [2026-08-26 Wed 13:02]
-  :END:
-
-  In theory, the host/caller can simply pass emtpy orc handles, and let the function decide what
-  they want to do. This should be easy to get working, just a bit tedious, and not super urgent.
-
-  - Update ~Combinations~ to support and ignore empty handles.
-  - The Rust proc macros should be updated to support Optional inputs.
-  - Update all the host programs to not be very strict about the number of inputs.
-  - Python host in pyorc will require some special attention to support sparse, named inputs.
-
-  <2026-08-26 Wed 12:59> Reducing scope for this. Scrapping the above Combinations work. For now, I
-  will just implement some leniency on the host side to call the plugin functions with empty
-  handles. And I will implement strict checks on the plugin side. Tolerating empty inputs on the
-  plugin side is not a priority at this time, and likely not for a while, and even later, it can be
-  done without touching anything outside the plugin.
-
-  <2026-08-26 Wed 13:24> Updated the immediate calls in the Python host, and updated the expected
- errors in tests.
-
- <2026-08-26 Wed 13:29> Now the graph mode also matches the behavior. This task is done.
-
- <2026-08-26 Wed 14:25> Also sneaking in a queue implementation into the C SDK that I copied over
- from another project. Will need it in another task soon.
-
-*** CLOSED Vague LLM Plan
-    CLOSED: [2026-08-26 Wed 13:59]
-    :PROPERTIES:
-    :CREATED:  2026-08-25 Tue 20:07
-    :END:
-    :LOGBOOK:
-    - State "CLOSED"     from              [2026-08-26 Wed 13:59]
-    :END:
-
-    1. ~Combinations~: when iterating, treat empty handles as producing a single ~None~ item (depth
-       irrelevant). Propagate this into ~ReadCursor~ (yields ~None~ when the underlying handle is
-       empty) and ~DeckView~ (constructed as empty/absent).
-
-    2. ~orc_sdk/derive_macros~: add ~optional: bool~ to ~ParamInfo~. Recognise ~Option<&T>~ in
-       ~is_output_param~ / ~inner_type~ / ~infer_depth~ (restrict to depth-0 only; reject
-       ~Option<&[T]>~ etc.). Skip the non-empty assertion for optional inputs. Exclude optional inputs
-       from the type-dispatch scrutinee. In the generated ~dispatch_~ fn, pass all handles (including
-       empty ones) to ~Combinations~; the updated ~Combinations~ handles them transparently. Optional
-       call-args become ~Option<&T>~ drawn from the cursor's ~None~-or-~Some~ result.
-
-    3. Host side: relax the strict input-count checks so callers can omit trailing optional inputs
-       (pass fewer handles than ~n_inputs~; the remainder are treated as empty).
-
-    4. ~pyorc~: support sparse / named inputs — allow passing a ~dict~ mapping parameter name →
-       deck, leaving unmentioned optional inputs as empty handles.
-
-    <2026-08-26 Wed 13:59> Decided not to do this right now.
-
-* DONE tkcjtv - Function metadata ABI improvements
-  CLOSED: [2026-08-25 Tue 19:41]
-  :PROPERTIES:
-  :CREATED:  2026-08-15 Sat 13:54
-  :END:
-  :LOGBOOK:
-  - State "DONE"       from "NEXT"       [2026-08-25 Tue 19:41]
-  - State "NEXT"       from "TODO"       [2026-08-25 Tue 18:30]
-  :END:
-
-  A node-editor UI app that wants to create nodes with properly named inputs needs to get that
-  information from the plugin that defines the corresponding function. This will require adding new
-  fields to the function metadata's ABI. It certainly needs to be flexible, and allow for the host
-  app to overwrite the behavior if need be.
-
-  Requires more thought as to what the new metadata will be. I need to come up with a proper
-  algebraic datatype that supports all the below cases. These apply for both inputs and outputs. I
-  am using 'arguments' as a general term for both inputs and outputs:
-
-  1. Fixed number of arguments with all their types known.
-  2. Fixed number of arguments, with some of the types known.
-  3. Fixed number of arguments, where none of the types are known.
-  4. Variadic arguments, all of a single known type.
-  5. Variadic arguments, where none of the types are known.
-
-  Once this is implemented, and used, based on that experience it might be good to add more things
-  to this metadata to improve the overall experience. But no matter what, it should remain purely
-  metadata. The actual function should still handle everything procedurally. Should be completely
-  optional. Everything should still work without this metadata, albeit a more inconvenient manner.
-
-  <2026-08-20 Thu 19:54> I just realized another requirements UI apps will have. There should be a
-  way to auto populate the names of arguments. And also autopopulate the names of newly added
-  arguments for variadic blocks.
-
-  <2026-08-20 Thu 20:22> Just had a decent idea. Two structs of the same kind. Host owns and write
-  into one of them, and the plugin owns and writes into the other. They use this to communicate back
-  and forth. Host says what it has, and plugin fills out the information it knows, or an error if
-  what the host has is not valid. At the end of the dialogue, the host will call a free function to
-  clean up the plugin's struct, and cleans up it's own. This is inspired by ~git credential fill~.
-
-  <2026-08-25 Tue 13:30> When this changes, all host programs need to be updated to respect the new
-  contract. Their input validation code will likely change.
-
-  <2026-08-25 Tue 18:53> Started working on this task. I think I can make meaningful progress if I
-  drop #4 in the above list. That is the most problematic case for a design that relies on static
-  lists to communicate this metadata. And it is not that useful. Removing it lets me move faster,
-  and I can revisit the design if I discover outliers, or if the "metadata as static list" design
-  choice turns into a problem later.
-
-  <2026-08-25 Tue 19:13> Added a simple name field for the arg info. Don't need descriptions for
-  them. The function's description should take care of describing what the arguments mean in
-  different scenarios. Updated the Rust macro to generate the new metadata based on argument names
-  used in the Rust function.
-
-  <2026-08-25 Tue 19:40> Took a few small steps in the right direction. But it hard to know if this
-  task is moving in the right direction, and if I am choosing the right ABI for the metadata,
-  without having anything that consumes the ABI, to test with. So I will revisit this topic if it
-  turns into a problem when I build some demo apps. For now, trying to merge what I have in this
-  task so far.
-
-* DONE tkcg1m - Nested workflow support in Python generated DAG
-  CLOSED: [2026-08-25 Tue 18:14]
-  :PROPERTIES:
-  :CREATED:  2026-08-16 Sun 14:36
-  :END:
-  :LOGBOOK:
-  - State "DONE"       from "NEXT"       [2026-08-25 Tue 18:14]
-  - State "NEXT"       from "TODO"       [2026-08-25 Tue 17:08]
-  :END:
-
-  Need a way to define incomplete fragments of a workflow DAG, and reuse those fragments by
-  partially or fully substituting the incomplete parts.
-
-  In a node editor UI app, this will map to something similar to Grasshopper's concept of
-  "cluster". In a Python script, this is equivalent to definng functions, and currying them. In
-  LISP, it is also equivalent to defining functions and currying them. I need to figure out a
-  complete picture of this concept that includes how it is represented in memory, how it is drawn on
-  screen in a UI app, and how it is stored on the disk in various formats, and make sure they all
-  integrate seamlessly.
-
-  <2026-08-16 Sun 22:46> For the Python part of the puzzle, using decorators to wrap Python
-  functions is an interesting idea. This will allow me to map Python functions, call structure and
-  nesting into the DAG representation. Going the other way is easy, it is just a code generation
-  problem. The Python function decorator receives the function name, signature, argument names
-  etc. All that can be transferred over into the DAG world and back.
-
-  <2026-08-19 Wed 19:04> The general idea of running a script in "capture mode" to create a DAG
-  generalizes for all scripting languages. This is nice. Much better way than parsing a language and
-  converting it to a graph. Allows idiomatic programming in each language. The Graph can then be
-  transpiled back into any scripting language (usual code gen).
-
-  <2026-08-25 Tue 17:04> Repurposing this task in light of the other features I implemented. Changed
-  title from 'Functions and Scripts - a clear picture' to 'Nested workflow support in Python
-  generated DAG'.
-
-  <2026-08-25 Tue 17:54> First pass seems to be working. Will do some more testing, and reviewing
-  before trying to merge this.
-
-  <2026-08-25 Tue 18:14> Testing as much as I can via unit tests for now. But the real test for this
-  feature will be after I implement a visualization tool for the DAG. For now, this is ready to
-  merge.
