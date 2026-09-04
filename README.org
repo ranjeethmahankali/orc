@@ -52,9 +52,18 @@
 
   Build and install (run after every Rust change):
 
+  On Windows:
+
   #+begin_src compile
     python -m maturin build --release --manifest-path rust/pyorc/Cargo.toml
     pip install --force-reinstall --no-deps build/wheels/orc-0.1.0-cp37-abi3-win_amd64.whl
+  #+end_src
+
+  On Linux:
+
+  #+begin_src compile
+    python -m maturin build --release --manifest-path rust/pyorc/Cargo.toml
+    pip install --force-reinstall --no-deps build/wheels/orc-0.1.0-cp37-abi3-manylinux_2_34_x86_64.whl
   #+end_src
 
   The first command does an incremental cargo build and packages a wheel. The second installs it.
@@ -66,4 +75,5 @@
   #+begin_src compile
     python python/example.py
     python python/test.py
+    python python/integration_tests.py
   #+end_src
