@@ -133,6 +133,13 @@
   Maybe I can write a rasterizer for my curve types, and somehow get the optimizer to export images
   of the sample points in the design space, so that I can visualize them when viewing the DOE.
 
+* TODO tkv3ek - Deck to String Conversion for Display
+  :PROPERTIES:
+  :CREATED:  2026-09-04 Fri 18:48
+  :END:
+
+  This is very useful, and the bar for implementing is so low, that it should be part of the ABI.
+
 * TODO tkuzn6 - Node Editor UI App
   :PROPERTIES:
   :CREATED:  2026-08-26 Wed 10:47
@@ -146,6 +153,8 @@
   the user wants to keep it around as they move around the canvas. This is still much simpler than
   a general viewer, since it only displays a single output, with no need for concepts such as
   selection.
+
+  <2026-09-04 Fri 18:49> I need a way to display the decks. So I decided to do [[*tkv3ek - Deck to String Conversion for Display][this task]] first.
 
 ** Vague sketch using egui + eframe + wgpu
    :PROPERTIES:
