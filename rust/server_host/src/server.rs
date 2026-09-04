@@ -157,7 +157,9 @@ impl OrcServer {
                     request.method(),
                     request.url(),
                     request.http_version(),
-                    request.remote_addr().map_or("unknown".to_string(), |a| a.to_string()),
+                    request
+                        .remote_addr()
+                        .map_or("unknown".to_string(), |a| a.to_string()),
                 );
                 let inner = Arc::clone(&inner);
                 std::thread::spawn(move || {
