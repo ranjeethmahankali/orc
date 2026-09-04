@@ -2007,3 +2007,114 @@ Archived entries from file /home/rnjth94/dev/orc/PROJECT.org
             # Serialize the entire DAG to the given file path.
             ...
     #+end_src
+
+* DONE tkcjtv - Function metadata ABI improvements
+  CLOSED: [2026-08-25 Tue 19:41]
+  :PROPERTIES:
+  :CREATED:  2026-08-15 Sat 13:54
+  :ARCHIVE_TIME: 2026-08-26 Wed 16:15
+  :ARCHIVE_FILE: d:/dev/orc/PROJECT.org
+  :ARCHIVE_CATEGORY: PROJECT
+  :ARCHIVE_TODO: DONE
+  :END:
+  :LOGBOOK:
+  - State "DONE"       from "NEXT"       [2026-08-25 Tue 19:41]
+  - State "NEXT"       from "TODO"       [2026-08-25 Tue 18:30]
+  :END:
+
+  A node-editor UI app that wants to create nodes with properly named inputs needs to get that
+  information from the plugin that defines the corresponding function. This will require adding new
+  fields to the function metadata's ABI. It certainly needs to be flexible, and allow for the host
+  app to overwrite the behavior if need be.
+
+  Requires more thought as to what the new metadata will be. I need to come up with a proper
+  algebraic datatype that supports all the below cases. These apply for both inputs and outputs. I
+  am using 'arguments' as a general term for both inputs and outputs:
+
+  1. Fixed number of arguments with all their types known.
+  2. Fixed number of arguments, with some of the types known.
+  3. Fixed number of arguments, where none of the types are known.
+  4. Variadic arguments, all of a single known type.
+  5. Variadic arguments, where none of the types are known.
+
+  Once this is implemented, and used, based on that experience it might be good to add more things
+  to this metadata to improve the overall experience. But no matter what, it should remain purely
+  metadata. The actual function should still handle everything procedurally. Should be completely
+  optional. Everything should still work without this metadata, albeit a more inconvenient manner.
+
+  <2026-08-20 Thu 19:54> I just realized another requirements UI apps will have. There should be a
+  way to auto populate the names of arguments. And also autopopulate the names of newly added
+  arguments for variadic blocks.
+
+  <2026-08-20 Thu 20:22> Just had a decent idea. Two structs of the same kind. Host owns and write
+  into one of them, and the plugin owns and writes into the other. They use this to communicate back
+  and forth. Host says what it has, and plugin fills out the information it knows, or an error if
+  what the host has is not valid. At the end of the dialogue, the host will call a free function to
+  clean up the plugin's struct, and cleans up it's own. This is inspired by ~git credential fill~.
+
+  <2026-08-25 Tue 13:30> When this changes, all host programs need to be updated to respect the new
+  contract. Their input validation code will likely change.
+
+  <2026-08-25 Tue 18:53> Started working on this task. I think I can make meaningful progress if I
+  drop #4 in the above list. That is the most problematic case for a design that relies on static
+  lists to communicate this metadata. And it is not that useful. Removing it lets me move faster,
+  and I can revisit the design if I discover outliers, or if the "metadata as static list" design
+  choice turns into a problem later.
+
+  <2026-08-25 Tue 19:13> Added a simple name field for the arg info. Don't need descriptions for
+  them. The function's description should take care of describing what the arguments mean in
+  different scenarios. Updated the Rust macro to generate the new metadata based on argument names
+  used in the Rust function.
+
+  <2026-08-25 Tue 19:40> Took a few small steps in the right direction. But it hard to know if this
+  task is moving in the right direction, and if I am choosing the right ABI for the metadata,
+  without having anything that consumes the ABI, to test with. So I will revisit this topic if it
+  turns into a problem when I build some demo apps. For now, trying to merge what I have in this
+  task so far.
+
+
+* DONE tkcg1m - Nested workflow support in Python generated DAG
+  CLOSED: [2026-08-25 Tue 18:14]
+  :PROPERTIES:
+  :CREATED:  2026-08-16 Sun 14:36
+  :ARCHIVE_TIME: 2026-08-26 Wed 16:15
+  :ARCHIVE_FILE: d:/dev/orc/PROJECT.org
+  :ARCHIVE_CATEGORY: PROJECT
+  :ARCHIVE_TODO: DONE
+  :END:
+  :LOGBOOK:
+  - State "DONE"       from "NEXT"       [2026-08-25 Tue 18:14]
+  - State "NEXT"       from "TODO"       [2026-08-25 Tue 17:08]
+  :END:
+
+  Need a way to define incomplete fragments of a workflow DAG, and reuse those fragments by
+  partially or fully substituting the incomplete parts.
+
+  In a node editor UI app, this will map to something similar to Grasshopper's concept of
+  "cluster". In a Python script, this is equivalent to definng functions, and currying them. In
+  LISP, it is also equivalent to defining functions and currying them. I need to figure out a
+  complete picture of this concept that includes how it is represented in memory, how it is drawn on
+  screen in a UI app, and how it is stored on the disk in various formats, and make sure they all
+  integrate seamlessly.
+
+  <2026-08-16 Sun 22:46> For the Python part of the puzzle, using decorators to wrap Python
+  functions is an interesting idea. This will allow me to map Python functions, call structure and
+  nesting into the DAG representation. Going the other way is easy, it is just a code generation
+  problem. The Python function decorator receives the function name, signature, argument names
+  etc. All that can be transferred over into the DAG world and back.
+
+  <2026-08-19 Wed 19:04> The general idea of running a script in "capture mode" to create a DAG
+  generalizes for all scripting languages. This is nice. Much better way than parsing a language and
+  converting it to a graph. Allows idiomatic programming in each language. The Graph can then be
+  transpiled back into any scripting language (usual code gen).
+
+  <2026-08-25 Tue 17:04> Repurposing this task in light of the other features I implemented. Changed
+  title from 'Functions and Scripts - a clear picture' to 'Nested workflow support in Python
+  generated DAG'.
+
+  <2026-08-25 Tue 17:54> First pass seems to be working. Will do some more testing, and reviewing
+  before trying to merge this.
+
+  <2026-08-25 Tue 18:14> Testing as much as I can via unit tests for now. But the real test for this
+  feature will be after I implement a visualization tool for the DAG. For now, this is ready to
+  merge.

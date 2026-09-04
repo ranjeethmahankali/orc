@@ -164,11 +164,40 @@
   Maybe I can write a rasterizer for my curve types, and somehow get the optimizer to export images
   of the sample points in the design space, so that I can visualize them when viewing the DOE.
 
-* NEXT tiwkbm - Create Toy Demo Apps
+* TODO Node Editor UI App
+  :PROPERTIES:
+  :CREATED:  2026-08-26 Wed 10:47
+  :END:
+
+  To lower the scope of the node editor demo app, I think it should not have a dedicated viewer,
+  that stays in sync with the node graph. Instead the node graph should have a set of no-op
+  "inspect" nodes, that visualize the data as either text or graphics, potentially with an
+  interactive camera. Maybe they support a maximize / minimize option to temporarily fill the
+  screen, and explore. Maybe there is a button that pops this view out into a separate window if
+  the user wants to keep it around as they move around the canvas. This is still much simpler than
+  a general viewer, since it only displays a single output, with no need for concepts such as
+  selection.
+
+** Vague sketch using egui + eframe + wgpu
+   :PROPERTIES:
+   :CREATED:  2026-08-26 Wed 11:22
+   :END:
+
+   Rust app using eframe (windowing + event loop), egui (immediate-mode UI), and wgpu (GPU
+   rendering). The node canvas and all widgets are egui. Inspect nodes embed custom wgpu render
+   passes for 2D/3D viewports via egui's PaintCallback. Inspect views can be maximized as a
+   floating egui::Window panel, or on native, popped out into a real OS window. On WASM the same
+   code runs in a browser tab — the only difference is that pop-out becomes a floating panel
+   instead of an OS window. The whole stack compiles to both native and WASM without forking the
+   codebase.
+
+* DONE tiwkbm - Server / client demo app
+  CLOSED: [2026-09-04 Fri 15:33]
   :PROPERTIES:
   :CREATED:  2026-07-28 Tue 16:45
   :END:
   :LOGBOOK:
+  - State "DONE"       from "NEXT"       [2026-09-04 Fri 15:33]
   - State "NEXT"       from "NEXT"       [2026-08-26 Wed 21:54]
   - State "NEXT"       from "TODO"       [2026-08-25 Tue 20:13]
   - State "TODO"       from "NEXT"       [2026-07-31 Fri 20:46]
@@ -199,9 +228,23 @@
   questions through all the tasks I finished during this time. Trying to attempt to make a UI app
   once again.
 
-** TODO Host program that runs as a service
+  <2026-08-27 Thu 17:45> The server client is working locally. Tried testing across machines on a
+  local network. That did not work. Will try again later.
+
+  - [X] Add integration tests for the client / server interactions.
+
+  <2026-09-04 Fri 15:29> Server-client example seems to work over the local network. This is just an
+  example app, and doesn't need to be very polished. I am now narrowing the scope of this task to
+  just the server client demo app, and merging this. I will pull the other app ideas into separate
+  tasks.
+
+** DONE Host program that runs as a service
+   CLOSED: [2026-09-04 Fri 15:31]
    :PROPERTIES:
    :CREATED:  2026-08-26 Wed 10:52
+   :END:
+   :LOGBOOK:
+   - State "DONE"       from "TODO"       [2026-09-04 Fri 15:31]
    :END:
 
    Server / service that listens for requests, and performs work by calling plugin functions when it
@@ -227,11 +270,13 @@
    Comparing this to the host programs I have now, each session will have it's own OrcHost instance,
    registry, allocators, etc.
 
-*** TODO Rust server plus C client
+*** DONE Rust server plus C client
+    CLOSED: [2026-09-04 Fri 15:31]
     :PROPERTIES:
     :CREATED:  2026-08-26 Wed 11:38
     :END:
     :LOGBOOK:
+    - State "DONE"       from "TODO"       [2026-09-04 Fri 15:31]
     - State "TODO"       from              [2026-08-26 Wed 14:09]
     :END:
 
@@ -273,32 +318,8 @@
 
     <2026-08-26 Wed 14:10> Instead maybe, I can use mongoose to make a simple client program.
 
-** TODO Node Editor UI App
-   :PROPERTIES:
-   :CREATED:  2026-08-26 Wed 10:47
-   :END:
-
-   To lower the scope of the node editor demo app, I think it should not have a dedicated viewer,
-   that stays in sync with the node graph. Instead the node graph should have a set of no-op
-   "inspect" nodes, that visualize the data as either text or graphics, potentially with an
-   interactive camera. Maybe they support a maximize / minimize option to temporarily fill the
-   screen, and explore. Maybe there is a button that pops this view out into a separate window if
-   the user wants to keep it around as they move around the canvas. This is still much simpler than
-   a general viewer, since it only displays a single output, with no need for concepts such as
-   selection.
-
-*** Vague sketch using egui + eframe + wgpu
-    :PROPERTIES:
-    :CREATED:  2026-08-26 Wed 11:22
-    :END:
-
-    Rust app using eframe (windowing + event loop), egui (immediate-mode UI), and wgpu (GPU
-    rendering). The node canvas and all widgets are egui. Inspect nodes embed custom wgpu render
-    passes for 2D/3D viewports via egui's PaintCallback. Inspect views can be maximized as a
-    floating egui::Window panel, or on native, popped out into a real OS window. On WASM the same
-    code runs in a browser tab — the only difference is that pop-out becomes a floating panel
-    instead of an OS window. The whole stack compiles to both native and WASM without forking the
-    codebase.
+    <2026-09-04 Fri 15:32> Ended up not needing mongoose. Just a few hundren lines of boiler plate
+    was enough.
 
 * DONE tj45qx - C++ SDK - Deck implementation and helpers
   CLOSED: [2026-08-26 Wed 22:33]
@@ -403,7 +424,6 @@
        deck, leaving unmentioned optional inputs as empty handles.
 
     <2026-08-26 Wed 13:59> Decided not to do this right now.
-
 
 * DONE tkcjtv - Function metadata ABI improvements
   CLOSED: [2026-08-25 Tue 19:41]
