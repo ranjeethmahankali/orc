@@ -54,7 +54,9 @@ def start_server():
         err = server_proc.stderr.read()
         raise RuntimeError(f"Server failed to start: {err}")
     parts = line.strip().split()
-    server_port = parts[-1]
+    # Handle both "on port 8222" and "on 192.168.1.50:8222"
+    last = parts[-1]
+    server_port = last.rsplit(":", 1)[-1] if ":" in last else last
 
 
 def stop_server():
