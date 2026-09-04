@@ -133,9 +133,12 @@
   Maybe I can write a rasterizer for my curve types, and somehow get the optimizer to export images
   of the sample points in the design space, so that I can visualize them when viewing the DOE.
 
-* TODO tkv3ek - Deck to String Conversion for Display
+* NEXT tkv3ek - Deck to String Conversion for Display
   :PROPERTIES:
   :CREATED:  2026-09-04 Fri 18:48
+  :END:
+  :LOGBOOK:
+  - State "NEXT"       from "TODO"       [2026-09-04 Fri 18:53]
   :END:
 
   This is very useful, and the bar for implementing is so low, that it should be part of the ABI.
