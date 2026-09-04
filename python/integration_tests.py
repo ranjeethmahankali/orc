@@ -16,7 +16,6 @@ import os
 import signal
 import subprocess
 import sys
-import time
 
 # ---------------------------------------------------------------------------
 # Setup
@@ -41,6 +40,7 @@ server_port = None
 
 
 def start_server():
+    """Start the server subprocess and extract its port."""
     global server_proc, server_port
     server_proc = subprocess.Popen(
         [server_bin, PORT, "--no-verbose"],
@@ -60,6 +60,7 @@ def start_server():
 
 
 def stop_server():
+    """Terminate the server subprocess."""
     global server_proc
     if server_proc is not None:
         if sys.platform == "win32":
@@ -93,10 +94,12 @@ def cli_fails(*args):
 
 
 def session_start():
+    """Start a session and return its id."""
     return cli("session", "start")
 
 
 def session_close(sid):
+    """Close the given session."""
     cli("session", "close", sid)
 
 
@@ -143,12 +146,14 @@ def download_typed(sid, hid):
 
 
 def t_session_start_returns_id():
+    """Verify session start returns a numeric id."""
     sid = session_start()
     assert sid.isdigit(), f"Expected numeric session_id, got: {sid}"
     session_close(sid)
 
 
 def t_session_multiple():
+    """Verify multiple sessions get distinct ids."""
     s1 = session_start()
     s2 = session_start()
     assert s1 != s2
@@ -162,6 +167,7 @@ def t_session_multiple():
 
 
 def t_constant_f64():
+    """Round-trip f64 constants."""
     sid = session_start()
     hid = constant(sid, "f64", 1.5, -3.25, 0.0)
     dtype, vals = download_typed(sid, hid)
@@ -171,6 +177,7 @@ def t_constant_f64():
 
 
 def t_constant_f32():
+    """Round-trip f32 constants."""
     sid = session_start()
     hid = constant(sid, "f32", 1.5, -3.25)
     dtype, vals = download_typed(sid, hid)
@@ -180,6 +187,7 @@ def t_constant_f32():
 
 
 def t_constant_u8():
+    """Round-trip u8 constants."""
     sid = session_start()
     hid = constant(sid, "u8", 0, 127, 255)
     dtype, vals = download_typed(sid, hid)
@@ -189,6 +197,7 @@ def t_constant_u8():
 
 
 def t_constant_u16():
+    """Round-trip u16 constants."""
     sid = session_start()
     hid = constant(sid, "u16", 0, 256, 65535)
     dtype, vals = download_typed(sid, hid)
@@ -198,6 +207,7 @@ def t_constant_u16():
 
 
 def t_constant_u32():
+    """Round-trip u32 constants."""
     sid = session_start()
     hid = constant(sid, "u32", 0, 70000, 4294967295)
     dtype, vals = download_typed(sid, hid)
@@ -207,6 +217,7 @@ def t_constant_u32():
 
 
 def t_constant_u64():
+    """Round-trip u64 constants."""
     sid = session_start()
     hid = constant(sid, "u64", 0, 1, 4294967296)
     dtype, vals = download_typed(sid, hid)
@@ -216,6 +227,7 @@ def t_constant_u64():
 
 
 def t_constant_i8():
+    """Round-trip i8 constants."""
     sid = session_start()
     hid = constant(sid, "i8", -128, 0, 127)
     dtype, vals = download_typed(sid, hid)
@@ -225,6 +237,7 @@ def t_constant_i8():
 
 
 def t_constant_i16():
+    """Round-trip i16 constants."""
     sid = session_start()
     hid = constant(sid, "i16", -32768, 0, 32767)
     dtype, vals = download_typed(sid, hid)
@@ -234,6 +247,7 @@ def t_constant_i16():
 
 
 def t_constant_i32():
+    """Round-trip i32 constants."""
     sid = session_start()
     hid = constant(sid, "i32", -2147483648, 0, 2147483647)
     dtype, vals = download_typed(sid, hid)
@@ -243,6 +257,7 @@ def t_constant_i32():
 
 
 def t_constant_i64():
+    """Round-trip i64 constants."""
     sid = session_start()
     hid = constant(sid, "i64", -2147483649, 0, 2147483648)
     dtype, vals = download_typed(sid, hid)
@@ -252,6 +267,7 @@ def t_constant_i64():
 
 
 def t_constant_single_element():
+    """Round-trip a single-element constant."""
     sid = session_start()
     hid = constant(sid, "f64", 42.0)
     vals = download_values(sid, hid)
@@ -265,6 +281,7 @@ def t_constant_single_element():
 
 
 def t_add_f64_flat():
+    """Add two f64 vectors element-wise."""
     sid = session_start()
     a = constant(sid, "f64", 1, 2, 3)
     b = constant(sid, "f64", 10, 20, 30)
@@ -274,6 +291,7 @@ def t_add_f64_flat():
 
 
 def t_add_broadcast_scalar():
+    """Add a scalar to a vector via broadcasting."""
     sid = session_start()
     a = constant(sid, "f64", 1, 2, 3)
     b = constant(sid, "f64", 10)
@@ -283,6 +301,7 @@ def t_add_broadcast_scalar():
 
 
 def t_add_single_element():
+    """Add two single-element vectors."""
     sid = session_start()
     a = constant(sid, "f64", 5)
     b = constant(sid, "f64", 3)
@@ -292,6 +311,7 @@ def t_add_single_element():
 
 
 def t_add_i64():
+    """Add two i64 vectors."""
     sid = session_start()
     a = constant(sid, "i64", -5, -3, 0, 3, 5)
     b = constant(sid, "i64", 10, 20, 30, 40, 50)
@@ -303,6 +323,7 @@ def t_add_i64():
 
 
 def t_add_f32():
+    """Add two f64 vectors with fractional values."""
     sid = session_start()
     a = constant(sid, "f64", 1.5, 2.5)
     b = constant(sid, "f64", 10.5, 20.5)
@@ -317,6 +338,7 @@ def t_add_f32():
 
 
 def t_mul_f64():
+    """Multiply two f64 vectors element-wise."""
     sid = session_start()
     a = constant(sid, "f64", 2, 3, 4)
     b = constant(sid, "f64", 5, 6, 7)
@@ -326,6 +348,7 @@ def t_mul_f64():
 
 
 def t_mul_i64():
+    """Multiply two i64 vectors."""
     sid = session_start()
     a = constant(sid, "i64", 3, 4)
     b = constant(sid, "i64", 7, 8)
@@ -342,6 +365,7 @@ def t_mul_i64():
 
 
 def t_sub_f64():
+    """Subtract two f64 vectors."""
     sid = session_start()
     a = constant(sid, "f64", 10, 20)
     b = constant(sid, "f64", 3, 7)
@@ -356,6 +380,7 @@ def t_sub_f64():
 
 
 def t_div_f64():
+    """Divide two f64 vectors."""
     sid = session_start()
     a = constant(sid, "f64", 10, 9)
     b = constant(sid, "f64", 2, 3)
@@ -365,6 +390,7 @@ def t_div_f64():
 
 
 def t_div_by_zero():
+    """Divide by zero yields infinity."""
     sid = session_start()
     a = constant(sid, "f64", 1)
     b = constant(sid, "f64", 0)
@@ -378,9 +404,9 @@ def t_div_by_zero():
 # repeat_list
 # ============================================================
 
-## repeat_list tests are disabled because the function currently hangs the
-## server (likely a bug in the plugin's DeckWriter interaction with the
-## server's threading model). Re-enable once that is fixed.
+# repeat_list tests are disabled because the function currently hangs the
+# server (likely a bug in the plugin's DeckWriter interaction with the
+# server's threading model). Re-enable once that is fixed.
 # def t_repeat_list_f64():
 #     sid = session_start()
 #     a = constant(sid, "f64", 1, 2, 3)
@@ -461,7 +487,7 @@ def t_complex_negative_parts():
 
 
 def t_complex_add():
-    """[1+2i, 3+4i] + [10+20i, 30+40i] = [11+22i, 33+44i]"""
+    """Add two complex vectors."""
     sid = session_start()
     lhs_r = constant(sid, "f64", 1, 3)
     lhs_i = constant(sid, "f64", 2, 4)
@@ -477,7 +503,7 @@ def t_complex_add():
 
 
 def t_complex_add_negative():
-    """[1-2i, -3+4i] + [0+3i, 3-4i] = [1+1i, 0+0i]"""
+    """Add complex vectors with negative components."""
     sid = session_start()
     [lhs] = call(sid, "create_complex", constant(sid, "f64", 1, -3),
                  constant(sid, "f64", -2, 4))
@@ -496,7 +522,7 @@ def t_complex_add_negative():
 
 
 def t_complex_mul():
-    """[1+2i, 2+3i] * [3+4i, 1+0i] = [-5+10i, 2+3i]"""
+    """Multiply two complex vectors."""
     sid = session_start()
     [lhs] = call(sid, "create_complex", constant(sid, "f64", 1, 2),
                  constant(sid, "f64", 2, 3))
@@ -510,7 +536,7 @@ def t_complex_mul():
 
 
 def t_complex_mul_i_squared():
-    """i * i = -1 for three elements."""
+    """Verify i * i = -1 for three elements."""
     sid = session_start()
     [lhs] = call(sid, "create_complex", constant(sid, "f64", 0, 0, 0),
                  constant(sid, "f64", 1, 1, 1))
@@ -524,7 +550,7 @@ def t_complex_mul_i_squared():
 
 
 def t_complex_mul_by_zero():
-    """[3+4i, 1+1i] * [0+0i, 0+0i] = [0+0i, 0+0i]"""
+    """Multiply complex vectors by zero."""
     sid = session_start()
     [lhs] = call(sid, "create_complex", constant(sid, "f64", 3, 1),
                  constant(sid, "f64", 4, 1))
@@ -543,7 +569,7 @@ def t_complex_mul_by_zero():
 
 
 def t_chain_add_then_multiply():
-    """(a + b) * c"""
+    """Compute (a + b) * c."""
     sid = session_start()
     a = constant(sid, "f64", 1, 2, 3)
     b = constant(sid, "f64", 10, 20, 30)
@@ -555,7 +581,7 @@ def t_chain_add_then_multiply():
 
 
 def t_chain_mul_then_sub():
-    """a * b - a"""
+    """Compute a * b - a."""
     sid = session_start()
     a = constant(sid, "f64", 2, 3)
     b = constant(sid, "f64", 10, 20)
@@ -566,7 +592,7 @@ def t_chain_mul_then_sub():
 
 
 def t_diamond_topology():
-    """x -> doubled=x+x, squared=x*x -> squared - doubled."""
+    """Test diamond topology: x -> x+x and x*x -> difference."""
     sid = session_start()
     x = constant(sid, "f64", 5)
     [doubled] = call(sid, "add", x, x)
@@ -603,7 +629,7 @@ def t_independent_sessions():
 
 
 def t_handle_reuse():
-    """Same handle can be used as input to multiple calls."""
+    """Reuse the same handle as input to multiple calls."""
     sid = session_start()
     a = constant(sid, "f64", 5, 10)
     [doubled] = call(sid, "add", a, a)
@@ -619,7 +645,7 @@ def t_handle_reuse():
 
 
 def t_functions_lists_expected():
-    """The /functions endpoint returns known function names."""
+    """Verify /functions returns known function names."""
     raw = cli("functions")
     expected = [
         "add", "multiply", "subtract", "divide", "repeat_list",
@@ -655,9 +681,9 @@ if __name__ == "__main__":
                 traceback.print_exc()
                 break
         skipped = len(tests) - passed - failed
-        print(
-            f"\n{passed} passed, {failed} failed, {skipped} skipped, {len(tests)} total"
-        )
+        total = len(tests)
+        print(f"\n{passed} passed, {failed} failed,"
+              f" {skipped} skipped, {total} total")
     finally:
         stop_server()
     sys.exit(1 if failed else 0)
