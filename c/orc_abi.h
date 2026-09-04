@@ -360,3 +360,5 @@ ORC_PLUGIN_EXPORT OrcError orc_deck_deserialize(uint64_t const ctx,
                                                 void const    *buf,
                                                 uint64_t const buf_len,
                                                 OrcHandle     *out);
+
+ORC_PLUGIN_EXPORT OrcError orc_deck_to_str(OrcHandle const *input, OrcHandle *out);

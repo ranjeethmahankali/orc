@@ -2522,3 +2522,12 @@ OrcError orc_sdk_deserialize_handle_header(uint64_t const ctx,
   *out_marks = marks;
   return ORC_ERROR_NONE;
 }
+
+// ========== String conversion ==========
+
+OrcError orc_sdk_handle_to_str(OrcHandle const *input, OrcHandle *out)
+{
+  (void)input;
+  (void)out;
+  ORC_SDK_TODO("Not implemented");
+}

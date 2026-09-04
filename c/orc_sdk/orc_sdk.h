@@ -937,3 +937,6 @@ OrcError orc_sdk_deserialize_handle_header(uint64_t const ctx,
                                            OrcStrView    *src,
                                            OrcHandle     *out,
                                            OrcMark      **out_marks);
+// ========== Other helpers ==========
+
+OrcError orc_sdk_handle_to_str(OrcHandle const *input, OrcHandle *out);
