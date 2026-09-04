@@ -578,6 +578,9 @@ unsafe extern "C" fn host_create_proxy_deck(
 pub static DECK_REGISTRY: std::sync::LazyLock<DeckRegistry> =
     std::sync::LazyLock::new(DeckRegistry::new);
 
+/// # Safety
+///
+/// This is just a FFI function. It must be unsafe.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn orc_deck_free(handle: *mut OrcHandle) -> OrcError {
     if handle.is_null() {
