@@ -1,5 +1,5 @@
 use orc_sdk::{
-    ContextArena, DeckRegistry, Error, FuncInfo, IH, OH, ORC_ABI_VERSION, ORC_DECK_PROXY_COPY_ALL,
+    ContextArena, DeckRegistry, Error, IH, OH, ORC_ABI_VERSION, ORC_DECK_PROXY_COPY_ALL,
     ORC_DECK_PROXY_COPY_ITEMS, ORC_DECK_PROXY_SHUFFLE, ORC_ERROR_INVALID_PROXY, ORC_ERROR_NONE,
     ORC_TYPE_F32, ORC_TYPE_F64, ORC_TYPE_I8, ORC_TYPE_I16, ORC_TYPE_I32, ORC_TYPE_I64, ORC_TYPE_U8,
     ORC_TYPE_U16, ORC_TYPE_U32, ORC_TYPE_U64, OrcError, OrcHandle, OrcHandleBorrowed, OrcHost,
@@ -168,16 +168,10 @@ impl Session {
                     input_ids,
                     output_ids,
                 } => {
-                    let func_info = PLUGIN_SET
+                    let info = PLUGIN_SET
                         .get_function(function)
-                        .ok_or(format!("Function not found: {function}"))?;
-                    let info = FuncInfo {
-                        name: func_info.name.clone(),
-                        desc: func_info.desc.clone(),
-                        n_inputs: func_info.n_inputs,
-                        n_outputs: func_info.n_outputs,
-                        func: func_info.func,
-                    };
+                        .ok_or(format!("Function not found: {function}"))?
+                        .clone();
                     let mut ihs = vec![IH::default(); input_ids.len()];
                     let mut ohs = vec![OH::default(); output_ids.len()];
                     wf.add_function(info, &mut ihs, &mut ohs)
@@ -750,7 +744,7 @@ unsafe extern "C" fn host_create_proxy_deck(
                     ),
                     _ => return ORC_ERROR_INVALID_PROXY,
                 };
-                if let Ok(_) = result {
+                if result.is_ok() {
                     out.free_fn = Some(orc_deck_free);
                 }
                 result
