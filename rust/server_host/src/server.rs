@@ -141,9 +141,8 @@ impl OrcServer {
         let _ = &*PLUGIN_SET;
         let addr = format!("0.0.0.0:{port}");
         let server = Server::http(&addr).map_err(|e| format!("Failed to bind {addr}: {e}"))?;
-        let bound_addr = match server.server_addr() {
-            tiny_http::ListenAddr::IP(socket_addr) => socket_addr,
-            _ => return Err("Unable to fetch IP of this machine.".to_string()),
+        let tiny_http::ListenAddr::IP(bound_addr) = server.server_addr() else {
+            return Err("Unable to fetch IP of this machine.".to_string());
         };
         let port = bound_addr.port();
         let inner = Arc::new(ServerInner {
