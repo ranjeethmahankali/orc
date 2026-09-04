@@ -191,11 +191,13 @@
    instead of an OS window. The whole stack compiles to both native and WASM without forking the
    codebase.
 
-* NEXT tkuwku - Download workflow from the server
+* DONE tkuwku - Download workflow from the server
+  CLOSED: [2026-09-04 Fri 17:17]
   :PROPERTIES:
   :CREATED:  2026-09-04 Fri 16:22
   :END:
   :LOGBOOK:
+  - State "DONE"       from "NEXT"       [2026-09-04 Fri 17:17]
   - State "NEXT"       from "TODO"       [2026-09-04 Fri 16:22]
   :END:
 
@@ -205,6 +207,9 @@
   Add an integrateion test (to integration_tests.py), that creates a workflow with some basic math
   blocks, asserts the output value by downloading the output handle, then downloads the entire
   workflow and runs it locally via pyorc, and makes sure it runs properly.
+
+  <2026-09-04 Fri 17:17> Got it working. This exposed an existing memory leak in pyorc. That is
+  fixed. And the tests are passing.
 
 * DONE tiwkbm - Server / client demo app
   CLOSED: [2026-09-04 Fri 15:33]
