@@ -152,7 +152,7 @@ impl OrcServer {
         });
         let thread = std::thread::spawn(move || {
             for request in server.incoming_requests() {
-                eprintln!(
+                println!(
                     "{} {} {} (from {})",
                     request.method(),
                     request.url(),
