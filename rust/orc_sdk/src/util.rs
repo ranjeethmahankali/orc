@@ -887,11 +887,13 @@ pub fn to_str_deck<T: TOrcData + Display>(
     let mut buf = String::new();
     loop {
         let view = comb.get_input(items, 0);
-        let item: &T = view.as_ref();
-        buf.clear();
-        write!(buf, "{}", item).map_err(|_| Error::SerializationError)?;
-        let mut writer = comb.get_output(out, 0);
-        writer.extend_from_slice(buf.as_bytes());
+        if !view.is_empty() {
+            let item: &T = view.as_ref();
+            buf.clear();
+            write!(buf, "{}", item).map_err(|_| Error::SerializationError)?;
+            let mut writer = comb.get_output(out, 0);
+            writer.extend_from_slice(buf.as_bytes());
+        }
         if !comb.advance() {
             break;
         }
