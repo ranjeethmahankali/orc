@@ -166,8 +166,7 @@ impl TOrcPluginAdaptor for Adaptor {
                 let deck = decks[0]
                     .downcast_mut::<Deck<u8>>()
                     .ok_or(Error::DeckTypeMismatch)?;
-                deck.clear();
-                match type_id {
+                let result = match type_id {
                     ORC_TYPE_U8 => to_str_deck::<u8>(input, deck),
                     ORC_TYPE_U16 => to_str_deck::<u16>(input, deck),
                     ORC_TYPE_U32 => to_str_deck::<u32>(input, deck),
@@ -180,7 +179,9 @@ impl TOrcPluginAdaptor for Adaptor {
                     ORC_TYPE_F64 => to_str_deck::<f64>(input, deck),
                     complex::COMPLEX_NUM_TYPE_ID => to_str_deck::<complex::Complex>(input, deck),
                     _ => Err(Error::DeckTypeMismatch),
-                }
+                };
+                unsafe { orc_sdk::update_handle_from_deck(deck, out) };
+                result
             })
             .flatten()
     }
