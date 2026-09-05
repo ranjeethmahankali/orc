@@ -2308,6 +2308,8 @@ OrcError _copy_items(OrcTypeId const type_id,
     }
     break;
   }
+  ORC_SDK_REQUIRE_WITH_MSG(
+    copy_fn != NULL, "Should never happen. Either find a copy function, or error out.");
   copy_fn(src, dst, n_items);
   return ORC_ERROR_NONE;
 }
