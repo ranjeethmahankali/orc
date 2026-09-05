@@ -1380,11 +1380,11 @@ mod tests {
         w.write_all(b"hello").unwrap();
         w.write_all(b" world").unwrap();
         // Nothing sent yet.
-        MOCK_SINK.with_borrow_mut(|sink| {
+        MOCK_SINK.with_borrow(|sink| {
             assert!(sink.is_empty());
         });
         w.flush().unwrap();
-        MOCK_SINK.with_borrow_mut(|sink| {
+        MOCK_SINK.with_borrow(|sink| {
             assert_eq!(&*sink, b"hello world");
         });
     }
