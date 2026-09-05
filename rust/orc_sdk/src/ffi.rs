@@ -124,6 +124,18 @@ macro_rules! orc_plugin {
                 Err(e) => e.into(),
             }
         }
+
+        #[unsafe(no_mangle)]
+        pub unsafe extern "C" fn orc_deck_to_str(
+            input: *const orc_sdk::OrcHandle,
+            output: *mut orc_sdk::OrcHandle,
+        ) -> orc_sdk::OrcError {
+            let (input, output) = unsafe { (&*input, &mut *output) };
+            match <$plugin as orc_sdk::TOrcPluginAdaptor>::deck_to_str(input, output) {
+                Ok(_) => orc_sdk::ORC_ERROR_NONE,
+                Err(e) => e.into(),
+            }
+        }
     };
 }
 
@@ -288,6 +300,8 @@ pub type DeckDeserializeFn = unsafe extern "C" fn(
     buf_len: u64,
     out: *mut OrcHandle,
 ) -> OrcError;
+pub type DeckToStringFn =
+    unsafe extern "C" fn(input: *const OrcHandle, out: *mut OrcHandle) -> OrcError;
 
 // Compile-time checks to keep these type aliases in sync with the bindings.
 const _: PluginInitFn = orc_plugin_init;
@@ -296,6 +310,7 @@ const _: DeckFreeFn = orc_deck_free;
 const _: DeckFromProxyFn = orc_deck_from_proxy;
 const _: DeckSerializeFn = orc_deck_serialize;
 const _: DeckDeserializeFn = orc_deck_deserialize;
+const _: DeckToStringFn = orc_deck_to_str;
 
 pub enum ProxyType {
     CopyAll,
@@ -324,6 +339,7 @@ pub trait TOrcPluginAdaptor {
         read: &mut impl std::io::Read,
         out: &mut OrcHandle,
     ) -> Result<(), Error>;
+    fn deck_to_str(input: &OrcHandle, out: &mut OrcHandle) -> Result<(), Error>;
 }
 
 pub trait TOrcData: Default + Clone + Send + Sync + 'static {

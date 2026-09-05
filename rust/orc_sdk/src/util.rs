@@ -1,17 +1,17 @@
 use crate::{
-    Deck, DeckView, Error, ORC_ARGS_VARIADIC, ORC_MSG_LEVEL_DEBUG, ORC_MSG_LEVEL_ERROR,
-    ORC_MSG_LEVEL_FATAL, ORC_MSG_LEVEL_INFO, ORC_MSG_LEVEL_WARN, ORC_NUM_DIMS, ORC_TYPE_F32,
-    ORC_TYPE_F64, ORC_TYPE_I8, ORC_TYPE_I16, ORC_TYPE_I32, ORC_TYPE_I64, ORC_TYPE_U8, ORC_TYPE_U16,
-    ORC_TYPE_U32, ORC_TYPE_U64, OrcFuncInfo, OrcHandle, OrcHost, OrcHostCallbackAPI, OrcItemProxy,
-    OrcMark, OrcPluginFunction, OrcTypeId, OrcTypeInfo, ProxyType, deck::fmt_raw_deck,
-    ffi::TOrcData,
+    Combinations, Deck, DeckView, Error, ORC_ARGS_VARIADIC, ORC_MSG_LEVEL_DEBUG,
+    ORC_MSG_LEVEL_ERROR, ORC_MSG_LEVEL_FATAL, ORC_MSG_LEVEL_INFO, ORC_MSG_LEVEL_WARN, ORC_NUM_DIMS,
+    ORC_TYPE_F32, ORC_TYPE_F64, ORC_TYPE_I8, ORC_TYPE_I16, ORC_TYPE_I32, ORC_TYPE_I64, ORC_TYPE_U8,
+    ORC_TYPE_U16, ORC_TYPE_U32, ORC_TYPE_U64, OrcFuncInfo, OrcHandle, OrcHost, OrcHostCallbackAPI,
+    OrcItemProxy, OrcMark, OrcPluginFunction, OrcTypeId, OrcTypeInfo, ProxyType,
+    deck::fmt_raw_deck, ffi::TOrcData,
 };
 use std::{
     alloc::{GlobalAlloc, Layout, System},
     any::Any,
     collections::{HashMap, hash_map::Entry},
     ffi::{CStr, CString, c_void},
-    fmt::Display,
+    fmt::{Display, Write},
     marker::PhantomData,
     sync::{
         Arc, Mutex, RwLock,
@@ -875,13 +875,42 @@ pub fn try_deserialize_handle(
     Ok(())
 }
 
+// ==================== String Conversion ====================
+
+pub fn to_str_deck<T: TOrcData + Display>(
+    input: &OrcHandle,
+    out: &mut Deck<u8>,
+) -> Result<(), Error> {
+    out.clear();
+    let items = input.items::<T>();
+    let mut comb = Combinations::from_handles(std::slice::from_ref(input), &[0], &[1])?;
+    let mut buf = String::new();
+    loop {
+        let view = comb.get_input(items, 0);
+        if !view.is_empty() {
+            let item: &T = view.as_ref();
+            buf.clear();
+            write!(buf, "{}", item).map_err(|_| Error::SerializationError)?;
+            let mut writer = comb.get_output(out, 0);
+            writer.extend_from_slice(buf.as_bytes());
+        }
+        if !comb.advance() {
+            break;
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::{Deck, ORC_ERROR_NONE, ORC_NUM_DIMS, OrcError, OrcHandle, ffi::TOrcData};
-    use std::sync::{
-        Arc,
-        atomic::{AtomicUsize, Ordering},
+    use std::{
+        cell::RefCell,
+        sync::{
+            Arc,
+            atomic::{AtomicUsize, Ordering},
+        },
     };
 
     // Provide orc_deck_free for the test binary. Each plugin normally defines this via
@@ -1321,10 +1350,9 @@ mod tests {
 
     // ==================== SerialWrite ====================
 
-    use std::sync::Mutex;
-
-    // Collects bytes written via the FFI callback.
-    static MOCK_SINK: Mutex<Vec<u8>> = Mutex::new(Vec::new());
+    thread_local! {
+        static MOCK_SINK: RefCell<Vec<u8>> = const { RefCell::new(Vec::new()) };
+    }
 
     unsafe extern "C" fn mock_write_ok(
         _ctx: u64,
@@ -1332,7 +1360,7 @@ mod tests {
         len: u64,
     ) -> OrcError {
         let bytes = unsafe { std::slice::from_raw_parts(data.cast::<u8>(), len as usize) };
-        MOCK_SINK.lock().unwrap().extend_from_slice(bytes);
+        MOCK_SINK.with_borrow_mut(|sink| sink.extend_from_slice(bytes));
         ORC_ERROR_NONE
     }
 
@@ -1347,28 +1375,34 @@ mod tests {
     #[test]
     fn t_serial_write_buffers_until_flush() {
         use std::io::Write;
-        MOCK_SINK.lock().unwrap().clear();
+        MOCK_SINK.with_borrow_mut(|sink| sink.clear());
         let mut w = SerialWrite::new(0, Some(mock_write_ok));
         w.write_all(b"hello").unwrap();
         w.write_all(b" world").unwrap();
         // Nothing sent yet.
-        assert!(MOCK_SINK.lock().unwrap().is_empty());
+        MOCK_SINK.with_borrow(|sink| {
+            assert!(sink.is_empty());
+        });
         w.flush().unwrap();
-        assert_eq!(&*MOCK_SINK.lock().unwrap(), b"hello world");
+        MOCK_SINK.with_borrow(|sink| {
+            assert_eq!(sink.as_slice(), "hello world".as_bytes());
+        });
     }
 
     #[test]
     fn t_serial_write_clears_buffer_after_flush() {
         use std::io::Write;
-        MOCK_SINK.lock().unwrap().clear();
+        MOCK_SINK.with_borrow_mut(|sink| sink.clear());
         let mut w = SerialWrite::new(0, Some(mock_write_ok));
         w.write_all(b"first").unwrap();
         w.flush().unwrap();
-        MOCK_SINK.lock().unwrap().clear();
+        MOCK_SINK.with_borrow_mut(|sink| sink.clear());
         w.write_all(b"second").unwrap();
         w.flush().unwrap();
-        // Only "second" should appear — no leftover from "first".
-        assert_eq!(&*MOCK_SINK.lock().unwrap(), b"second");
+        MOCK_SINK.with_borrow(|sink| {
+            // Only "second" should appear — no leftover from "first".
+            assert_eq!(sink.as_slice(), "second".as_bytes());
+        });
     }
 
     #[test]
@@ -1397,9 +1431,11 @@ mod tests {
         // Buffer is preserved on error, so a subsequent flush with a
         // working callback should send the data that failed before.
         w.write_func = Some(mock_write_ok);
-        MOCK_SINK.lock().unwrap().clear();
+        MOCK_SINK.with_borrow_mut(|sink| sink.clear());
         w.flush().unwrap();
-        assert_eq!(&*MOCK_SINK.lock().unwrap(), b"data");
+        MOCK_SINK.with_borrow(|sink| {
+            assert_eq!(sink.as_slice(), "data".as_bytes());
+        });
     }
 
     #[test]
@@ -1603,9 +1639,11 @@ mod tests {
         w.write_all(b"bbb").unwrap();
         let _ = w.flush(); // fail again — buffer still has "aaabbb"
         w.write_func = Some(mock_write_ok);
-        MOCK_SINK.lock().unwrap().clear();
+        MOCK_SINK.with_borrow_mut(|sink| sink.clear());
         w.flush().unwrap();
-        assert_eq!(&*MOCK_SINK.lock().unwrap(), b"aaabbb");
+        MOCK_SINK.with_borrow(|sink| {
+            assert_eq!(sink.as_slice(), "aaabbb".as_bytes());
+        });
     }
 
     // ==================== try_serialize_handle / try_deserialize_handle ====================
@@ -1787,5 +1825,90 @@ mod tests {
         try_deserialize_handle(&mut cursor, &mut out, &reg).unwrap();
         assert_eq!(out.dims, h.dims);
         disarm(&mut out);
+    }
+
+    // ==================== to_str_deck ====================
+
+    /// Helper: create an OrcHandle from a Deck, call to_str_deck, and return the output Deck<u8>.
+    fn run_to_str_deck<T: TOrcData + std::fmt::Display>(deck: &Deck<T>) -> Deck<u8> {
+        let h = serial_make_handle(deck);
+        let mut out = Deck::<u8>::default();
+        to_str_deck::<T>(&h, &mut out).expect("to_str_deck failed");
+        out
+    }
+
+    /// Helper: extract string slices from a depth-1 Deck<u8> (each group is one string).
+    fn str_groups(deck: &Deck<u8>) -> Vec<String> {
+        let handle = serial_make_handle(deck);
+        let view = DeckView::<u8>::from_handle(&handle).unwrap();
+        view.child()
+            .advance_iter()
+            .map(|v| String::from_utf8(v.as_slice().to_vec()).unwrap())
+            .collect()
+    }
+
+    #[test]
+    fn t_to_str_deck_u32_flat() {
+        let d = deck![42_u32, 100, 0];
+        let out = run_to_str_deck(&d);
+        assert_eq!(str_groups(&out), &["42", "100", "0"]);
+    }
+
+    #[test]
+    fn t_to_str_deck_f64_flat() {
+        let d = deck![1.5_f64, -2.0];
+        let groups = str_groups(&run_to_str_deck(&d));
+        assert_eq!(groups.len(), 2);
+        assert!(groups[0].starts_with("1.5"), "got: {}", groups[0]);
+        assert!(groups[1].starts_with("-2"), "got: {}", groups[1]);
+    }
+
+    #[test]
+    fn t_to_str_deck_i64_flat() {
+        let d = deck![i64::MIN, 0_i64, i64::MAX];
+        let out = run_to_str_deck(&d);
+        assert_eq!(
+            str_groups(&out),
+            &[i64::MIN.to_string(), "0".to_string(), i64::MAX.to_string()]
+        );
+    }
+
+    #[test]
+    fn t_to_str_deck_empty() {
+        let d: Deck<u32> = Deck::default();
+        let out = run_to_str_deck(&d);
+        assert!(out.items().is_empty());
+    }
+
+    #[test]
+    fn t_to_str_deck_single_item() {
+        let d = deck![7_u32];
+        let out = run_to_str_deck(&d);
+        assert_eq!(str_groups(&out), &["7"]);
+    }
+
+    #[test]
+    fn t_to_str_deck_nested() {
+        let d: Deck<i32> = deck![[10, 20], [30]];
+        let h = serial_make_handle(&d);
+        let mut out = Deck::<u8>::default();
+        to_str_deck::<i32>(&h, &mut out).expect("to_str_deck failed");
+        let out_h = serial_make_handle(&out);
+        let view = DeckView::<u8>::from_handle(&out_h).unwrap();
+        // Input depth 2 + output depth 1 = output depth 3.
+        assert_eq!(view.depth(), 3);
+        // Navigate: depth3 -> depth2 (input groups) -> depth1 (strings).
+        let top = view.child(); // depth 2
+        let groups: Vec<Vec<String>> = top
+            .advance_iter()
+            .map(|group| {
+                group
+                    .child()
+                    .advance_iter()
+                    .map(|s| String::from_utf8(s.as_slice().to_vec()).unwrap())
+                    .collect()
+            })
+            .collect();
+        assert_eq!(groups, vec![vec!["10", "20"], vec!["30"]]);
     }
 }

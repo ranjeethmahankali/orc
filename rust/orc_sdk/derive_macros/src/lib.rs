@@ -629,9 +629,7 @@ fn generate_dispatch_fn(
             let ident = &in_slice_idents[i];
             let inner_ty = &p.inner_type;
             quote! {
-                let #ident = unsafe {
-                    orc_sdk::slice_from_ptr(inputs_[#i].items.cast::<#inner_ty>(), inputs_[#i].n_items as usize)
-                };
+                let #ident = inputs_[#i].items::<#inner_ty>();
             }
         })
         .collect();
@@ -1348,12 +1346,7 @@ fn generate_map_dispatch_fn(
             inputs_: &[orc_sdk::OrcHandle],
             outputs_: &mut [orc_sdk::OrcHandle],
         ) -> Result<(), orc_sdk::Error> #where_clause {
-            let in_items_ = unsafe {
-                orc_sdk::slice_from_ptr(
-                    inputs_[0].items.cast::<#in_inner_ty>(),
-                    inputs_[0].n_items as usize,
-                )
-            };
+            let in_items_ = inputs_[0].items::<#in_inner_ty>();
             let in_marks_ = unsafe {
                 orc_sdk::slice_from_ptr(inputs_[0].marks, inputs_[0].n_marks as usize)
             };

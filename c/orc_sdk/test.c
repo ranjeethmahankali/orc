@@ -4628,7 +4628,7 @@ static void test_orc_sdk_deck_simplify(void)
   }
 }
 
-void _print_size_t(void *item, char *dst, size_t len)
+void _print_size_t(void const *item, char *dst, size_t len)
 {
   size_t const val = *(size_t *)item;
   snprintf(dst, len, "%zu", val);
@@ -5515,18 +5515,6 @@ static void test_orc_sdk_dims_pow(void)
 }
 
 // ========== Plugin Functions ==========
-
-void _print_double(void *item, char *dst, size_t len)
-{
-  double const val = *(double *)item;
-  snprintf(dst, len, "%.2f", val);
-}
-
-void _print_uint32_t(void *item, char *dst, size_t len)
-{
-  uint32_t const val = *(uint32_t *)item;
-  snprintf(dst, len, "%d", val);
-}
 
 // This simulates a function that will lives inside the plugin DLL. It takes a
 // list<double>, a uin32_t and outputs the item from the list at that index.
@@ -6849,6 +6837,226 @@ static void test_mark_padding_zeroed(void)
   orc_sdk_handle_free(&h);
 }
 
+static void test_dw_push_empty_many_flat(void)
+{
+  // Push 5 items at once into a flat (depth-1) deck via push_empty_many.
+  uint32_t *deck = NULL;
+  {
+    OrcSdk_DeckWriter w     = orc_sdk_dw_from_deck(deck, 1);
+    uint32_t         *items = (uint32_t *)orc_sdk_dw_push_empty_many(&w, 5);
+    TEST_ASSERT_NOT_NULL(items);
+    for (uint32_t i = 0; i < 5; ++i) {
+      TEST_ASSERT_TRUE(items[i] == 0);
+      items[i] = (i + 1) * 10;
+    }
+    TEST_ASSERT_TRUE(orc_sdk_dw_len(&w) == 5);
+  }
+  TEST_ASSERT_TRUE(orc_sdk_deck_len(deck) == 5);
+  for (uint32_t i = 0; i < 5; ++i) {
+    TEST_ASSERT_TRUE(deck[i] == (i + 1) * 10);
+  }
+  orc_sdk_deck_free(deck);
+}
+
+static void test_dw_push_empty_many_nested(void)
+{
+  // Build ((0,1,2),(10,11,12)) using push_empty_many inside child writers.
+  uint32_t *deck = NULL;
+  {
+    OrcSdk_DeckWriter w = orc_sdk_dw_from_deck(deck, 2);
+    {
+      OrcSdk_DeckWriter c     = orc_sdk_dw_child(&w);
+      uint32_t         *items = (uint32_t *)orc_sdk_dw_push_empty_many(&c, 3);
+      TEST_ASSERT_NOT_NULL(items);
+      for (uint32_t i = 0; i < 3; ++i) {
+        items[i] = i;
+      }
+    }
+    {
+      OrcSdk_DeckWriter c     = orc_sdk_dw_child(&w);
+      uint32_t         *items = (uint32_t *)orc_sdk_dw_push_empty_many(&c, 3);
+      TEST_ASSERT_NOT_NULL(items);
+      for (uint32_t i = 0; i < 3; ++i) {
+        items[i] = 10 + i;
+      }
+    }
+  }
+  TEST_ASSERT_TRUE(orc_sdk_deck_len(deck) == 6);
+  // Verify via DeckView: one top-level group with two sub-groups.
+  uint32_t        expected[] = {0, 1, 2, 10, 11, 12};
+  size_t          ei         = 0;
+  size_t          n_groups   = 0;
+  OrcSdk_DeckView top        = orc_sdk_dv_from_deck(deck, 2);
+  do {
+    OrcSdk_DeckView inner = orc_sdk_dv_child(&top);
+    do {
+      TEST_ASSERT_TRUE(orc_sdk_dv_len(&inner) == 3);
+      uint32_t const *items = orc_sdk_dv_item_ptr(&inner);
+      for (size_t i = 0; i < orc_sdk_dv_len(&inner); ++i) {
+        TEST_ASSERT_TRUE(items[i] == expected[ei++]);
+      }
+      n_groups++;
+    } while (orc_sdk_dv_advance(&inner));
+  } while (orc_sdk_dv_advance(&top));
+  TEST_ASSERT_TRUE(n_groups == 2);
+  TEST_ASSERT_TRUE(ei == 6);
+  orc_sdk_deck_free(deck);
+}
+
+static void test_dw_push_empty_many_growth(void)
+{
+  // Push items in two batches to force a realloc in the second batch.
+  uint32_t *deck = NULL;
+  {
+    OrcSdk_DeckWriter w = orc_sdk_dw_from_deck(deck, 1);
+    // First batch: allocates initial capacity.
+    uint32_t *a = (uint32_t *)orc_sdk_dw_push_empty_many(&w, 2);
+    TEST_ASSERT_NOT_NULL(a);
+    a[0] = 1;
+    a[1] = 2;
+    // Second batch: should trigger growth.
+    uint32_t *b = (uint32_t *)orc_sdk_dw_push_empty_many(&w, 10);
+    TEST_ASSERT_NOT_NULL(b);
+    for (uint32_t i = 0; i < 10; ++i)
+      b[i] = 100 + i;
+    TEST_ASSERT_TRUE(orc_sdk_dw_len(&w) == 12);
+  }
+  TEST_ASSERT_TRUE(orc_sdk_deck_len(deck) == 12);
+  TEST_ASSERT_TRUE(deck[0] == 1);
+  TEST_ASSERT_TRUE(deck[1] == 2);
+  for (uint32_t i = 0; i < 10; ++i) {
+    TEST_ASSERT_TRUE(deck[2 + i] == 100 + i);
+  }
+  orc_sdk_deck_free(deck);
+}
+
+static void test_dw_start_new_arr_basic(void)
+{
+  // Build ((1,2,3),(4,5)) using start_new_arr instead of child writers.
+  uint32_t *deck = NULL;
+  {
+    OrcSdk_DeckWriter w = orc_sdk_dw_from_deck(deck, 1);
+    for (uint32_t v = 1; v <= 3; ++v)
+      orc_sdk_dw_push(&w, v);
+    orc_sdk_dw_start_new_arr(&w, 1);
+    for (uint32_t v = 4; v <= 5; ++v)
+      orc_sdk_dw_push(&w, v);
+  }
+  TEST_ASSERT_TRUE(orc_sdk_deck_len(deck) == 5);
+  OrcSdk_DeckView v1 = orc_sdk_dv_from_deck(deck, 1);
+  TEST_ASSERT_TRUE(orc_sdk_dv_len(&v1) == 3);
+  uint32_t const *items1 = orc_sdk_dv_item_ptr(&v1);
+  TEST_ASSERT_TRUE(items1[0] == 1 && items1[1] == 2 && items1[2] == 3);
+  TEST_ASSERT_TRUE(orc_sdk_dv_advance(&v1));
+  TEST_ASSERT_TRUE(orc_sdk_dv_len(&v1) == 2);
+  uint32_t const *items2 = orc_sdk_dv_item_ptr(&v1);
+  TEST_ASSERT_TRUE(items2[0] == 4 && items2[1] == 5);
+  TEST_ASSERT_TRUE(!orc_sdk_dv_advance(&v1));
+  orc_sdk_deck_free(deck);
+}
+
+static void test_dw_start_new_arr_null_writer(void)
+{
+  // Should not crash.
+  orc_sdk_dw_start_new_arr(NULL, 1);
+}
+
+static void test_handle_to_str_u32(void)
+{
+  orc_sdk_init(NULL, NULL);
+  OrcHandle input = {0};
+  input.handle    = 100;
+  orc_sdk_handle_alloc(ORC_TYPE_U32, &input);
+  ORC_SDK_DECK_INIT(input.items, uint32_t, (42, 100, 0));
+  orc_sdk_oh_update(&input);
+  OrcHandle out = {0};
+  out.handle    = 101;
+  OrcError err  = orc_sdk_handle_to_str(&input, &out);
+  TEST_ASSERT_TRUE(err == ORC_ERROR_NONE);
+  orc_sdk_oh_update(&out);
+  // Output should be a depth-1 deck of u8 with 3 sub-arrays: "42", "100", "0".
+  TEST_ASSERT_TRUE(out.type_id == ORC_TYPE_U8);
+  OrcSdk_DeckView v          = orc_sdk_dv_from_deck((uint8_t *)out.items, 1);
+  char const     *expected[] = {"42", "100", "0"};
+  for (int i = 0; i < 3; ++i) {
+    size_t const len   = orc_sdk_dv_len(&v);
+    char const  *chars = orc_sdk_dv_item_ptr(&v);
+    TEST_ASSERT_TRUE(len == strlen(expected[i]));
+    TEST_ASSERT_TRUE(memcmp(chars, expected[i], len) == 0);
+    if (i < 2)
+      TEST_ASSERT_TRUE(orc_sdk_dv_advance(&v));
+  }
+  TEST_ASSERT_TRUE(!orc_sdk_dv_advance(&v));
+  orc_sdk_handle_free(&input);
+  orc_sdk_handle_free(&out);
+}
+
+static void test_handle_to_str_f64(void)
+{
+  orc_sdk_init(NULL, NULL);
+  OrcHandle input = {0};
+  input.handle    = 200;
+  orc_sdk_handle_alloc(ORC_TYPE_F64, &input);
+  ORC_SDK_DECK_INIT(input.items, double, (1.5, -2.0));
+  orc_sdk_oh_update(&input);
+  OrcHandle out = {0};
+  out.handle    = 201;
+  OrcError err  = orc_sdk_handle_to_str(&input, &out);
+  TEST_ASSERT_TRUE(err == ORC_ERROR_NONE);
+  orc_sdk_oh_update(&out);
+  TEST_ASSERT_TRUE(out.type_id == ORC_TYPE_U8);
+  // Verify first item starts with "1.5"
+  OrcSdk_DeckView v = orc_sdk_dv_from_deck((uint8_t *)out.items, 1);
+  {
+    size_t const len = orc_sdk_dv_len(&v);
+    char const  *s   = orc_sdk_dv_item_ptr(&v);
+    TEST_ASSERT_TRUE(len > 0);
+    TEST_ASSERT_TRUE(memcmp(s, "1.5", 3) == 0);
+  }
+  // Second item starts with "-2.0"
+  TEST_ASSERT_TRUE(orc_sdk_dv_advance(&v));
+  {
+    size_t const len = orc_sdk_dv_len(&v);
+    char const  *s   = orc_sdk_dv_item_ptr(&v);
+    TEST_ASSERT_TRUE(len > 0);
+    TEST_ASSERT_TRUE(memcmp(s, "-2.0", 4) == 0);
+  }
+  TEST_ASSERT_TRUE(!orc_sdk_dv_advance(&v));
+  orc_sdk_handle_free(&input);
+  orc_sdk_handle_free(&out);
+}
+
+static void test_handle_to_str_unknown_type(void)
+{
+  orc_sdk_init(NULL, NULL);
+  OrcHandle input = {0};
+  input.type_id   = 9999;
+  OrcHandle out   = {0};
+  OrcError  err   = orc_sdk_handle_to_str(&input, &out);
+  TEST_ASSERT_TRUE(err == ORC_ERROR_TYPE_MISMATCH);
+}
+
+static void test_handle_to_str_empty(void)
+{
+  orc_sdk_init(NULL, NULL);
+  OrcHandle input = {0};
+  input.handle    = 300;
+  orc_sdk_handle_alloc(ORC_TYPE_U32, &input);
+  // items is NULL, n_items is 0 — empty deck.
+  orc_sdk_oh_update(&input);
+  TEST_ASSERT_TRUE(input.n_items == 0);
+  OrcHandle out = {0};
+  out.handle    = 301;
+  OrcError err  = orc_sdk_handle_to_str(&input, &out);
+  TEST_ASSERT_TRUE(err == ORC_ERROR_NONE);
+  orc_sdk_oh_update(&out);
+  TEST_ASSERT_TRUE(out.type_id == ORC_TYPE_U8);
+  // Output should have no items.
+  TEST_ASSERT_TRUE(out.n_items == 0);
+  orc_sdk_handle_free(&input);
+  orc_sdk_handle_free(&out);
+}
+
 void setUp(void) {}
 void tearDown(void) {}
 
@@ -7025,5 +7233,14 @@ int main(void)
   RUN_TEST(test_sv_read_bytes_null_start);
   RUN_TEST(test_sv_read_bytes_null_start_zero_count);
   RUN_TEST(test_mark_padding_zeroed);
+  RUN_TEST(test_dw_push_empty_many_flat);
+  RUN_TEST(test_dw_push_empty_many_nested);
+  RUN_TEST(test_dw_push_empty_many_growth);
+  RUN_TEST(test_dw_start_new_arr_basic);
+  RUN_TEST(test_dw_start_new_arr_null_writer);
+  RUN_TEST(test_handle_to_str_u32);
+  RUN_TEST(test_handle_to_str_f64);
+  RUN_TEST(test_handle_to_str_unknown_type);
+  RUN_TEST(test_handle_to_str_empty);
   return UNITY_END();
 }

@@ -2,6 +2,7 @@
 
 #include <assert.h>
 #include <ctype.h>
+#include <inttypes.h>
 #include <limits.h>
 #include <orc_abi.h>
 #include <stdbool.h>
@@ -1153,6 +1154,43 @@ void *_orc_sdk_deck_push_empty(void *ptr, size_t const itemsize, uint8_t const d
   return ptr;
 }
 
+void *_orc_sdk_deck_push_empty_many(void         *ptr,
+                                    size_t const  itemsize,
+                                    uint8_t const first_depth,
+                                    size_t const  count)
+{
+  _OrcSdk_DeckHeader *h = _orc_sdk_deck_header(ptr);
+  if (h == NULL) {
+    size_t const bufsize = sizeof *h + (itemsize * count);
+    h                    = orc_sdk_alloc(bufsize, ORC_SDK_MALLOC_DEFAULT_ALIGN);
+    if (h == NULL)
+      return NULL;
+    memset(h, 0, bufsize);
+    h->capacity  = count;
+    h->item_size = itemsize;
+    ptr          = (void *)(h + 1);
+  }
+  else if ((h->count + count) > h->capacity) {
+    size_t growth = h->capacity;
+    if (growth < count) {
+      growth = count;
+    }
+    size_t const newcap   = h->capacity + growth;
+    size_t const old_size = sizeof *h + h->capacity * itemsize;
+    size_t const new_size = sizeof *h + newcap * itemsize;
+    h = orc_sdk_realloc(h, old_size, new_size, ORC_SDK_MALLOC_DEFAULT_ALIGN);
+    if (h == NULL)
+      return NULL;
+    h->capacity = newcap;
+    ptr         = h + 1;
+  }
+  if (first_depth)
+    _orc_sdk_deck_push_mark(h, first_depth - 1, h->count);
+  h->count += count;
+  ORC_SDK_REQUIRE_WITH_MSG(h->count <= h->capacity, "Count cannot exceed capacity");
+  return ptr;
+}
+
 void *_orc_sdk_deck_push_impl(void         *ptr,
                               void         *item,
                               size_t const  itemsize,
@@ -1373,9 +1411,9 @@ void orc_sdk_deck_simplify(void *ptr)
   orc_sdk_deck_calc_strides(h);
 }
 
-char *_orc_sdk_deck_to_str(void const  *ptr,
-                           size_t const item_size,
-                           void (*snprint_item)(void *item, char *dst, size_t len))
+char *_orc_sdk_deck_to_str(void const          *ptr,
+                           size_t const         item_size,
+                           OrcSdk_SNPrintItemFn snprint_item)
 {
   _OrcSdk_DeckHeader *h = _orc_sdk_deck_header(ptr);
   if (h == NULL)
@@ -1481,7 +1519,7 @@ static size_t _stride(OrcMark const  *marks,
   }
 }
 
-OrcSdk_DeckView _orc_sdk_dv_from_deck_impl(void         *ptr,
+OrcSdk_DeckView _orc_sdk_dv_from_deck_impl(void const   *ptr,
                                            size_t const  item_size,
                                            uint8_t const depth)
 {
@@ -1605,7 +1643,7 @@ void const *orc_sdk_dv_item_ptr(OrcSdk_DeckView const *const v)
 
 uint8_t _orc_sdk_dw_next_depth(OrcSdk_DeckWriter *writer)
 {
-  assert(writer != NULL);
+  ORC_SDK_REQUIRE(writer != NULL);
   if (writer->has_next_depth) {
     writer->has_next_depth = false;
     return writer->next_depth;
@@ -1639,6 +1677,29 @@ OrcError _orc_sdk_dw_push_impl(OrcSdk_DeckWriter *writer, void *item)
   *(writer->deck) = _orc_sdk_deck_push_impl(
     *(writer->deck), item, writer->item_size, _orc_sdk_dw_next_depth(writer));
   return *(writer->deck) == NULL ? ORC_ERROR_ALLOC_FAILED : ORC_ERROR_NONE;
+}
+
+void orc_sdk_dw_start_new_arr(OrcSdk_DeckWriter *writer, uint8_t const depth)
+{
+  if (writer == NULL) {
+    return;
+  }
+  if (writer->has_next_depth) {
+    if (writer->next_depth < depth) {
+      // We just push the mark at the depth that is already there, before pushing the
+      // next.
+      size_t const        count  = orc_sdk_dw_len(writer);
+      _OrcSdk_DeckHeader *header = _orc_sdk_deck_header(*(writer->deck));
+      _orc_sdk_deck_push_mark(header, writer->next_depth, count);
+      writer->next_depth = depth;
+    }
+    // If the given depth is smaller than what we already have queued up, then we don't
+    // need to do anything.
+  }
+  else {
+    writer->next_depth     = depth;
+    writer->has_next_depth = true;
+  }
 }
 
 OrcError orc_sdk_dw_close(OrcSdk_DeckWriter *writer)
@@ -1682,6 +1743,19 @@ void *orc_sdk_dw_push_empty(OrcSdk_DeckWriter *writer)
   }
   void *ptr = (char *)(*(writer->deck)) + (h->count - 1) * writer->item_size;
   memset(ptr, 0, writer->item_size);
+  return ptr;
+}
+
+void *orc_sdk_dw_push_empty_many(OrcSdk_DeckWriter *writer, size_t const count)
+{
+  *(writer->deck) = _orc_sdk_deck_push_empty_many(
+    *(writer->deck), writer->item_size, _orc_sdk_dw_next_depth(writer), count);
+  _OrcSdk_DeckHeader *h = _orc_sdk_deck_header(*(writer->deck));
+  if (h == NULL) {
+    return NULL;
+  }
+  void *ptr = (char *)(*(writer->deck)) + (h->count - count) * writer->item_size;
+  memset(ptr, 0, writer->item_size * count);
   return ptr;
 }
 
@@ -1768,9 +1842,9 @@ uint8_t _oh_max_depth(OrcHandle const *handle)
   return 0;
 }
 
-static OrcSdkTypeCallbacksGetterFn PLUGIN_TYPE_FN = NULL;
+static OrcSdk_TypeCallbacksGetterFn PLUGIN_TYPE_FN = NULL;
 
-void orc_sdk_init(OrcHost const *host, OrcSdkTypeCallbacksGetterFn type_fn)
+void orc_sdk_init(OrcHost const *host, OrcSdk_TypeCallbacksGetterFn type_fn)
 {
   if (host) {
     ORC_SDK_REQUIRE_WITH_MSG(
@@ -1808,7 +1882,7 @@ void orc_sdk_init(OrcHost const *host, OrcSdkTypeCallbacksGetterFn type_fn)
   call_once(&REGISTRY_ONCE, _registry_init);
 }
 
-bool _is_type_info_valid(OrcSdkTypeInfo const *info)
+bool _is_type_info_valid(OrcSdk_TypeInfo const *info)
 {
   return info->copy_fn != NULL && info->item_size != 0;
 }
@@ -1832,7 +1906,7 @@ OrcError _oh_free_fn(OrcHandle *const handle)
   if (handle == NULL) {
     return ORC_ERROR_NONE;
   }
-  ItemFreeFn item_free_fn = NULL;
+  OrcSdk_ItemFreeFn item_free_fn = NULL;
   switch (handle->type_id) {
   case ORC_TYPE_U8:
   case ORC_TYPE_U16:
@@ -1851,7 +1925,7 @@ OrcError _oh_free_fn(OrcHandle *const handle)
     break;
   default:
     if (PLUGIN_TYPE_FN) {
-      OrcSdkTypeInfo info = PLUGIN_TYPE_FN(handle->type_id);
+      OrcSdk_TypeInfo info = PLUGIN_TYPE_FN(handle->type_id);
       if (!_is_type_info_valid(&info)) {
         return ORC_ERROR_TYPE_MISMATCH;
       }
@@ -2159,7 +2233,7 @@ OrcError orc_sdk_handle_alloc(OrcTypeId const id, OrcHandle *const out)
     break;
   default: {
     if (PLUGIN_TYPE_FN) {
-      OrcSdkTypeInfo info = PLUGIN_TYPE_FN(id);
+      OrcSdk_TypeInfo info = PLUGIN_TYPE_FN(id);
       if (!_is_type_info_valid(&info)) {
         return ORC_ERROR_TYPE_MISMATCH;
       }
@@ -2233,7 +2307,7 @@ OrcError _copy_items(OrcTypeId const type_id,
                      void           *dst,
                      size_t const    n_items)
 {
-  CopyItemsFn copy_fn = NULL;
+  OrcSdk_CopyItemsFn copy_fn = NULL;
   switch (type_id) {
   case ORC_TYPE_U8:
     copy_fn = _copy_items_u8;
@@ -2273,7 +2347,7 @@ OrcError _copy_items(OrcTypeId const type_id,
     break;
   default:
     if (PLUGIN_TYPE_FN) {
-      OrcSdkTypeInfo info = PLUGIN_TYPE_FN(type_id);
+      OrcSdk_TypeInfo info = PLUGIN_TYPE_FN(type_id);
       if (!_is_type_info_valid(&info)) {
         return ORC_ERROR_TYPE_MISMATCH;
       }
@@ -2284,6 +2358,8 @@ OrcError _copy_items(OrcTypeId const type_id,
     }
     break;
   }
+  ORC_SDK_REQUIRE_WITH_MSG(
+    copy_fn != NULL, "Should never happen. Either find a copy function, or error out.");
   copy_fn(src, dst, n_items);
   return ORC_ERROR_NONE;
 }
@@ -2521,4 +2597,125 @@ OrcError orc_sdk_deserialize_handle_header(uint64_t const ctx,
   }
   *out_marks = marks;
   return ORC_ERROR_NONE;
+}
+
+// ========== String conversion ==========
+
+#define _ORC_SDK_DECLARE_SNPRINT_FUNC(suffix, ctype, fmtstr)      \
+  void _snprint_##suffix(void const *item, char *dst, size_t len) \
+  {                                                               \
+    ctype const val = *(ctype *)item;                             \
+    snprintf(dst, len, fmtstr, val);                              \
+  }
+
+_ORC_SDK_DECLARE_SNPRINT_FUNC(u8, uint8_t, "%u")
+_ORC_SDK_DECLARE_SNPRINT_FUNC(u16, uint16_t, "%u")
+_ORC_SDK_DECLARE_SNPRINT_FUNC(u32, uint32_t, "%u")
+_ORC_SDK_DECLARE_SNPRINT_FUNC(u64, uint64_t, "%" PRIu64)
+_ORC_SDK_DECLARE_SNPRINT_FUNC(f32, float, "%.6f")
+_ORC_SDK_DECLARE_SNPRINT_FUNC(f64, double, "%.6f")
+_ORC_SDK_DECLARE_SNPRINT_FUNC(i8, int8_t, "%d")
+_ORC_SDK_DECLARE_SNPRINT_FUNC(i16, int16_t, "%d")
+_ORC_SDK_DECLARE_SNPRINT_FUNC(i32, int32_t, "%d")
+_ORC_SDK_DECLARE_SNPRINT_FUNC(i64, int64_t, "%" PRId64)
+
+// Proxies are a bit different, so we cannot use the macro.
+void _snprint_proxy(void const *item, char *dst, size_t len)
+{
+  OrcItemProxy const *proxy = (OrcItemProxy const *)item;
+  snprintf(dst, len, "%" PRIu64 ";%" PRIu64, proxy->tree, proxy->item);
+}
+
+void _snprint_fallback_fn(void const *item, char *dst, size_t len)
+{
+  (void)item;
+  snprintf(dst, len, "<item>");
+}
+
+OrcError orc_sdk_handle_to_str(OrcHandle const *input, OrcHandle *out)
+{
+  OrcSdk_SNPrintItemFn print_fn = NULL;
+  switch (input->type_id) {
+  case ORC_TYPE_U8:
+    print_fn = _snprint_u8;
+    break;
+  case ORC_TYPE_U16:
+    print_fn = _snprint_u16;
+    break;
+  case ORC_TYPE_U32:
+    print_fn = _snprint_u32;
+    break;
+  case ORC_TYPE_U64:
+    print_fn = _snprint_u64;
+    break;
+  case ORC_TYPE_F32:
+    print_fn = _snprint_f32;
+    break;
+  case ORC_TYPE_F64:
+    print_fn = _snprint_f64;
+    break;
+  case ORC_TYPE_I8:
+    print_fn = _snprint_i8;
+    break;
+  case ORC_TYPE_I16:
+    print_fn = _snprint_i16;
+    break;
+  case ORC_TYPE_I32:
+    print_fn = _snprint_i32;
+    break;
+  case ORC_TYPE_I64:
+    print_fn = _snprint_i64;
+    break;
+  case ORC_TYPE_PROXY:
+    print_fn = _snprint_proxy;
+    break;
+  default:
+    if (PLUGIN_TYPE_FN) {
+      OrcSdk_TypeInfo const info = PLUGIN_TYPE_FN(input->type_id);
+      if (!_is_type_info_valid(&info)) {
+        return ORC_ERROR_TYPE_MISMATCH;
+      }
+      print_fn = info.snprint_fn;
+    }
+    else {
+      return ORC_ERROR_TYPE_MISMATCH;
+    }
+    break;
+  }
+  if (print_fn == NULL) {
+    print_fn = _snprint_fallback_fn;
+  }
+  // Allocate the output deck.
+  OrcError err = orc_sdk_handle_alloc(ORC_TYPE_U8, out);
+  if (err != ORC_ERROR_NONE) {
+    return err;
+  }
+  void    *combinations = orc_sdk_comb_init((OrcHandle const *[]) {input},
+                                         (uint8_t const[]) {0},
+                                         1,
+                                         (OrcHandle *[]) {out},
+                                         (uint8_t const[]) {1},
+                                         1);
+  OrcError status       = ORC_ERROR_NONE;
+  while (combinations) {
+    OrcSdk_DeckView input_view = orc_sdk_comb_get_input(combinations, 0);
+    ORC_SDK_REQUIRE(input_view.depth == 0);
+    if (orc_sdk_dv_len(&input_view) > 0) {
+      OrcSdk_DeckWriter *output_writer = orc_sdk_comb_get_output(combinations, 0);
+      void const        *item          = orc_sdk_dv_item_ptr(&input_view);
+      char               buf[256]      = {0};
+      print_fn(item, buf, 255);
+      size_t const count = strlen(buf);
+      char        *dst   = (char *)orc_sdk_dw_push_empty_many(output_writer, count);
+      if (dst == NULL) {
+        status = ORC_ERROR_ALLOC_FAILED;
+        break;
+      }
+      memcpy(dst, buf, count);
+    }
+    combinations = orc_sdk_comb_advance(combinations);
+  }
+  orc_sdk_comb_free(combinations);
+  orc_sdk_oh_update(out);
+  return status;
 }

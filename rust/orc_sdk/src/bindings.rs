@@ -370,3 +370,6 @@ unsafe extern "C" {
         out: *mut OrcHandle,
     ) -> OrcError;
 }
+unsafe extern "C" {
+    pub fn orc_deck_to_str(input: *const OrcHandle, out: *mut OrcHandle) -> OrcError;
+}
