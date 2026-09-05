@@ -193,6 +193,8 @@
   <2026-09-05 Sat 13:41> Also ended up threading the string conversion through all the Rust host /
   plugin machinery. Added a lot of tests. Ready to merge.
 
+  <2026-09-05 Sat 14:08> Forgot about the Python integration. Doing that now before merging.
+
 * CLOSED Deferred failures in niche scenarios
   CLOSED: [2026-09-04 Fri 17:26]
   :PROPERTIES:
