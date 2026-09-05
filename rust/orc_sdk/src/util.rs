@@ -1385,7 +1385,7 @@ mod tests {
         });
         w.flush().unwrap();
         MOCK_SINK.with_borrow(|sink| {
-            assert_eq!(&*sink, b"hello world");
+            assert_eq!(sink.as_slice(), "hello world".as_bytes());
         });
     }
 
