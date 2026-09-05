@@ -1,17 +1,17 @@
 use crate::{
-    Deck, DeckView, Error, ORC_ARGS_VARIADIC, ORC_MSG_LEVEL_DEBUG, ORC_MSG_LEVEL_ERROR,
-    ORC_MSG_LEVEL_FATAL, ORC_MSG_LEVEL_INFO, ORC_MSG_LEVEL_WARN, ORC_NUM_DIMS, ORC_TYPE_F32,
-    ORC_TYPE_F64, ORC_TYPE_I8, ORC_TYPE_I16, ORC_TYPE_I32, ORC_TYPE_I64, ORC_TYPE_U8, ORC_TYPE_U16,
-    ORC_TYPE_U32, ORC_TYPE_U64, OrcFuncInfo, OrcHandle, OrcHost, OrcHostCallbackAPI, OrcItemProxy,
-    OrcMark, OrcPluginFunction, OrcTypeId, OrcTypeInfo, ProxyType, deck::fmt_raw_deck,
-    ffi::TOrcData,
+    Combinations, Deck, DeckView, Error, ORC_ARGS_VARIADIC, ORC_MSG_LEVEL_DEBUG,
+    ORC_MSG_LEVEL_ERROR, ORC_MSG_LEVEL_FATAL, ORC_MSG_LEVEL_INFO, ORC_MSG_LEVEL_WARN, ORC_NUM_DIMS,
+    ORC_TYPE_F32, ORC_TYPE_F64, ORC_TYPE_I8, ORC_TYPE_I16, ORC_TYPE_I32, ORC_TYPE_I64, ORC_TYPE_U8,
+    ORC_TYPE_U16, ORC_TYPE_U32, ORC_TYPE_U64, OrcFuncInfo, OrcHandle, OrcHost, OrcHostCallbackAPI,
+    OrcItemProxy, OrcMark, OrcPluginFunction, OrcTypeId, OrcTypeInfo, ProxyType,
+    deck::fmt_raw_deck, ffi::TOrcData,
 };
 use std::{
     alloc::{GlobalAlloc, Layout, System},
     any::Any,
     collections::{HashMap, hash_map::Entry},
     ffi::{CStr, CString, c_void},
-    fmt::Display,
+    fmt::{Display, Write},
     marker::PhantomData,
     sync::{
         Arc, Mutex, RwLock,
@@ -871,6 +871,30 @@ pub fn try_deserialize_handle(
     let mut trailing = [0u8; 1];
     if r.read(&mut trailing).unwrap_or(1) != 0 {
         return Err(Vec::new());
+    }
+    Ok(())
+}
+
+// ==================== String Conversion ====================
+
+pub fn to_str_deck<T: TOrcData + Display>(
+    input: &OrcHandle,
+    out: &mut Deck<u8>,
+) -> Result<(), Error> {
+    out.clear();
+    let items = input.items::<T>();
+    let mut comb = Combinations::from_handles(std::slice::from_ref(input), &[0], &[1])?;
+    let mut buf = String::new();
+    loop {
+        let view = comb.get_input(items, 0);
+        let item: &T = view.as_ref();
+        buf.clear();
+        write!(buf, "{}", item).map_err(|_| Error::SerializationError)?;
+        let mut writer = comb.get_output(out, 0);
+        writer.extend_from_slice(buf.as_bytes());
+        if !comb.advance() {
+            break;
+        }
     }
     Ok(())
 }
