@@ -2569,12 +2569,81 @@ _ORC_SDK_DECLARE_SNPRINT_FUNC(i16, int16_t, "%d")
 _ORC_SDK_DECLARE_SNPRINT_FUNC(i32, int32_t, "%d")
 _ORC_SDK_DECLARE_SNPRINT_FUNC(i64, int64_t, "%" PRId64)
 
-OrcError orc_sdk_handle_to_str(OrcHandle const     *input,
-                               OrcHandle           *out,
-                               OrcSdk_SNPrintItemFn snprint_item)
+// Proxies are a bit different, so we cannot use the macro.
+void _snprint_proxy(void *item, char *dst, size_t len)
 {
-  (void)input;
-  (void)out;
-  (void)snprint_item;
+  OrcItemProxy const *proxy = (OrcItemProxy const *)item;
+  snprintf(dst, len, "%" PRIu64 ";%" PRIu64, proxy->tree, proxy->item);
+}
+
+OrcError orc_sdk_handle_to_str(OrcHandle const *input, OrcHandle *out)
+{
+  OrcSdk_SNPrintItemFn print_fn = NULL;
+  switch (input->type_id) {
+  case ORC_TYPE_U8:
+    print_fn = _snprint_u8;
+    break;
+  case ORC_TYPE_U16:
+    print_fn = _snprint_u16;
+    break;
+  case ORC_TYPE_U32:
+    print_fn = _snprint_u32;
+    break;
+  case ORC_TYPE_U64:
+    print_fn = _snprint_u64;
+    break;
+  case ORC_TYPE_F32:
+    print_fn = _snprint_f32;
+    break;
+  case ORC_TYPE_F64:
+    print_fn = _snprint_f64;
+    break;
+  case ORC_TYPE_I8:
+    print_fn = _snprint_i8;
+    break;
+  case ORC_TYPE_I16:
+    print_fn = _snprint_i16;
+    break;
+  case ORC_TYPE_I32:
+    print_fn = _snprint_i32;
+    break;
+  case ORC_TYPE_I64:
+    print_fn = _snprint_i64;
+    break;
+  case ORC_TYPE_PROXY:
+    print_fn = _snprint_proxy;
+    break;
+  default:
+    if (PLUGIN_TYPE_FN) {
+      OrcSdk_TypeInfo const info = PLUGIN_TYPE_FN(input->type_id);
+      if (!_is_type_info_valid(&info)) {
+        return ORC_ERROR_TYPE_MISMATCH;
+      }
+      print_fn = info.snprint_fn;
+    }
+    else {
+      return ORC_ERROR_TYPE_MISMATCH;
+    }
+    break;
+  }
+  ORC_SDK_REQUIRE_WITH_MSG(
+    print_fn != NULL, "Should never happen. Either find a print function, or error out.");
+  // Allocate the output deck.
+  OrcError err = orc_sdk_handle_alloc(ORC_TYPE_U8, out);
+  if (err != ORC_ERROR_NONE) {
+    return err;
+  }
+  void *combinations = orc_sdk_comb_init((OrcHandle const *[]) {input},
+                                         (uint8_t const[]) {0},
+                                         1,
+                                         (OrcHandle *[]) {out},
+                                         (uint8_t const[]) {1},
+                                         1);
+  while (combinations) {
+    OrcSdk_DeckView    input_view    = orc_sdk_comb_get_input(combinations, 0);
+    OrcSdk_DeckWriter *output_writer = orc_sdk_comb_get_output(combinations, 0);
+  }
+
   ORC_SDK_TODO("Not implemented");
+  return ORC_ERROR_NONE;
 }
