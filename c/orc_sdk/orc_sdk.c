@@ -2712,5 +2712,6 @@ OrcError orc_sdk_handle_to_str(OrcHandle const *input, OrcHandle *out)
     combinations = orc_sdk_comb_advance(combinations);
   }
   orc_sdk_comb_free(combinations);
+  orc_sdk_oh_update(out);
   return ORC_ERROR_NONE;
 }

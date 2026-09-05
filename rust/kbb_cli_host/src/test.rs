@@ -1,7 +1,7 @@
 use crate::{HANDLE_COUNTER, PLUGIN_SET, REGISTRY, SERIAL_CONTEXT_ARENA, host_clone_orc_handle};
 use orc_sdk::{
-    DagError, Deck, DeckView, IH, OH, ORC_TYPE_F64, OrcHandle, OrcTypeId, Plugin, TypeOwner,
-    Workflow, deck, orc_dag, orc_inline_dag, update_handle_from_deck,
+    DagError, Deck, DeckView, IH, OH, ORC_TYPE_F64, OrcHandle, OrcMark, OrcTypeId, Plugin,
+    TypeOwner, Workflow, deck, orc_dag, orc_inline_dag, update_handle_from_deck,
 };
 use std::sync::atomic::Ordering;
 
@@ -1243,8 +1243,8 @@ fn create_complex_handle(reals: &[f64], imags: &[f64]) -> OrcHandle {
     let create_complex = PLUGIN_SET
         .get_function("create_complex")
         .expect("create_complex not found");
-    let real_deck: Deck<f64> = Deck::from_raw_data(reals, &[]);
-    let imag_deck: Deck<f64> = Deck::from_raw_data(imags, &[]);
+    let real_deck: Deck<f64> = Deck::from_raw_data(reals, &[OrcMark { depth: 1, pos: 0 }]);
+    let imag_deck: Deck<f64> = Deck::from_raw_data(imags, &[OrcMark { depth: 1, pos: 0 }]);
     let real_h = make_handle(&real_deck);
     let imag_h = make_handle(&imag_deck);
     let mut out = OrcHandle {
@@ -1454,9 +1454,8 @@ fn t_serial_concurrent_serialization() {
 
 /// Helper: extract string slices from a depth-1 Deck<u8> handle (each group is one string).
 fn to_str_groups(handle: &OrcHandle) -> Vec<String> {
-    let view = DeckView::<u8>::from_handle(handle).unwrap();
-    view.child()
-        .advance_iter()
+    let view = DeckView::<u8>::from_handle_at_depth(handle, 1).unwrap();
+    view.advance_iter()
         .map(|v| String::from_utf8(v.as_slice().to_vec()).unwrap())
         .collect()
 }
@@ -1587,6 +1586,7 @@ fn t_deck_to_str_complex() {
     plugin
         .to_str_deck(&h, &mut out)
         .expect("to_str_deck on complex deck failed");
+    println!("{}", out.display::<u8>());
     let groups = to_str_groups(&out);
     assert_eq!(groups.len(), 2);
     // Verify each string contains the real and imaginary parts.
