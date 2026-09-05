@@ -4628,7 +4628,7 @@ static void test_orc_sdk_deck_simplify(void)
   }
 }
 
-void _print_size_t(void *item, char *dst, size_t len)
+void _print_size_t(void const *item, char *dst, size_t len)
 {
   size_t const val = *(size_t *)item;
   snprintf(dst, len, "%zu", val);
@@ -5515,18 +5515,6 @@ static void test_orc_sdk_dims_pow(void)
 }
 
 // ========== Plugin Functions ==========
-
-void _print_double(void *item, char *dst, size_t len)
-{
-  double const val = *(double *)item;
-  snprintf(dst, len, "%.2f", val);
-}
-
-void _print_uint32_t(void *item, char *dst, size_t len)
-{
-  uint32_t const val = *(uint32_t *)item;
-  snprintf(dst, len, "%d", val);
-}
 
 // This simulates a function that will lives inside the plugin DLL. It takes a
 // list<double>, a uin32_t and outputs the item from the list at that index.

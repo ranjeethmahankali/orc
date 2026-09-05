@@ -1411,9 +1411,9 @@ void orc_sdk_deck_simplify(void *ptr)
   orc_sdk_deck_calc_strides(h);
 }
 
-char *_orc_sdk_deck_to_str(void const  *ptr,
-                           size_t const item_size,
-                           void (*snprint_item)(void *item, char *dst, size_t len))
+char *_orc_sdk_deck_to_str(void const          *ptr,
+                           size_t const         item_size,
+                           OrcSdk_SNPrintItemFn snprint_item)
 {
   _OrcSdk_DeckHeader *h = _orc_sdk_deck_header(ptr);
   if (h == NULL)
