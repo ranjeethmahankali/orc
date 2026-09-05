@@ -1519,7 +1519,7 @@ static size_t _stride(OrcMark const  *marks,
   }
 }
 
-OrcSdk_DeckView _orc_sdk_dv_from_deck_impl(void         *ptr,
+OrcSdk_DeckView _orc_sdk_dv_from_deck_impl(void const   *ptr,
                                            size_t const  item_size,
                                            uint8_t const depth)
 {
