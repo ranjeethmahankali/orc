@@ -1170,7 +1170,7 @@ void *_orc_sdk_deck_push_empty_many(void         *ptr,
     h->item_size = itemsize;
     ptr          = (void *)(h + 1);
   }
-  else if (h->count == h->capacity) {
+  else if ((h->count + count) >= h->capacity) {
     size_t growth = h->capacity;
     if (growth < count) {
       growth = count;
@@ -2626,6 +2626,12 @@ void _snprint_proxy(void const *item, char *dst, size_t len)
   snprintf(dst, len, "%" PRIu64 ";%" PRIu64, proxy->tree, proxy->item);
 }
 
+void _snprint_fallback_fn(void const *item, char *dst, size_t len)
+{
+  (void)item;
+  snprintf(dst, len, "<item>");
+}
+
 OrcError orc_sdk_handle_to_str(OrcHandle const *input, OrcHandle *out)
 {
   OrcSdk_SNPrintItemFn print_fn = NULL;
@@ -2676,8 +2682,9 @@ OrcError orc_sdk_handle_to_str(OrcHandle const *input, OrcHandle *out)
     }
     break;
   }
-  ORC_SDK_REQUIRE_WITH_MSG(
-    print_fn != NULL, "Should never happen. Either find a print function, or error out.");
+  if (print_fn == NULL) {
+    print_fn = _snprint_fallback_fn;
+  }
   // Allocate the output deck.
   OrcError err = orc_sdk_handle_alloc(ORC_TYPE_U8, out);
   if (err != ORC_ERROR_NONE) {
@@ -2698,7 +2705,12 @@ OrcError orc_sdk_handle_to_str(OrcHandle const *input, OrcHandle *out)
     print_fn(item, buf, 255);
     size_t const count = strlen(buf);
     char        *dst   = (char *)orc_sdk_dw_push_empty_many(output_writer, count);
+    if (dst == NULL) {
+      return ORC_ERROR_ALLOC_FAILED;
+    }
     memcpy(dst, buf, count);
+    combinations = orc_sdk_comb_advance(combinations);
   }
+  orc_sdk_comb_free(combinations);
   return ORC_ERROR_NONE;
 }
