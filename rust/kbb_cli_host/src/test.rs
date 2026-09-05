@@ -1,7 +1,7 @@
 use crate::{HANDLE_COUNTER, PLUGIN_SET, REGISTRY, SERIAL_CONTEXT_ARENA, host_clone_orc_handle};
 use orc_sdk::{
-    DagError, Deck, DeckView, IH, OH, OrcHandle, OrcTypeId, Plugin, TypeOwner, Workflow, deck,
-    orc_dag, orc_inline_dag, update_handle_from_deck,
+    DagError, Deck, DeckView, IH, OH, ORC_TYPE_F64, OrcHandle, OrcTypeId, Plugin, TypeOwner,
+    Workflow, deck, orc_dag, orc_inline_dag, update_handle_from_deck,
 };
 use std::sync::atomic::Ordering;
 
@@ -1448,4 +1448,149 @@ fn t_serial_concurrent_serialization() {
             .expect("deserialize buf2 failed");
         assert_eq!(out2.items::<i32>(), &[-10, 20, -30, 40, -50]);
     });
+}
+
+// ==================== deck_to_str integration tests ====================
+
+/// Helper: extract string slices from a depth-1 Deck<u8> handle (each group is one string).
+fn to_str_groups(handle: &OrcHandle) -> Vec<String> {
+    let view = DeckView::<u8>::from_handle(handle).unwrap();
+    view.child()
+        .advance_iter()
+        .map(|v| String::from_utf8(v.as_slice().to_vec()).unwrap())
+        .collect()
+}
+
+#[test]
+fn t_deck_to_str_u32_flat() {
+    let d = deck![42_u32, 100, 0];
+    let h = make_handle(&d);
+    let mut out = OrcHandle {
+        handle: next_id(),
+        ..Default::default()
+    };
+    plugin_for_type(h.type_id)
+        .to_str_deck(&h, &mut out)
+        .expect("to_str_deck failed");
+    assert_eq!(to_str_groups(&out), &["42", "100", "0"]);
+}
+
+#[test]
+fn t_deck_to_str_f64_flat() {
+    let d = deck![1.5_f64, -2.0];
+    let h = make_handle(&d);
+    let mut out = OrcHandle {
+        handle: next_id(),
+        ..Default::default()
+    };
+    plugin_for_type(h.type_id)
+        .to_str_deck(&h, &mut out)
+        .expect("to_str_deck failed");
+    let groups = to_str_groups(&out);
+    assert_eq!(groups.len(), 2);
+    assert!(groups[0].starts_with("1.5"), "got: {}", groups[0]);
+    assert!(groups[1].starts_with("-2"), "got: {}", groups[1]);
+}
+
+#[test]
+fn t_deck_to_str_i64_flat() {
+    let d = deck![i64::MIN, 0_i64, i64::MAX];
+    let h = make_handle(&d);
+    let mut out = OrcHandle {
+        handle: next_id(),
+        ..Default::default()
+    };
+    plugin_for_type(h.type_id)
+        .to_str_deck(&h, &mut out)
+        .expect("to_str_deck failed");
+    assert_eq!(
+        to_str_groups(&out),
+        &[i64::MIN.to_string(), "0".to_string(), i64::MAX.to_string()]
+    );
+}
+
+#[test]
+fn t_deck_to_str_nested() {
+    let d: Deck<f64> = deck![[10.0, 20.0], [30.0]];
+    let h = make_handle(&d);
+    let mut out = OrcHandle {
+        handle: next_id(),
+        ..Default::default()
+    };
+    plugin_for_type(h.type_id)
+        .to_str_deck(&h, &mut out)
+        .expect("to_str_deck failed");
+    let view = DeckView::<u8>::from_handle(&out).unwrap();
+    // Input depth 2 + output depth 1 = output depth 3.
+    assert_eq!(view.depth(), 3);
+    let top = view.child();
+    let groups: Vec<Vec<String>> = top
+        .advance_iter()
+        .map(|group| {
+            group
+                .child()
+                .advance_iter()
+                .map(|s| String::from_utf8(s.as_slice().to_vec()).unwrap())
+                .collect()
+        })
+        .collect();
+    assert_eq!(groups.len(), 2);
+    assert!(groups[0][0].starts_with("10"));
+    assert!(groups[0][1].starts_with("20"));
+    assert!(groups[1][0].starts_with("30"));
+}
+
+#[test]
+fn t_deck_to_str_empty() {
+    let d: Deck<f64> = Deck::default();
+    let h = make_handle(&d);
+    let mut out = OrcHandle {
+        handle: next_id(),
+        ..Default::default()
+    };
+    plugin_for_type(ORC_TYPE_F64)
+        .to_str_deck(&h, &mut out)
+        .expect("to_str_deck on empty deck should succeed");
+}
+
+#[test]
+fn t_deck_to_str_every_plugin_handles_builtin() {
+    let plugins = PLUGIN_SET.plugins();
+    let d = deck![42_u32, 7, 0];
+    let h = make_handle(&d);
+    for (i, plugin) in plugins.iter().enumerate() {
+        let mut out = OrcHandle {
+            handle: next_id(),
+            ..Default::default()
+        };
+        plugin
+            .to_str_deck(&h, &mut out)
+            .unwrap_or_else(|e| panic!("plugin {} ({}) failed: {e:?}", i, plugin.name()));
+        assert_eq!(
+            to_str_groups(&out),
+            &["42", "7", "0"],
+            "plugin {} ({})",
+            i,
+            plugin.name()
+        );
+    }
+}
+
+#[test]
+fn t_deck_to_str_complex() {
+    let h = create_complex_handle(&[3.0, -1.0], &[4.0, 0.0]);
+    let plugin = plugin_for_type(h.type_id);
+    let mut out = OrcHandle {
+        handle: next_id(),
+        ..Default::default()
+    };
+    plugin
+        .to_str_deck(&h, &mut out)
+        .expect("to_str_deck on complex deck failed");
+    let groups = to_str_groups(&out);
+    assert_eq!(groups.len(), 2);
+    // Verify each string contains the real and imaginary parts.
+    assert!(groups[0].contains("3"), "got: {}", groups[0]);
+    assert!(groups[0].contains("4"), "got: {}", groups[0]);
+    assert!(groups[1].contains("-1"), "got: {}", groups[1]);
 }
