@@ -2,6 +2,7 @@
 
 #include <assert.h>
 #include <ctype.h>
+#include <inttypes.h>
 #include <limits.h>
 #include <orc_abi.h>
 #include <stdbool.h>
@@ -1605,7 +1606,7 @@ void const *orc_sdk_dv_item_ptr(OrcSdk_DeckView const *const v)
 
 uint8_t _orc_sdk_dw_next_depth(OrcSdk_DeckWriter *writer)
 {
-  assert(writer != NULL);
+  ORC_SDK_REQUIRE(writer != NULL);
   if (writer->has_next_depth) {
     writer->has_next_depth = false;
     return writer->next_depth;
@@ -1639,6 +1640,29 @@ OrcError _orc_sdk_dw_push_impl(OrcSdk_DeckWriter *writer, void *item)
   *(writer->deck) = _orc_sdk_deck_push_impl(
     *(writer->deck), item, writer->item_size, _orc_sdk_dw_next_depth(writer));
   return *(writer->deck) == NULL ? ORC_ERROR_ALLOC_FAILED : ORC_ERROR_NONE;
+}
+
+void orc_sdk_dw_start_new_arr(OrcSdk_DeckWriter *writer, uint8_t const depth)
+{
+  if (writer == NULL) {
+    return;
+  }
+  if (writer->has_next_depth) {
+    if (writer->next_depth < depth) {
+      // We just push the mark at the depth that is already there, before pushing the
+      // next.
+      size_t const        count  = orc_sdk_dw_len(writer);
+      _OrcSdk_DeckHeader *header = _orc_sdk_deck_header(*(writer->deck));
+      _orc_sdk_deck_push_mark(header, writer->next_depth, count);
+      writer->next_depth = depth;
+    }
+    // If the given depth is smaller than what we already have queued up, then we don't
+    // need to do anything.
+  }
+  else {
+    writer->next_depth     = depth;
+    writer->has_next_depth = true;
+  }
 }
 
 OrcError orc_sdk_dw_close(OrcSdk_DeckWriter *writer)
@@ -2524,6 +2548,24 @@ OrcError orc_sdk_deserialize_handle_header(uint64_t const ctx,
 }
 
 // ========== String conversion ==========
+
+#define _ORC_SDK_DECLARE_SNPRINT_FUNC(suffix, ctype, fmtstr) \
+  void _snprint_##suffix(void *item, char *dst, size_t len)  \
+  {                                                          \
+    ctype const val = *(ctype *)item;                        \
+    snprintf(dst, len, fmtstr, val);                         \
+  }
+
+_ORC_SDK_DECLARE_SNPRINT_FUNC(u8, uint8_t, "%u")
+_ORC_SDK_DECLARE_SNPRINT_FUNC(u16, uint16_t, "%u")
+_ORC_SDK_DECLARE_SNPRINT_FUNC(u32, uint32_t, "%u")
+_ORC_SDK_DECLARE_SNPRINT_FUNC(u64, uint64_t, "%" PRIu64)
+_ORC_SDK_DECLARE_SNPRINT_FUNC(f32, float, "%.6f")
+_ORC_SDK_DECLARE_SNPRINT_FUNC(f64, double, "%.6f")
+_ORC_SDK_DECLARE_SNPRINT_FUNC(i8, int8_t, "%d")
+_ORC_SDK_DECLARE_SNPRINT_FUNC(i16, int16_t, "%d")
+_ORC_SDK_DECLARE_SNPRINT_FUNC(i32, int32_t, "%d")
+_ORC_SDK_DECLARE_SNPRINT_FUNC(i64, int64_t, "%" PRId64)
 
 OrcError orc_sdk_handle_to_str(OrcHandle const     *input,
                                OrcHandle           *out,

@@ -837,6 +837,8 @@ uint8_t _orc_sdk_dw_next_depth(OrcSdk_DeckWriter *writer);
 
 OrcError _orc_sdk_dw_push_impl(OrcSdk_DeckWriter *writer, void *item);
 
+void orc_sdk_dw_start_new_arr(OrcSdk_DeckWriter *writer, uint8_t const depth);
+
 #define orc_sdk_dw_push(writer, item) (_orc_sdk_dw_push_impl((writer), &(item)))
 
 void *orc_sdk_dw_push_empty(OrcSdk_DeckWriter *writer);
