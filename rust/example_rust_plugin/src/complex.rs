@@ -1,5 +1,6 @@
 use crate::{host_callbacks, registry};
 use orc_sdk::{OrcTypeId, TOrcData, orc_fn};
+use std::fmt::Display;
 
 #[derive(Default, Clone, Debug, PartialEq)]
 pub struct Complex {
@@ -40,6 +41,12 @@ impl Complex {
             out.push(Complex { real, imag });
         }
         Ok(out)
+    }
+}
+
+impl Display for Complex {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} + {}i", self.real, self.imag)
     }
 }
 
