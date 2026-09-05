@@ -7036,6 +7036,27 @@ static void test_handle_to_str_unknown_type(void)
   TEST_ASSERT_TRUE(err == ORC_ERROR_TYPE_MISMATCH);
 }
 
+static void test_handle_to_str_empty(void)
+{
+  orc_sdk_init(NULL, NULL);
+  OrcHandle input = {0};
+  input.handle    = 300;
+  orc_sdk_handle_alloc(ORC_TYPE_U32, &input);
+  // items is NULL, n_items is 0 — empty deck.
+  orc_sdk_oh_update(&input);
+  TEST_ASSERT_TRUE(input.n_items == 0);
+  OrcHandle out = {0};
+  out.handle    = 301;
+  OrcError err  = orc_sdk_handle_to_str(&input, &out);
+  TEST_ASSERT_TRUE(err == ORC_ERROR_NONE);
+  orc_sdk_oh_update(&out);
+  TEST_ASSERT_TRUE(out.type_id == ORC_TYPE_U8);
+  // Output should have no items.
+  TEST_ASSERT_TRUE(out.n_items == 0);
+  orc_sdk_handle_free(&input);
+  orc_sdk_handle_free(&out);
+}
+
 void setUp(void) {}
 void tearDown(void) {}
 
@@ -7220,5 +7241,6 @@ int main(void)
   RUN_TEST(test_handle_to_str_u32);
   RUN_TEST(test_handle_to_str_f64);
   RUN_TEST(test_handle_to_str_unknown_type);
+  RUN_TEST(test_handle_to_str_empty);
   return UNITY_END();
 }
