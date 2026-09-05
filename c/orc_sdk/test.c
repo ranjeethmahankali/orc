@@ -6961,6 +6961,81 @@ static void test_dw_start_new_arr_null_writer(void)
   orc_sdk_dw_start_new_arr(NULL, 1);
 }
 
+static void test_handle_to_str_u32(void)
+{
+  orc_sdk_init(NULL, NULL);
+  OrcHandle input = {0};
+  input.handle    = 100;
+  orc_sdk_handle_alloc(ORC_TYPE_U32, &input);
+  ORC_SDK_DECK_INIT(input.items, uint32_t, (42, 100, 0));
+  orc_sdk_oh_update(&input);
+  OrcHandle out = {0};
+  out.handle    = 101;
+  OrcError err  = orc_sdk_handle_to_str(&input, &out);
+  TEST_ASSERT_TRUE(err == ORC_ERROR_NONE);
+  orc_sdk_oh_update(&out);
+  // Output should be a depth-1 deck of u8 with 3 sub-arrays: "42", "100", "0".
+  TEST_ASSERT_TRUE(out.type_id == ORC_TYPE_U8);
+  OrcSdk_DeckView v          = orc_sdk_dv_from_deck((uint8_t *)out.items, 1);
+  char const     *expected[] = {"42", "100", "0"};
+  for (int i = 0; i < 3; ++i) {
+    size_t const len   = orc_sdk_dv_len(&v);
+    char const  *chars = orc_sdk_dv_item_ptr(&v);
+    TEST_ASSERT_TRUE(len == strlen(expected[i]));
+    TEST_ASSERT_TRUE(memcmp(chars, expected[i], len) == 0);
+    if (i < 2)
+      TEST_ASSERT_TRUE(orc_sdk_dv_advance(&v));
+  }
+  TEST_ASSERT_TRUE(!orc_sdk_dv_advance(&v));
+  orc_sdk_handle_free(&input);
+  orc_sdk_handle_free(&out);
+}
+
+static void test_handle_to_str_f64(void)
+{
+  orc_sdk_init(NULL, NULL);
+  OrcHandle input = {0};
+  input.handle    = 200;
+  orc_sdk_handle_alloc(ORC_TYPE_F64, &input);
+  ORC_SDK_DECK_INIT(input.items, double, (1.5, -2.0));
+  orc_sdk_oh_update(&input);
+  OrcHandle out = {0};
+  out.handle    = 201;
+  OrcError err  = orc_sdk_handle_to_str(&input, &out);
+  TEST_ASSERT_TRUE(err == ORC_ERROR_NONE);
+  orc_sdk_oh_update(&out);
+  TEST_ASSERT_TRUE(out.type_id == ORC_TYPE_U8);
+  // Verify first item starts with "1.5"
+  OrcSdk_DeckView v = orc_sdk_dv_from_deck((uint8_t *)out.items, 1);
+  {
+    size_t const len = orc_sdk_dv_len(&v);
+    char const  *s   = orc_sdk_dv_item_ptr(&v);
+    TEST_ASSERT_TRUE(len > 0);
+    TEST_ASSERT_TRUE(memcmp(s, "1.5", 3) == 0);
+  }
+  // Second item starts with "-2.0"
+  TEST_ASSERT_TRUE(orc_sdk_dv_advance(&v));
+  {
+    size_t const len = orc_sdk_dv_len(&v);
+    char const  *s   = orc_sdk_dv_item_ptr(&v);
+    TEST_ASSERT_TRUE(len > 0);
+    TEST_ASSERT_TRUE(memcmp(s, "-2.0", 4) == 0);
+  }
+  TEST_ASSERT_TRUE(!orc_sdk_dv_advance(&v));
+  orc_sdk_handle_free(&input);
+  orc_sdk_handle_free(&out);
+}
+
+static void test_handle_to_str_unknown_type(void)
+{
+  orc_sdk_init(NULL, NULL);
+  OrcHandle input = {0};
+  input.type_id   = 9999;
+  OrcHandle out   = {0};
+  OrcError  err   = orc_sdk_handle_to_str(&input, &out);
+  TEST_ASSERT_TRUE(err == ORC_ERROR_TYPE_MISMATCH);
+}
+
 void setUp(void) {}
 void tearDown(void) {}
 
@@ -7142,5 +7217,8 @@ int main(void)
   RUN_TEST(test_dw_push_empty_many_growth);
   RUN_TEST(test_dw_start_new_arr_basic);
   RUN_TEST(test_dw_start_new_arr_null_writer);
+  RUN_TEST(test_handle_to_str_u32);
+  RUN_TEST(test_handle_to_str_f64);
+  RUN_TEST(test_handle_to_str_unknown_type);
   return UNITY_END();
 }
