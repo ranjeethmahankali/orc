@@ -180,7 +180,9 @@ impl TOrcPluginAdaptor for Adaptor {
                     complex::COMPLEX_NUM_TYPE_ID => to_str_deck::<complex::Complex>(input, deck),
                     _ => Err(Error::DeckTypeMismatch),
                 };
-                unsafe { orc_sdk::update_handle_from_deck(deck, out) };
+                if result.is_ok() {
+                    unsafe { orc_sdk::update_handle_from_deck(deck, out) };
+                }
                 result
             })
             .flatten()

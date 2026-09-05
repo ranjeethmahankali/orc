@@ -2696,6 +2696,7 @@ OrcError orc_sdk_handle_to_str(OrcHandle const *input, OrcHandle *out)
                                          (OrcHandle *[]) {out},
                                          (uint8_t const[]) {1},
                                          1);
+  OrcError status = ORC_ERROR_NONE;
   while (combinations) {
     OrcSdk_DeckView input_view = orc_sdk_comb_get_input(combinations, 0);
     ORC_SDK_REQUIRE(input_view.depth == 0);
@@ -2706,12 +2707,13 @@ OrcError orc_sdk_handle_to_str(OrcHandle const *input, OrcHandle *out)
     size_t const count = strlen(buf);
     char        *dst   = (char *)orc_sdk_dw_push_empty_many(output_writer, count);
     if (dst == NULL) {
-      return ORC_ERROR_ALLOC_FAILED;
+      status = ORC_ERROR_ALLOC_FAILED;
+      break;
     }
     memcpy(dst, buf, count);
     combinations = orc_sdk_comb_advance(combinations);
   }
   orc_sdk_comb_free(combinations);
   orc_sdk_oh_update(out);
-  return ORC_ERROR_NONE;
+  return status;
 }
