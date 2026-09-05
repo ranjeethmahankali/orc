@@ -1170,7 +1170,7 @@ void *_orc_sdk_deck_push_empty_many(void         *ptr,
     h->item_size = itemsize;
     ptr          = (void *)(h + 1);
   }
-  else if ((h->count + count) >= h->capacity) {
+  else if ((h->count + count) > h->capacity) {
     size_t growth = h->capacity;
     if (growth < count) {
       growth = count;
