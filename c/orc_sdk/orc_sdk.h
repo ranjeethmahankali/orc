@@ -643,9 +643,11 @@ void orc_sdk_deck_simplify(void *ptr);
 
 void orc_sdk_deck_calc_strides(_OrcSdk_DeckHeader *h);
 
-char *_orc_sdk_deck_to_str(void const  *ptr,
-                           size_t const item_size,
-                           void (*snprint_item)(void *item, char *dst, size_t len));
+typedef void (*OrcSdk_SNPrintItemFn)(void const *item, char *dst, size_t len);
+
+char *_orc_sdk_deck_to_str(void const          *ptr,
+                           size_t const         item_size,
+                           OrcSdk_SNPrintItemFn snprint_item);
 
 #define orc_sdk_deck_to_str(ptr, snprint_item) \
   _orc_sdk_deck_to_str((ptr), sizeof(*(ptr)), snprint_item)
@@ -783,7 +785,7 @@ typedef struct
   size_t          end;
 } OrcSdk_DeckView;
 
-OrcSdk_DeckView _orc_sdk_dv_from_deck_impl(void         *ptr,
+OrcSdk_DeckView _orc_sdk_dv_from_deck_impl(void const   *ptr,
                                            size_t const  item_size,
                                            uint8_t const depth);
 
@@ -835,9 +837,13 @@ uint8_t _orc_sdk_dw_next_depth(OrcSdk_DeckWriter *writer);
 
 OrcError _orc_sdk_dw_push_impl(OrcSdk_DeckWriter *writer, void *item);
 
+void orc_sdk_dw_start_new_arr(OrcSdk_DeckWriter *writer, uint8_t const depth);
+
 #define orc_sdk_dw_push(writer, item) (_orc_sdk_dw_push_impl((writer), &(item)))
 
 void *orc_sdk_dw_push_empty(OrcSdk_DeckWriter *writer);
+
+void *orc_sdk_dw_push_empty_many(OrcSdk_DeckWriter *writer, size_t const count);
 
 static inline void *orc_sdk_deck_item_ptr(OrcSdk_DeckWriter *writer)
 {
@@ -905,19 +911,20 @@ OrcError orc_sdk_host_serial_write(uint64_t const ctx,
 
 // ========== ABI helpers ==========
 
-typedef void (*ItemFreeFn)(void *);
-typedef void (*CopyItemsFn)(void const *src, void *dst, size_t const n_items);
+typedef void (*OrcSdk_ItemFreeFn)(void *);
+typedef void (*OrcSdk_CopyItemsFn)(void const *src, void *dst, size_t const n_items);
 
 typedef struct
 {
-  uint64_t    item_size;  // Must be non zero.
-  CopyItemsFn copy_fn;    // Must be non-NULL.
-  ItemFreeFn  free_fn;    // NULL for value types that don't own any resources.
-} OrcSdkTypeInfo;
+  uint64_t             item_size;   // Must be non zero.
+  OrcSdk_CopyItemsFn   copy_fn;     // Must be non-NULL.
+  OrcSdk_ItemFreeFn    free_fn;     // NULL for value types that don't own any resources.
+  OrcSdk_SNPrintItemFn snprint_fn;  // NULL for types that cannot be printed.
+} OrcSdk_TypeInfo;
 
-typedef OrcSdkTypeInfo (*OrcSdkTypeCallbacksGetterFn)(OrcTypeId const id);
+typedef OrcSdk_TypeInfo (*OrcSdk_TypeCallbacksGetterFn)(OrcTypeId const id);
 
-void orc_sdk_init(OrcHost const *host, OrcSdkTypeCallbacksGetterFn type_fn);
+void orc_sdk_init(OrcHost const *host, OrcSdk_TypeCallbacksGetterFn type_fn);
 
 OrcError orc_sdk_handle_alloc(OrcTypeId const type_id, OrcHandle *const out);
 
@@ -937,3 +944,6 @@ OrcError orc_sdk_deserialize_handle_header(uint64_t const ctx,
                                            OrcStrView    *src,
                                            OrcHandle     *out,
                                            OrcMark      **out_marks);
+// ========== Other helpers ==========
+
+OrcError orc_sdk_handle_to_str(OrcHandle const *input, OrcHandle *out);

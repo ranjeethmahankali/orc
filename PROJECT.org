@@ -22,37 +22,6 @@
    :CREATED:  2026-06-06 Sat 19:28
    :END:
 
-* TODO Deferred failures in niche scenarios
-  :PROPERTIES:
-  :CREATED:  2026-06-07 Sun 07:55
-  :END:
-
-  If we want to migrate to a nicer system that does more things at runtime
-  instead of compile time, in some very niche scenarios, we MAY have to live
-  with not knowing type mismatch errors before running some functions. This is
-  only the case with types that use some type of polymorphism.
-
-* TODO Thread Safety in C SDK
-  :PROPERTIES:
-  :CREATED:  2026-06-07 Sun 15:12
-  :END:
-
-  Whenever the plugin code receives an output handle from the host, it has to
-  verify that the output handle was allocated in the same plugin. Otherwise it
-  is unsafe to write into that memory address. If it came from another plugin,
-  then this plugin cannot know anything about the datatype or memory layout. To
-  check for this, each plugin likely needs to keep a global list of allocated
-  decks, and ensure the output handle matches one of them. Access to this global
-  list should be thread safe, since the host can call the plugin functions from
-  any thread.
-
-  While this is trivial to do in C++ and Rust, it is not trivial to do in a
-  cross platform manner in C. For now, I just have a dummy check that always
-  returns true (safe). This is good enough for a prototype, but at some point we
-  need to figure out a good cross platform thread API for our C SDK.
-
-  Should the host provide the thread API too? How does Parasolid handle it?
-
 * TODO Objectify Test
   :PROPERTIES:
   :CREATED:  2026-06-07 Sun 15:19
@@ -164,7 +133,16 @@
   Maybe I can write a rasterizer for my curve types, and somehow get the optimizer to export images
   of the sample points in the design space, so that I can visualize them when viewing the DOE.
 
-* TODO Node Editor UI App
+* TODO Overhaul of workflow property serialization
+  :PROPERTIES:
+  :CREATED:  2026-09-05 Sat 12:41
+  :END:
+
+  The UI app will need to save it's own properties that don't mean anything to any other host app,
+  so the property serialization needs to be way more generic. Currently each relevant property is
+  serialized explicitly. That is not good enough.
+
+* TODO tkuzn6 - Node Editor UI App
   :PROPERTIES:
   :CREATED:  2026-08-26 Wed 10:47
   :END:
@@ -178,6 +156,8 @@
   a general viewer, since it only displays a single output, with no need for concepts such as
   selection.
 
+  <2026-09-04 Fri 18:49> I need a way to display the decks. So I decided to do [[*tkv3ek - Deck to String Conversion for Display][this task]] first.
+
 ** Vague sketch using egui + eframe + wgpu
    :PROPERTIES:
    :CREATED:  2026-08-26 Wed 11:22
@@ -190,6 +170,76 @@
    code runs in a browser tab — the only difference is that pop-out becomes a floating panel
    instead of an OS window. The whole stack compiles to both native and WASM without forking the
    codebase.
+
+* DONE tkv3ek - Deck to String Conversion for Display
+  CLOSED: [2026-09-05 Sat 13:41]
+  :PROPERTIES:
+  :CREATED:  2026-09-04 Fri 18:48
+  :END:
+  :LOGBOOK:
+  - State "DONE"       from "NEXT"       [2026-09-05 Sat 13:41]
+  - State "NEXT"       from "TODO"       [2026-09-04 Fri 18:53]
+  :END:
+
+  This is very useful, and the bar for implementing is so low, that it should be part of the ABI.
+
+  <2026-09-05 Sat 13:15> Got the C side of things working yesterday. Added tests. Implemented the
+  Rust side of things today. Adding tests now. Will try to get this merged after that.
+
+  The basic design for string conversion across the FFI boundary is figured out. I could add more
+  utilities and helpers, but I prefer not to add those in vacuum. Instead, I should add those when I
+  implement apps and features that use the string conversion.
+
+  <2026-09-05 Sat 13:41> Also ended up threading the string conversion through all the Rust host /
+  plugin machinery. Added a lot of tests. Ready to merge.
+
+  <2026-09-05 Sat 14:08> Forgot about the Python integration. Doing that now before merging.
+
+  <2026-09-05 Sat 14:34> Python integration done. Test coverage added. Linter warnings fixed.
+
+* CLOSED Deferred failures in niche scenarios
+  CLOSED: [2026-09-04 Fri 17:26]
+  :PROPERTIES:
+  :CREATED:  2026-06-07 Sun 07:55
+  :END:
+  :LOGBOOK:
+  - State "CLOSED"     from "TODO"       [2026-09-04 Fri 17:26]
+  :END:
+
+  If we want to migrate to a nicer system that does more things at runtime
+  instead of compile time, in some very niche scenarios, we MAY have to live
+  with not knowing type mismatch errors before running some functions. This is
+  only the case with types that use some type of polymorphism.
+
+  <2026-09-04 Fri 17:26> This is not interesting at this time.
+
+* CLOSED Thread Safety in C SDK
+  CLOSED: [2026-09-04 Fri 17:25]
+  :PROPERTIES:
+  :CREATED:  2026-06-07 Sun 15:12
+  :END:
+  :LOGBOOK:
+  - State "CLOSED"     from "TODO"       [2026-09-04 Fri 17:25]
+  :END:
+
+  Whenever the plugin code receives an output handle from the host, it has to
+  verify that the output handle was allocated in the same plugin. Otherwise it
+  is unsafe to write into that memory address. If it came from another plugin,
+  then this plugin cannot know anything about the datatype or memory layout. To
+  check for this, each plugin likely needs to keep a global list of allocated
+  decks, and ensure the output handle matches one of them. Access to this global
+  list should be thread safe, since the host can call the plugin functions from
+  any thread.
+
+  While this is trivial to do in C++ and Rust, it is not trivial to do in a
+  cross platform manner in C. For now, I just have a dummy check that always
+  returns true (safe). This is good enough for a prototype, but at some point we
+  need to figure out a good cross platform thread API for our C SDK.
+
+  Should the host provide the thread API too? How does Parasolid handle it?
+
+  <2026-09-04 Fri 17:25> This task is outdated, based on an old design. This is not relevant
+  anymore.
 
 * DONE tkuwku - Download workflow from the server
   CLOSED: [2026-09-04 Fri 17:17]

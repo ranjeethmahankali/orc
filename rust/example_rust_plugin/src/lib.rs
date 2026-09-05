@@ -4,7 +4,7 @@ use orc_sdk::{
     ORC_TYPE_I8, ORC_TYPE_I16, ORC_TYPE_I32, ORC_TYPE_I64, ORC_TYPE_U8, ORC_TYPE_U16, ORC_TYPE_U32,
     ORC_TYPE_U64, OrcFuncInfo, OrcHandle, OrcHost, OrcHostCallbackAPI, OrcPlugin, OrcTypeId,
     OrcTypeInfo, ProxyType, TOrcData, TOrcPluginAdaptor, deck_from_proxy, orc_fn_info, orc_plugin,
-    reset_handle,
+    reset_handle, to_str_deck,
 };
 use std::sync::{LazyLock, OnceLock};
 
@@ -156,6 +156,36 @@ impl TOrcPluginAdaptor for Adaptor {
             return Err(Error::SerializationError);
         }
         Ok(())
+    }
+
+    fn deck_to_str(input: &OrcHandle, out: &mut OrcHandle) -> Result<(), Error> {
+        REGISTRY.alloc::<u8>(out)?;
+        let type_id = input.type_id;
+        REGISTRY
+            .with_mut(&[out.handle], |decks| -> Result<(), Error> {
+                let deck = decks[0]
+                    .downcast_mut::<Deck<u8>>()
+                    .ok_or(Error::DeckTypeMismatch)?;
+                let result = match type_id {
+                    ORC_TYPE_U8 => to_str_deck::<u8>(input, deck),
+                    ORC_TYPE_U16 => to_str_deck::<u16>(input, deck),
+                    ORC_TYPE_U32 => to_str_deck::<u32>(input, deck),
+                    ORC_TYPE_U64 => to_str_deck::<u64>(input, deck),
+                    ORC_TYPE_I8 => to_str_deck::<i8>(input, deck),
+                    ORC_TYPE_I16 => to_str_deck::<i16>(input, deck),
+                    ORC_TYPE_I32 => to_str_deck::<i32>(input, deck),
+                    ORC_TYPE_I64 => to_str_deck::<i64>(input, deck),
+                    ORC_TYPE_F32 => to_str_deck::<f32>(input, deck),
+                    ORC_TYPE_F64 => to_str_deck::<f64>(input, deck),
+                    complex::COMPLEX_NUM_TYPE_ID => to_str_deck::<complex::Complex>(input, deck),
+                    _ => Err(Error::DeckTypeMismatch),
+                };
+                if result.is_ok() {
+                    unsafe { orc_sdk::update_handle_from_deck(deck, out) };
+                }
+                result
+            })
+            .flatten()
     }
 }
 

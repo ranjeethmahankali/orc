@@ -729,7 +729,17 @@ impl<'a, T: TOrcData> DeckView<'a, T> {
         // # SAFETY: We just checked the type id. Not a water tight test if we're accessing this
         // data over the FFI boundary, but this is as safe as I can think of making this code at
         // this time.
-        Ok(unsafe { Self::from_handle_unchecked(handle) })
+        Ok(unsafe { Self::from_handle_unchecked(handle, None) })
+    }
+
+    pub fn from_handle_at_depth(handle: &'a OrcHandle, depth: u8) -> Result<Self, Error> {
+        if handle.type_id != T::TYPE_INFO.type_id {
+            return Err(Error::DeckTypeMismatch);
+        }
+        // # SAFETY: We just checked the type id. Not a water tight test if we're accessing this
+        // data over the FFI boundary, but this is as safe as I can think of making this code at
+        // this time.
+        Ok(unsafe { Self::from_handle_unchecked(handle, Some(depth)) })
     }
 
     /// Create a deckview from the handle. This is unsafe because `handle.items` is cast directly to
@@ -739,7 +749,7 @@ impl<'a, T: TOrcData> DeckView<'a, T> {
     ///
     /// The caller is responsible for making sure that the items pointer actually points to data of
     /// type T, and that `handle.type_id` matches the id of type `T`.
-    pub unsafe fn from_handle_unchecked(handle: &'a OrcHandle) -> Self {
+    unsafe fn from_handle_unchecked(handle: &'a OrcHandle, requested_depth: Option<u8>) -> Self {
         let (items, marks, stride_offset, strides) = unsafe {
             let items = slice_from_ptr(handle.items.cast(), handle.n_items as usize);
             let marks = slice_from_ptr(handle.marks, handle.n_marks as usize);
@@ -747,7 +757,10 @@ impl<'a, T: TOrcData> DeckView<'a, T> {
             let strides = slice_from_ptr(handle.strides, calc_stride_count(marks, stride_offset));
             (items, marks, stride_offset, strides)
         };
-        let depth = marks.first().map(|m| m.depth + 1).unwrap_or(0u8);
+        let depth = match requested_depth {
+            Some(d) => d,
+            None => marks.first().map(|m| m.depth + 1).unwrap_or(0u8), // Just use the depth of the first mark.
+        };
         let end = if depth == 0 {
             handle.n_items
         } else {
