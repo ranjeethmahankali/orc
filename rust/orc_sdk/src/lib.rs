@@ -3,7 +3,7 @@ pub use deck::{Combinations, Deck, DeckView, DeckWriter};
 
 mod ffi;
 pub use ffi::{
-    DeckAllocFn, DeckDeserializeFn, DeckFreeFn, DeckFromProxyFn, DeckSerializeFn,
+    DeckAllocFn, DeckDeserializeFn, DeckFreeFn, DeckFromProxyFn, DeckSerializeFn, DeckToStringFn,
     OrcHandleBorrowed, PluginInitFn, ProxyType, TOrcData, TOrcPluginAdaptor, dims_divide,
     dims_multiply, dims_pow,
 };

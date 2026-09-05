@@ -1,13 +1,12 @@
-use libloading::Library;
-use std::{collections::HashMap, collections::hash_map::Entry, path::Path};
-
 use crate::{
     ContextArena, DeckAllocFn, DeckDeserializeFn, DeckFreeFn, DeckFromProxyFn, DeckSerializeFn,
-    Error, FuncInfo, HostCallbacks, ORC_ABI_VERSION, ORC_DECK_PROXY_COPY_ALL,
+    DeckToStringFn, Error, FuncInfo, HostCallbacks, ORC_ABI_VERSION, ORC_DECK_PROXY_COPY_ALL,
     ORC_DECK_PROXY_COPY_ITEMS, ORC_DECK_PROXY_SHUFFLE, OrcHandle, OrcHost, OrcPlugin, OrcTypeId,
     PRIMITIVE_TYPES, PluginInitFn, ProxyType, TypeInfo, ptr_from_slice, slice_from_ptr,
     util::string_from_ffi,
 };
+use libloading::Library;
+use std::{collections::HashMap, collections::hash_map::Entry, path::Path};
 
 /// This is to store the info, handles etc. for a loaded plugin.
 #[derive(Debug)]
@@ -22,6 +21,7 @@ pub struct Plugin {
     deck_from_proxy: DeckFromProxyFn,
     deck_serialize: DeckSerializeFn,
     deck_deserialize: DeckDeserializeFn,
+    deck_to_str: DeckToStringFn,
 }
 
 impl Plugin {
@@ -31,16 +31,26 @@ impl Plugin {
     const DECK_FROM_PROXY_FN_NAME: &str = "orc_deck_from_proxy";
     const DECK_SERIALIZE_FN_NAME: &str = "orc_deck_serialize";
     const DECK_DESERIALIZE_FN_NAME: &str = "orc_deck_deserialize";
+    const DECK_TO_STR_FN_NAME: &str = "orc_deck_to_str";
 
     pub fn load(path: &Path, host: &OrcHost) -> Result<Self, String> {
         let lib = unsafe { Library::new(path) }.map_err(|e| format!("cannot load library: {e}"))?;
-        let (init, deck_alloc, deck_free, deck_from_proxy, deck_serialize, deck_deserialize): (
+        let (
+            init,
+            deck_alloc,
+            deck_free,
+            deck_from_proxy,
+            deck_serialize,
+            deck_deserialize,
+            deck_to_str,
+        ): (
             PluginInitFn,
             DeckAllocFn,
             DeckFreeFn,
             DeckFromProxyFn,
             DeckSerializeFn,
             DeckDeserializeFn,
+            DeckToStringFn,
         ) = unsafe {
             (
                 lib.get(Self::PLUGIN_INIT_FN_NAME.as_bytes())
@@ -61,6 +71,9 @@ impl Plugin {
                 lib.get(Self::DECK_DESERIALIZE_FN_NAME.as_bytes())
                     .map(|s| *s)
                     .map_err(|_| format!("missing symbol '{}'", Self::DECK_DESERIALIZE_FN_NAME))?,
+                lib.get(Self::DECK_TO_STR_FN_NAME.as_bytes())
+                    .map(|s| *s)
+                    .map_err(|_| format!("missing symbol '{}'", Self::DECK_TO_STR_FN_NAME))?,
             )
         };
         let mut plugin_data = OrcPlugin::default();
@@ -93,6 +106,7 @@ impl Plugin {
             deck_from_proxy,
             deck_serialize,
             deck_deserialize,
+            deck_to_str,
         })
     }
 
@@ -152,6 +166,11 @@ impl Plugin {
         let err = unsafe {
             (self.deck_deserialize)(ctx, ptr_from_slice(buf).cast(), buf.len() as u64, out)
         };
+        Error::from_raw(err)
+    }
+
+    pub fn to_str_deck(&self, input: &OrcHandle, out: &mut OrcHandle) -> Result<(), Error> {
+        let err = unsafe { (self.deck_to_str)(input, out) };
         Error::from_raw(err)
     }
 
