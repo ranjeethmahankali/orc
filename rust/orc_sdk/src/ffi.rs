@@ -124,6 +124,14 @@ macro_rules! orc_plugin {
                 Err(e) => e.into(),
             }
         }
+
+        #[unsafe(no_mangle)]
+        pub unsafe extern "C" fn orc_deck_to_str(
+            input: *const OrcHandle,
+            out: *mut OrcHandle,
+        ) -> orc_sdk::OrcError {
+            todo!();
+        }
     };
 }
 
