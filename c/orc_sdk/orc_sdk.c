@@ -2690,27 +2690,29 @@ OrcError orc_sdk_handle_to_str(OrcHandle const *input, OrcHandle *out)
   if (err != ORC_ERROR_NONE) {
     return err;
   }
-  void *combinations = orc_sdk_comb_init((OrcHandle const *[]) {input},
+  void    *combinations = orc_sdk_comb_init((OrcHandle const *[]) {input},
                                          (uint8_t const[]) {0},
                                          1,
                                          (OrcHandle *[]) {out},
                                          (uint8_t const[]) {1},
                                          1);
-  OrcError status = ORC_ERROR_NONE;
+  OrcError status       = ORC_ERROR_NONE;
   while (combinations) {
     OrcSdk_DeckView input_view = orc_sdk_comb_get_input(combinations, 0);
     ORC_SDK_REQUIRE(input_view.depth == 0);
-    OrcSdk_DeckWriter *output_writer = orc_sdk_comb_get_output(combinations, 0);
-    void const        *item          = orc_sdk_dv_item_ptr(&input_view);
-    char               buf[256]      = {0};
-    print_fn(item, buf, 255);
-    size_t const count = strlen(buf);
-    char        *dst   = (char *)orc_sdk_dw_push_empty_many(output_writer, count);
-    if (dst == NULL) {
-      status = ORC_ERROR_ALLOC_FAILED;
-      break;
+    if (orc_sdk_dv_len(&input_view) > 0) {
+      OrcSdk_DeckWriter *output_writer = orc_sdk_comb_get_output(combinations, 0);
+      void const        *item          = orc_sdk_dv_item_ptr(&input_view);
+      char               buf[256]      = {0};
+      print_fn(item, buf, 255);
+      size_t const count = strlen(buf);
+      char        *dst   = (char *)orc_sdk_dw_push_empty_many(output_writer, count);
+      if (dst == NULL) {
+        status = ORC_ERROR_ALLOC_FAILED;
+        break;
+      }
+      memcpy(dst, buf, count);
     }
-    memcpy(dst, buf, count);
     combinations = orc_sdk_comb_advance(combinations);
   }
   orc_sdk_comb_free(combinations);
