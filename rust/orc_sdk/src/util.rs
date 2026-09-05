@@ -1351,7 +1351,7 @@ mod tests {
     // ==================== SerialWrite ====================
 
     thread_local! {
-        static MOCK_SINK: RefCell<Vec<u8>> = RefCell::new(Vec::new());
+        static MOCK_SINK: RefCell<Vec<u8>> = const { RefCell::new(Vec::new()) };
     }
 
     unsafe extern "C" fn mock_write_ok(
