@@ -127,10 +127,14 @@ macro_rules! orc_plugin {
 
         #[unsafe(no_mangle)]
         pub unsafe extern "C" fn orc_deck_to_str(
-            input: *const OrcHandle,
-            out: *mut OrcHandle,
+            input: *const orc_sdk::OrcHandle,
+            output: *mut orc_sdk::OrcHandle,
         ) -> orc_sdk::OrcError {
-            todo!();
+            let (input, output) = unsafe { (&*input, &mut *output) };
+            match <$plugin as orc_sdk::TOrcPluginAdaptor>::deck_to_str(input, output) {
+                Ok(_) => orc_sdk::ORC_ERROR_NONE,
+                Err(e) => e.into(),
+            }
         }
     };
 }
@@ -332,6 +336,7 @@ pub trait TOrcPluginAdaptor {
         read: &mut impl std::io::Read,
         out: &mut OrcHandle,
     ) -> Result<(), Error>;
+    fn deck_to_str(input: &OrcHandle, out: &mut OrcHandle) -> Result<(), Error>;
 }
 
 pub trait TOrcData: Default + Clone + Send + Sync + 'static {
