@@ -1792,9 +1792,9 @@ uint8_t _oh_max_depth(OrcHandle const *handle)
   return 0;
 }
 
-static OrcSdkTypeCallbacksGetterFn PLUGIN_TYPE_FN = NULL;
+static OrcSdk_TypeCallbacksGetterFn PLUGIN_TYPE_FN = NULL;
 
-void orc_sdk_init(OrcHost const *host, OrcSdkTypeCallbacksGetterFn type_fn)
+void orc_sdk_init(OrcHost const *host, OrcSdk_TypeCallbacksGetterFn type_fn)
 {
   if (host) {
     ORC_SDK_REQUIRE_WITH_MSG(
@@ -1832,7 +1832,7 @@ void orc_sdk_init(OrcHost const *host, OrcSdkTypeCallbacksGetterFn type_fn)
   call_once(&REGISTRY_ONCE, _registry_init);
 }
 
-bool _is_type_info_valid(OrcSdkTypeInfo const *info)
+bool _is_type_info_valid(OrcSdk_TypeInfo const *info)
 {
   return info->copy_fn != NULL && info->item_size != 0;
 }
@@ -1856,7 +1856,7 @@ OrcError _oh_free_fn(OrcHandle *const handle)
   if (handle == NULL) {
     return ORC_ERROR_NONE;
   }
-  ItemFreeFn item_free_fn = NULL;
+  OrcSdk_ItemFreeFn item_free_fn = NULL;
   switch (handle->type_id) {
   case ORC_TYPE_U8:
   case ORC_TYPE_U16:
@@ -1875,7 +1875,7 @@ OrcError _oh_free_fn(OrcHandle *const handle)
     break;
   default:
     if (PLUGIN_TYPE_FN) {
-      OrcSdkTypeInfo info = PLUGIN_TYPE_FN(handle->type_id);
+      OrcSdk_TypeInfo info = PLUGIN_TYPE_FN(handle->type_id);
       if (!_is_type_info_valid(&info)) {
         return ORC_ERROR_TYPE_MISMATCH;
       }
@@ -2183,7 +2183,7 @@ OrcError orc_sdk_handle_alloc(OrcTypeId const id, OrcHandle *const out)
     break;
   default: {
     if (PLUGIN_TYPE_FN) {
-      OrcSdkTypeInfo info = PLUGIN_TYPE_FN(id);
+      OrcSdk_TypeInfo info = PLUGIN_TYPE_FN(id);
       if (!_is_type_info_valid(&info)) {
         return ORC_ERROR_TYPE_MISMATCH;
       }
@@ -2257,7 +2257,7 @@ OrcError _copy_items(OrcTypeId const type_id,
                      void           *dst,
                      size_t const    n_items)
 {
-  CopyItemsFn copy_fn = NULL;
+  OrcSdk_CopyItemsFn copy_fn = NULL;
   switch (type_id) {
   case ORC_TYPE_U8:
     copy_fn = _copy_items_u8;
@@ -2297,7 +2297,7 @@ OrcError _copy_items(OrcTypeId const type_id,
     break;
   default:
     if (PLUGIN_TYPE_FN) {
-      OrcSdkTypeInfo info = PLUGIN_TYPE_FN(type_id);
+      OrcSdk_TypeInfo info = PLUGIN_TYPE_FN(type_id);
       if (!_is_type_info_valid(&info)) {
         return ORC_ERROR_TYPE_MISMATCH;
       }

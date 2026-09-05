@@ -909,19 +909,20 @@ OrcError orc_sdk_host_serial_write(uint64_t const ctx,
 
 // ========== ABI helpers ==========
 
-typedef void (*ItemFreeFn)(void *);
-typedef void (*CopyItemsFn)(void const *src, void *dst, size_t const n_items);
+typedef void (*OrcSdk_ItemFreeFn)(void *);
+typedef void (*OrcSdk_CopyItemsFn)(void const *src, void *dst, size_t const n_items);
 
 typedef struct
 {
-  uint64_t    item_size;  // Must be non zero.
-  CopyItemsFn copy_fn;    // Must be non-NULL.
-  ItemFreeFn  free_fn;    // NULL for value types that don't own any resources.
-} OrcSdkTypeInfo;
+  uint64_t             item_size;   // Must be non zero.
+  OrcSdk_CopyItemsFn   copy_fn;     // Must be non-NULL.
+  OrcSdk_ItemFreeFn    free_fn;     // NULL for value types that don't own any resources.
+  OrcSdk_SNPrintItemFn snprint_fn;  // NULL for types that cannot be printed.
+} OrcSdk_TypeInfo;
 
-typedef OrcSdkTypeInfo (*OrcSdkTypeCallbacksGetterFn)(OrcTypeId const id);
+typedef OrcSdk_TypeInfo (*OrcSdk_TypeCallbacksGetterFn)(OrcTypeId const id);
 
-void orc_sdk_init(OrcHost const *host, OrcSdkTypeCallbacksGetterFn type_fn);
+void orc_sdk_init(OrcHost const *host, OrcSdk_TypeCallbacksGetterFn type_fn);
 
 OrcError orc_sdk_handle_alloc(OrcTypeId const type_id, OrcHandle *const out);
 
