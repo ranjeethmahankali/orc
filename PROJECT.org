@@ -133,15 +133,6 @@
   Maybe I can write a rasterizer for my curve types, and somehow get the optimizer to export images
   of the sample points in the design space, so that I can visualize them when viewing the DOE.
 
-* TODO Overhaul of workflow property serialization
-  :PROPERTIES:
-  :CREATED:  2026-09-05 Sat 12:41
-  :END:
-
-  The UI app will need to save it's own properties that don't mean anything to any other host app,
-  so the property serialization needs to be way more generic. Currently each relevant property is
-  serialized explicitly. That is not good enough.
-
 * TODO tkuzn6 - Node Editor UI App
   :PROPERTIES:
   :CREATED:  2026-08-26 Wed 10:47
@@ -158,6 +149,8 @@
 
   <2026-09-04 Fri 18:49> I need a way to display the decks. So I decided to do [[*tkv3ek - Deck to String Conversion for Display][this task]] first.
 
+  <2026-09-05 Sat 15:22> Also need to do [[*tkwogf - Overhaul of workflow property serialization][this task]] first.
+
 ** Vague sketch using egui + eframe + wgpu
    :PROPERTIES:
    :CREATED:  2026-08-26 Wed 11:22
@@ -170,6 +163,18 @@
    code runs in a browser tab — the only difference is that pop-out becomes a floating panel
    instead of an OS window. The whole stack compiles to both native and WASM without forking the
    codebase.
+
+* NEXT tkwogf - Overhaul of workflow property serialization
+  :PROPERTIES:
+  :CREATED:  2026-09-05 Sat 12:41
+  :END:
+  :LOGBOOK:
+  - State "NEXT"       from "TODO"       [2026-09-05 Sat 15:22]
+  :END:
+
+  The UI app will need to save it's own properties that don't mean anything to any other host app,
+  so the property serialization needs to be way more generic. Currently each relevant property is
+  serialized explicitly. That is not good enough.
 
 * DONE tkv3ek - Deck to String Conversion for Display
   CLOSED: [2026-09-05 Sat 13:41]
