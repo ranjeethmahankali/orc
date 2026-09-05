@@ -142,23 +142,6 @@
   so the property serialization needs to be way more generic. Currently each relevant property is
   serialized explicitly. That is not good enough.
 
-* NEXT tkv3ek - Deck to String Conversion for Display
-  :PROPERTIES:
-  :CREATED:  2026-09-04 Fri 18:48
-  :END:
-  :LOGBOOK:
-  - State "NEXT"       from "TODO"       [2026-09-04 Fri 18:53]
-  :END:
-
-  This is very useful, and the bar for implementing is so low, that it should be part of the ABI.
-
-  <2026-09-05 Sat 13:15> Got the C side of things working yesterday. Added tests. Implemented the
-  Rust side of things today. Adding tests now. Will try to get this merged after that.
-
-  The basic design for string conversion across the FFI boundary is figured out. I could add more
-  utilities and helpers, but I prefer not to add those in vacuum. Instead, I should add those when I
-  implement apps and features that use the string conversion.
-
 * TODO tkuzn6 - Node Editor UI App
   :PROPERTIES:
   :CREATED:  2026-08-26 Wed 10:47
@@ -187,6 +170,28 @@
    code runs in a browser tab — the only difference is that pop-out becomes a floating panel
    instead of an OS window. The whole stack compiles to both native and WASM without forking the
    codebase.
+
+* DONE tkv3ek - Deck to String Conversion for Display
+  CLOSED: [2026-09-05 Sat 13:41]
+  :PROPERTIES:
+  :CREATED:  2026-09-04 Fri 18:48
+  :END:
+  :LOGBOOK:
+  - State "DONE"       from "NEXT"       [2026-09-05 Sat 13:41]
+  - State "NEXT"       from "TODO"       [2026-09-04 Fri 18:53]
+  :END:
+
+  This is very useful, and the bar for implementing is so low, that it should be part of the ABI.
+
+  <2026-09-05 Sat 13:15> Got the C side of things working yesterday. Added tests. Implemented the
+  Rust side of things today. Adding tests now. Will try to get this merged after that.
+
+  The basic design for string conversion across the FFI boundary is figured out. I could add more
+  utilities and helpers, but I prefer not to add those in vacuum. Instead, I should add those when I
+  implement apps and features that use the string conversion.
+
+  <2026-09-05 Sat 13:41> Also ended up threading the string conversion through all the Rust host /
+  plugin machinery. Added a lot of tests. Ready to merge.
 
 * CLOSED Deferred failures in niche scenarios
   CLOSED: [2026-09-04 Fri 17:26]
