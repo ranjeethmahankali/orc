@@ -6868,18 +6868,20 @@ static void test_dw_push_empty_many_nested(void)
       OrcSdk_DeckWriter c     = orc_sdk_dw_child(&w);
       uint32_t         *items = (uint32_t *)orc_sdk_dw_push_empty_many(&c, 3);
       TEST_ASSERT_NOT_NULL(items);
-      for (uint32_t i = 0; i < 3; ++i)
+      for (uint32_t i = 0; i < 3; ++i) {
         items[i] = i;
+      }
     }
     {
       OrcSdk_DeckWriter c     = orc_sdk_dw_child(&w);
       uint32_t         *items = (uint32_t *)orc_sdk_dw_push_empty_many(&c, 3);
       TEST_ASSERT_NOT_NULL(items);
-      for (uint32_t i = 0; i < 3; ++i)
+      for (uint32_t i = 0; i < 3; ++i) {
         items[i] = 10 + i;
+      }
     }
   }
-  TEST_ASSERT_TRUE(orc_sdk_deck_len(deck) == 6);
+  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_deck_len(deck) == 6, "Expecting 6 total items");
   // Verify via DeckView.
   OrcSdk_DeckView top = orc_sdk_dv_from_deck(deck, 2);
   {
