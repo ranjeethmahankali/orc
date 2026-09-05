@@ -6881,23 +6881,25 @@ static void test_dw_push_empty_many_nested(void)
       }
     }
   }
-  TEST_ASSERT_TRUE_MESSAGE(orc_sdk_deck_len(deck) == 6, "Expecting 6 total items");
-  // Verify via DeckView.
-  OrcSdk_DeckView top = orc_sdk_dv_from_deck(deck, 2);
-  {
+  TEST_ASSERT_TRUE(orc_sdk_deck_len(deck) == 6);
+  // Verify via DeckView: one top-level group with two sub-groups.
+  uint32_t        expected[] = {0, 1, 2, 10, 11, 12};
+  size_t          ei         = 0;
+  size_t          n_groups   = 0;
+  OrcSdk_DeckView top        = orc_sdk_dv_from_deck(deck, 2);
+  do {
     OrcSdk_DeckView inner = orc_sdk_dv_child(&top);
-    TEST_ASSERT_TRUE(orc_sdk_dv_len(&inner) == 3);
-    uint32_t const *items = orc_sdk_dv_item_ptr(&inner);
-    TEST_ASSERT_TRUE(items[0] == 0 && items[1] == 1 && items[2] == 2);
-  }
-  TEST_ASSERT_TRUE(orc_sdk_dv_advance(&top));
-  {
-    OrcSdk_DeckView inner = orc_sdk_dv_child(&top);
-    TEST_ASSERT_TRUE(orc_sdk_dv_len(&inner) == 3);
-    uint32_t const *items = orc_sdk_dv_item_ptr(&inner);
-    TEST_ASSERT_TRUE(items[0] == 10 && items[1] == 11 && items[2] == 12);
-  }
-  TEST_ASSERT_TRUE(!orc_sdk_dv_advance(&top));
+    do {
+      TEST_ASSERT_TRUE(orc_sdk_dv_len(&inner) == 3);
+      uint32_t const *items = orc_sdk_dv_item_ptr(&inner);
+      for (size_t i = 0; i < orc_sdk_dv_len(&inner); ++i) {
+        TEST_ASSERT_TRUE(items[i] == expected[ei++]);
+      }
+      n_groups++;
+    } while (orc_sdk_dv_advance(&inner));
+  } while (orc_sdk_dv_advance(&top));
+  TEST_ASSERT_TRUE(n_groups == 2);
+  TEST_ASSERT_TRUE(ei == 6);
   orc_sdk_deck_free(deck);
 }
 
@@ -6926,6 +6928,37 @@ static void test_dw_push_empty_many_growth(void)
     TEST_ASSERT_TRUE(deck[2 + i] == 100 + i);
   }
   orc_sdk_deck_free(deck);
+}
+
+static void test_dw_start_new_arr_basic(void)
+{
+  // Build ((1,2,3),(4,5)) using start_new_arr instead of child writers.
+  uint32_t *deck = NULL;
+  {
+    OrcSdk_DeckWriter w = orc_sdk_dw_from_deck(deck, 1);
+    for (uint32_t v = 1; v <= 3; ++v)
+      orc_sdk_dw_push(&w, v);
+    orc_sdk_dw_start_new_arr(&w, 1);
+    for (uint32_t v = 4; v <= 5; ++v)
+      orc_sdk_dw_push(&w, v);
+  }
+  TEST_ASSERT_TRUE(orc_sdk_deck_len(deck) == 5);
+  OrcSdk_DeckView v1 = orc_sdk_dv_from_deck(deck, 1);
+  TEST_ASSERT_TRUE(orc_sdk_dv_len(&v1) == 3);
+  uint32_t const *items1 = orc_sdk_dv_item_ptr(&v1);
+  TEST_ASSERT_TRUE(items1[0] == 1 && items1[1] == 2 && items1[2] == 3);
+  TEST_ASSERT_TRUE(orc_sdk_dv_advance(&v1));
+  TEST_ASSERT_TRUE(orc_sdk_dv_len(&v1) == 2);
+  uint32_t const *items2 = orc_sdk_dv_item_ptr(&v1);
+  TEST_ASSERT_TRUE(items2[0] == 4 && items2[1] == 5);
+  TEST_ASSERT_TRUE(!orc_sdk_dv_advance(&v1));
+  orc_sdk_deck_free(deck);
+}
+
+static void test_dw_start_new_arr_null_writer(void)
+{
+  // Should not crash.
+  orc_sdk_dw_start_new_arr(NULL, 1);
 }
 
 void setUp(void) {}
@@ -7107,5 +7140,7 @@ int main(void)
   RUN_TEST(test_dw_push_empty_many_flat);
   RUN_TEST(test_dw_push_empty_many_nested);
   RUN_TEST(test_dw_push_empty_many_growth);
+  RUN_TEST(test_dw_start_new_arr_basic);
+  RUN_TEST(test_dw_start_new_arr_null_writer);
   return UNITY_END();
 }
