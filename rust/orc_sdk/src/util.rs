@@ -1814,4 +1814,89 @@ mod tests {
         assert_eq!(out.dims, h.dims);
         disarm(&mut out);
     }
+
+    // ==================== to_str_deck ====================
+
+    /// Helper: create an OrcHandle from a Deck, call to_str_deck, and return the output Deck<u8>.
+    fn run_to_str_deck<T: TOrcData + std::fmt::Display>(deck: &Deck<T>) -> Deck<u8> {
+        let h = serial_make_handle(deck);
+        let mut out = Deck::<u8>::default();
+        to_str_deck::<T>(&h, &mut out).expect("to_str_deck failed");
+        out
+    }
+
+    /// Helper: extract string slices from a depth-1 Deck<u8> (each group is one string).
+    fn str_groups(deck: &Deck<u8>) -> Vec<String> {
+        let handle = serial_make_handle(deck);
+        let view = DeckView::<u8>::from_handle(&handle).unwrap();
+        view.child()
+            .advance_iter()
+            .map(|v| String::from_utf8(v.as_slice().to_vec()).unwrap())
+            .collect()
+    }
+
+    #[test]
+    fn t_to_str_deck_u32_flat() {
+        let d = deck![42_u32, 100, 0];
+        let out = run_to_str_deck(&d);
+        assert_eq!(str_groups(&out), &["42", "100", "0"]);
+    }
+
+    #[test]
+    fn t_to_str_deck_f64_flat() {
+        let d = deck![1.5_f64, -2.0];
+        let groups = str_groups(&run_to_str_deck(&d));
+        assert_eq!(groups.len(), 2);
+        assert!(groups[0].starts_with("1.5"), "got: {}", groups[0]);
+        assert!(groups[1].starts_with("-2"), "got: {}", groups[1]);
+    }
+
+    #[test]
+    fn t_to_str_deck_i64_flat() {
+        let d = deck![i64::MIN, 0_i64, i64::MAX];
+        let out = run_to_str_deck(&d);
+        assert_eq!(
+            str_groups(&out),
+            &[i64::MIN.to_string(), "0".to_string(), i64::MAX.to_string()]
+        );
+    }
+
+    #[test]
+    fn t_to_str_deck_empty() {
+        let d: Deck<u32> = Deck::default();
+        let out = run_to_str_deck(&d);
+        assert!(out.items().is_empty());
+    }
+
+    #[test]
+    fn t_to_str_deck_single_item() {
+        let d = deck![7_u32];
+        let out = run_to_str_deck(&d);
+        assert_eq!(str_groups(&out), &["7"]);
+    }
+
+    #[test]
+    fn t_to_str_deck_nested() {
+        let d: Deck<i32> = deck![[10, 20], [30]];
+        let h = serial_make_handle(&d);
+        let mut out = Deck::<u8>::default();
+        to_str_deck::<i32>(&h, &mut out).expect("to_str_deck failed");
+        let out_h = serial_make_handle(&out);
+        let view = DeckView::<u8>::from_handle(&out_h).unwrap();
+        // Input depth 2 + output depth 1 = output depth 3.
+        assert_eq!(view.depth(), 3);
+        // Navigate: depth3 -> depth2 (input groups) -> depth1 (strings).
+        let top = view.child(); // depth 2
+        let groups: Vec<Vec<String>> = top
+            .advance_iter()
+            .map(|group| {
+                group
+                    .child()
+                    .advance_iter()
+                    .map(|s| String::from_utf8(s.as_slice().to_vec()).unwrap())
+                    .collect()
+            })
+            .collect();
+        assert_eq!(groups, vec![vec!["10", "20"], vec!["30"]]);
+    }
 }
