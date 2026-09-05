@@ -1638,6 +1638,79 @@ def t_workflow_construct_with_more_args_than_expected_raises():
 
 
 # ============================================================
+# deck_to_str
+# ============================================================
+
+
+def _to_str_groups(handle):
+    """Extract string groups from a u8 deck handle returned by deck_to_str.
+
+    The output is a depth-2 u8 deck: each depth-1 group is one string's bytes.
+    read_deck returns nested lists like [[ord('4'), ord('2')], ...].
+    """
+    raw = orc.read_deck(handle)
+    return [bytes(group).decode("utf-8") for group in raw]
+
+
+def t_deck_to_str_u32_flat():
+    h = orc.make_deck([42, 100, 0], dtype="u32")
+    out = orc.deck_to_str(h)
+    assert _to_str_groups(out) == ["42", "100", "0"]
+
+
+def t_deck_to_str_f64_flat():
+    h = orc.make_deck([1.5, -2.0])
+    out = orc.deck_to_str(h)
+    groups = _to_str_groups(out)
+    assert len(groups) == 2
+    assert groups[0].startswith("1.5"), f"got: {groups[0]}"
+    assert groups[1].startswith("-2"), f"got: {groups[1]}"
+
+
+def t_deck_to_str_i64_flat():
+    h = orc.make_deck([-0x80000000_00000000, 0, 0x7FFFFFFF_FFFFFFFF], dtype="i64")
+    out = orc.deck_to_str(h)
+    assert _to_str_groups(out) == [
+        str(-0x80000000_00000000), "0", str(0x7FFFFFFF_FFFFFFFF)
+    ]
+
+
+def t_deck_to_str_empty():
+    h = orc.make_deck([], dtype="f64")
+    out = orc.deck_to_str(h)
+    assert out.n_items == 0
+
+
+def t_deck_to_str_single_item():
+    h = orc.make_deck([7], dtype="u32")
+    out = orc.deck_to_str(h)
+    assert _to_str_groups(out) == ["7"]
+
+
+def t_deck_to_str_nested():
+    h = orc.make_deck([[10.0, 20.0], [30.0]])
+    out = orc.deck_to_str(h)
+    # Input depth 2 → output depth 3. read_deck returns [[[...], [...]], [[...]]].
+    raw = orc.read_deck(out)
+    groups = [[bytes(s).decode("utf-8") for s in group] for group in raw]
+    assert len(groups) == 2
+    assert groups[0][0].startswith("10")
+    assert groups[0][1].startswith("20")
+    assert groups[1][0].startswith("30")
+
+
+def t_deck_to_str_every_builtin_type():
+    """Every builtin type can be converted to strings."""
+    for (type_id, dtype), values in _make_builtin_samples().items():
+        h = orc.make_deck(values, dtype=dtype)
+        out = orc.deck_to_str(h)
+        groups = _to_str_groups(out)
+        assert len(groups) == len(values), (
+            f"dtype={dtype}: expected {len(values)} strings, got {len(groups)}"
+        )
+
+
+# ============================================================
 # Runner
 # ============================================================
 
