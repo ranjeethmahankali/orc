@@ -124,3 +124,8 @@ OrcError orc_deck_deserialize(uint64_t const ctx,
   orc_sdk_oh_update(out);
   return ORC_ERROR_NONE;
 }
+
+OrcError orc_deck_to_str(OrcHandle const *input, OrcHandle *out)
+{
+  return orc_sdk_handle_to_str(input, out);
+}
