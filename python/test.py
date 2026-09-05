@@ -17,7 +17,6 @@ script_dir = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.dirname(script_dir)
 search_dir = os.path.join(project_root, "build", "debug")
 
-
 # ============================================================
 # add — Correctness
 # ============================================================
@@ -81,6 +80,7 @@ def t_add_i64():
     assert a.type_id == orc.ORC_TYPE_I64
     out = orc.add(a, b)
     assert orc.read_deck(out) == [5, 17, 30, 43, 55]
+
 
 # ============================================================
 # add — Error cases
@@ -494,11 +494,16 @@ def t_type_detection_f64():
 def t_dtype_forces_type():
     """Each dtype string produces the correct type_id."""
     for dtype, expected in [
-        ("u8",  orc.ORC_TYPE_U8),  ("u16", orc.ORC_TYPE_U16),
-        ("u32", orc.ORC_TYPE_U32), ("u64", orc.ORC_TYPE_U64),
-        ("i8",  orc.ORC_TYPE_I8),  ("i16", orc.ORC_TYPE_I16),
-        ("i32", orc.ORC_TYPE_I32), ("i64", orc.ORC_TYPE_I64),
-        ("f32", orc.ORC_TYPE_F32), ("f64", orc.ORC_TYPE_F64),
+        ("u8", orc.ORC_TYPE_U8),
+        ("u16", orc.ORC_TYPE_U16),
+        ("u32", orc.ORC_TYPE_U32),
+        ("u64", orc.ORC_TYPE_U64),
+        ("i8", orc.ORC_TYPE_I8),
+        ("i16", orc.ORC_TYPE_I16),
+        ("i32", orc.ORC_TYPE_I32),
+        ("i64", orc.ORC_TYPE_I64),
+        ("f32", orc.ORC_TYPE_F32),
+        ("f64", orc.ORC_TYPE_F64),
     ]:
         h = orc.make_deck([0], dtype=dtype)
         assert h.type_id == expected, f"dtype={dtype}: expected {expected:#x}, got {h.type_id:#x}"
@@ -525,7 +530,8 @@ def t_numpy_f64():
     out = orc.add(a, b)
     arr = np.asarray(out)
     assert arr.dtype == np.float64
-    assert arr.__array_interface__['data'][0] == out.__array_interface__['data'][0]
+    assert arr.__array_interface__['data'][0] == out.__array_interface__[
+        'data'][0]
     assert list(arr * 2.0) == [22.0, 44.0, 66.0]
 
 
@@ -534,7 +540,8 @@ def t_numpy_i64():
     h = orc.make_deck([-2**40, 0, 2**40], dtype="i64")
     arr = np.asarray(h)
     assert arr.dtype == np.int64
-    assert arr.__array_interface__['data'][0] == h.__array_interface__['data'][0]
+    assert arr.__array_interface__['data'][0] == h.__array_interface__['data'][
+        0]
     assert list(arr + np.int64(1)) == [-(2**40) + 1, 1, 2**40 + 1]
 
 
@@ -543,7 +550,8 @@ def t_numpy_3x3_matrix():
     data = [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]]
     h = orc.make_deck(data)
     arr = np.asarray(h)
-    assert arr.__array_interface__['data'][0] == h.__array_interface__['data'][0]
+    assert arr.__array_interface__['data'][0] == h.__array_interface__['data'][
+        0]
     # Flat view of 9 items
     assert len(arr) == 9
     mat = arr.reshape(3, 3)
@@ -562,7 +570,8 @@ def t_numpy_3x3_from_plugin():
     b = orc.make_deck([1.0])
     out = orc.add(a, b)
     arr = np.asarray(out)
-    assert arr.__array_interface__['data'][0] == out.__array_interface__['data'][0]
+    assert arr.__array_interface__['data'][0] == out.__array_interface__[
+        'data'][0]
     mat = arr.reshape(3, 3)
     # Each element should be original + 1
     expected = np.array([[2, 3, 4], [5, 6, 7], [8, 9, 10]], dtype=np.float64)
@@ -735,14 +744,15 @@ def t_complex_flatten():
 # Maps (type_id constant, dtype string) to sample test values for each builtin type.
 def _make_builtin_samples():
     return {
-        (orc.ORC_TYPE_U8,  "u8"):  [0, 1, 127, 255],
+        (orc.ORC_TYPE_U8, "u8"): [0, 1, 127, 255],
         (orc.ORC_TYPE_U16, "u16"): [0, 1, 256, 65535],
         (orc.ORC_TYPE_U32, "u32"): [0, 1, 70000, 0xFFFFFFFF],
         (orc.ORC_TYPE_U64, "u64"): [0, 1, 0x100000000],
-        (orc.ORC_TYPE_I8,  "i8"):  [-128, 0, 127],
+        (orc.ORC_TYPE_I8, "i8"): [-128, 0, 127],
         (orc.ORC_TYPE_I16, "i16"): [-32768, 0, 32767],
         (orc.ORC_TYPE_I32, "i32"): [-0x80000000, 0, 0x7FFFFFFF],
-        (orc.ORC_TYPE_I64, "i64"): [-0x80000000_00000000, 0, 0x7FFFFFFF_FFFFFFFF],
+        (orc.ORC_TYPE_I64, "i64"):
+        [-0x80000000_00000000, 0, 0x7FFFFFFF_FFFFFFFF],
         (orc.ORC_TYPE_F32, "f32"): [0.0, 1.5, -3.25],
         (orc.ORC_TYPE_F64, "f64"): [0.0, 1.5, -3.25, 1e100],
     }
@@ -751,11 +761,15 @@ def _make_builtin_samples():
 def t_serial_every_plugin_handles_builtin_types():
     """Every builtin type survives a workflow serialize/deserialize round-trip."""
     for (type_id, dtype), values in _make_builtin_samples().items():
+
         def make_const(dt=dtype, vals=values):
+
             def fn():
                 # Use flatten_deck as a type-preserving identity operation.
                 return orc.flatten_deck(orc.make_deck(vals, dtype=dt))
+
             return fn
+
         graph = orc.make_workflow(make_const())
         with tempfile.NamedTemporaryFile(suffix=".orcflow", delete=False) as f:
             path = f.name
@@ -764,7 +778,8 @@ def t_serial_every_plugin_handles_builtin_types():
             restored = orc.load_workflow(path)
             out = restored.run()
             assert out.type_id == type_id, (
-                f"type {type_id:#x}: expected {type_id:#x}, got {out.type_id:#x}")
+                f"type {type_id:#x}: expected {type_id:#x}, got {out.type_id:#x}"
+            )
             assert out.n_items == len(values)
         finally:
             os.unlink(path)
@@ -772,9 +787,11 @@ def t_serial_every_plugin_handles_builtin_types():
 
 def t_serial_every_plugin_handles_nested_builtin():
     """Nested f64 deck survives a workflow serialize/deserialize round-trip."""
+
     def make_nested():
         h = orc.make_deck([[1.0, 2.0, 3.0], [4.0, 5.0]])
         return orc.add(h, orc.make_deck([0.0]))
+
     graph = orc.make_workflow(make_nested)
     with tempfile.NamedTemporaryFile(suffix=".orcflow", delete=False) as f:
         path = f.name
@@ -789,10 +806,12 @@ def t_serial_every_plugin_handles_nested_builtin():
 
 def t_serial_custom_type_round_trip():
     """Custom type (Complex) survives a workflow serialize/deserialize round-trip."""
+
     def make_complex_graph():
         real = orc.make_deck([1.0, -2.0, 3.0])
         imag = orc.make_deck([4.0, -5.0, 6.0])
         return orc.create_complex(real, imag)
+
     graph = orc.make_workflow(make_complex_graph)
     with tempfile.NamedTemporaryFile(suffix=".orcflow", delete=False) as f:
         path = f.name
@@ -810,10 +829,12 @@ def t_serial_custom_type_round_trip():
 
 def t_serial_custom_type_nested_round_trip():
     """Nested custom type deck survives workflow serialization round-trip."""
+
     def make_nested_complex():
         real = orc.make_deck([[1.0, 2.0], [3.0]])
         imag = orc.make_deck([[4.0, 5.0], [6.0]])
         return orc.create_complex(real, imag)
+
     graph = orc.make_workflow(make_nested_complex)
     with tempfile.NamedTemporaryFile(suffix=".orcflow", delete=False) as f:
         path = f.name
@@ -831,12 +852,15 @@ def t_serial_custom_type_nested_round_trip():
 
 def t_serial_concurrent_serialization():
     """Two workflow serialization calls on different threads don't corrupt each other."""
+
     def make_f64_a():
         return orc.add(orc.make_deck([1.0, 2.0, 3.0, 4.0, 5.0]),
                        orc.make_deck([0.0]))
+
     def make_f64_b():
         return orc.add(orc.make_deck([10.0, 20.0, 30.0, 40.0, 50.0]),
                        orc.make_deck([0.0]))
+
     graph1 = orc.make_workflow(make_f64_a)
     graph2 = orc.make_workflow(make_f64_b)
     errors = [None, None]
@@ -844,7 +868,8 @@ def t_serial_concurrent_serialization():
 
     def serialize_thread(idx, graph):
         try:
-            with tempfile.NamedTemporaryFile(suffix=".orcflow", delete=False) as f:
+            with tempfile.NamedTemporaryFile(suffix=".orcflow",
+                                             delete=False) as f:
                 paths[idx] = f.name
             orc.save_workflow(graph, paths[idx])
         except Exception as e:
@@ -873,8 +898,10 @@ def t_serial_concurrent_serialization():
 
 def t_serial_empty_deck():
     """An empty f64 deck survives a workflow serialize/deserialize round-trip."""
+
     def make_empty():
         return orc.flatten_deck(orc.make_deck([], dtype="f64"))
+
     graph = orc.make_workflow(make_empty)
     with tempfile.NamedTemporaryFile(suffix=".orcflow", delete=False) as f:
         path = f.name
@@ -891,8 +918,10 @@ def t_serial_empty_deck():
 
 def t_serial_single_element():
     """Serialize and deserialize a single-element deck via workflow."""
+
     def make_single():
         return orc.add(orc.make_deck([42.0]), orc.make_deck([0.0]))
+
     graph = orc.make_workflow(make_single)
     with tempfile.NamedTemporaryFile(suffix=".orcflow", delete=False) as f:
         path = f.name
@@ -907,8 +936,10 @@ def t_serial_single_element():
 
 def t_serial_deserialize_truncated_fails():
     """Deserializing a truncated workflow file raises an error."""
+
     def make_data():
         return orc.add(orc.make_deck([1.0, 2.0, 3.0]), orc.make_deck([0.0]))
+
     graph = orc.make_workflow(make_data)
     with tempfile.NamedTemporaryFile(suffix=".orcflow", delete=False) as f:
         path = f.name
@@ -973,9 +1004,11 @@ def t_workflow_chain():
     """Chained operations: mul then add."""
     a = orc.make_deck([2.0, 3.0])
     b = orc.make_deck([10.0, 20.0])
+
     def chain(x, y):
         product = orc.multiply(x, y)
         return orc.add(product, x)
+
     wf = orc.make_workflow(chain)
     assert orc.read_deck(wf.run(a, b)) == [22.0, 63.0]
 
@@ -983,9 +1016,11 @@ def t_workflow_chain():
 def t_workflow_with_constant():
     """Workflow with an internal make_deck constant."""
     a = orc.make_deck([1.0, 2.0, 3.0])
+
     def fn_with_const(x):
         offset = orc.make_deck([100.0])
         return orc.add(x, offset)
+
     wf = orc.make_workflow(fn_with_const)
     assert orc.read_deck(wf.run(a)) == [101.0, 102.0, 103.0]
 
@@ -993,18 +1028,22 @@ def t_workflow_with_constant():
 def t_workflow_multiple_constants():
     """Workflow with several constants."""
     a = orc.make_deck([1.0])
+
     def fn_multi_const(x):
         a = orc.make_deck([10.0])
         b = orc.make_deck([100.0])
         return orc.add(orc.add(x, a), b)
+
     wf = orc.make_workflow(fn_multi_const)
     assert orc.read_deck(wf.run(a)) == [111.0]
 
 
 def t_workflow_n_out():
     """n_out= on a variadic function works inside make_workflow."""
+
     def fn(x, y):
         return orc.flatten_deck(x, y, n_out=2)
+
     a = orc.make_deck([[1.0, 2.0], [3.0]])
     b = orc.make_deck([[4.0, 5.0, 6.0]])
     wf = orc.make_workflow(fn)
@@ -1023,10 +1062,12 @@ def t_workflow_fan_out():
 def t_workflow_diamond():
     """Diamond topology: input → two branches → merge."""
     a = orc.make_deck([5.0])
+
     def diamond(x):
         doubled = orc.add(x, x)
         squared = orc.multiply(x, x)
         return orc.subtract(squared, doubled)
+
     wf = orc.make_workflow(diamond)
     # 5^2 - 5*2 = 25 - 10 = 15
     assert orc.read_deck(wf.run(a)) == [15.0]
@@ -1036,9 +1077,11 @@ def t_workflow_multi_output():
     """Workflow returning multiple outputs via a multi-output function."""
     a = orc.make_deck([1.0, 2.0])
     b = orc.make_deck([3.0, 4.0])
+
     def fn_multi_out(x, y):
         c = orc.create_complex(x, y)
         return orc.complex_get_parts(c)
+
     wf = orc.make_workflow(fn_multi_out)
     real, imag = wf.run(a, b)
     assert orc.read_deck(real) == [1.0, 2.0]
@@ -1047,10 +1090,12 @@ def t_workflow_multi_output():
 
 def t_workflow_no_inputs():
     """Workflow with no parameters — all data from constants."""
+
     def fn_const_only():
         a = orc.make_deck([1.0, 2.0, 3.0])
         b = orc.make_deck([10.0, 20.0, 30.0])
         return orc.add(a, b)
+
     wf = orc.make_workflow(fn_const_only)
     assert orc.read_deck(wf.run()) == [11.0, 22.0, 33.0]
 
@@ -1103,10 +1148,12 @@ def t_workflow_run_reuse():
 
 def t_workflow_no_recursion():
     """make_workflow cannot be called recursively."""
+
     def outer(x):
         # Attempt to call make_workflow inside make_workflow.
         orc.make_workflow(lambda y: orc.add(y, y))
         return orc.add(x, x)
+
     try:
         orc.make_workflow(outer)
         assert False, "Should have raised RuntimeError"
@@ -1116,8 +1163,10 @@ def t_workflow_no_recursion():
 
 def t_workflow_node_not_arithmetic():
     """WorkflowNode cannot be used for arithmetic — Python raises TypeError."""
+
     def bad_fn(x):
         return x + 1  # WorkflowNode has no __add__
+
     try:
         orc.make_workflow(bad_fn)
         assert False, "Should have raised TypeError"
@@ -1127,10 +1176,12 @@ def t_workflow_node_not_arithmetic():
 
 def t_workflow_node_not_comparable():
     """WorkflowNode cannot be compared — Python raises TypeError."""
+
     def bad_fn(x, y):
         if x > y:  # WorkflowNode has no __gt__
             return orc.add(x, y)
         return orc.subtract(x, y)
+
     try:
         orc.make_workflow(bad_fn)
         assert False, "Should have raised TypeError"
@@ -1140,9 +1191,11 @@ def t_workflow_node_not_comparable():
 
 def t_workflow_node_not_readable():
     """Calling read_deck on a WorkflowNode raises TypeError."""
+
     def bad_fn(x):
         orc.read_deck(x)  # x is WorkflowNode, not Handle
         return orc.add(x, x)
+
     try:
         orc.make_workflow(bad_fn)
         assert False, "Should have raised TypeError"
@@ -1246,8 +1299,10 @@ def t_workflow_save_load_roundtrip():
 def t_workflow_save_load_with_constants():
     """Workflow with internal constants survives save/load."""
     a = orc.make_deck([5.0])
+
     def fn(x):
         return orc.add(x, orc.make_deck([95.0]))
+
     wf = orc.make_workflow(fn)
     with tempfile.NamedTemporaryFile(suffix=".orcflow", delete=False) as f:
         path = f.name
@@ -1261,8 +1316,10 @@ def t_workflow_save_load_with_constants():
 
 def t_workflow_save_load_no_inputs():
     """Pure-constant workflow survives save/load."""
+
     def fn():
         return orc.add(orc.make_deck([1.0, 2.0]), orc.make_deck([10.0, 20.0]))
+
     wf = orc.make_workflow(fn)
     with tempfile.NamedTemporaryFile(suffix=".orcflow", delete=False) as f:
         path = f.name
@@ -1276,9 +1333,11 @@ def t_workflow_save_load_no_inputs():
 
 def t_workflow_save_load_multi_output():
     """Multi-output workflow survives save/load."""
+
     def fn():
         c = orc.create_complex(orc.make_deck([1.0]), orc.make_deck([2.0]))
         return orc.complex_get_parts(c)
+
     wf = orc.make_workflow(fn)
     with tempfile.NamedTemporaryFile(suffix=".orcflow", delete=False) as f:
         path = f.name
@@ -1367,9 +1426,10 @@ def t_stubs_contain_module_functions():
     import pathlib
     stub_path = pathlib.Path(orc.__file__).with_suffix(".pyi")
     content = stub_path.read_text()
-    for fn_name in ["load_plugins", "make_deck", "read_deck",
-                     "make_workflow", "run_workflow", "save_workflow",
-                     "load_workflow"]:
+    for fn_name in [
+            "load_plugins", "make_deck", "read_deck", "make_workflow",
+            "run_workflow", "save_workflow", "load_workflow"
+    ]:
         assert f"def {fn_name}(" in content, f"Missing {fn_name} in stubs"
 
 
@@ -1387,6 +1447,7 @@ def t_stubs_contain_plugin_functions():
 # ============================================================
 # workflow_function / nested workflows
 # ============================================================
+
 
 @orc.workflow_function
 def _wf_add(a, b):
@@ -1546,9 +1607,11 @@ def t_immediate_fewer_args_padded_with_empty():
 def t_workflow_construct_with_fewer_args_than_expected():
     """Building a workflow where an OrcFunc receives fewer args than it declares
     should succeed. Unconnected input slots are fed empty handles at runtime."""
+
     def partial(x):
         # add declares n_inputs=2 but we only wire 1 argument.
         return orc.add(x)
+
     # Construction must not raise.
     wf = orc.make_workflow(partial)
     a = orc.make_deck([1.0])
@@ -1563,8 +1626,10 @@ def t_workflow_construct_with_fewer_args_than_expected():
 def t_workflow_construct_with_more_args_than_expected_raises():
     """Building a workflow where an OrcFunc receives more args than it declares
     must raise ValueError during graph construction."""
+
     def too_many(x, y, z):
         return orc.add(x, y, z)  # add expects 2, not 3
+
     try:
         orc.make_workflow(too_many)
         assert False, "Should have raised ValueError"
