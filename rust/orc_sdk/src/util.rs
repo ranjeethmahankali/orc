@@ -905,9 +905,12 @@ pub fn to_str_deck<T: TOrcData + Display>(
 mod tests {
     use super::*;
     use crate::{Deck, ORC_ERROR_NONE, ORC_NUM_DIMS, OrcError, OrcHandle, ffi::TOrcData};
-    use std::sync::{
-        Arc,
-        atomic::{AtomicUsize, Ordering},
+    use std::{
+        cell::RefCell,
+        sync::{
+            Arc,
+            atomic::{AtomicUsize, Ordering},
+        },
     };
 
     // Provide orc_deck_free for the test binary. Each plugin normally defines this via
@@ -1347,10 +1350,9 @@ mod tests {
 
     // ==================== SerialWrite ====================
 
-    use std::sync::Mutex;
-
-    // Collects bytes written via the FFI callback.
-    static MOCK_SINK: Mutex<Vec<u8>> = Mutex::new(Vec::new());
+    thread_local! {
+        static MOCK_SINK: RefCell<Vec<u8>> = RefCell::new(Vec::new());
+    }
 
     unsafe extern "C" fn mock_write_ok(
         _ctx: u64,
@@ -1358,7 +1360,7 @@ mod tests {
         len: u64,
     ) -> OrcError {
         let bytes = unsafe { std::slice::from_raw_parts(data.cast::<u8>(), len as usize) };
-        MOCK_SINK.lock().unwrap().extend_from_slice(bytes);
+        MOCK_SINK.with_borrow_mut(|sink| sink.extend_from_slice(bytes));
         ORC_ERROR_NONE
     }
 
@@ -1373,28 +1375,34 @@ mod tests {
     #[test]
     fn t_serial_write_buffers_until_flush() {
         use std::io::Write;
-        MOCK_SINK.lock().unwrap().clear();
+        MOCK_SINK.with_borrow_mut(|sink| sink.clear());
         let mut w = SerialWrite::new(0, Some(mock_write_ok));
         w.write_all(b"hello").unwrap();
         w.write_all(b" world").unwrap();
         // Nothing sent yet.
-        assert!(MOCK_SINK.lock().unwrap().is_empty());
+        MOCK_SINK.with_borrow_mut(|sink| {
+            assert!(sink.is_empty());
+        });
         w.flush().unwrap();
-        assert_eq!(&*MOCK_SINK.lock().unwrap(), b"hello world");
+        MOCK_SINK.with_borrow_mut(|sink| {
+            assert_eq!(&*sink, b"hello world");
+        });
     }
 
     #[test]
     fn t_serial_write_clears_buffer_after_flush() {
         use std::io::Write;
-        MOCK_SINK.lock().unwrap().clear();
+        MOCK_SINK.with_borrow_mut(|sink| sink.clear());
         let mut w = SerialWrite::new(0, Some(mock_write_ok));
         w.write_all(b"first").unwrap();
         w.flush().unwrap();
-        MOCK_SINK.lock().unwrap().clear();
+        MOCK_SINK.with_borrow_mut(|sink| sink.clear());
         w.write_all(b"second").unwrap();
         w.flush().unwrap();
-        // Only "second" should appear — no leftover from "first".
-        assert_eq!(&*MOCK_SINK.lock().unwrap(), b"second");
+        MOCK_SINK.with_borrow(|sink| {
+            // Only "second" should appear — no leftover from "first".
+            assert_eq!(sink.as_slice(), "second".as_bytes());
+        });
     }
 
     #[test]
@@ -1423,9 +1431,11 @@ mod tests {
         // Buffer is preserved on error, so a subsequent flush with a
         // working callback should send the data that failed before.
         w.write_func = Some(mock_write_ok);
-        MOCK_SINK.lock().unwrap().clear();
+        MOCK_SINK.with_borrow_mut(|sink| sink.clear());
         w.flush().unwrap();
-        assert_eq!(&*MOCK_SINK.lock().unwrap(), b"data");
+        MOCK_SINK.with_borrow(|sink| {
+            assert_eq!(sink.as_slice(), "data".as_bytes());
+        });
     }
 
     #[test]
@@ -1629,9 +1639,11 @@ mod tests {
         w.write_all(b"bbb").unwrap();
         let _ = w.flush(); // fail again — buffer still has "aaabbb"
         w.write_func = Some(mock_write_ok);
-        MOCK_SINK.lock().unwrap().clear();
+        MOCK_SINK.with_borrow_mut(|sink| sink.clear());
         w.flush().unwrap();
-        assert_eq!(&*MOCK_SINK.lock().unwrap(), b"aaabbb");
+        MOCK_SINK.with_borrow(|sink| {
+            assert_eq!(sink.as_slice(), "aaabbb".as_bytes());
+        });
     }
 
     // ==================== try_serialize_handle / try_deserialize_handle ====================
