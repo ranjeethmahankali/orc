@@ -195,6 +195,8 @@
 
   <2026-09-05 Sat 14:08> Forgot about the Python integration. Doing that now before merging.
 
+  <2026-09-05 Sat 14:34> Python integration done. Test coverage added. Linter warnings fixed.
+
 * CLOSED Deferred failures in niche scenarios
   CLOSED: [2026-09-04 Fri 17:26]
   :PROPERTIES:
