@@ -1154,6 +1154,43 @@ void *_orc_sdk_deck_push_empty(void *ptr, size_t const itemsize, uint8_t const d
   return ptr;
 }
 
+void *_orc_sdk_deck_push_empty_many(void         *ptr,
+                                    size_t const  itemsize,
+                                    uint8_t const first_depth,
+                                    size_t const  count)
+{
+  _OrcSdk_DeckHeader *h = _orc_sdk_deck_header(ptr);
+  if (h == NULL) {
+    size_t const bufsize = sizeof *h + (itemsize * count);
+    h                    = orc_sdk_alloc(bufsize, ORC_SDK_MALLOC_DEFAULT_ALIGN);
+    if (h == NULL)
+      return NULL;
+    memset(h, 0, bufsize);
+    h->capacity  = count;
+    h->item_size = itemsize;
+    ptr          = (void *)(h + 1);
+  }
+  else if (h->count == h->capacity) {
+    size_t growth = h->capacity;
+    if (growth < count) {
+      growth = count;
+    }
+    size_t const newcap   = h->capacity + growth;
+    size_t const old_size = sizeof *h + h->capacity * itemsize;
+    size_t const new_size = sizeof *h + newcap * itemsize;
+    h = orc_sdk_realloc(h, old_size, new_size, ORC_SDK_MALLOC_DEFAULT_ALIGN);
+    if (h == NULL)
+      return NULL;
+    h->capacity = newcap;
+    ptr         = h + 1;
+  }
+  if (first_depth)
+    _orc_sdk_deck_push_mark(h, first_depth - 1, h->count);
+  h->count += count;
+  ORC_SDK_REQUIRE_WITH_MSG(h->count <= h->capacity, "Count cannot exceed capacity");
+  return ptr;
+}
+
 void *_orc_sdk_deck_push_impl(void         *ptr,
                               void         *item,
                               size_t const  itemsize,
@@ -1706,6 +1743,19 @@ void *orc_sdk_dw_push_empty(OrcSdk_DeckWriter *writer)
   }
   void *ptr = (char *)(*(writer->deck)) + (h->count - 1) * writer->item_size;
   memset(ptr, 0, writer->item_size);
+  return ptr;
+}
+
+void *orc_sdk_dw_push_empty_many(OrcSdk_DeckWriter *writer, size_t const count)
+{
+  *(writer->deck) = _orc_sdk_deck_push_empty_many(
+    *(writer->deck), writer->item_size, _orc_sdk_dw_next_depth(writer), count);
+  _OrcSdk_DeckHeader *h = _orc_sdk_deck_header(*(writer->deck));
+  if (h == NULL) {
+    return NULL;
+  }
+  void *ptr = (char *)(*(writer->deck)) + (h->count - count) * writer->item_size;
+  memset(ptr, 0, writer->item_size * count);
   return ptr;
 }
 
@@ -2551,11 +2601,11 @@ OrcError orc_sdk_deserialize_handle_header(uint64_t const ctx,
 
 // ========== String conversion ==========
 
-#define _ORC_SDK_DECLARE_SNPRINT_FUNC(suffix, ctype, fmtstr) \
-  void _snprint_##suffix(void *item, char *dst, size_t len)  \
-  {                                                          \
-    ctype const val = *(ctype *)item;                        \
-    snprintf(dst, len, fmtstr, val);                         \
+#define _ORC_SDK_DECLARE_SNPRINT_FUNC(suffix, ctype, fmtstr)      \
+  void _snprint_##suffix(void const *item, char *dst, size_t len) \
+  {                                                               \
+    ctype const val = *(ctype *)item;                             \
+    snprintf(dst, len, fmtstr, val);                              \
   }
 
 _ORC_SDK_DECLARE_SNPRINT_FUNC(u8, uint8_t, "%u")
@@ -2570,7 +2620,7 @@ _ORC_SDK_DECLARE_SNPRINT_FUNC(i32, int32_t, "%d")
 _ORC_SDK_DECLARE_SNPRINT_FUNC(i64, int64_t, "%" PRId64)
 
 // Proxies are a bit different, so we cannot use the macro.
-void _snprint_proxy(void *item, char *dst, size_t len)
+void _snprint_proxy(void const *item, char *dst, size_t len)
 {
   OrcItemProxy const *proxy = (OrcItemProxy const *)item;
   snprintf(dst, len, "%" PRIu64 ";%" PRIu64, proxy->tree, proxy->item);
@@ -2640,10 +2690,15 @@ OrcError orc_sdk_handle_to_str(OrcHandle const *input, OrcHandle *out)
                                          (uint8_t const[]) {1},
                                          1);
   while (combinations) {
-    OrcSdk_DeckView    input_view    = orc_sdk_comb_get_input(combinations, 0);
+    OrcSdk_DeckView input_view = orc_sdk_comb_get_input(combinations, 0);
+    ORC_SDK_REQUIRE(input_view.depth == 0);
     OrcSdk_DeckWriter *output_writer = orc_sdk_comb_get_output(combinations, 0);
+    void const        *item          = orc_sdk_dv_item_ptr(&input_view);
+    char               buf[256]      = {0};
+    print_fn(item, buf, 255);
+    size_t const count = strlen(buf);
+    char        *dst   = (char *)orc_sdk_dw_push_empty_many(output_writer, count);
+    memcpy(dst, buf, count);
   }
-
-  ORC_SDK_TODO("Not implemented");
   return ORC_ERROR_NONE;
 }

@@ -643,7 +643,7 @@ void orc_sdk_deck_simplify(void *ptr);
 
 void orc_sdk_deck_calc_strides(_OrcSdk_DeckHeader *h);
 
-typedef void (*OrcSdk_SNPrintItemFn)(void *item, char *dst, size_t len);
+typedef void (*OrcSdk_SNPrintItemFn)(void const *item, char *dst, size_t len);
 
 char *_orc_sdk_deck_to_str(void const          *ptr,
                            size_t const         item_size,
@@ -842,6 +842,8 @@ void orc_sdk_dw_start_new_arr(OrcSdk_DeckWriter *writer, uint8_t const depth);
 #define orc_sdk_dw_push(writer, item) (_orc_sdk_dw_push_impl((writer), &(item)))
 
 void *orc_sdk_dw_push_empty(OrcSdk_DeckWriter *writer);
+
+void *orc_sdk_dw_push_empty_many(OrcSdk_DeckWriter *writer, size_t const count);
 
 static inline void *orc_sdk_deck_item_ptr(OrcSdk_DeckWriter *writer)
 {
