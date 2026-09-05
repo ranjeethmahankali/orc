@@ -7,6 +7,7 @@ use orc_sdk::{
 };
 use std::alloc::{Layout, alloc, dealloc};
 use std::ffi::{CStr, c_void};
+use std::sync::atomic::Ordering;
 use std::sync::{LazyLock, Mutex, atomic::AtomicU64};
 
 pub static PLUGIN_SET: LazyLock<Mutex<PluginSet>> =
@@ -181,6 +182,49 @@ pub unsafe extern "C" fn orc_deck_free(handle: *mut OrcHandle) -> OrcError {
         }
         Err(e) => e.into(),
     }
+}
+
+pub fn host_deck_to_str(input: &OrcHandle) -> Result<OrcHandle, orc_sdk::Error> {
+    let mut out = OrcHandle {
+        handle: HANDLE_COUNTER.fetch_add(1, Ordering::Relaxed),
+        ..Default::default()
+    };
+    let plugin_set = PLUGIN_SET
+        .lock()
+        .map_err(|_| orc_sdk::Error::ConcurrencyProblem)?;
+    match plugin_set.get_type_owner(input.type_id) {
+        Some(TypeOwner::Plugin(plugin_index, _)) => {
+            let plugin = &plugin_set.plugins()[*plugin_index];
+            plugin.to_str_deck(input, &mut out)?;
+        }
+        Some(TypeOwner::BuiltIn(_)) => {
+            REGISTRY.alloc::<u8>(&mut out)?;
+            REGISTRY
+                .with_mut(&[out.handle], |decks| -> Result<(), Error> {
+                    let deck = decks[0]
+                        .downcast_mut::<orc_sdk::Deck<u8>>()
+                        .ok_or(Error::DeckTypeMismatch)?;
+                    match input.type_id {
+                        ORC_TYPE_U8 => orc_sdk::to_str_deck::<u8>(input, deck),
+                        ORC_TYPE_U16 => orc_sdk::to_str_deck::<u16>(input, deck),
+                        ORC_TYPE_U32 => orc_sdk::to_str_deck::<u32>(input, deck),
+                        ORC_TYPE_U64 => orc_sdk::to_str_deck::<u64>(input, deck),
+                        ORC_TYPE_I8 => orc_sdk::to_str_deck::<i8>(input, deck),
+                        ORC_TYPE_I16 => orc_sdk::to_str_deck::<i16>(input, deck),
+                        ORC_TYPE_I32 => orc_sdk::to_str_deck::<i32>(input, deck),
+                        ORC_TYPE_I64 => orc_sdk::to_str_deck::<i64>(input, deck),
+                        ORC_TYPE_F32 => orc_sdk::to_str_deck::<f32>(input, deck),
+                        ORC_TYPE_F64 => orc_sdk::to_str_deck::<f64>(input, deck),
+                        _ => Err(Error::DeckTypeMismatch),
+                    }?;
+                    unsafe { orc_sdk::update_handle_from_deck(deck, &mut out) };
+                    Ok(())
+                })
+                .flatten()?;
+        }
+        None => return Err(Error::DeckTypeMismatch),
+    }
+    Ok(out)
 }
 
 /// Clone an `OrcHandle` by creating a full copy of its backing data via the proxy mechanism.

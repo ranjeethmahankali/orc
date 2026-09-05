@@ -30,6 +30,7 @@ fn pyorc(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(run_workflow, m)?)?;
     m.add_function(wrap_pyfunction!(save_workflow, m)?)?;
     m.add_function(wrap_pyfunction!(load_workflow, m)?)?;
+    m.add_function(wrap_pyfunction!(deck_to_str, m)?)?;
     // Builtin type ID constants — mirrors the ORC_TYPE_* values from orc_abi.h.
     m.add("ORC_TYPE_U8", ORC_TYPE_U8)?;
     m.add("ORC_TYPE_U16", ORC_TYPE_U16)?;
@@ -138,6 +139,13 @@ fn read_deck(py: Python<'_>, handle: &Handle) -> PyResult<PyObject> {
             handle.type_id
         ))),
     }
+}
+
+#[pyfunction]
+fn deck_to_str(py: Python<'_>, handle: &Handle) -> PyResult<PyObject> {
+    let out = host::host_deck_to_str(&handle.inner)
+        .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("{}", e)))?;
+    Ok(Py::new(py, Handle::new(out))?.into_any())
 }
 
 #[pyfunction]
