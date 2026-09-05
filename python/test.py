@@ -1642,14 +1642,27 @@ def t_workflow_construct_with_more_args_than_expected_raises():
 # ============================================================
 
 
+def _bytes_deck_data_to_strings(raw):
+    """Recursively convert nested lists of u8 values into strings.
+
+    Leaf lists (containing ints) are decoded as a single UTF-8 string.
+    Non-leaf lists (containing sub-lists) are recursed into.
+    """
+    if not raw:
+        return []
+    if isinstance(raw[0], int):
+        return bytes(raw).decode("utf-8")
+    return [_bytes_deck_data_to_strings(group) for group in raw]
+
+
 def _to_str_groups(handle):
     """Extract string groups from a u8 deck handle returned by deck_to_str.
 
-    The output is a depth-2 u8 deck: each depth-1 group is one string's bytes.
-    read_deck returns nested lists like [[ord('4'), ord('2')], ...].
+    For a flat input, returns ["42", "100", ...].
+    For a nested input, returns [["10", "20"], ["30"], ...].
     """
     raw = orc.read_deck(handle)
-    return [bytes(group).decode("utf-8") for group in raw]
+    return _bytes_deck_data_to_strings(raw)
 
 
 def t_deck_to_str_u32_flat():
@@ -1668,10 +1681,12 @@ def t_deck_to_str_f64_flat():
 
 
 def t_deck_to_str_i64_flat():
-    h = orc.make_deck([-0x80000000_00000000, 0, 0x7FFFFFFF_FFFFFFFF], dtype="i64")
+    h = orc.make_deck([-0x80000000_00000000, 0, 0x7FFFFFFF_FFFFFFFF],
+                      dtype="i64")
     out = orc.deck_to_str(h)
     assert _to_str_groups(out) == [
-        str(-0x80000000_00000000), "0", str(0x7FFFFFFF_FFFFFFFF)
+        str(-0x80000000_00000000), "0",
+        str(0x7FFFFFFF_FFFFFFFF)
     ]
 
 
@@ -1690,10 +1705,11 @@ def t_deck_to_str_single_item():
 def t_deck_to_str_nested():
     h = orc.make_deck([[10.0, 20.0], [30.0]])
     out = orc.deck_to_str(h)
-    # Input depth 2 → output depth 3. read_deck returns [[[...], [...]], [[...]]].
-    raw = orc.read_deck(out)
-    groups = [[bytes(s).decode("utf-8") for s in group] for group in raw]
+    # Input depth 2 → output depth 3.
+    groups = _to_str_groups(out)
     assert len(groups) == 2
+    assert len(groups[0]) == 2
+    assert len(groups[1]) == 1
     assert groups[0][0].startswith("10")
     assert groups[0][1].startswith("20")
     assert groups[1][0].startswith("30")
