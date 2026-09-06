@@ -133,15 +133,6 @@
   Maybe I can write a rasterizer for my curve types, and somehow get the optimizer to export images
   of the sample points in the design space, so that I can visualize them when viewing the DOE.
 
-* TODO Overhaul of workflow property serialization
-  :PROPERTIES:
-  :CREATED:  2026-09-05 Sat 12:41
-  :END:
-
-  The UI app will need to save it's own properties that don't mean anything to any other host app,
-  so the property serialization needs to be way more generic. Currently each relevant property is
-  serialized explicitly. That is not good enough.
-
 * TODO tkuzn6 - Node Editor UI App
   :PROPERTIES:
   :CREATED:  2026-08-26 Wed 10:47
@@ -158,6 +149,8 @@
 
   <2026-09-04 Fri 18:49> I need a way to display the decks. So I decided to do [[*tkv3ek - Deck to String Conversion for Display][this task]] first.
 
+  <2026-09-05 Sat 15:22> Also need to do [[*tkwogf - Overhaul of workflow property serialization][this task]] first.
+
 ** Vague sketch using egui + eframe + wgpu
    :PROPERTIES:
    :CREATED:  2026-08-26 Wed 11:22
@@ -170,6 +163,52 @@
    code runs in a browser tab — the only difference is that pop-out becomes a floating panel
    instead of an OS window. The whole stack compiles to both native and WASM without forking the
    codebase.
+
+* TODO Rethink the design of the property system
+  :PROPERTIES:
+  :CREATED:  2026-09-06 Sun 13:31
+  :END:
+
+  Currently the property system pretends to support arbitrary datatypes, and pretends as if each
+  host application can use properties for it's own needs. This is true during the runtime. But the
+  serialization story of the workflows throws a bit of a wrench into this. I've given this some
+  thought in [[*tkwogf - Overhaul of workflow property serialization][this task]], but I don't yet know what the solution is. This requires more thought.
+
+* TODO Support 'Inspect' nodes in a workflow
+  :PROPERTIES:
+  :CREATED:  2026-09-06 Sun 13:28
+  :END:
+
+  This can be used by a UI app to display the data in whatever format the user likes. Each host can
+  interpret these nodes, or ignore them to it's liking. E.g. a CLI app can use them to log the data.
+
+* CLOSED tkwogf - Overhaul of workflow property serialization
+  CLOSED: [2026-09-06 Sun 13:28]
+  :PROPERTIES:
+  :CREATED:  2026-09-05 Sat 12:41
+  :END:
+  :LOGBOOK:
+  - State "CLOSED"     from "DONE"       [2026-09-06 Sun 13:30]
+  - State "DONE"       from "NEXT"       [2026-09-06 Sun 13:28]
+  - State "NEXT"       from "TODO"       [2026-09-05 Sat 15:22]
+  :END:
+
+  The UI app will need to save it's own properties that don't mean anything to any other host app,
+  so the property serialization needs to be way more generic. Currently each relevant property is
+  serialized explicitly. That is not good enough.
+
+  <2026-09-06 Sun 13:20> I am not sure about this direction. After some more thought, I think may be
+  this is not the right way to solve some of these problems. I will drop this for now. I don't need
+  to solve the "multiple hosts save their data in the file using the same property system" problem
+  right now. I can put that off to when I really need to solve it, or if I come up with the right
+  solution for it.
+
+  Instead of overhauling the property system, I can add support for dead end nodes, or transparent
+  nodes that just propagate their inputs downstream, that can be used by the UI node editor as
+  "inspect" nodes that display the data as either text or geometry. I will do that as part of
+  another task.
+
+  Merging the irrelevant edits of this branch into main anyway.
 
 * DONE tkv3ek - Deck to String Conversion for Display
   CLOSED: [2026-09-05 Sat 13:41]
