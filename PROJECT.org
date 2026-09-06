@@ -165,12 +165,12 @@
    codebase.
 
 * DONE tkwogf - Overhaul of workflow property serialization
-  CLOSED: [2026-09-06 Sun 13:25]
+  CLOSED: [2026-09-06 Sun 13:28]
   :PROPERTIES:
   :CREATED:  2026-09-05 Sat 12:41
   :END:
   :LOGBOOK:
-  - State "DONE"       from "NEXT"       [2026-09-06 Sun 13:25]
+  - State "DONE"       from "NEXT"       [2026-09-06 Sun 13:28]
   - State "NEXT"       from "TODO"       [2026-09-05 Sat 15:22]
   :END:
 
@@ -183,6 +183,11 @@
   to solve the "multiple hosts save their data in the file using the same property system" problem
   right now. I can put that off to when I really need to solve it, or if I come up with the right
   solution for it.
+
+  Instead of overhauling the property system, I can add support for dead end nodes, or transparent
+  nodes that just propagate their inputs downstream, that can be used by the UI node editor as
+  "inspect" nodes that display the data as either text or geometry. I will do that as part of
+  another task.
 
   Merging the irrelevant edits of this branch into main anyway.
 
