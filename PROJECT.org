@@ -174,9 +174,12 @@
   serialization story of the workflows throws a bit of a wrench into this. I've given this some
   thought in [[*tkwogf - Overhaul of workflow property serialization][this task]], but I don't yet know what the solution is. This requires more thought.
 
-* TODO Support 'Inspect' nodes in a workflow
+* NEXT tkyeb2 - Support 'Inspect' nodes in a workflow
   :PROPERTIES:
   :CREATED:  2026-09-06 Sun 13:28
+  :END:
+  :LOGBOOK:
+  - State "NEXT"       from "TODO"       [2026-09-06 Sun 13:44]
   :END:
 
   This can be used by a UI app to display the data in whatever format the user likes. Each host can
