@@ -24,6 +24,10 @@ fn serialize_handle(
 }
 
 impl Workflow {
+    /// This indicates the version of the serialized data. We write this version at the start when
+    /// we serialize, and then read it back and check when deserializing. For now, if the versions
+    /// don't match, we just error out, but in the future, after bumping up a few versions, I can
+    /// dispatch to functions that deserialize the older versions.
     const WORKFLOW_MSGPACK_VERSION_CURRENT: u64 = 1;
 
     pub fn read_from_msgpack(
