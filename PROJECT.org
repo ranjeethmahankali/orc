@@ -164,17 +164,27 @@
    instead of an OS window. The whole stack compiles to both native and WASM without forking the
    codebase.
 
-* NEXT tkwogf - Overhaul of workflow property serialization
+* DONE tkwogf - Overhaul of workflow property serialization
+  CLOSED: [2026-09-06 Sun 13:25]
   :PROPERTIES:
   :CREATED:  2026-09-05 Sat 12:41
   :END:
   :LOGBOOK:
+  - State "DONE"       from "NEXT"       [2026-09-06 Sun 13:25]
   - State "NEXT"       from "TODO"       [2026-09-05 Sat 15:22]
   :END:
 
   The UI app will need to save it's own properties that don't mean anything to any other host app,
   so the property serialization needs to be way more generic. Currently each relevant property is
   serialized explicitly. That is not good enough.
+
+  <2026-09-06 Sun 13:20> I am not sure about this direction. After some more thought, I think may be
+  this is not the right way to solve some of these problems. I will drop this for now. I don't need
+  to solve the "multiple hosts save their data in the file using the same property system" problem
+  right now. I can put that off to when I really need to solve it, or if I come up with the right
+  solution for it.
+
+  Merging the irrelevant edits of this branch into main anyway.
 
 * DONE tkv3ek - Deck to String Conversion for Display
   CLOSED: [2026-09-05 Sat 13:41]
