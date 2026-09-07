@@ -174,18 +174,21 @@
   serialization story of the workflows throws a bit of a wrench into this. I've given this some
   thought in [[*tkwogf - Overhaul of workflow property serialization][this task]], but I don't yet know what the solution is. This requires more thought.
 
-* NEXT tkyeb2 - Support 'Inspect' nodes in a workflow
+* DONE tkyeb2 - Support 'Inspect' nodes in a workflow
+  CLOSED: [2026-09-06 Sun 22:21]
   :PROPERTIES:
   :CREATED:  2026-09-06 Sun 13:28
   :END:
   :LOGBOOK:
+  - State "DONE"       from "NEXT"       [2026-09-06 Sun 22:21]
   - State "NEXT"       from "TODO"       [2026-09-06 Sun 13:44]
   :END:
 
   This can be used by a UI app to display the data in whatever format the user likes. Each host can
   interpret these nodes, or ignore them to it's liking. E.g. a CLI app can use them to log the data.
 
-  <2026-09-06 Sun 22:18> Added an inspect node that doesn't participate in eval.
+  <2026-09-06 Sun 22:18> Added an inspect node that doesn't participate in eval. Nothing here that
+  can be tested. This will be tested when I write the UI app.
 
 * CLOSED tkwogf - Overhaul of workflow property serialization
   CLOSED: [2026-09-06 Sun 13:28]
