@@ -12,6 +12,7 @@ pub enum NodeInfo {
     Constant(OrcHandle),
     Function(FuncInfo),
     NestedCall { workflow_name: String },
+    Inspect { label: String },
 }
 
 impl Clone for NodeInfo {
@@ -22,6 +23,9 @@ impl Clone for NodeInfo {
             Self::Function(arg0) => Self::Function(arg0.clone()),
             Self::NestedCall { workflow_name } => Self::NestedCall {
                 workflow_name: workflow_name.clone(),
+            },
+            Self::Inspect { label } => Self::Inspect {
+                label: label.clone(),
             },
         }
     }
@@ -39,6 +43,7 @@ impl NodeInfo {
             NodeInfo::Constant(_data) => "const",
             NodeInfo::Function(func_info) => &func_info.name,
             NodeInfo::NestedCall { workflow_name } => workflow_name,
+            NodeInfo::Inspect { label } => label,
         }
     }
 }
@@ -393,6 +398,8 @@ impl Workflow {
                             NodeInfo::Function(_) | NodeInfo::NestedCall { .. } => {
                                 Ok(computed_outputs[source.idx].borrowed())
                             }
+                            // Inspect node should never be wired up to any downstream nodes.
+                            NodeInfo::Inspect { .. } => Err(DagError::InvalidFunction),
                         },
                         None => match &workflow_input_index[input] {
                             Some(index) if *index < inputs.len() => Ok(inputs[*index].clone()),
@@ -442,6 +449,8 @@ impl Workflow {
                             None => return Err(DagError::InvalidFunction),
                         }
                     }
+                    // Inspect nodes should always be dead ends in a valid workflow.
+                    NodeInfo::Inspect { .. } => return Err(DagError::InvalidFunction),
                 };
                 // Move the outputs into the outer buffer for later.
                 for (o, val) in temp_output_handles.drain(..).zip(temp_outputs.drain(..)) {
@@ -473,6 +482,8 @@ impl Workflow {
                 NodeInfo::Function(_) | NodeInfo::NestedCall { .. } => {
                     std::mem::take(&mut computed_outputs[src.idx])
                 }
+                // Inspect nodes cannot have outputs in a valid workflow.
+                NodeInfo::Inspect { .. } => return Err(DagError::InvalidFunction),
             };
         }
         Ok(())

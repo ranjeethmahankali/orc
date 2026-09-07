@@ -2344,3 +2344,275 @@ Archived entries from file /home/rnjth94/dev/orc/PROJECT.org
 
   <2026-08-26 Wed 22:33> The porting story of ffi.rs is not fully clear in my head. I will put that
   off for later. Merging what I have so far.
+
+* DONE tiwkbm - Server / client demo app
+  CLOSED: [2026-09-04 Fri 15:33]
+  :PROPERTIES:
+  :CREATED:  2026-07-28 Tue 16:45
+  :ARCHIVE_TIME: 2026-09-06 Sun 22:23
+  :ARCHIVE_FILE: ~/dev/orc/PROJECT.org
+  :ARCHIVE_CATEGORY: PROJECT
+  :ARCHIVE_TODO: DONE
+  :END:
+  :LOGBOOK:
+  - State "DONE"       from "NEXT"       [2026-09-04 Fri 15:33]
+  - State "NEXT"       from "NEXT"       [2026-08-26 Wed 21:54]
+  - State "NEXT"       from "TODO"       [2026-08-25 Tue 20:13]
+  - State "TODO"       from "NEXT"       [2026-07-31 Fri 20:46]
+  - State "NEXT"       from "TODO"       [2026-07-30 Thu 18:36]
+  :END:
+
+  Not that the plugin architecture is fleshed out, I can build a few toy host applications, and toy
+  plugins, and demonstrate the flexibility and power of this design to both Product / Customer
+  facing side as well as the engineering side.
+
+  <2026-07-30 Thu 18:35> Made quite some progress with the orc_fn macro to make it easier to
+  implement simple blocks. The macro is now able to handle templated Rust functions too, but still
+  requires some more testing before I feel confident about it.
+
+  <2026-07-31 Fri 18:22> The orc_fn proc macro mostly took shape. Trying to simplify the code a bit,
+  and maybe add some tests. The proxy deck functions need more thought, and need to be fleshed
+  out. Also the type ids require more thought. Plugins will need the ability to work with arbitrary
+  types defined in other plugins. Which means plugins cannot rely on their own type ids. The handle
+  cannot just communicate OrcTypeId. It needs to have a unique integer id that the host assigns to
+  that type, after loading all the plugins, and the plugins need to know that mapped id for their
+  own types after plugin_init.... It will get a bit more complicated than it currently is.
+
+  <2026-07-31 Fri 20:45> Trying to temporarily stop on this task, and finish a few other smaller
+  tasks before continuing.
+
+  <2026-08-25 Tue 20:19> Last time I attempted this task, questions about type_ids, ownership, DAGs,
+  versioning, and serialization were all completely unanswered. I have since answered those
+  questions through all the tasks I finished during this time. Trying to attempt to make a UI app
+  once again.
+
+  <2026-08-27 Thu 17:45> The server client is working locally. Tried testing across machines on a
+  local network. That did not work. Will try again later.
+
+  - [X] Add integration tests for the client / server interactions.
+
+  <2026-09-04 Fri 15:29> Server-client example seems to work over the local network. This is just an
+  example app, and doesn't need to be very polished. I am now narrowing the scope of this task to
+  just the server client demo app, and merging this. I will pull the other app ideas into separate
+  tasks.
+
+** DONE Host program that runs as a service
+   CLOSED: [2026-09-04 Fri 15:31]
+   :PROPERTIES:
+   :CREATED:  2026-08-26 Wed 10:52
+   :END:
+   :LOGBOOK:
+   - State "DONE"       from "TODO"       [2026-09-04 Fri 15:31]
+   :END:
+
+   Server / service that listens for requests, and performs work by calling plugin functions when it
+   receives a request. This is interesting, as I can probably run a workflow on multiple threads
+   using make, of course, assuming the host program can schedule the jobs it receives on all
+   available threads.
+
+   A client would:
+   - Start a session, and receive a session id from the service. This helps the service distinguish
+     the requests it receives from different clients in the future.
+   - Create constants containing primitive datatypes, by passing them in as either binary blobs or
+     strings. The server returns an id representing the constant that lives in the server's memory,
+     associated with that particular sesion.
+   - Call functions with specific inputs. The client specifies inputs by their ids. The server runs
+     the funciton, and returns ids corresponding to the inputs.
+   - Presumably some of these functions export files, that are received by the client as the output
+     of their workflow.
+   - Client can request to download the workflow they built up during this session as a serialized
+     workflow.
+   - The client can then close the session, which will cause all the session data, variables,
+     registry etc. to be cleaned up.
+
+   Comparing this to the host programs I have now, each session will have it's own OrcHost instance,
+   registry, allocators, etc.
+
+*** DONE Rust server plus C client
+    CLOSED: [2026-09-04 Fri 15:31]
+    :PROPERTIES:
+    :CREATED:  2026-08-26 Wed 11:38
+    :END:
+    :LOGBOOK:
+    - State "DONE"       from "TODO"       [2026-09-04 Fri 15:31]
+    - State "TODO"       from              [2026-08-26 Wed 14:09]
+    :END:
+
+    Make a server in Rust: tiny_http crate provides a synchronous HTTP server — no async, no
+    tokio. Thread pool is std-only: N threads pulling jobs from an mpsc channel. Plugin calls go
+    through FFI into the C SDK, run on the thread pool, results returned as HTTP responses. Each
+    session owns an OrcHost instance, stored in an Arc<Mutex<HashMap>>. Cross-platform via std and
+    tiny_http.
+
+    Make a simple client program in C:
+    - It should be able to do all the client things listed in the parent task.
+    - Needs a special --save-image <path> CLI option to save output data that is downloaded as
+      serialized OrcHandle data. Say, if three handles (decks) of the same length are returned, save
+      them as RGB. If 1 deck is returned, save it as grayscale.
+    - Similar option (--save-text <path>) to save a downloaded serialized OrcHandle of type u8 as
+      text to a file.
+    - Should parse the numerical data passed in via CLI to create constant decks. Maybe the parsing
+      can be done on the server side. Or maybe the client should create a deck, a handle, serialize
+      it, then send it over to the server? Not sure which is better.
+
+*** CLOSED C program using mongoose and a simple handrolled thread pool
+    CLOSED: [2026-08-26 Wed 13:58]
+    :PROPERTIES:
+    :CREATED:  2026-08-26 Wed 11:38
+    :END:
+    :LOGBOOK:
+    - State "CLOSED"     from              [2026-08-26 Wed 13:58]
+    :END:
+
+    Drop mongoose.c + mongoose.h into the repo. HTTP parsing, routing, and cross-platform socket
+    handling are provided by mongoose. Thread pool is pthreads + a job queue (mutex + condvar).
+    Plugin calls run directly through the C SDK with no FFI boundary. Each session owns an OrcHost
+    instance, stored in a hashtable keyed by session id. Fully cross-platform (Windows, Linux,
+    macOS).
+
+    <2026-08-26 Wed 13:58> Replicating the workflow, its property system etc. in C is a good idea,
+    but too much overhead for a quick demo. So I will scrap this idea and go ahead with the Rust
+    alternative.
+
+    <2026-08-26 Wed 14:10> Instead maybe, I can use mongoose to make a simple client program.
+
+    <2026-09-04 Fri 15:32> Ended up not needing mongoose. Just a few hundren lines of boiler plate
+    was enough.
+
+* DONE tkuwku - Download workflow from the server
+  CLOSED: [2026-09-04 Fri 17:17]
+  :PROPERTIES:
+  :CREATED:  2026-09-04 Fri 16:22
+  :ARCHIVE_TIME: 2026-09-06 Sun 22:23
+  :ARCHIVE_FILE: ~/dev/orc/PROJECT.org
+  :ARCHIVE_CATEGORY: PROJECT
+  :ARCHIVE_TODO: DONE
+  :END:
+  :LOGBOOK:
+  - State "DONE"       from "NEXT"       [2026-09-04 Fri 17:17]
+  - State "NEXT"       from "TODO"       [2026-09-04 Fri 16:22]
+  :END:
+
+  Add a ~download_workflow~ command to ~server_host~ that takes a session id and sends the
+  serialized workflow as a .orc file.
+
+  Add an integrateion test (to integration_tests.py), that creates a workflow with some basic math
+  blocks, asserts the output value by downloading the output handle, then downloads the entire
+  workflow and runs it locally via pyorc, and makes sure it runs properly.
+
+  <2026-09-04 Fri 17:17> Got it working. This exposed an existing memory leak in pyorc. That is
+  fixed. And the tests are passing.
+
+* CLOSED Thread Safety in C SDK
+  CLOSED: [2026-09-04 Fri 17:25]
+  :PROPERTIES:
+  :CREATED:  2026-06-07 Sun 15:12
+  :ARCHIVE_TIME: 2026-09-06 Sun 22:23
+  :ARCHIVE_FILE: ~/dev/orc/PROJECT.org
+  :ARCHIVE_CATEGORY: PROJECT
+  :ARCHIVE_TODO: CLOSED
+  :END:
+  :LOGBOOK:
+  - State "CLOSED"     from "TODO"       [2026-09-04 Fri 17:25]
+  :END:
+
+  Whenever the plugin code receives an output handle from the host, it has to
+  verify that the output handle was allocated in the same plugin. Otherwise it
+  is unsafe to write into that memory address. If it came from another plugin,
+  then this plugin cannot know anything about the datatype or memory layout. To
+  check for this, each plugin likely needs to keep a global list of allocated
+  decks, and ensure the output handle matches one of them. Access to this global
+  list should be thread safe, since the host can call the plugin functions from
+  any thread.
+
+  While this is trivial to do in C++ and Rust, it is not trivial to do in a
+  cross platform manner in C. For now, I just have a dummy check that always
+  returns true (safe). This is good enough for a prototype, but at some point we
+  need to figure out a good cross platform thread API for our C SDK.
+
+  Should the host provide the thread API too? How does Parasolid handle it?
+
+  <2026-09-04 Fri 17:25> This task is outdated, based on an old design. This is not relevant
+  anymore.
+
+* CLOSED Deferred failures in niche scenarios
+  CLOSED: [2026-09-04 Fri 17:26]
+  :PROPERTIES:
+  :CREATED:  2026-06-07 Sun 07:55
+  :ARCHIVE_TIME: 2026-09-06 Sun 22:23
+  :ARCHIVE_FILE: ~/dev/orc/PROJECT.org
+  :ARCHIVE_CATEGORY: PROJECT
+  :ARCHIVE_TODO: CLOSED
+  :END:
+  :LOGBOOK:
+  - State "CLOSED"     from "TODO"       [2026-09-04 Fri 17:26]
+  :END:
+
+  If we want to migrate to a nicer system that does more things at runtime
+  instead of compile time, in some very niche scenarios, we MAY have to live
+  with not knowing type mismatch errors before running some functions. This is
+  only the case with types that use some type of polymorphism.
+
+  <2026-09-04 Fri 17:26> This is not interesting at this time.
+
+* DONE tkv3ek - Deck to String Conversion for Display
+  CLOSED: [2026-09-05 Sat 13:41]
+  :PROPERTIES:
+  :CREATED:  2026-09-04 Fri 18:48
+  :ARCHIVE_TIME: 2026-09-06 Sun 22:23
+  :ARCHIVE_FILE: ~/dev/orc/PROJECT.org
+  :ARCHIVE_CATEGORY: PROJECT
+  :ARCHIVE_TODO: DONE
+  :END:
+  :LOGBOOK:
+  - State "DONE"       from "NEXT"       [2026-09-05 Sat 13:41]
+  - State "NEXT"       from "TODO"       [2026-09-04 Fri 18:53]
+  :END:
+
+  This is very useful, and the bar for implementing is so low, that it should be part of the ABI.
+
+  <2026-09-05 Sat 13:15> Got the C side of things working yesterday. Added tests. Implemented the
+  Rust side of things today. Adding tests now. Will try to get this merged after that.
+
+  The basic design for string conversion across the FFI boundary is figured out. I could add more
+  utilities and helpers, but I prefer not to add those in vacuum. Instead, I should add those when I
+  implement apps and features that use the string conversion.
+
+  <2026-09-05 Sat 13:41> Also ended up threading the string conversion through all the Rust host /
+  plugin machinery. Added a lot of tests. Ready to merge.
+
+  <2026-09-05 Sat 14:08> Forgot about the Python integration. Doing that now before merging.
+
+  <2026-09-05 Sat 14:34> Python integration done. Test coverage added. Linter warnings fixed.
+
+* CLOSED tkwogf - Overhaul of workflow property serialization
+  CLOSED: [2026-09-06 Sun 13:28]
+  :PROPERTIES:
+  :CREATED:  2026-09-05 Sat 12:41
+  :ARCHIVE_TIME: 2026-09-06 Sun 22:23
+  :ARCHIVE_FILE: ~/dev/orc/PROJECT.org
+  :ARCHIVE_CATEGORY: PROJECT
+  :ARCHIVE_TODO: CLOSED
+  :END:
+  :LOGBOOK:
+  - State "CLOSED"     from "DONE"       [2026-09-06 Sun 13:30]
+  - State "DONE"       from "NEXT"       [2026-09-06 Sun 13:28]
+  - State "NEXT"       from "TODO"       [2026-09-05 Sat 15:22]
+  :END:
+
+  The UI app will need to save it's own properties that don't mean anything to any other host app,
+  so the property serialization needs to be way more generic. Currently each relevant property is
+  serialized explicitly. That is not good enough.
+
+  <2026-09-06 Sun 13:20> I am not sure about this direction. After some more thought, I think may be
+  this is not the right way to solve some of these problems. I will drop this for now. I don't need
+  to solve the "multiple hosts save their data in the file using the same property system" problem
+  right now. I can put that off to when I really need to solve it, or if I come up with the right
+  solution for it.
+
+  Instead of overhauling the property system, I can add support for dead end nodes, or transparent
+  nodes that just propagate their inputs downstream, that can be used by the UI node editor as
+  "inspect" nodes that display the data as either text or geometry. I will do that as part of
+  another task.
+
+  Merging the irrelevant edits of this branch into main anyway.

@@ -24,6 +24,10 @@ fn serialize_handle(
 }
 
 impl Workflow {
+    /// This indicates the version of the serialized data. We write this version at the start when
+    /// we serialize, and then read it back and check when deserializing. For now, if the versions
+    /// don't match, we just error out, but in the future, after bumping up a few versions, I can
+    /// dispatch to functions that deserialize the older versions.
     const WORKFLOW_MSGPACK_VERSION_CURRENT: u64 = 1;
 
     pub fn read_from_msgpack(
@@ -107,6 +111,13 @@ impl Workflow {
                         }
                         let workflow_name = read_string(src)?;
                         NodeInfo::NestedCall { workflow_name }
+                    }
+                    3 => {
+                        if arr_len != 2 {
+                            return Err(DagError::ReadError);
+                        }
+                        let label = read_string(src)?;
+                        NodeInfo::Inspect { label }
                     }
                     _ => return Err(DagError::ReadError),
                 };
@@ -263,6 +274,11 @@ impl Workflow {
                         rmp::encode::write_array_len(w, 2)?;
                         rmp::encode::write_u32(w, 2)?;
                         rmp::encode::write_str(w, workflow_name)?;
+                    }
+                    NodeInfo::Inspect { label } => {
+                        rmp::encode::write_array_len(w, 2)?;
+                        rmp::encode::write_u32(w, 3)?;
+                        rmp::encode::write_str(w, label)?;
                     }
                 }
             }
