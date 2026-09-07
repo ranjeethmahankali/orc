@@ -399,7 +399,7 @@ impl Workflow {
                                 Ok(computed_outputs[source.idx].borrowed())
                             }
                             // Inspect node should never be wired up to any downstream nodes.
-                            NodeInfo::Inspect { .. } => return Err(DagError::InvalidFunction),
+                            NodeInfo::Inspect { .. } => Err(DagError::InvalidFunction),
                         },
                         None => match &workflow_input_index[input] {
                             Some(index) if *index < inputs.len() => Ok(inputs[*index].clone()),
