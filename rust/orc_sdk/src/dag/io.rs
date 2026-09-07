@@ -112,6 +112,13 @@ impl Workflow {
                         let workflow_name = read_string(src)?;
                         NodeInfo::NestedCall { workflow_name }
                     }
+                    3 => {
+                        if arr_len != 2 {
+                            return Err(DagError::ReadError);
+                        }
+                        let label = read_string(src)?;
+                        NodeInfo::Inspect { label }
+                    }
                     _ => return Err(DagError::ReadError),
                 };
                 node_infos[NH { idx: i }] = info;
@@ -267,6 +274,11 @@ impl Workflow {
                         rmp::encode::write_array_len(w, 2)?;
                         rmp::encode::write_u32(w, 2)?;
                         rmp::encode::write_str(w, workflow_name)?;
+                    }
+                    NodeInfo::Inspect { label } => {
+                        rmp::encode::write_array_len(w, 2)?;
+                        rmp::encode::write_u32(w, 3)?;
+                        rmp::encode::write_str(w, label)?;
                     }
                 }
             }
