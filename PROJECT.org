@@ -160,9 +160,12 @@
   This should be easy to do. Need to think through the inspect nodes a little, but should be trivial
   still.
 
-* TODO tkuzn6 - Node Editor UI App
+* NEXT tkuzn6 - Node Editor UI App
   :PROPERTIES:
   :CREATED:  2026-08-26 Wed 10:47
+  :END:
+  :LOGBOOK:
+  - State "NEXT"       from "TODO"       [2026-09-06 Sun 22:31]
   :END:
 
   To lower the scope of the node editor demo app, I think it should not have a dedicated viewer,
