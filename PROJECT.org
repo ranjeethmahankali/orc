@@ -191,6 +191,372 @@
    :CREATED:  2026-09-06 Sun 23:03
    :END:
 
+*** Crate: rust/dagger/
+
+    New workspace member. Dependencies: eframe 0.31, egui 0.31, orc_sdk.
+
+    #+begin_src
+    rust/dagger/
+      Cargo.toml
+      src/
+        main.rs             -- eframe entry, host setup (OrcHost, PluginSet, DeckRegistry, handle counter)
+        app.rs              -- DaggerApp: eframe::App, top-level layout, window management
+        canvas.rs           -- Pan/zoom canvas, coordinate transforms (screen <-> canvas)
+        node_render.rs      -- Draw node bodies, title bars, pins, labels (all monospace)
+        link_render.rs      -- Draw cubic Bezier connections
+        interaction.rs      -- Pin connect/disconnect, select, delete, box-select
+        state.rs            -- EditorState: Workflow + properties + computed outputs + layout
+        layout.rs           -- Deterministic Sugiyama-style layered layout from DAG topology
+        context_menu.rs     -- Right-click menu with search field, pluggable FunctionFilter trait
+        inspect.rs          -- Inspect node display: scrollable text, resizable viewport, pop-out
+        exec.rs             -- Background thread execution via mpsc channels
+    #+end_src
+
+*** Changes to orc_sdk
+
+    Add public accessors to Workflow (workflow.rs) since fields are pub(crate):
+    - ~nodes() -> impl Iterator<Item = NH>~ -- iterate non-deleted nodes
+    - ~node_inputs(NH) -> impl Iterator<Item = IH>~ -- delegate to graph
+    - ~node_outputs(NH) -> impl Iterator<Item = OH>~ -- delegate to graph
+    - ~node_info(NH) -> Result<Ref<NodeInfo>>~ -- borrow node info
+    - ~node_from_input(IH) -> NH~ -- which node owns this input pin
+    - ~node_from_output(OH) -> NH~ -- which node owns this output pin
+    - ~links() -> impl Iterator<Item = (OH, IH)>~ -- iterate non-deleted links
+    - ~add_inspect(label) -> Result<(NH, IH)>~ -- create inspect node (1 input, 0 outputs)
+    - ~remove_node(NH)~ -- disconnect all pins, mark node and its pins as deleted
+
+    Add ~Hash~ derive to NH, IH, OH, LH in graph.rs.
+
+*** Custom Rendering (not egui-snarl or egui-graph-edit)
+
+    Existing egui node editor crates (egui-snarl, egui-graph-edit) maintain their own internal graph
+    model with their own ID types. Using them would require keeping two parallel graph representations
+    in sync -- a constant source of bugs. Instead, render nodes directly from the orc Workflow using
+    egui's Painter API:
+
+    - ~Painter::rect_filled~ / ~rect_stroke~ for node bodies (rounded rectangles)
+    - ~Painter::circle_filled~ / ~circle_stroke~ for input/output pins
+    - ~Painter::text~ for all labels (monospace font throughout the entire UI)
+    - ~Painter::add(Shape::CubicBezier { .. })~ for connection curves between pins
+
+    All coordinates are transformed through a pan/zoom affine matrix before drawing.
+
+*** Deterministic Layout (No Node Dragging)
+
+    Nodes are NOT draggable. Every DAG topology has a single deterministic layout computed by a
+    Sugiyama-style layered algorithm. Positions are never stored on disk; they are recomputed
+    identically each time the app opens or the topology changes.
+
+    Algorithm:
+    1. Layer assignment: topological sort, assign each node to the earliest layer where all its
+       inputs are satisfied. Workflow input chips go to layer 0. Workflow output chips go to the
+       last layer.
+    2. Crossing minimization: barycenter heuristic to order nodes within each layer.
+    3. Vertical positioning: median positioning to minimize edge lengths.
+
+    The layout output is ~Vec<Vec<NH>>~ (layers of nodes, each layer sorted by y position).
+
+    Stability when adding nodes: recomputing the full layout after adding a node preserves the
+    relative ordering of existing nodes within their layers because their connections haven't changed.
+    The barycenter heuristic is driven by connection positions, so only the neighborhood of the newly
+    added node shifts. This means the layout doesn't jump around when a single node is added.
+
+*** Hit Testing via Layout Structure
+
+    Since the layout is deterministic and layered, the layout data structure itself IS the spatial
+    index. No separate spatial data structure (quadtree, grid, etc.) is needed.
+
+    To find what element is under the cursor:
+    1. Binary search the layer x-boundaries to find which layer the cursor is in -- O(log L)
+    2. Binary search within that layer by y position to find the node -- O(log N_layer)
+    3. If the cursor is on a node, check its pins linearly (few pins per node)
+
+    The ~Vec<Vec<NH>>~ produced by the layout algorithm doubles as the hit-test index. It is
+    recomputed whenever the layout recomputes (i.e., when the topology changes -- not on every
+    frame).
+
+*** EditorState
+
+    Uses orc's existing property system (~NodeProperty<T>~, ~OutputProperty<T>~) instead of
+    HashMaps. Properties are attached to the workflow's graph and automatically resize when nodes
+    are added/removed or garbage collection runs.
+
+    #+begin_src rust
+    struct EditorState {
+        workflow: Workflow,
+        // Properties (attached to workflow graph, auto-resize with topology)
+        node_positions: NodeProperty<[f32; 2]>,
+        node_sizes: NodeProperty<[f32; 2]>,              // for resizable inspect nodes
+        computed_outputs: OutputProperty<Option<OrcHandle>>,   // cached execution results
+        nested_exec_state: NodeProperty<Option<NestedExecState>>,  // per-call internal state
+        // Layout (recomputed from topology, also used for hit testing)
+        layers: Vec<Vec<NH>>,
+        layer_x_positions: Vec<f32>,
+        // UI transients (not persisted)
+        pan_offset: Vec2,
+        zoom: f32,
+        selected_nodes: HashSet<usize>,               // NH indices
+        connecting: Option<ConnectState>,              // active wire drag from a pin
+    }
+    #+end_src
+
+*** Incremental Execution
+
+    Computed outputs are stored as ~OutputProperty<Option<OrcHandle>>~. When topology changes
+    (connect, disconnect, add/remove node):
+    1. Mark affected outputs as stale (set to None).
+    2. Propagate staleness downstream through links -- any node whose input comes from a stale
+       output also has its outputs marked stale.
+    3. On next execution, only evaluate nodes with stale outputs.
+
+    The execution engine needs a modified version of ~Workflow::run~ that:
+    - Accepts pre-computed output values for non-stale nodes and skips evaluating them.
+    - Returns ALL intermediate output values (not just the final workflow outputs).
+    - At NestedCall nodes, recursively captures internal state into ~NestedExecState~.
+
+    Background thread communication: serialize the stale subgraph + its input values via mpsc
+    channel, deserialize + run on the background thread, send results back (both the output values
+    and any NestedExecState trees). The UI thread stores results into ~computed_outputs~ and
+    ~nested_exec_state~. The UI thread never freezes.
+
+    The serialization-to-background-thread approach is necessary because ~Workflow~ is not ~Send~
+    (it contains ~Rc<RefCell<...>>~ in the property system). The serialization cost is negligible
+    relative to actual execution time.
+
+*** Nested Workflow Execution State
+
+    Each NestedCall node in the outer workflow may be called with different inputs, so each call
+    produces different internal values. The state is stored per-call-node and is recursive for
+    arbitrary nesting depth.
+
+    #+begin_src rust
+    struct NestedExecState {
+        // Computed output values for every output pin in this nested workflow's graph.
+        // Indexed by OH.index() within the nested workflow's handle space.
+        // Vec length matches the nested workflow's graph.outputs.len().
+        output_values: Vec<Option<OrcHandle>>,
+
+        // For each node in this nested workflow that is itself a NestedCall,
+        // stores that call's internal execution state. Indexed by NH.index()
+        // within the nested workflow's handle space. Only NestedCall nodes
+        // have Some(...); all other entries are None.
+        // Vec length matches the nested workflow's graph.nodes.len().
+        child_call_states: Vec<Option<NestedExecState>>,
+    }
+    #+end_src
+
+    Stored in the outer EditorState as ~NodeProperty<Option<NestedExecState>>~.
+    Only NestedCall nodes have Some(...).
+
+    Example with 3 levels of nesting:
+    #+begin_src
+    Outer workflow: node B (calls "inner"), node C (calls "inner")
+    inner workflow: node Y (calls "deep")
+    deep workflow:  nodes P, Q (functions)
+
+    Outer EditorState:
+      nested_exec_state[B] = Some(NestedExecState {
+        output_values: [X_val, Y_val, Z_val, ...],      // inner's OH space
+        child_call_states: [.., Some(NestedExecState {   // Y's call to deep
+          output_values: [P_val, Q_val],                 // deep's OH space
+          child_call_states: [],                         // no further nesting
+        }), ..],
+      })
+      nested_exec_state[C] = Some(NestedExecState {
+        output_values: [X_val', Y_val', Z_val', ...],   // different values from B
+        child_call_states: [.., Some(NestedExecState {
+          output_values: [P_val', Q_val'],               // different from B's deep
+          child_call_states: [],
+        }), ..],
+      })
+    #+end_src
+
+**** Populating during execution
+
+     The execution engine captures intermediate output values at every nesting level (current
+     ~Workflow::run()~ discards them). After running a NestedCall node, the engine builds a
+     ~NestedExecState~ from the intermediate results and stores it. This is recursive -- at each
+     nesting level, the engine captures outputs and child states.
+
+**** Loading into nested editor window
+
+     When the user double-clicks call node B:
+     1. Clone the nested workflow from ~parent.nested_workflows["inner"]~.
+     2. Load B's ~NestedExecState.output_values~ into the new editor's ~computed_outputs~ property
+        so the user immediately sees the live computed values for all internal nodes.
+     3. Load B's ~NestedExecState.child_call_states~ into the new editor's per-node
+        ~nested_exec_state~ property, so that further double-clicks on NestedCall nodes inside the
+        nested editor work correctly at deeper levels.
+     4. The workflow input chips in the nested editor display B's actual upstream values (the
+        arguments that flowed into this specific call).
+
+     When the user then double-clicks Y inside that nested editor window:
+     1. Clone the nested workflow from ~inner.nested_workflows["deep"]~.
+     2. Load Y's child state from the already-loaded ~nested_exec_state~ property.
+     3. Same pattern. Works for arbitrary depth.
+
+*** Nested Workflow Window Lifecycle
+
+    Uses ~ctx.show_viewport_deferred()~ to open real OS-level windows. Each nested editor has its
+    own ~EditorState~ and renders identically to the main canvas (same node rendering, same
+    interaction, same layout algorithm, same context menu).
+
+    Constraint: opening a nested workflow that is already open in another window is disallowed. The
+    app tracks open nested workflows by name and rejects double-click if the workflow is already
+    open.
+
+**** Close prompt (nested window, unsaved changes)
+
+     When the user closes a nested workflow window that has unsaved modifications, prompt with 3
+     options:
+     - *Discard* -- close without saving. All changes are lost.
+     - *Replace All* -- overwrite the nested workflow definition in the parent so ALL NestedCall
+       nodes that reference this workflow use the updated version.
+     - *Create New* -- insert a new nested workflow with an auto-generated name. Update only the
+       source NestedCall node (the one that was double-clicked to open this window) to reference the
+       new name. All other callers continue to use the original version.
+
+**** Close prompt (main window)
+
+     When the user closes the main window with unsaved changes: Discard / Save (to file).
+
+*** Workflow Inputs/Outputs Display
+
+    - Workflow inputs are rendered as minimal "chip" pill-shaped nodes at layer 0 (the leftmost
+      layer). They have only an output pin and a label showing the input name. They are roots -- no
+      input pins. Distinct styling (different color/outline) to visually distinguish from function
+      nodes.
+
+    - Workflow outputs are rendered as chip nodes at the last layer (rightmost). They have only an
+      input pin and a label showing the output name. They are dead ends -- no output pins. Same
+      distinct styling as input chips.
+
+    - NestedCall nodes are displayed as regular function nodes with the nested workflow name as the
+      title bar text. Double-click to open the nested editor.
+
+*** Right-Click Context Menu
+
+    Two trigger points with slightly different behavior:
+
+**** Right-click on empty canvas
+
+     Adds a disconnected node at the click position.
+
+**** Right-click on an output pin
+
+     Adds a node AND connects its first input to the clicked output pin. The node is placed at the
+     position determined by the layout recomputation after the connection is made.
+
+**** Menu UI (same for both triggers)
+
+     1. A popup appears. The top element is a *text field that is immediately focused* so the user
+        can start typing without clicking.
+     2. Below the text field is a list of options.
+     3. *If the user types into the text field:* the option list is replaced by search results
+        filtered from all available functions in the loaded PluginSet. The initial filtering
+        implementation is ~name.starts_with(query)~. The filtering logic is behind a trait so it
+        can be replaced with levenshtein distance, fuzzy matching, or other strategies later:
+        #+begin_src rust
+        trait FunctionFilter {
+            fn filter(&self, query: &str, functions: &[FuncInfo]) -> Vec<usize>; // indices into functions
+        }
+        #+end_src
+     4. *If the user does NOT type and instead uses arrow keys:* they navigate the default options:
+        - "Add Constant Node"
+        - "Add Inspect Node"
+        - "Session Info..." (opens a separate window showing loaded plugins, their functions, and
+          their types -- the information that would otherwise go in a sidebar palette)
+     5. Selecting a function from the search results or an option from the default list creates the
+        appropriate node. If the menu was triggered from an output pin, the new node's first input
+        is also connected to that pin.
+     6. After node creation, the layout recomputes.
+
+*** Inspect Node Display
+
+    Inspect nodes are dead-end visualization nodes with 1 input, 0 outputs, and a label string.
+    The label determines the display mode.
+
+    - *Text display:* Render the ~deck_to_str()~ output of the connected upstream data in a
+      scrollable monospace text area embedded in the node body.
+    - *Resizable:* Inspect nodes can be resized by the user (stored in ~node_sizes~ property).
+    - *Maximize/minimize:* A toggle to expand the inspect node to fill the viewport, or shrink it
+      back to its normal size.
+    - *Pop-out:* A button to pop the inspect view into a separate OS window via
+      ~ctx.show_viewport_deferred()~. The user can keep this window open as they navigate the
+      canvas.
+    - *Future 2D/3D viewports:* When the label indicates geometry data, the inspect node will
+      embed a wgpu render pass via egui's ~PaintCallback~ and support pan/zoom/orbit within that
+      embedded viewport. (Out of scope for initial implementation.)
+
+*** Repaint Strategy
+
+    Reactive mode -- zero CPU when fully idle. ~ctx.request_repaint()~ is called only when needed:
+
+    - Canvas interaction: pan, zoom, box select
+    - Pin connection wire drag (drawing the in-progress Bezier to the cursor)
+    - Inspect node interaction: scrolling text content, resizing the inspect viewport, future
+      pan/zoom/orbit within an embedded 2D/3D viewport
+    - Execution polling: ~ctx.request_repaint_after(Duration::from_millis(100))~ while a background
+      execution is in-flight, to poll the mpsc channel for results. Stops when the result arrives.
+
+    When no interaction is active and no execution is running, the app sleeps completely and
+    consumes zero CPU.
+
+*** main.rs: Host Setup
+
+    The host setup (OrcHost, PluginSet loading, DeckRegistry, handle counter, host callbacks) lives
+    directly in ~main.rs~, following the same pattern as ~rust/kbb_cli_host/src/main.rs~. No
+    separate host.rs file.
+
+    Key elements to replicate from kbb_cli_host:
+    - ~static REGISTRY: LazyLock<DeckRegistry>~
+    - ~static HANDLE_COUNTER: AtomicU64~
+    - ~static SERIAL_CONTEXT_ARENA: LazyLock<ContextArena<Vec<u8>>>~
+    - ~static PLUGIN_SET: LazyLock<PluginSet>~
+    - Host callbacks: ~host_alloc~, ~host_dealloc~, ~serial_write_callback~,
+      ~host_create_proxy_deck~, ~report_message~
+    - ~HOST: OrcHost~ constant with the callback table
+    - ~host_clone_orc_handle~ helper
+
+*** Implementation Phases
+
+**** Phase 1: Core Canvas
+
+     Render a hardcoded test workflow as a visual node graph. Pan, zoom, connect/disconnect pins,
+     deterministic Sugiyama layout, hit testing via layout structure, right-click context menu for
+     adding nodes. All text monospace.
+
+     Files: main.rs, app.rs, state.rs, canvas.rs, node_render.rs, link_render.rs, interaction.rs,
+     layout.rs, context_menu.rs.
+
+**** Phase 2: File I/O + Host/Plugin Setup
+
+     Host setup in main.rs (load plugins). Save/load workflows via msgpack. Session info window
+     (loaded plugins, functions, types).
+
+     Files: main.rs (host setup), app.rs (file menu, session window).
+
+**** Phase 3: Async Execution + Inspect Display
+
+     Background thread execution with incremental dirty-flag evaluation. Modified Workflow::run that
+     captures intermediate outputs. Inspect node text display with scrollable monospace output.
+     Minimize/maximize and pop-out for inspect nodes.
+
+     Files: exec.rs, inspect.rs, state.rs (computed_outputs, staleness propagation).
+
+**** Phase 4: Nested Workflow Editing
+
+     Double-click NestedCall nodes to open separate OS windows with the nested workflow. Load
+     per-call NestedExecState into nested editors. Close prompts (Discard / Replace All / Create
+     New). Track open windows to prevent duplicate editing. Arbitrary nesting depth.
+
+     Files: app.rs (window management), state.rs (NestedExecState).
+
+**** Future (out of scope for now)
+
+     - 3D geometry inspect via wgpu PaintCallback
+     - Undo/redo (approach TBD -- possibly reversible user actions / diffs, not decided yet)
+
 ** Vague sketch using egui + eframe + wgpu
    :PROPERTIES:
    :CREATED:  2026-08-26 Wed 11:22
