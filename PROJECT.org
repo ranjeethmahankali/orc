@@ -181,6 +181,11 @@
 
   <2026-09-05 Sat 15:22> Also need to do [[*tkwogf - Overhaul of workflow property serialization][this task]] first.
 
+  <2026-09-06 Sun 22:33> I added 'Inspect' nodes in a task I just merged. These nodes should be used
+  by the node editor UI app to display the data they're connected to. Depending on the label of the
+  inspect node, the UI app should either display the tree as text, or display 3d geometry, if the
+  data actually represents geometry.
+
 ** Vague sketch using egui + eframe + wgpu
    :PROPERTIES:
    :CREATED:  2026-08-26 Wed 11:22
