@@ -186,6 +186,11 @@
   inspect node, the UI app should either display the tree as text, or display 3d geometry, if the
   data actually represents geometry.
 
+** Detailed Plan
+   :PROPERTIES:
+   :CREATED:  2026-09-06 Sun 23:03
+   :END:
+
 ** Vague sketch using egui + eframe + wgpu
    :PROPERTIES:
    :CREATED:  2026-08-26 Wed 11:22
