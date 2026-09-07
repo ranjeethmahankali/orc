@@ -186,6 +186,9 @@
   inspect node, the UI app should either display the tree as text, or display 3d geometry, if the
   data actually represents geometry.
 
+  <2026-09-06 Sun 23:33> Brainstormed some details and created a detailed plan for implementing the
+  node editor.
+
 ** Detailed Plan
    :PROPERTIES:
    :CREATED:  2026-09-06 Sun 23:03
