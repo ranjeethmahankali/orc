@@ -1,3 +1,4 @@
+use crate::canvas;
 use crate::layout;
 use crate::render;
 use crate::state::EditorState;
@@ -18,6 +19,7 @@ impl DaggerApp {
 
 impl eframe::App for DaggerApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        let (_canvas, view_moved) = canvas::interact(ui, &mut self.state.view);
         if !self.state.layout_converged {
             for _ in 0..2 {
                 if layout::step(&mut self.state) {
@@ -25,6 +27,10 @@ impl eframe::App for DaggerApp {
                     break;
                 }
             }
+            ui.ctx().request_repaint();
+        } else if view_moved {
+            // Scroll deltas are smoothed over several frames, so keep painting
+            // until the zoom has caught up with the wheel.
             ui.ctx().request_repaint();
         }
         render::draw(ui, &self.state);

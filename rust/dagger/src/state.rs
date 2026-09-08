@@ -1,6 +1,6 @@
+use crate::canvas::Transform;
 use crate::layout;
 use crate::render;
-use eframe::egui;
 use orc_sdk::{NodeProperty, Workflow};
 
 pub struct EditorState {
@@ -8,8 +8,8 @@ pub struct EditorState {
     pub node_positions: NodeProperty<[f32; 2]>,
     pub node_sizes: NodeProperty<[f32; 2]>,
     pub layout_converged: bool,
-    pub pan_offset: egui::Vec2,
-    pub zoom: f32,
+    /// Canvas to screen transform, driven by pan/zoom input.
+    pub view: Transform,
 }
 
 impl EditorState {
@@ -30,8 +30,7 @@ impl EditorState {
             node_positions,
             node_sizes,
             layout_converged: false,
-            pan_offset: egui::Vec2::ZERO,
-            zoom: 1.0,
+            view: Transform::default(),
         };
         layout::topological_seed(&mut state);
         state

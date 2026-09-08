@@ -1,5 +1,8 @@
+use crate::canvas::Transform;
 use crate::state::EditorState;
-use eframe::egui::{self, Color32, FontFamily, FontId, Pos2, Rect, Shape, Stroke, StrokeKind, Vec2};
+use eframe::egui::{
+    self, Color32, FontFamily, FontId, Pos2, Rect, Shape, Stroke, StrokeKind, Vec2,
+};
 use eframe::epaint::{CubicBezierShape, PathStroke};
 use orc_sdk::{IH, NodeInfo, OH};
 
@@ -10,6 +13,9 @@ const PIN_SPACING: f32 = 20.0;
 const PIN_TOP_OFFSET: f32 = TITLE_HEIGHT + 12.0;
 const NODE_ROUNDING: f32 = 6.0;
 const FONT_SIZE: f32 = 13.0;
+const LABEL_FONT_SIZE: f32 = 11.0;
+/// Below this zoom level text is too small to read, so it is not drawn at all.
+const MIN_TEXT_ZOOM: f32 = 0.35;
 
 const LINK_COLOR: Color32 = Color32::from_rgb(180, 180, 180);
 const LINK_WIDTH: f32 = 2.0;
@@ -53,11 +59,12 @@ pub fn output_pin_pos(node_pos: Pos2, pin_index: usize) -> Pos2 {
 }
 
 pub fn draw(ui: &mut egui::Ui, state: &EditorState) {
-    draw_links(ui, state);
-    draw_nodes(ui, state);
+    let view = state.view;
+    draw_links(ui, state, &view);
+    draw_nodes(ui, state, &view);
 }
 
-fn draw_links(ui: &mut egui::Ui, state: &EditorState) {
+fn draw_links(ui: &mut egui::Ui, state: &EditorState, view: &Transform) {
     let painter = ui.painter();
     let positions = match state.node_positions.try_borrow() {
         Ok(p) => p,
@@ -84,6 +91,8 @@ fn draw_links(ui: &mut egui::Ui, state: &EditorState) {
                 .position(|o| o == src_oh)
                 .unwrap_or(0);
 
+            // The curve is laid out in canvas space and then mapped to the screen.
+            // The transform is affine, so mapping the four control points is exact.
             let start = output_pin_pos(src_node_pos, output_idx);
             let end = input_pin_pos(dst_node_pos, input_idx);
 
@@ -92,19 +101,20 @@ fn draw_links(ui: &mut egui::Ui, state: &EditorState) {
             let cp2 = Pos2::new(end.x - dx, end.y);
 
             painter.add(Shape::CubicBezier(CubicBezierShape::from_points_stroke(
-                [start, cp1, cp2, end],
+                [start, cp1, cp2, end].map(|p| view.to_screen(p)),
                 false,
                 Color32::TRANSPARENT,
-                PathStroke::new(LINK_WIDTH, LINK_COLOR),
+                PathStroke::new(view.scale(LINK_WIDTH), LINK_COLOR),
             )));
         }
     }
 }
 
-fn draw_nodes(ui: &mut egui::Ui, state: &EditorState) {
+fn draw_nodes(ui: &mut egui::Ui, state: &EditorState, view: &Transform) {
     let painter = ui.painter();
-    let font = FontId::new(FONT_SIZE, FontFamily::Monospace);
-    let label_font = FontId::new(11.0, FontFamily::Monospace);
+    let font = FontId::new(view.scale(FONT_SIZE), FontFamily::Monospace);
+    let label_font = FontId::new(view.scale(LABEL_FONT_SIZE), FontFamily::Monospace);
+    let draw_text = view.zoom >= MIN_TEXT_ZOOM;
 
     let node_info_prop = state.workflow.node_info_prop();
     let input_labels_prop = state.workflow.input_labels_prop();
@@ -136,54 +146,64 @@ fn draw_nodes(ui: &mut egui::Ui, state: &EditorState) {
         let outputs: Vec<OH> = state.workflow.node_outputs(nh).collect();
         let height = node_height(inputs.len(), outputs.len());
 
-        let body_rect = Rect::from_min_size(node_pos, Vec2::new(NODE_WIDTH, height));
-        let title_rect = Rect::from_min_size(node_pos, Vec2::new(NODE_WIDTH, TITLE_HEIGHT));
+        let rounding = view.scale(NODE_ROUNDING);
+        let body_rect =
+            view.rect_to_screen(Rect::from_min_size(node_pos, Vec2::new(NODE_WIDTH, height)));
+        let title_rect = view.rect_to_screen(Rect::from_min_size(
+            node_pos,
+            Vec2::new(NODE_WIDTH, TITLE_HEIGHT),
+        ));
 
         // Node body.
-        painter.rect_filled(body_rect, NODE_ROUNDING, node_color(info));
+        painter.rect_filled(body_rect, rounding, node_color(info));
         painter.rect_stroke(
             body_rect,
-            NODE_ROUNDING,
-            Stroke::new(1.0, Color32::from_gray(40)),
+            rounding,
+            Stroke::new(view.scale(1.0), Color32::from_gray(40)),
             StrokeKind::Outside,
         );
 
         // Title bar.
-        painter.rect_filled(title_rect, NODE_ROUNDING, title_color(info));
+        painter.rect_filled(title_rect, rounding, title_color(info));
         if height > TITLE_HEIGHT {
-            let patch = Rect::from_min_size(
+            let patch = view.rect_to_screen(Rect::from_min_size(
                 Pos2::new(node_pos.x, node_pos.y + TITLE_HEIGHT - NODE_ROUNDING),
                 Vec2::new(NODE_WIDTH, NODE_ROUNDING),
-            );
+            ));
             painter.rect_filled(patch, 0.0, title_color(info));
         }
 
         // Title text.
-        painter.text(
-            Pos2::new(node_pos.x + 8.0, node_pos.y + 4.0),
-            egui::Align2::LEFT_TOP,
-            info.name(),
-            font.clone(),
-            Color32::WHITE,
-        );
+        if draw_text {
+            painter.text(
+                view.to_screen(Pos2::new(node_pos.x + 8.0, node_pos.y + 4.0)),
+                egui::Align2::LEFT_TOP,
+                info.name(),
+                font.clone(),
+                Color32::WHITE,
+            );
+        }
+
+        let pin_radius = view.scale(PIN_RADIUS);
+        let label_gap = pin_radius + view.scale(4.0);
 
         // Input pins.
         for (i, ih) in inputs.iter().enumerate() {
-            let pin_center = input_pin_pos(node_pos, i);
+            let pin_center = view.to_screen(input_pin_pos(node_pos, i));
             let connected = state.workflow.input_source(*ih).is_some();
             if connected {
-                painter.circle_filled(pin_center, PIN_RADIUS, Color32::from_rgb(200, 200, 200));
+                painter.circle_filled(pin_center, pin_radius, Color32::from_rgb(200, 200, 200));
             } else {
                 painter.circle_stroke(
                     pin_center,
-                    PIN_RADIUS,
-                    Stroke::new(1.5, Color32::from_rgb(160, 160, 160)),
+                    pin_radius,
+                    Stroke::new(view.scale(1.5), Color32::from_rgb(160, 160, 160)),
                 );
             }
             let label = &input_labels[*ih];
-            if !label.is_empty() {
+            if draw_text && !label.is_empty() {
                 painter.text(
-                    Pos2::new(pin_center.x + PIN_RADIUS + 4.0, pin_center.y),
+                    pin_center + Vec2::new(label_gap, 0.0),
                     egui::Align2::LEFT_CENTER,
                     label,
                     label_font.clone(),
@@ -194,12 +214,12 @@ fn draw_nodes(ui: &mut egui::Ui, state: &EditorState) {
 
         // Output pins.
         for (i, oh) in outputs.iter().enumerate() {
-            let pin_center = output_pin_pos(node_pos, i);
-            painter.circle_filled(pin_center, PIN_RADIUS, Color32::from_rgb(200, 200, 200));
+            let pin_center = view.to_screen(output_pin_pos(node_pos, i));
+            painter.circle_filled(pin_center, pin_radius, Color32::from_rgb(200, 200, 200));
             let label = &output_labels[*oh];
-            if !label.is_empty() {
+            if draw_text && !label.is_empty() {
                 painter.text(
-                    Pos2::new(pin_center.x - PIN_RADIUS - 4.0, pin_center.y),
+                    pin_center - Vec2::new(label_gap, 0.0),
                     egui::Align2::RIGHT_CENTER,
                     label,
                     label_font.clone(),
