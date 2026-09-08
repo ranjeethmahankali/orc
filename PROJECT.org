@@ -552,7 +552,7 @@
      - [X] Host setup in main.rs: replicate kbb_cli_host pattern (OrcHost, PluginSet, DeckRegistry,
        handle counter, host callbacks). Load plugins at startup.
      - [X] EditorState struct with Workflow, NodeProperty for positions/sizes, layout state.
-     - [ ] Create a test workflow via a Python script (using pyorc API), save it to
+     - [X] Create a test workflow via a Python script (using pyorc API), save it to
        ~workflows/test.orc~ in the project root. Load that file in dagger at startup.
      - [ ] Pan/zoom canvas: middle-drag to pan, scroll wheel to zoom (clamped 0.1..5.0).
        Screen-to-canvas coordinate transform.
