@@ -3,7 +3,7 @@ use eframe::egui::{self, Color32, FontFamily, FontId, Pos2, Rect, Shape, Stroke,
 use eframe::epaint::{CubicBezierShape, PathStroke};
 use orc_sdk::{IH, NodeInfo, OH};
 
-const NODE_WIDTH: f32 = 160.0;
+pub const NODE_WIDTH: f32 = 160.0;
 const TITLE_HEIGHT: f32 = 24.0;
 const PIN_RADIUS: f32 = 5.0;
 const PIN_SPACING: f32 = 20.0;
