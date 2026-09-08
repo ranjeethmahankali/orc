@@ -583,7 +583,7 @@
      - State "NEXT"       from "TODO"       [2026-09-08 Tue 16:51]
      :END:
 
-     - [ ] The app should respect the argument names provided by the plugin via the ABI. Just added
+     - [X] The app should respect the argument names provided by the plugin via the ABI. Just added
        that stuff to the SDK. Check it and use it in the rendering. The rendered blocks should show
        the names, and should be appropriately sized based on the largest input / output names. This
        also addresses your concerns about pin labels.
