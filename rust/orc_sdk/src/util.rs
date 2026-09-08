@@ -432,28 +432,56 @@ impl From<&OrcTypeInfo> for TypeInfo {
 }
 
 #[derive(Debug, Clone, Default)]
+pub struct ArgInfo {
+    pub name: String,
+    pub type_id: OrcTypeId,
+}
+
+#[derive(Debug, Clone, Default)]
 pub struct FuncInfo {
     pub name: String,
     pub desc: String,
     pub n_inputs: Option<usize>,
     pub n_outputs: Option<usize>,
+    pub input_args: Vec<ArgInfo>,
+    pub output_args: Vec<ArgInfo>,
     pub func: OrcPluginFunction,
 }
 
 impl From<&OrcFuncInfo> for FuncInfo {
     fn from(info: &OrcFuncInfo) -> Self {
+        let n_outputs = if info.n_outputs == ORC_ARGS_VARIADIC {
+            None
+        } else {
+            Some(info.n_outputs as usize)
+        };
+        let n_inputs = if info.n_inputs == ORC_ARGS_VARIADIC {
+            None
+        } else {
+            Some(info.n_inputs as usize)
+        };
         Self {
             name: string_from_ffi(info.name.cast()),
             desc: string_from_ffi(info.desc.cast()),
-            n_inputs: if info.n_inputs == ORC_ARGS_VARIADIC {
-                None
-            } else {
-                Some(info.n_inputs as usize)
+            n_inputs,
+            n_outputs,
+            input_args: {
+                unsafe { slice_from_ptr(info.input_args, n_inputs.unwrap_or(0)) }
+                    .iter()
+                    .map(|i| ArgInfo {
+                        name: string_from_ffi(i.name.cast()),
+                        type_id: i.type_id,
+                    })
+                    .collect()
             },
-            n_outputs: if info.n_outputs == ORC_ARGS_VARIADIC {
-                None
-            } else {
-                Some(info.n_outputs as usize)
+            output_args: {
+                unsafe { slice_from_ptr(info.output_args, n_outputs.unwrap_or(0)) }
+                    .iter()
+                    .map(|i| ArgInfo {
+                        name: string_from_ffi(i.name.cast()),
+                        type_id: i.type_id,
+                    })
+                    .collect()
             },
             func: info.func,
         }
