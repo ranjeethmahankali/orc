@@ -205,8 +205,11 @@ pub fn update(ui: &mut egui::Ui, state: &mut EditorState) {
     )
     .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
     .open_bool(&mut open)
+    .width(220.0)
+    // Justified so each entry's selectable label stretches to the full row width instead of
+    // just the bounds of its text — a much bigger, easier target for the mouse.
+    .layout(egui::Layout::top_down_justified(egui::Align::Min))
     .show(|ui| {
-        ui.set_min_width(220.0);
         let response = ui.text_edit_singleline(&mut menu.query);
         if !menu.focus_requested {
             response.request_focus();
