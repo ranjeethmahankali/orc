@@ -10,6 +10,9 @@ use orc_sdk::{ArgInfo, IH, NodeInfo, NodePropBuf, OH, Workflow};
 pub const MIN_NODE_WIDTH: f32 = 120.0;
 const TITLE_HEIGHT: f32 = 24.0;
 const PIN_RADIUS: f32 = 5.0;
+/// Half-size of a pin's hit rect, in canvas units. Wider than the drawn radius since
+/// pins straddle the node edge and are otherwise fiddly to grab.
+pub const PIN_GRAB_RADIUS: f32 = 10.0;
 const PIN_SPACING: f32 = 20.0;
 const PIN_TOP_OFFSET: f32 = TITLE_HEIGHT + 12.0;
 const NODE_ROUNDING: f32 = 6.0;

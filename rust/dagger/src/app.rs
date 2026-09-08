@@ -1,4 +1,5 @@
 use crate::canvas;
+use crate::interaction;
 use crate::layout;
 use crate::render;
 use crate::state::EditorState;
@@ -34,6 +35,11 @@ impl eframe::App for DaggerApp {
         } else if view_moved {
             // Scroll deltas are smoothed over several frames, so keep painting
             // until the zoom has caught up with the wheel.
+            ui.ctx().request_repaint();
+        }
+        // Runs after the layout step so a drag has the final say on the dragged node's
+        // position for this frame, and reads hit rects that match what gets painted below.
+        if interaction::update(ui, &mut self.state) {
             ui.ctx().request_repaint();
         }
         render::draw(ui, &self.state);

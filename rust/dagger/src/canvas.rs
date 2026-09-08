@@ -67,12 +67,20 @@ pub fn interact(ui: &mut egui::Ui, view: &mut Transform) -> (egui::Response, boo
     let response = ui.allocate_rect(rect, egui::Sense::click_and_drag());
     let mut moved = false;
 
-    // Requiring shift leaves a plain right-click free for the context menu. egui
-    // only reports a click when the pointer barely moved, so the two do not collide.
-    // Shift is checked every frame rather than latched at drag start, so letting go
-    // of shift mid-gesture parks the canvas until it is pressed again.
-    if response.dragged_by(egui::PointerButton::Secondary) && ui.input(|i| i.modifiers.shift) {
-        let delta = response.drag_delta();
+    // Polled straight off raw pointer state rather than `response.dragged_by(..)`. Once
+    // nodes and pins get their own interactive rects on top of this one, a shift+right-drag
+    // that starts on top of one of them would claim drag ownership for its own `Response`
+    // regardless of which button was pressed, so panning would silently stop working
+    // wherever a node happens to be. Reading the raw button/modifier state instead makes
+    // panning independent of whatever else is drawn on top.
+    //
+    // Shift is checked every frame rather than latched at drag start, so letting go of
+    // shift mid-gesture parks the canvas until it is pressed again.
+    let pan_delta = ui.input(|i| {
+        (i.modifiers.shift && i.pointer.button_down(egui::PointerButton::Secondary))
+            .then(|| i.pointer.delta())
+    });
+    if let Some(delta) = pan_delta {
         if delta != Vec2::ZERO {
             view.pan += delta;
             moved = true;
