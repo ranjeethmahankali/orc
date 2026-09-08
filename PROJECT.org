@@ -683,6 +683,8 @@
      - [X] Inspect nodes should have the title "inspect" instead of "a", as it is now.
      - [X] Use case insensitive substring check to filter node names.
 
+     <2026-09-08 Tue 18:53> Some more bug fixing and testing, almost done.
+
 **** TODO Phase 3: File I/O
      :LOGBOOK:
      - State "TODO"       from              [2026-09-07 Mon 23:11]

@@ -131,6 +131,7 @@ pub unsafe extern "C" fn orc_deck_free(handle: *mut OrcHandle) -> OrcError {
         return ORC_ERROR_NONE;
     }
     let handle = unsafe { &mut *handle };
+
     match REGISTRY.free(handle.handle) {
         Ok(()) => {
             reset_handle(handle);

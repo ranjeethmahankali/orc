@@ -4,7 +4,7 @@ use crate::canvas::Transform;
 use crate::render;
 use crate::state::EditorState;
 use eframe::egui::{self, Id, Key, PointerButton, Pos2, Rect, Sense, Vec2};
-use orc_sdk::{IH, NH, NodeInfo, OH, Workflow};
+use orc_sdk::{IH, NH, OH, Workflow};
 use std::collections::{HashMap, HashSet};
 
 /// Where a right-click asked for a context menu to open, and what (if anything) it should
@@ -295,9 +295,14 @@ pub fn update(
     events
 }
 
-/// Delete key removes every selected node, freeing any constant deck it owned. Guarded by
-/// keyboard focus so pressing Delete while typing in the context menu's search field doesn't
-/// also delete the current selection.
+/// Delete key removes every selected node. Guarded by keyboard focus so pressing Delete while
+/// typing in the context menu's search field doesn't also delete the current selection.
+///
+/// This only tombstones the nodes (`Workflow::delete_node`) — it does not free anything a
+/// deleted node owned, such as a constant's deck. A delete is not final: undo will eventually
+/// need to resurrect a tombstoned node with its data intact, so nothing here may touch the
+/// handle. Whatever eventually garbage-collects the graph for good is the only thing that
+/// should drop it, at which point `NodeInfo`'s own `Drop` frees it exactly once.
 pub fn delete_selected(ui: &mut egui::Ui, state: &mut EditorState) -> bool {
     if ui.memory(|m| m.focused()).is_some() {
         return false;
@@ -318,16 +323,6 @@ pub fn delete_selected(ui: &mut egui::Ui, state: &mut EditorState) -> bool {
     if selected_nodes.is_empty() {
         return false;
     }
-    {
-        let node_info_prop = state.workflow.node_info_prop();
-        if let Ok(node_infos) = node_info_prop.try_borrow() {
-            for &nh in &selected_nodes {
-                if let NodeInfo::Constant(handle) = &node_infos[nh] {
-                    let _ = crate::REGISTRY.free(handle.handle);
-                }
-            }
-        }
-    }
     for nh in selected_nodes {
         state.workflow.delete_node(nh);
     }
@@ -338,7 +333,8 @@ pub fn delete_selected(ui: &mut egui::Ui, state: &mut EditorState) -> bool {
 #[cfg(test)]
 mod test {
     use super::*;
-    use orc_sdk::FuncInfo;
+    use orc_sdk::{Deck, FuncInfo, NodeInfo, OrcHandle};
+    use std::sync::atomic::Ordering;
 
     fn node(wf: &mut Workflow, n_in: usize, n_out: usize) -> (NH, Vec<IH>, Vec<OH>) {
         let mut ins = vec![IH::default(); n_in];
@@ -383,5 +379,39 @@ mod test {
         wf.connect(a_out[0], b_in[0]).unwrap();
         // b -> a would close a loop, since a already reaches b.
         assert!(creates_cycle(&wf, b, a));
+    }
+
+    /// Regression test, in both directions: an earlier version of this code freed a deleted
+    /// constant's deck straight from the registry, leaving a stale, still-`free_fn`-carrying
+    /// handle behind in `NodeInfo` (`Workflow::delete_node` never clears that), which got
+    /// dropped again at shutdown and double-freed, aborting the process with
+    /// `ORC_ERROR_INVALID_HANDLE`. The fix was then to also free nothing at delete time at all:
+    /// a delete only tombstones the node, and undo will eventually need it intact.
+    #[test]
+    fn t_deleting_a_constant_node_leaves_its_deck_alone() {
+        let mut handle = OrcHandle {
+            handle: crate::HANDLE_COUNTER.fetch_add(1, Ordering::Relaxed),
+            ..Default::default()
+        };
+        let mut deck = Deck::<f64>::default();
+        deck.push(1.0, 0);
+        crate::REGISTRY
+            .alloc_with_value(Some(deck), &mut handle)
+            .unwrap();
+
+        let mut state = EditorState::from_workflow(Workflow::default());
+        let (nh, _oh) = state.workflow.add_constant(handle).unwrap();
+
+        state.workflow.delete_node(nh);
+
+        let node_info_prop = state.workflow.node_info_prop();
+        let node_infos = node_info_prop.try_borrow().unwrap();
+        match &node_infos[nh] {
+            NodeInfo::Constant(handle) => assert!(
+                handle.free_fn.is_some(),
+                "delete must not free the deck — only garbage collection may"
+            ),
+            _ => panic!("expected a constant node"),
+        }
     }
 }
