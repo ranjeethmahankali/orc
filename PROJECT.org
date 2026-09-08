@@ -543,23 +543,42 @@
 
 *** Implementation Phases
 
-**** Phase 1: Core Canvas
+**** TODO Phase 1: Host Setup + Render + Layout
+     :LOGBOOK:
+     - State "TODO"       from              [2026-09-07 Mon 23:11]
+     :END:
 
-     Render a hardcoded test workflow as a visual node graph. Pan, zoom, connect/disconnect pins,
-     force-directed layout with DAG flow constraint, spatial hash grid for hit testing, right-click
-     context menu for adding nodes. All text monospace.
+     Host setup in main.rs (load plugins, replicate kbb_cli_host pattern). Node rendering (rounded
+     rects, pins, monospace labels), link rendering (cubic Bezier curves), force-directed layout with
+     DAG flow constraint, pan/zoom canvas. Load a real workflow from a plugin to render.
 
-     Files: main.rs, app.rs, state.rs, canvas.rs, node_render.rs, link_render.rs, interaction.rs,
-     layout.rs, context_menu.rs.
+     Files: main.rs (host setup), app.rs, state.rs, canvas.rs, node_render.rs, link_render.rs,
+     layout.rs.
 
-**** Phase 2: File I/O + Host/Plugin Setup
+**** TODO Phase 2: Hit Testing + Interaction + Context Menu
+     :LOGBOOK:
+     - State "TODO"       from              [2026-09-07 Mon 23:11]
+     :END:
 
-     Host setup in main.rs (load plugins). Save/load workflows via msgpack. Session info window
-     (loaded plugins, functions, types).
+     Spatial hash grid for hit testing. Pin connect/disconnect, node selection, delete, box-select.
+     Right-click context menu with search field and pluggable FunctionFilter trait (searches real
+     plugin functions). Session info window.
 
-     Files: main.rs (host setup), app.rs (file menu, session window).
+     Files: interaction.rs, layout.rs (spatial hash grid), context_menu.rs, app.rs (session window).
 
-**** Phase 3: Async Execution + Inspect Display
+**** TODO Phase 3: File I/O
+     :LOGBOOK:
+     - State "TODO"       from              [2026-09-07 Mon 23:11]
+     :END:
+
+     Save/load workflows via msgpack.
+
+     Files: app.rs (file menu).
+
+**** TODO Phase 4: Execution + Inspect Display
+     :LOGBOOK:
+     - State "TODO"       from              [2026-09-07 Mon 23:11]
+     :END:
 
      Background thread execution with incremental dirty-flag evaluation. Modified Workflow::run that
      captures intermediate outputs. Inspect node text display with scrollable monospace output.
@@ -567,7 +586,10 @@
 
      Files: exec.rs, inspect.rs, state.rs (computed_outputs, staleness propagation).
 
-**** Phase 4: Nested Workflow Editing
+**** TODO Phase 5: Nested Workflow Editing
+     :LOGBOOK:
+     - State "TODO"       from              [2026-09-07 Mon 23:11]
+     :END:
 
      Double-click NestedCall nodes to open separate OS windows with the nested workflow. Load
      per-call NestedExecState into nested editors. Close prompts (Discard / Replace All / Create
