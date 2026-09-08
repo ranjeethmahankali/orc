@@ -603,9 +603,9 @@
      :END:
 
      *Hit testing:*
-     - [ ] Spatial hash grid (~200x200 canvas-unit cells). Each node inserted into all cells its
+     - [X] Spatial hash grid (~200x200 canvas-unit cells). Each node inserted into all cells its
        bounding box overlaps. Rebuilt on layout change.
-     - [ ] Point query: transform cursor to canvas coords, look up cell, test candidate nodes.
+     - [X] Point query: transform cursor to canvas coords, look up cell, test candidate nodes.
      - [ ] Hit result is an enum: Empty, Node(NH), InputPin(IH), OutputPin(IH). Pin positions are
        computed from the owning node's position + fixed offsets per pin index.
 
