@@ -1,14 +1,15 @@
 use crate::state::EditorState;
 use eframe::egui;
+use orc_sdk::Workflow;
 
 pub struct DaggerApp {
     state: EditorState,
 }
 
 impl DaggerApp {
-    pub fn new(_cc: &eframe::CreationContext<'_>) -> Self {
+    pub fn new(_cc: &eframe::CreationContext<'_>, workflow: Workflow) -> Self {
         Self {
-            state: EditorState::new(),
+            state: EditorState::from_workflow(workflow),
         }
     }
 }

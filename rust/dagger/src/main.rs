@@ -15,12 +15,12 @@ use orc_sdk::{
     ORC_ERROR_INVALID_HANDLE, ORC_ERROR_INVALID_PROXY, ORC_ERROR_NONE, ORC_TYPE_F32, ORC_TYPE_F64,
     ORC_TYPE_I16, ORC_TYPE_I32, ORC_TYPE_I64, ORC_TYPE_I8, ORC_TYPE_U16, ORC_TYPE_U32,
     ORC_TYPE_U64, ORC_TYPE_U8, OrcError, OrcHandle, OrcHandleBorrowed, OrcHost,
-    OrcHostCallbackAPI, OrcHostMemoryAPI, OrcProxyType, PluginSet, ProxyType, TypeOwner,
+    OrcHostCallbackAPI, OrcHostMemoryAPI, OrcProxyType, PluginSet, ProxyType, TypeOwner, Workflow,
     reset_handle, slice_from_ptr,
 };
 use std::alloc::{Layout, alloc, dealloc};
 use std::ffi::{CStr, c_void};
-use std::sync::{LazyLock, atomic::AtomicU64};
+use std::sync::{LazyLock, atomic::{AtomicU64, Ordering}};
 
 static REGISTRY: LazyLock<DeckRegistry> = LazyLock::new(DeckRegistry::new);
 pub static HANDLE_COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -208,6 +208,14 @@ pub fn host_clone_orc_handle(src: OrcHandleBorrowed) -> Result<OrcHandle, Error>
     Error::from_raw(err).map(|()| out)
 }
 
+fn load_workflow(path: &str) -> Workflow {
+    let file = std::fs::File::open(path).expect("Failed to open workflow file");
+    let mut reader = std::io::BufReader::new(file);
+    let mut next_id = || HANDLE_COUNTER.fetch_add(1, Ordering::Relaxed);
+    Workflow::read_from_msgpack(&mut reader, &PLUGIN_SET, &REGISTRY, 0, &mut next_id)
+        .expect("Failed to deserialize workflow")
+}
+
 fn main() -> eframe::Result {
     // Force plugin loading at startup.
     let plugin_set: &PluginSet = &PLUGIN_SET;
@@ -220,6 +228,17 @@ fn main() -> eframe::Result {
         );
     }
 
+    let workflow = match std::env::args().nth(1) {
+        Some(path) => {
+            eprintln!("Loading workflow from: {path}");
+            load_workflow(&path)
+        }
+        None => {
+            eprintln!("No workflow file specified, starting with empty workflow");
+            Workflow::default()
+        }
+    };
+
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default().with_inner_size([1280.0, 800.0]),
         renderer: eframe::Renderer::Wgpu,
@@ -228,6 +247,6 @@ fn main() -> eframe::Result {
     eframe::run_native(
         "Dagger",
         options,
-        Box::new(|cc| Ok(Box::new(app::DaggerApp::new(cc)))),
+        Box::new(|cc| Ok(Box::new(app::DaggerApp::new(cc, workflow)))),
     )
 }

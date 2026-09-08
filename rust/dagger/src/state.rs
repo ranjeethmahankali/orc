@@ -1,5 +1,5 @@
 use eframe::egui;
-use orc_sdk::{NH, NodeProperty, Workflow};
+use orc_sdk::{NodeProperty, Workflow};
 
 pub struct EditorState {
     pub workflow: Workflow,
@@ -11,8 +11,7 @@ pub struct EditorState {
 }
 
 impl EditorState {
-    pub fn new() -> Self {
-        let mut workflow = Workflow::default();
+    pub fn from_workflow(mut workflow: Workflow) -> Self {
         let node_positions = workflow.create_node_property([0.0f32, 0.0]);
         let node_sizes = workflow.create_node_property([160.0f32, 60.0]);
         Self {
