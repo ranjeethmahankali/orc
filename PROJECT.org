@@ -555,7 +555,7 @@
      - [X] EditorState struct with Workflow, NodeProperty for positions/sizes, layout state.
      - [X] Create a test workflow via a Python script (using pyorc API), save it to
        ~workflows/test.orc~ in the project root. Load that file in dagger at startup.
-     - [ ] Node rendering: rounded rect body (color by NodeInfo variant), monospace title bar,
+     - [X] Node rendering: rounded rect body (color by NodeInfo variant), monospace title bar,
        input pins (circles on left edge with labels), output pins (circles on right edge with
        labels). Workflow input/output chips as pill-shaped nodes with distinct styling.
      - [ ] Link rendering: cubic Bezier curves from output pin center to input pin center, control
