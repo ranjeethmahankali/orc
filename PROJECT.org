@@ -701,6 +701,15 @@
      - [X] Dirty flag: track whether workflow has been modified since last save. Show indicator in
        title bar (e.g. asterisk).
 
+     <2026-09-08 Tue 19:18> Some tweaks after testing:
+
+     - [ ] Enable use of keyboard shortcuts: Ctrl-n to open a new empty workflow, Ctrl-o to open
+       one, Ctrl-s to save, and Ctrl-Shift-s to save-as. Also before throwing away unsaved data,
+       (when opening another file or a new workflow), the user should be prompted to optionally save
+       their work. This is the same as any other app on earth.
+     - [ ] Show these shortcuts next to the menu options, with righ alignment. Again very
+       conventional UI.
+
 **** TODO Phase 4: Execution + Inspect Display
      :LOGBOOK:
      - State "TODO"       from              [2026-09-07 Mon 23:11]
