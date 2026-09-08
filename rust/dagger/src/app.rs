@@ -1,4 +1,5 @@
 use crate::canvas;
+use crate::context_menu;
 use crate::interaction;
 use crate::layout;
 use crate::render;
@@ -23,7 +24,9 @@ impl eframe::App for DaggerApp {
         if self.state.needs_measure {
             self.state.measure(ui.ctx());
         }
-        let (_canvas, view_moved) = canvas::interact(ui, &mut self.state.view);
+        let (canvas_response, view_moved) = canvas::interact(ui, &mut self.state.view);
+        let deleted = interaction::delete_selected(ui, &mut self.state);
+
         if !self.state.layout_converged {
             for _ in 0..2 {
                 if layout::step(&mut self.state) {
@@ -37,11 +40,24 @@ impl eframe::App for DaggerApp {
             // until the zoom has caught up with the wheel.
             ui.ctx().request_repaint();
         }
+
         // Runs after the layout step so a drag has the final say on the dragged node's
         // position for this frame, and reads hit rects that match what gets painted below.
-        if interaction::update(ui, &mut self.state) {
+        let events = interaction::update(ui, &mut self.state, &canvas_response);
+        if events.changed || deleted {
             ui.ctx().request_repaint();
         }
+        if let Some(request) = events.context_menu {
+            context_menu::open(&mut self.state, request);
+        }
+
         render::draw(ui, &self.state);
+
+        context_menu::update(ui, &mut self.state);
+        if self.state.session_info_open {
+            let mut open = self.state.session_info_open;
+            context_menu::session_info_window(ui.ctx(), &mut open);
+            self.state.session_info_open = open;
+        }
     }
 }

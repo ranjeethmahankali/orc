@@ -1,8 +1,9 @@
 use crate::canvas::Transform;
+use crate::context_menu::ContextMenuState;
 use crate::layout;
 use crate::render;
-use eframe::egui;
-use orc_sdk::{NodeProperty, Workflow};
+use eframe::egui::{self, Rect};
+use orc_sdk::{NodeProperty, OH, Workflow};
 
 pub struct EditorState {
     pub workflow: Workflow,
@@ -11,12 +12,21 @@ pub struct EditorState {
     /// Set on every node that takes part in a cycle. The graph is allowed to hold cycles, so
     /// these are drawn as an error rather than rejected.
     pub node_in_cycle: NodeProperty<bool>,
+    pub selected: NodeProperty<bool>,
     pub layout_converged: bool,
     /// Node sizes are derived from measured label text, which needs a live frame, so they are
     /// computed on the first frame rather than at construction.
     pub needs_measure: bool,
     /// Canvas to screen transform, driven by pan/zoom input.
     pub view: Transform,
+    /// Screen-space rect of an in-progress box-select drag, for rendering the marquee.
+    pub select_box: Option<Rect>,
+    /// Output pin a wire is currently being dragged from, for rendering the in-progress bezier.
+    pub pending_wire: Option<OH>,
+    /// The open right-click context menu, if any.
+    pub context_menu: Option<ContextMenuState>,
+    /// Whether the "Session Info" window is open.
+    pub session_info_open: bool,
 }
 
 impl EditorState {
@@ -25,14 +35,20 @@ impl EditorState {
         let node_sizes =
             workflow.create_node_property([render::MIN_NODE_WIDTH, render::node_height(1, 1)]);
         let node_in_cycle = workflow.create_node_property(false);
+        let selected = workflow.create_node_property(false);
         let mut state = Self {
             workflow,
             node_positions,
             node_sizes,
             node_in_cycle,
+            selected,
             layout_converged: false,
             needs_measure: true,
             view: Transform::default(),
+            select_box: None,
+            pending_wire: None,
+            context_menu: None,
+            session_info_open: false,
         };
         layout::topological_seed(&mut state);
         state

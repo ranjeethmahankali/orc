@@ -24,7 +24,7 @@ use std::sync::{
     atomic::{AtomicU64, Ordering},
 };
 
-static REGISTRY: LazyLock<DeckRegistry> = LazyLock::new(DeckRegistry::new);
+pub(crate) static REGISTRY: LazyLock<DeckRegistry> = LazyLock::new(DeckRegistry::new);
 pub static HANDLE_COUNTER: AtomicU64 = AtomicU64::new(0);
 static SERIAL_CONTEXT_ARENA: LazyLock<ContextArena<Vec<u8>>> = LazyLock::new(ContextArena::default);
 

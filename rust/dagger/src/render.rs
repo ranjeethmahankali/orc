@@ -33,10 +33,35 @@ const ERROR_BODY_COLOR: Color32 = Color32::from_rgb(120, 45, 45);
 const ERROR_TITLE_COLOR: Color32 = Color32::from_rgb(165, 60, 60);
 const ERROR_STROKE_COLOR: Color32 = Color32::from_rgb(235, 95, 95);
 const NODE_STROKE_COLOR: Color32 = Color32::from_gray(40);
+const SELECTION_COLOR: Color32 = Color32::from_rgb(230, 180, 60);
+const SELECT_BOX_STROKE_COLOR: Color32 = Color32::from_rgb(120, 170, 230);
+const SELECT_BOX_FILL_COLOR: Color32 = Color32::from_rgba_premultiplied(40, 70, 100, 60);
 
 const LINK_COLOR: Color32 = Color32::from_rgb(180, 180, 180);
 const LINK_WIDTH: f32 = 2.0;
 const CONTROL_POINT_OFFSET: f32 = 80.0;
+
+/// Control points for a cubic bezier between `start` and `end`, both in the same space. The
+/// caller maps them into screen space, since a link's endpoints are in canvas space but an
+/// in-progress wire's cursor endpoint is already in screen space.
+fn bezier_control_points(start: Pos2, end: Pos2, min_offset: f32) -> [Pos2; 4] {
+    let dx = (end.x - start.x).abs().max(min_offset) * 0.5;
+    [
+        start,
+        Pos2::new(start.x + dx, start.y),
+        Pos2::new(end.x - dx, end.y),
+        end,
+    ]
+}
+
+fn link_shape(points: [Pos2; 4], stroke_width: f32) -> Shape {
+    Shape::CubicBezier(CubicBezierShape::from_points_stroke(
+        points,
+        false,
+        Color32::TRANSPARENT,
+        PathStroke::new(stroke_width, LINK_COLOR),
+    ))
+}
 
 fn node_color(info: &NodeInfo) -> Color32 {
     match info {
@@ -180,6 +205,54 @@ pub fn draw(ui: &mut egui::Ui, state: &EditorState) {
     let view = state.view;
     draw_links(ui, state, &view);
     draw_nodes(ui, state, &view);
+    draw_pending_wire(ui, state, &view);
+    draw_select_box(ui, state);
+}
+
+/// The in-progress bezier while a wire is being dragged from an output pin (or an
+/// already-connected input pin, which is disconnected as soon as the drag starts). The cursor
+/// end is already in screen space, unlike a settled link's two canvas-space endpoints.
+fn draw_pending_wire(ui: &mut egui::Ui, state: &EditorState, view: &Transform) {
+    let Some(source) = state.pending_wire else {
+        return;
+    };
+    let Some(cursor) = ui.input(|i| i.pointer.interact_pos()) else {
+        return;
+    };
+    let (positions, sizes) = match (
+        state.node_positions.try_borrow(),
+        state.node_sizes.try_borrow(),
+    ) {
+        (Ok(p), Ok(s)) => (p, s),
+        _ => return,
+    };
+    let src_nh = state.workflow.node_from_output(source);
+    let src_rect = node_rect(positions[src_nh], sizes[src_nh]);
+    let output_idx = state
+        .workflow
+        .node_outputs(src_nh)
+        .position(|o| o == source)
+        .unwrap_or(0);
+    let start = view.to_screen(output_pin_pos(src_rect, output_idx));
+
+    let points = bezier_control_points(start, cursor, CONTROL_POINT_OFFSET * view.zoom);
+    ui.painter().add(link_shape(points, view.scale(LINK_WIDTH)));
+}
+
+/// The marquee rectangle while box-selecting on empty canvas. Stored in screen space already,
+/// so it needs no further transform at paint time.
+fn draw_select_box(ui: &mut egui::Ui, state: &EditorState) {
+    let Some(rect) = state.select_box else {
+        return;
+    };
+    let painter = ui.painter();
+    painter.rect_filled(rect, 0.0, SELECT_BOX_FILL_COLOR);
+    painter.rect_stroke(
+        rect,
+        0.0,
+        Stroke::new(1.0, SELECT_BOX_STROKE_COLOR),
+        StrokeKind::Inside,
+    );
 }
 
 fn draw_links(ui: &mut egui::Ui, state: &EditorState, view: &Transform) {
@@ -215,16 +288,9 @@ fn draw_links(ui: &mut egui::Ui, state: &EditorState, view: &Transform) {
             let start = output_pin_pos(src_rect, output_idx);
             let end = input_pin_pos(dst_rect, input_idx);
 
-            let dx = (end.x - start.x).abs().max(CONTROL_POINT_OFFSET) * 0.5;
-            let cp1 = Pos2::new(start.x + dx, start.y);
-            let cp2 = Pos2::new(end.x - dx, end.y);
-
-            painter.add(Shape::CubicBezier(CubicBezierShape::from_points_stroke(
-                [start, cp1, cp2, end].map(|p| view.to_screen(p)),
-                false,
-                Color32::TRANSPARENT,
-                PathStroke::new(view.scale(LINK_WIDTH), LINK_COLOR),
-            )));
+            let points = bezier_control_points(start, end, CONTROL_POINT_OFFSET)
+                .map(|p| view.to_screen(p));
+            painter.add(link_shape(points, view.scale(LINK_WIDTH)));
         }
     }
 }
@@ -247,12 +313,13 @@ fn draw_nodes(ui: &mut egui::Ui, state: &EditorState, view: &Transform) {
         (Ok(n), Ok(i), Ok(o)) => (n, i, o),
         _ => return,
     };
-    let (positions, sizes, in_cycle) = match (
+    let (positions, sizes, in_cycle, selected) = match (
         state.node_positions.try_borrow(),
         state.node_sizes.try_borrow(),
         state.node_in_cycle.try_borrow(),
+        state.selected.try_borrow(),
     ) {
-        (Ok(p), Ok(s), Ok(c)) => (p, s, c),
+        (Ok(p), Ok(s), Ok(c), Ok(sel)) => (p, s, c, sel),
         _ => return,
     };
 
@@ -260,10 +327,12 @@ fn draw_nodes(ui: &mut egui::Ui, state: &EditorState, view: &Transform) {
         let info = &node_infos[nh];
         let (in_args, out_args) = declared_args(info);
         let rect = node_rect(positions[nh], sizes[nh]);
-        let (body_fill, title_fill, outline) = if in_cycle[nh] {
-            (ERROR_BODY_COLOR, ERROR_TITLE_COLOR, ERROR_STROKE_COLOR)
+        let (body_fill, title_fill, outline, outline_width) = if in_cycle[nh] {
+            (ERROR_BODY_COLOR, ERROR_TITLE_COLOR, ERROR_STROKE_COLOR, 1.0)
+        } else if selected[nh] {
+            (node_color(info), title_color(info), SELECTION_COLOR, 2.0)
         } else {
-            (node_color(info), title_color(info), NODE_STROKE_COLOR)
+            (node_color(info), title_color(info), NODE_STROKE_COLOR, 1.0)
         };
 
         let inputs: Vec<IH> = state.workflow.node_inputs(nh).collect();
@@ -281,7 +350,7 @@ fn draw_nodes(ui: &mut egui::Ui, state: &EditorState, view: &Transform) {
         painter.rect_stroke(
             body_rect,
             rounding,
-            Stroke::new(view.scale(1.0), outline),
+            Stroke::new(view.scale(outline_width), outline),
             StrokeKind::Outside,
         );
 
