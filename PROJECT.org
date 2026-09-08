@@ -554,8 +554,6 @@
      - [X] EditorState struct with Workflow, NodeProperty for positions/sizes, layout state.
      - [X] Create a test workflow via a Python script (using pyorc API), save it to
        ~workflows/test.orc~ in the project root. Load that file in dagger at startup.
-     - [ ] Pan/zoom canvas: middle-drag to pan, scroll wheel to zoom (clamped 0.1..5.0).
-       Screen-to-canvas coordinate transform.
      - [ ] Node rendering: rounded rect body (color by NodeInfo variant), monospace title bar,
        input pins (circles on left edge with labels), output pins (circles on right edge with
        labels). Workflow input/output chips as pill-shaped nodes with distinct styling.
@@ -564,6 +562,8 @@
      - [ ] Force-directed layout: bounding-box repulsion, spring attraction along edges, vertical
        centering, DAG flow constraint (hard). Topological seeding on startup, convergence
        animation.
+     - [ ] Pan/zoom canvas: middle-drag to pan, scroll wheel to zoom (clamped 0.1..5.0).
+       Screen-to-canvas coordinate transform.
 
 **** TODO Phase 2: Hit Testing + Interaction + Context Menu
      :LOGBOOK:
