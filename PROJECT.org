@@ -197,8 +197,9 @@
    - State "TODO"       from              [2026-09-07 Mon 22:28]
    :END:
 
-*** TODO Crate: rust/dagger/
+*** NEXT Crate: rust/dagger/
     :LOGBOOK:
+    - State "NEXT"       from "TODO"       [2026-09-07 Mon 23:06]
     - State "TODO"       from              [2026-09-07 Mon 22:28]
     :END:
 
@@ -220,6 +221,8 @@
         inspect.rs          -- Inspect node display: scrollable text, resizable viewport, pop-out
         exec.rs             -- Background thread execution via mpsc channels
     #+end_src
+
+    <2026-09-07 Mon 23:06> Created a stub crate, not implemented anything yet.
 
 *** Custom Rendering (not egui-snarl or egui-graph-edit)
 
