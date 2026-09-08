@@ -543,59 +543,153 @@
 
 *** Implementation Phases
 
-**** TODO Phase 1: Host Setup + Render + Layout
+**** NEXT Phase 1: Host Setup + Render + Layout
      :LOGBOOK:
+     - State "NEXT"       from "TODO"       [2026-09-07 Mon 23:12]
      - State "TODO"       from              [2026-09-07 Mon 23:11]
      :END:
 
-     Host setup in main.rs (load plugins, replicate kbb_cli_host pattern). Node rendering (rounded
-     rects, pins, monospace labels), link rendering (cubic Bezier curves), force-directed layout with
-     DAG flow constraint, pan/zoom canvas. Load a real workflow from a plugin to render.
-
-     Files: main.rs (host setup), app.rs, state.rs, canvas.rs, node_render.rs, link_render.rs,
-     layout.rs.
+     - Host setup in main.rs: replicate kbb_cli_host pattern (OrcHost, PluginSet, DeckRegistry,
+       handle counter, host callbacks). Load plugins at startup.
+     - EditorState struct with Workflow, NodeProperty for positions/sizes, layout state.
+     - Load a real workflow from a plugin to render.
+     - Pan/zoom canvas: middle-drag to pan, scroll wheel to zoom (clamped 0.1..5.0).
+       Screen-to-canvas coordinate transform.
+     - Node rendering: rounded rect body (color by NodeInfo variant), monospace title bar,
+       input pins (circles on left edge with labels), output pins (circles on right edge with
+       labels). Workflow input/output chips as pill-shaped nodes with distinct styling.
+     - Link rendering: cubic Bezier curves from output pin center to input pin center, control
+       points extending horizontally.
+     - Force-directed layout: bounding-box repulsion, spring attraction along edges, vertical
+       centering, DAG flow constraint (hard). Topological seeding on startup, convergence
+       animation.
 
 **** TODO Phase 2: Hit Testing + Interaction + Context Menu
      :LOGBOOK:
      - State "TODO"       from              [2026-09-07 Mon 23:11]
      :END:
 
-     Spatial hash grid for hit testing. Pin connect/disconnect, node selection, delete, box-select.
-     Right-click context menu with search field and pluggable FunctionFilter trait (searches real
-     plugin functions). Session info window.
+     *Hit testing:*
+     - Spatial hash grid (~200x200 canvas-unit cells). Each node inserted into all cells its
+       bounding box overlaps. Rebuilt on layout change.
+     - Point query: transform cursor to canvas coords, look up cell, test candidate nodes.
+     - Hit result is an enum: Empty, Node(NH), InputPin(IH), OutputPin(IH). Pin positions are
+       computed from the owning node's position + fixed offsets per pin index.
 
-     Files: interaction.rs, layout.rs (spatial hash grid), context_menu.rs, app.rs (session window).
+     *Connecting pins:*
+     - Click output pin -> enter connecting state, draw in-progress Bezier from pin to cursor.
+     - Release on input pin -> call ~workflow.connect()~, trigger layout recompute.
+     - Release on empty canvas or invalid target -> cancel, no connection made.
+     - Dragging from an already-connected input pin disconnects it first, then enters connecting
+       state from the upstream output (rewire gesture).
+
+     *Selection:*
+     - Click node -> select it, deselect all others.
+     - Shift+click node -> toggle that node's selection without affecting others.
+     - Click empty canvas -> deselect all.
+     - Click+drag on empty canvas -> draw a selection rectangle, select all nodes whose bounding
+       boxes intersect it.
+
+     *Delete:*
+     - Delete key removes all selected nodes (~workflow.delete_node()~ for each).
+     - Triggers layout recompute and staleness propagation for incremental execution.
+
+     *Right-click context menu:*
+     - Right-click on empty canvas -> popup at click position, creates disconnected node.
+     - Right-click on output pin -> popup, creates node AND connects its first input to that pin.
+     - Popup UI: focused text field at top. Typing filters available functions via FunctionFilter
+       trait (~starts_with~ initially, swappable for fuzzy/levenshtein later). Arrow keys without
+       typing navigate default options: "Add Constant Node", "Add Inspect Node",
+       "Session Info...".
+     - Selecting an entry creates the node, closes the popup, triggers layout recompute.
+
+     *Session info window:*
+     - Opened from context menu "Session Info..." option.
+     - Separate ~egui::Window~ showing loaded plugins, their functions (name, n_inputs, n_outputs,
+       description), and their registered types.
 
 **** TODO Phase 3: File I/O
      :LOGBOOK:
      - State "TODO"       from              [2026-09-07 Mon 23:11]
      :END:
 
-     Save/load workflows via msgpack.
-
-     Files: app.rs (file menu).
+     - File menu in the top bar: Save, Save As, Open.
+     - Save: serialize workflow via ~workflow.write_to_msgpack()~, write to file path.
+     - Open: read file, deserialize via ~Workflow::read_from_msgpack()~, build new EditorState,
+       run layout from scratch (topological seeding + convergence).
+     - Track current file path for subsequent saves. Prompt for path on first save (Save As).
+     - Dirty flag: track whether workflow has been modified since last save. Show indicator in
+       title bar (e.g. asterisk).
 
 **** TODO Phase 4: Execution + Inspect Display
      :LOGBOOK:
      - State "TODO"       from              [2026-09-07 Mon 23:11]
      :END:
 
-     Background thread execution with incremental dirty-flag evaluation. Modified Workflow::run that
-     captures intermediate outputs. Inspect node text display with scrollable monospace output.
-     Minimize/maximize and pop-out for inspect nodes.
+     *Incremental execution:*
+     - ~OutputProperty<Option<OrcHandle>>~ in EditorState stores cached results per output pin.
+     - On topology change (connect, disconnect, add, delete), mark affected outputs as stale
+       (set to None). Propagate staleness downstream: any node whose input comes from a stale
+       output also has all its outputs marked stale.
+     - Execution only evaluates nodes with stale outputs.
 
-     Files: exec.rs, inspect.rs, state.rs (computed_outputs, staleness propagation).
+     *Background thread:*
+     - Serialize the stale subgraph + its non-stale input values to bytes via mpsc channel.
+       Deserialize + run on background thread (necessary because Workflow is not Send due to
+       Rc/RefCell in properties). Send results back via mpsc.
+     - UI thread polls channel each frame while execution is in-flight
+       (~ctx.request_repaint_after(100ms)~). Stores results into ~computed_outputs~ and
+       ~nested_exec_state~. Stops polling when result arrives.
+
+     *Modified Workflow::run:*
+     - Accept pre-computed output values for non-stale nodes and skip evaluating them.
+     - Return ALL intermediate output values (not just final workflow outputs).
+     - At NestedCall nodes, recursively capture internal state into ~NestedExecState~.
+
+     *Inspect node display:*
+     - Render ~deck_to_str()~ output of connected upstream data in a scrollable monospace text
+       area embedded in the node body.
+     - Inspect nodes are resizable by the user (drag bottom-right corner). Size stored in
+       ~node_sizes~ property. Layout simulation accounts for current size (bounding-box
+       repulsion pushes neighbors away from enlarged inspect nodes).
+     - Minimize/maximize toggle: expand to fill viewport, or shrink back.
+     - Pop-out button: open inspect view in a separate OS window via
+       ~ctx.show_viewport_deferred()~.
 
 **** TODO Phase 5: Nested Workflow Editing
      :LOGBOOK:
      - State "TODO"       from              [2026-09-07 Mon 23:11]
      :END:
 
-     Double-click NestedCall nodes to open separate OS windows with the nested workflow. Load
-     per-call NestedExecState into nested editors. Close prompts (Discard / Replace All / Create
-     New). Track open windows to prevent duplicate editing. Arbitrary nesting depth.
+     *Opening nested workflows:*
+     - Double-click a NestedCall node to open the nested workflow in a separate OS window
+       (~ctx.show_viewport_deferred()~).
+     - Clone the nested workflow from ~parent.nested_workflows[name]~.
+     - Load the call node's ~NestedExecState.output_values~ into the new editor's
+       ~computed_outputs~ so computed values are immediately visible.
+     - Load ~NestedExecState.child_call_states~ into the new editor's ~nested_exec_state~
+       property so deeper double-clicks work at arbitrary nesting depth.
+     - Workflow input chips in the nested editor show the actual argument values flowing into
+       that specific call.
 
-     Files: app.rs (window management), state.rs (NestedExecState).
+     *Window tracking:*
+     - DaggerApp tracks open nested editors by workflow name.
+     - Opening a nested workflow already open in another window is disallowed. Flash the
+       existing window instead.
+
+     *Close prompt (nested window with unsaved changes):*
+     - *Discard* -- close without saving, all changes lost.
+     - *Replace All* -- overwrite the nested workflow definition in the parent so ALL NestedCall
+       nodes referencing this workflow use the updated version.
+     - *Create New* -- insert a new nested workflow (auto-generated name), update only the
+       source call node to reference it, leave other callers unchanged.
+
+     *Close prompt (main window with unsaved changes):*
+     - Discard / Save (to file).
+
+     *Each nested editor:*
+     - Has its own EditorState, renders identically to the main canvas (same rendering, layout,
+       interaction, context menu). Full feature parity.
 
 **** Future (out of scope for now)
 
