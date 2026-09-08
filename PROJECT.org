@@ -628,33 +628,33 @@
      :END:
 
      *Incremental execution:*
-     - ~OutputProperty<Option<OrcHandle>>~ in EditorState stores cached results per output pin.
-     - On topology change (connect, disconnect, add, delete), mark affected outputs as stale
+     - [ ] ~OutputProperty<Option<OrcHandle>>~ in EditorState stores cached results per output pin.
+     - [ ] On topology change (connect, disconnect, add, delete), mark affected outputs as stale
        (set to None). Propagate staleness downstream: any node whose input comes from a stale
        output also has all its outputs marked stale.
-     - Execution only evaluates nodes with stale outputs.
+     - [ ] Execution only evaluates nodes with stale outputs.
 
      *Background thread:*
-     - Serialize the stale subgraph + its non-stale input values to bytes via mpsc channel.
+     - [ ] Serialize the stale subgraph + its non-stale input values to bytes via mpsc channel.
        Deserialize + run on background thread (necessary because Workflow is not Send due to
        Rc/RefCell in properties). Send results back via mpsc.
-     - UI thread polls channel each frame while execution is in-flight
+     - [ ] UI thread polls channel each frame while execution is in-flight
        (~ctx.request_repaint_after(100ms)~). Stores results into ~computed_outputs~ and
        ~nested_exec_state~. Stops polling when result arrives.
 
      *Modified Workflow::run:*
-     - Accept pre-computed output values for non-stale nodes and skip evaluating them.
-     - Return ALL intermediate output values (not just final workflow outputs).
-     - At NestedCall nodes, recursively capture internal state into ~NestedExecState~.
+     - [ ] Accept pre-computed output values for non-stale nodes and skip evaluating them.
+     - [ ] Return ALL intermediate output values (not just final workflow outputs).
+     - [ ] At NestedCall nodes, recursively capture internal state into ~NestedExecState~.
 
      *Inspect node display:*
-     - Render ~deck_to_str()~ output of connected upstream data in a scrollable monospace text
+     - [ ] Render ~deck_to_str()~ output of connected upstream data in a scrollable monospace text
        area embedded in the node body.
-     - Inspect nodes are resizable by the user (drag bottom-right corner). Size stored in
+     - [ ] Inspect nodes are resizable by the user (drag bottom-right corner). Size stored in
        ~node_sizes~ property. Layout simulation accounts for current size (bounding-box
        repulsion pushes neighbors away from enlarged inspect nodes).
-     - Minimize/maximize toggle: expand to fill viewport, or shrink back.
-     - Pop-out button: open inspect view in a separate OS window via
+     - [ ] Minimize/maximize toggle: expand to fill viewport, or shrink back.
+     - [ ] Pop-out button: open inspect view in a separate OS window via
        ~ctx.show_viewport_deferred()~.
 
 **** TODO Phase 5: Nested Workflow Editing
@@ -663,33 +663,33 @@
      :END:
 
      *Opening nested workflows:*
-     - Double-click a NestedCall node to open the nested workflow in a separate OS window
+     - [ ] Double-click a NestedCall node to open the nested workflow in a separate OS window
        (~ctx.show_viewport_deferred()~).
-     - Clone the nested workflow from ~parent.nested_workflows[name]~.
-     - Load the call node's ~NestedExecState.output_values~ into the new editor's
+     - [ ] Clone the nested workflow from ~parent.nested_workflows[name]~.
+     - [ ] Load the call node's ~NestedExecState.output_values~ into the new editor's
        ~computed_outputs~ so computed values are immediately visible.
-     - Load ~NestedExecState.child_call_states~ into the new editor's ~nested_exec_state~
+     - [ ] Load ~NestedExecState.child_call_states~ into the new editor's ~nested_exec_state~
        property so deeper double-clicks work at arbitrary nesting depth.
-     - Workflow input chips in the nested editor show the actual argument values flowing into
+     - [ ] Workflow input chips in the nested editor show the actual argument values flowing into
        that specific call.
 
      *Window tracking:*
-     - DaggerApp tracks open nested editors by workflow name.
-     - Opening a nested workflow already open in another window is disallowed. Flash the
+     - [ ] DaggerApp tracks open nested editors by workflow name.
+     - [ ] Opening a nested workflow already open in another window is disallowed. Flash the
        existing window instead.
 
      *Close prompt (nested window with unsaved changes):*
-     - *Discard* -- close without saving, all changes lost.
-     - *Replace All* -- overwrite the nested workflow definition in the parent so ALL NestedCall
+     - [ ] *Discard* -- close without saving, all changes lost.
+     - [ ] *Replace All* -- overwrite the nested workflow definition in the parent so ALL NestedCall
        nodes referencing this workflow use the updated version.
-     - *Create New* -- insert a new nested workflow (auto-generated name), update only the
+     - [ ] *Create New* -- insert a new nested workflow (auto-generated name), update only the
        source call node to reference it, leave other callers unchanged.
 
      *Close prompt (main window with unsaved changes):*
-     - Discard / Save (to file).
+     - [ ] Discard / Save (to file).
 
      *Each nested editor:*
-     - Has its own EditorState, renders identically to the main canvas (same rendering, layout,
+     - [ ] Has its own EditorState, renders identically to the main canvas (same rendering, layout,
        interaction, context menu). Full feature parity.
 
 **** Future (out of scope for now)
