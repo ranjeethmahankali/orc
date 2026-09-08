@@ -578,7 +578,17 @@
      - [ ] Hit result is an enum: Empty, Node(NH), InputPin(IH), OutputPin(IH). Pin positions are
        computed from the owning node's position + fixed offsets per pin index.
 
-     *Connecting pins:*
+     *Dragging and Connecting pins:*
+
+     If the dragging starts on the title of a node, it should drag the node along, but the force
+     directed graph should still try to revert to it's equilibrium. If the drag starts at a pin, it
+     should create a link.
+
+     - [ ] Implement dragging for nodes. This is meant to just make the graph rendering feel
+       alive. Not meant to actually move nodes, because the force-directed-graphs will restore the
+       nodes to their equilibrium, position, which may not be the same as their position before
+       dragging, same as obsidian graph rendering.
+
      - [ ] Click output pin -> enter connecting state, draw in-progress Bezier from pin to cursor.
      - [ ] Release on input pin -> call ~workflow.connect()~, trigger layout recompute.
      - [ ] Release on empty canvas or invalid target -> cancel, no connection made.
