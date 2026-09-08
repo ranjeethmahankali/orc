@@ -1,5 +1,6 @@
 use crate::canvas::Transform;
 use crate::context_menu::ContextMenuState;
+use crate::interaction::SelectBoxKind;
 use crate::layout;
 use crate::render;
 use eframe::egui::{self, Rect};
@@ -19,8 +20,9 @@ pub struct EditorState {
     pub needs_measure: bool,
     /// Canvas to screen transform, driven by pan/zoom input.
     pub view: Transform,
-    /// Screen-space rect of an in-progress box-select drag, for rendering the marquee.
-    pub select_box: Option<Rect>,
+    /// Screen-space rect and direction of an in-progress box-select drag, for rendering the
+    /// marquee.
+    pub select_box: Option<(Rect, SelectBoxKind)>,
     /// Output pin a wire is currently being dragged from, for rendering the in-progress bezier.
     pub pending_wire: Option<OH>,
     /// The open right-click context menu, if any.

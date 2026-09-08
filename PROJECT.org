@@ -673,12 +673,12 @@
        this in immediate mode style.
      - [X] In the right click menu, I want the entire row to actively select that entry, and not
        just the bounds of the text. Smaller targets are harder to hit with the mouse.
-     - [ ] Nuanced selection rectangles. Dragging to the right should create a selection rectangle
+     - [X] Nuanced selection rectangles. Dragging to the right should create a selection rectangle
        that only selects nodes that are fully inside it. This rectangle should have a solid stroke
        line. Dragging to the left creates a selection rectangle that selects all nodes that overlap
        with it. This selection rectangle should have a dashed line stroke if egui supports this
        efficiently, otherwise leave it as solid too.
-     - [ ] Make the fill colors of both selection rectangles more transparent, maybe half as opaque
+     - [X] Make the fill colors of both selection rectangles more transparent, maybe half as opaque
        as they are now.
      - [ ] Inspect nodes should have the title "inspect" instead of "a", as it is now.
 

@@ -1,4 +1,5 @@
 use crate::canvas::Transform;
+use crate::interaction::SelectBoxKind;
 use crate::state::EditorState;
 use eframe::egui::{
     self, Color32, FontFamily, FontId, Pos2, Rect, Shape, Stroke, StrokeKind, Vec2,
@@ -38,7 +39,7 @@ const ERROR_STROKE_COLOR: Color32 = Color32::from_rgb(235, 95, 95);
 const NODE_STROKE_COLOR: Color32 = Color32::from_gray(40);
 const SELECTION_COLOR: Color32 = Color32::from_rgb(230, 180, 60);
 const SELECT_BOX_STROKE_COLOR: Color32 = Color32::from_rgb(120, 170, 230);
-const SELECT_BOX_FILL_COLOR: Color32 = Color32::from_rgba_premultiplied(40, 70, 100, 60);
+const SELECT_BOX_FILL_COLOR: Color32 = Color32::from_rgba_premultiplied(20, 35, 50, 30);
 
 const LINK_COLOR: Color32 = Color32::from_rgb(180, 180, 180);
 const LINK_WIDTH: f32 = 2.0;
@@ -253,19 +254,31 @@ fn draw_pending_wire(ui: &mut egui::Ui, state: &EditorState, view: &Transform) {
 }
 
 /// The marquee rectangle while box-selecting on empty canvas. Stored in screen space already,
-/// so it needs no further transform at paint time.
+/// so it needs no further transform at paint time. A window-select (dragged left-to-right) gets
+/// a solid outline; a crossing-select (dragged right-to-left) gets a dashed one, so the two
+/// selection rules are visually distinguishable while dragging.
 fn draw_select_box(ui: &mut egui::Ui, state: &EditorState) {
-    let Some(rect) = state.select_box else {
+    let Some((rect, kind)) = state.select_box else {
         return;
     };
     let painter = ui.painter();
     painter.rect_filled(rect, 0.0, SELECT_BOX_FILL_COLOR);
-    painter.rect_stroke(
-        rect,
-        0.0,
-        Stroke::new(1.0, SELECT_BOX_STROKE_COLOR),
-        StrokeKind::Inside,
-    );
+    let stroke = Stroke::new(1.0, SELECT_BOX_STROKE_COLOR);
+    match kind {
+        SelectBoxKind::Window => {
+            painter.rect_stroke(rect, 0.0, stroke, StrokeKind::Inside);
+        }
+        SelectBoxKind::Crossing => {
+            let corners = [
+                rect.left_top(),
+                rect.right_top(),
+                rect.right_bottom(),
+                rect.left_bottom(),
+                rect.left_top(),
+            ];
+            painter.extend(Shape::dashed_line(&corners, stroke, 6.0, 4.0));
+        }
+    }
 }
 
 fn draw_links(ui: &mut egui::Ui, state: &EditorState, view: &Transform) {

@@ -53,11 +53,29 @@ fn deselect_all(state: &mut EditorState) {
     }
 }
 
-fn update_box_select(ui: &mut egui::Ui, state: &mut EditorState, view: &Transform) -> Option<Rect> {
+/// A window-select (dragged left-to-right) only picks up nodes fully enclosed by the rectangle;
+/// a crossing-select (dragged right-to-left) picks up anything the rectangle touches — the
+/// AutoCAD/Revit convention for the two drag directions.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum SelectBoxKind {
+    Window,
+    Crossing,
+}
+
+fn update_box_select(
+    ui: &mut egui::Ui,
+    state: &mut EditorState,
+    view: &Transform,
+) -> Option<(Rect, SelectBoxKind)> {
     let (start, current) = match ui.input(|i| (i.pointer.press_origin(), i.pointer.interact_pos()))
     {
         (Some(s), Some(c)) => (s, c),
         _ => return None,
+    };
+    let kind = if current.x >= start.x {
+        SelectBoxKind::Window
+    } else {
+        SelectBoxKind::Crossing
     };
     let screen_rect = Rect::from_two_pos(start, current);
     let canvas_rect = Rect::from_two_pos(view.to_canvas(start), view.to_canvas(current));
@@ -68,10 +86,14 @@ fn update_box_select(ui: &mut egui::Ui, state: &mut EditorState, view: &Transfor
         state.selected.try_borrow_mut(),
     ) {
         for nh in nodes {
-            selected[nh] = render::node_rect(positions[nh], sizes[nh]).intersects(canvas_rect);
+            let rect = render::node_rect(positions[nh], sizes[nh]);
+            selected[nh] = match kind {
+                SelectBoxKind::Window => canvas_rect.contains_rect(rect),
+                SelectBoxKind::Crossing => rect.intersects(canvas_rect),
+            };
         }
     }
-    Some(screen_rect)
+    Some((screen_rect, kind))
 }
 
 /// Whether adding an edge from `src` to `dst` would create a cycle, i.e. whether `dst` can
