@@ -58,15 +58,20 @@ impl Transform {
 
 /// Claim the whole available area as the canvas and apply pan/zoom input to `view`.
 ///
-/// Middle-drag pans, the scroll wheel zooms about the cursor, and ctrl+scroll or a
-/// trackpad pinch zooms too. Returns the canvas response (later phases hit test
-/// against it) and whether the user moved the view this frame.
+/// Shift + right-drag pans and the scroll wheel zooms about the cursor, matching
+/// Grasshopper. Ctrl+scroll and a trackpad pinch zoom too. Returns the canvas
+/// response (later phases hit test against it) and whether the user moved the view
+/// this frame.
 pub fn interact(ui: &mut egui::Ui, view: &mut Transform) -> (egui::Response, bool) {
     let rect = ui.max_rect();
     let response = ui.allocate_rect(rect, egui::Sense::click_and_drag());
     let mut moved = false;
 
-    if response.dragged_by(egui::PointerButton::Middle) {
+    // Requiring shift leaves a plain right-click free for the context menu. egui
+    // only reports a click when the pointer barely moved, so the two do not collide.
+    // Shift is checked every frame rather than latched at drag start, so letting go
+    // of shift mid-gesture parks the canvas until it is pressed again.
+    if response.dragged_by(egui::PointerButton::Secondary) && ui.input(|i| i.modifiers.shift) {
         let delta = response.drag_delta();
         if delta != Vec2::ZERO {
             view.pan += delta;

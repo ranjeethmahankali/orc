@@ -457,6 +457,9 @@
 
 *** Right-Click Context Menu
 
+    The menu opens on a plain right-click, without shift -- shift + right-drag is the pan
+    gesture, so the two share the button and are told apart by the modifier.
+
     Two trigger points with slightly different behavior:
 
 **** Right-click on empty canvas
@@ -563,8 +566,12 @@
      - [X] Force-directed layout: bounding-box repulsion, spring attraction along edges, vertical
        centering, DAG flow constraint (hard). Topological seeding on startup, convergence
        animation.
-     - [ ] Pan/zoom canvas: middle-drag to pan, scroll wheel to zoom (clamped 0.1..5.0).
-       Screen-to-canvas coordinate transform.
+     - [X] Pan/zoom canvas: shift + right-drag to pan, scroll wheel to zoom about the cursor
+       (clamped 0.1..5.0). Screen-to-canvas coordinate transform.
+
+       <2026-09-08 Tue 15:34> Pan was originally specified as middle-drag. Changed to shift +
+       right-drag to match Grasshopper. Requiring shift leaves a plain right-click free for the
+       context menu, so the two gestures can share the button.
 
 **** TODO Phase 2: Hit Testing + Interaction + Context Menu
      :LOGBOOK:
@@ -607,8 +614,10 @@
      - [ ] Triggers layout recompute and staleness propagation for incremental execution.
 
      *Right-click context menu:*
-     - [ ] Right-click on empty canvas -> popup at click position, creates disconnected node.
-     - [ ] Right-click on output pin -> popup, creates node AND connects its first input to that pin.
+     - [ ] Right-click (no shift) on empty canvas -> popup at click position, creates
+       disconnected node.
+     - [ ] Right-click (no shift) on output pin -> popup, creates node AND connects its first
+       input to that pin.
      - [ ] Popup UI: focused text field at top. Typing filters available functions via FunctionFilter
        trait (~starts_with~ initially, swappable for fuzzy/levenshtein later). Arrow keys without
        typing navigate default options: "Add Constant Node", "Add Inspect Node",
