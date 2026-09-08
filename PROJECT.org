@@ -560,7 +560,7 @@
        labels). Workflow input/output chips as pill-shaped nodes with distinct styling.
      - [X] Link rendering: cubic Bezier curves from output pin center to input pin center, control
        points extending horizontally.
-     - [ ] Force-directed layout: bounding-box repulsion, spring attraction along edges, vertical
+     - [X] Force-directed layout: bounding-box repulsion, spring attraction along edges, vertical
        centering, DAG flow constraint (hard). Topological seeding on startup, convergence
        animation.
      - [ ] Pan/zoom canvas: middle-drag to pan, scroll wheel to zoom (clamped 0.1..5.0).
