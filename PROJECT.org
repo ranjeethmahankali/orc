@@ -209,7 +209,7 @@
         link_render.rs      -- Draw cubic Bezier connections
         interaction.rs      -- Pin connect/disconnect, select, delete, box-select
         state.rs            -- EditorState: Workflow + properties + computed outputs + layout
-        layout.rs           -- Deterministic Sugiyama-style layered layout from DAG topology
+        layout.rs           -- Force-directed layout with DAG flow constraint, spatial hash grid
         context_menu.rs     -- Right-click menu with search field, pluggable FunctionFilter trait
         inspect.rs          -- Inspect node display: scrollable text, resizable viewport, pop-out
         exec.rs             -- Background thread execution via mpsc channels
@@ -244,45 +244,94 @@
 
     All coordinates are transformed through a pan/zoom affine matrix before drawing.
 
-*** Deterministic Layout (No Node Dragging)
+*** Force-Directed Layout with DAG Flow Constraint
 
-    Nodes are NOT draggable. Every DAG topology has a single deterministic layout computed by a
-    Sugiyama-style layered algorithm. Positions are never stored on disk; they are recomputed
-    identically each time the app opens or the topology changes.
+    Nodes are NOT draggable. The layout is computed automatically by a force-directed simulation
+    that respects left-to-right DAG flow. Nodes are axis-aligned rectangles with variable sizes
+    (inspect nodes are resizable). The layout updates incrementally when topology changes or nodes
+    are resized. Positions and sizes are not persisted to disk for now -- they are recomputed from
+    scratch when the app opens, and updated in-place during the session.
 
-    Algorithm:
-    1. Layer assignment: topological sort, assign each node to the earliest layer where all its
-       inputs are satisfied. Workflow input chips go to layer 0. Workflow output chips go to the
-       last layer.
-    2. Crossing minimization: barycenter heuristic to order nodes within each layer.
-    3. Vertical positioning: median positioning to minimize edge lengths.
+**** Forces
 
-    The layout output is ~Vec<Vec<NH>>~ (layers of nodes, each layer sorted by y position).
+     - *Bounding-box repulsion:* All node pairs repel each other based on their bounding boxes
+       (not point-to-point). Larger inspect nodes push neighbors further away. This prevents
+       overlap and maintains readable spacing.
+     - *Spring attraction along edges:* Connected nodes (output pin -> input pin) are pulled
+       toward each other. Spring rest length is proportional to the sum of the two nodes' widths
+       plus a gap.
+     - *Vertical centering:* Each node is gently pulled toward the vertical median of its
+       connected neighbors, reducing unnecessary vertical spread.
 
-    Stability when adding nodes: recomputing the full layout after adding a node preserves the
-    relative ordering of existing nodes within their layers because their connections haven't changed.
-    The barycenter heuristic is driven by connection positions, so only the neighborhood of the newly
-    added node shifts. This means the layout doesn't jump around when a single node is added.
+**** DAG Flow Constraint (hard constraint)
 
-*** Hit Testing via Layout Structure
+     After each simulation step, enforce left-to-right ordering: for every edge (A -> B), ensure
+     ~B.x >= A.x + A.width + gap~. If violated, push B rightward. This is applied in topological
+     order so that corrections propagate downstream in a single pass.
 
-    Since the layout is deterministic and layered, the layout data structure itself IS the spatial
-    index. No separate spatial data structure (quadtree, grid, etc.) is needed.
+     Workflow input chips are pinned to x = 0. Workflow output chips are free to settle at whatever
+     x the simulation produces (they will naturally end up rightmost since they have no downstream
+     nodes pulling them left).
 
-    To find what element is under the cursor:
-    1. Binary search the layer x-boundaries to find which layer the cursor is in -- O(log L)
-    2. Binary search within that layer by y position to find the node -- O(log N_layer)
-    3. If the cursor is on a node, check its pins linearly (few pins per node)
+**** Initial Seeding (app startup, no stored positions)
 
-    The ~Vec<Vec<NH>>~ produced by the layout algorithm doubles as the hit-test index. It is
-    recomputed whenever the layout recomputes (i.e., when the topology changes -- not on every
-    frame).
+     1. Topological sort gives each node a depth (longest path from any root).
+     2. Depth determines initial x position (depth * (typical_node_width + gap)).
+     3. Nodes at the same depth are spread evenly along y.
+     4. Run full simulation to convergence (iterate until max force magnitude drops below a
+        threshold, or a fixed max iteration count is reached).
+
+**** Incremental Updates (topology change, node resize)
+
+     When a node is added, removed, connected, disconnected, or resized:
+     1. Keep all existing node positions as-is.
+     2. New nodes are seeded near their connected neighbors (or at the center of the viewport if
+        disconnected).
+     3. Re-run the simulation from current positions for a few iterations until convergence.
+     4. Because the simulation is continuous (small perturbation -> small output change), the layout
+        shifts smoothly without large jumps.
+
+**** Convergence and Repaint
+
+     The simulation runs as part of the update loop. While forces are above the convergence
+     threshold, ~ctx.request_repaint()~ is called each frame to animate the layout settling. Once
+     converged, repaints stop (zero CPU). This gives a smooth animation of nodes settling into
+     place after a topology change.
+
+*** Hit Testing via Spatial Hash Grid
+
+    Nodes have variable sizes (resizable inspect nodes) and are not in strict layers, so a general
+    spatial index is needed. A spatial hash grid provides O(1) average-case point queries.
+
+**** Structure
+
+     A uniform grid where each cell is roughly the size of a typical node (~200x200 canvas units).
+     Each node is inserted into all grid cells its bounding box overlaps. A large resized inspect
+     node may span several cells -- this is fine.
+
+**** Queries
+
+     To find what is under the cursor:
+     1. Transform cursor to canvas coordinates.
+     2. Compute grid cell from canvas position.
+     3. Test only nodes in that cell (and possibly immediate neighbors for edge cases).
+     4. If the cursor is on a node, test its pins linearly (few pins per node).
+
+**** Rebuild
+
+     The grid is rebuilt whenever the layout changes (topology change, resize, or simulation step).
+     Rebuild cost is O(n) -- iterate all nodes, insert into cells. This is cheap even for thousands
+     of nodes.
 
 *** EditorState
 
     Uses orc's existing property system (~NodeProperty<T>~, ~OutputProperty<T>~) instead of
     HashMaps. Properties are attached to the workflow's graph and automatically resize when nodes
     are added/removed or garbage collection runs.
+
+    Positions and sizes are transient -- not persisted to disk. They are computed by the layout
+    simulation on app startup and updated in-place during the session. Persistence of UI state is
+    a future concern.
 
     #+begin_src rust
     struct EditorState {
@@ -292,9 +341,10 @@
         node_sizes: NodeProperty<[f32; 2]>,              // for resizable inspect nodes
         computed_outputs: OutputProperty<Option<OrcHandle>>,   // cached execution results
         nested_exec_state: NodeProperty<Option<NestedExecState>>,  // per-call internal state
-        // Layout (recomputed from topology, also used for hit testing)
-        layers: Vec<Vec<NH>>,
-        layer_x_positions: Vec<f32>,
+        // Spatial index (rebuilt on layout change)
+        spatial_grid: SpatialHashGrid,
+        // Layout simulation
+        layout_converged: bool,                        // false while simulation is settling
         // UI transients (not persisted)
         pan_offset: Vec2,
         zoom: f32,
@@ -499,11 +549,14 @@
     - Pin connection wire drag (drawing the in-progress Bezier to the cursor)
     - Inspect node interaction: scrolling text content, resizing the inspect viewport, future
       pan/zoom/orbit within an embedded 2D/3D viewport
+    - Layout settling: while ~layout_converged == false~, request repaint each frame to animate
+      nodes settling into place after a topology change or resize. Stops when forces drop below
+      the convergence threshold.
     - Execution polling: ~ctx.request_repaint_after(Duration::from_millis(100))~ while a background
       execution is in-flight, to poll the mpsc channel for results. Stops when the result arrives.
 
-    When no interaction is active and no execution is running, the app sleeps completely and
-    consumes zero CPU.
+    When no interaction is active, no layout is settling, and no execution is running, the app
+    sleeps completely and consumes zero CPU.
 
 *** main.rs: Host Setup
 
@@ -526,8 +579,8 @@
 **** Phase 1: Core Canvas
 
      Render a hardcoded test workflow as a visual node graph. Pan, zoom, connect/disconnect pins,
-     deterministic Sugiyama layout, hit testing via layout structure, right-click context menu for
-     adding nodes. All text monospace.
+     force-directed layout with DAG flow constraint, spatial hash grid for hit testing, right-click
+     context menu for adding nodes. All text monospace.
 
      Files: main.rs, app.rs, state.rs, canvas.rs, node_render.rs, link_render.rs, interaction.rs,
      layout.rs, context_menu.rs.
