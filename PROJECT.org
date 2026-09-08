@@ -715,8 +715,7 @@
         main.rs             -- eframe entry, host setup (OrcHost, PluginSet, DeckRegistry, handle counter)
         app.rs              -- DaggerApp: eframe::App, top-level layout, window management
         canvas.rs           -- Pan/zoom canvas, coordinate transforms (screen <-> canvas)
-        node_render.rs      -- Draw node bodies, title bars, pins, labels (all monospace)
-        link_render.rs      -- Draw cubic Bezier connections
+        render.rs           -- Draw node bodies, title bars, pins, labels, cubic Bezier links
         interaction.rs      -- Pin connect/disconnect, select, delete, box-select
         state.rs            -- EditorState: Workflow + properties + computed outputs + layout
         layout.rs           -- Force-directed layout with DAG flow constraint, spatial hash grid

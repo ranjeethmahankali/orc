@@ -1,5 +1,4 @@
-use crate::link_render;
-use crate::node_render;
+use crate::render;
 use crate::state::EditorState;
 use eframe::egui;
 use orc_sdk::Workflow;
@@ -18,7 +17,6 @@ impl DaggerApp {
 
 impl eframe::App for DaggerApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
-        link_render::draw_links(ui, &self.state);
-        node_render::draw_nodes(ui, &self.state);
+        render::draw(ui, &self.state);
     }
 }

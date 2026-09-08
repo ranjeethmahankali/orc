@@ -5,8 +5,7 @@ mod exec;
 mod inspect;
 mod interaction;
 mod layout;
-mod link_render;
-mod node_render;
+mod render;
 mod state;
 
 use eframe::egui;

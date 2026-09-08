@@ -1,5 +1,6 @@
 use crate::state::EditorState;
-use eframe::egui::{self, Color32, FontFamily, FontId, Pos2, Rect, Stroke, StrokeKind, Vec2};
+use eframe::egui::{self, Color32, FontFamily, FontId, Pos2, Rect, Shape, Stroke, StrokeKind, Vec2};
+use eframe::epaint::{CubicBezierShape, PathStroke};
 use orc_sdk::{IH, NodeInfo, OH};
 
 const NODE_WIDTH: f32 = 160.0;
@@ -9,6 +10,10 @@ const PIN_SPACING: f32 = 20.0;
 const PIN_TOP_OFFSET: f32 = TITLE_HEIGHT + 12.0;
 const NODE_ROUNDING: f32 = 6.0;
 const FONT_SIZE: f32 = 13.0;
+
+const LINK_COLOR: Color32 = Color32::from_rgb(180, 180, 180);
+const LINK_WIDTH: f32 = 2.0;
+const CONTROL_POINT_OFFSET: f32 = 80.0;
 
 fn node_color(info: &NodeInfo) -> Color32 {
     match info {
@@ -33,7 +38,6 @@ pub fn node_height(n_inputs: usize, n_outputs: usize) -> f32 {
     PIN_TOP_OFFSET + n_pins as f32 * PIN_SPACING + 8.0
 }
 
-/// Returns the canvas-space position of an input pin given the node's top-left position.
 pub fn input_pin_pos(node_pos: Pos2, pin_index: usize) -> Pos2 {
     Pos2::new(
         node_pos.x,
@@ -41,7 +45,6 @@ pub fn input_pin_pos(node_pos: Pos2, pin_index: usize) -> Pos2 {
     )
 }
 
-/// Returns the canvas-space position of an output pin given the node's top-left position.
 pub fn output_pin_pos(node_pos: Pos2, pin_index: usize) -> Pos2 {
     Pos2::new(
         node_pos.x + NODE_WIDTH,
@@ -49,7 +52,56 @@ pub fn output_pin_pos(node_pos: Pos2, pin_index: usize) -> Pos2 {
     )
 }
 
-pub fn draw_nodes(ui: &mut egui::Ui, state: &EditorState) {
+pub fn draw(ui: &mut egui::Ui, state: &EditorState) {
+    draw_links(ui, state);
+    draw_nodes(ui, state);
+}
+
+fn draw_links(ui: &mut egui::Ui, state: &EditorState) {
+    let painter = ui.painter();
+    let positions = match state.node_positions.try_borrow() {
+        Ok(p) => p,
+        Err(_) => return,
+    };
+
+    for nh in state.workflow.node_iter() {
+        let dst_pos_arr = positions[nh];
+        let dst_node_pos = Pos2::new(dst_pos_arr[0], dst_pos_arr[1]);
+
+        for (input_idx, ih) in state.workflow.node_inputs(nh).enumerate() {
+            let src_oh = match state.workflow.input_source(ih) {
+                Some(oh) => oh,
+                None => continue,
+            };
+
+            let src_nh = state.workflow.node_from_output(src_oh);
+            let src_pos_arr = positions[src_nh];
+            let src_node_pos = Pos2::new(src_pos_arr[0], src_pos_arr[1]);
+
+            let output_idx = state
+                .workflow
+                .node_outputs(src_nh)
+                .position(|o| o == src_oh)
+                .unwrap_or(0);
+
+            let start = output_pin_pos(src_node_pos, output_idx);
+            let end = input_pin_pos(dst_node_pos, input_idx);
+
+            let dx = (end.x - start.x).abs().max(CONTROL_POINT_OFFSET) * 0.5;
+            let cp1 = Pos2::new(start.x + dx, start.y);
+            let cp2 = Pos2::new(end.x - dx, end.y);
+
+            painter.add(Shape::CubicBezier(CubicBezierShape::from_points_stroke(
+                [start, cp1, cp2, end],
+                false,
+                Color32::TRANSPARENT,
+                PathStroke::new(LINK_WIDTH, LINK_COLOR),
+            )));
+        }
+    }
+}
+
+fn draw_nodes(ui: &mut egui::Ui, state: &EditorState) {
     let painter = ui.painter();
     let font = FontId::new(FONT_SIZE, FontFamily::Monospace);
     let label_font = FontId::new(11.0, FontFamily::Monospace);
@@ -98,7 +150,6 @@ pub fn draw_nodes(ui: &mut egui::Ui, state: &EditorState) {
 
         // Title bar.
         painter.rect_filled(title_rect, NODE_ROUNDING, title_color(info));
-        // Clip the bottom corners of the title bar by overdrawing a small rect.
         if height > TITLE_HEIGHT {
             let patch = Rect::from_min_size(
                 Pos2::new(node_pos.x, node_pos.y + TITLE_HEIGHT - NODE_ROUNDING),
