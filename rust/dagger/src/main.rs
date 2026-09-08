@@ -2,6 +2,7 @@ mod app;
 mod canvas;
 mod context_menu;
 mod exec;
+mod file_menu;
 mod inspect;
 mod interaction;
 mod layout;
@@ -19,10 +20,7 @@ use orc_sdk::{
 };
 use std::alloc::{Layout, alloc, dealloc};
 use std::ffi::{CStr, c_void};
-use std::sync::{
-    LazyLock,
-    atomic::{AtomicU64, Ordering},
-};
+use std::sync::{LazyLock, atomic::AtomicU64};
 
 pub(crate) static REGISTRY: LazyLock<DeckRegistry> = LazyLock::new(DeckRegistry::new);
 pub static HANDLE_COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -207,14 +205,6 @@ pub fn host_clone_orc_handle(src: OrcHandleBorrowed) -> Result<OrcHandle, Error>
     Error::from_raw(err).map(|()| out)
 }
 
-fn load_workflow(path: &str) -> Workflow {
-    let file = std::fs::File::open(path).expect("Failed to open workflow file");
-    let mut reader = std::io::BufReader::new(file);
-    let mut next_id = || HANDLE_COUNTER.fetch_add(1, Ordering::Relaxed);
-    Workflow::read_from_msgpack(&mut reader, &PLUGIN_SET, &REGISTRY, 0, &mut next_id)
-        .expect("Failed to deserialize workflow")
-}
-
 fn main() -> eframe::Result {
     // Force plugin loading at startup.
     let plugin_set: &PluginSet = &PLUGIN_SET;
@@ -227,14 +217,16 @@ fn main() -> eframe::Result {
         );
     }
 
-    let workflow = match std::env::args().nth(1) {
+    let (workflow, path) = match std::env::args().nth(1) {
         Some(path) => {
             eprintln!("Loading workflow from: {path}");
-            load_workflow(&path)
+            let workflow = file_menu::open_workflow(std::path::Path::new(&path))
+                .expect("Failed to load workflow");
+            (workflow, Some(std::path::PathBuf::from(path)))
         }
         None => {
             eprintln!("No workflow file specified, starting with empty workflow");
-            Workflow::default()
+            (Workflow::default(), None)
         }
     };
 
@@ -246,7 +238,7 @@ fn main() -> eframe::Result {
     eframe::run_native(
         "Dagger",
         options,
-        Box::new(|cc| Ok(Box::new(app::DaggerApp::new(cc, workflow)))),
+        Box::new(|cc| Ok(Box::new(app::DaggerApp::new(cc, workflow, path)))),
     )
 }
 

@@ -6,3 +6,4 @@ edition = "2024"
 [dependencies]
 orc_sdk = { path = "../orc_sdk" }
 eframe = { version = "0.36", features = ["wgpu"] }
+rfd = "0.17.2"

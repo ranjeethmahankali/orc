@@ -117,6 +117,7 @@ fn finish_node_creation(state: &mut EditorState, nh: orc_sdk::NH, screen_pos: Po
     }
     state.needs_measure = true;
     state.layout_converged = false;
+    state.dirty = true;
 }
 
 fn create_function_node(
@@ -334,5 +335,13 @@ mod test {
     #[test]
     fn t_rejects_a_list_with_a_non_numeric_element() {
         assert_eq!(parse_literal("[1, x, 3]"), None);
+    }
+
+    #[test]
+    fn t_creating_a_node_marks_the_workflow_dirty() {
+        let mut state = EditorState::from_workflow(orc_sdk::Workflow::default());
+        assert!(!state.dirty);
+        create_constant_node(&mut state, &[1.0], Pos2::ZERO);
+        assert!(state.dirty, "adding a node changes the saved file");
     }
 }

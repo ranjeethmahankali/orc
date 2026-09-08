@@ -167,6 +167,7 @@ fn update_pending_wire(ui: &mut egui::Ui, state: &mut EditorState, source: OH) -
         if !creates_cycle(&state.workflow, src, dst) {
             let _ = state.workflow.connect(source, target);
             state.layout_converged = false;
+            state.dirty = true;
         }
     }
     state.pending_wire = None;
@@ -227,6 +228,7 @@ pub fn update(
                 state.workflow.disconnect(upstream, ih);
                 wire_start = Some(upstream);
                 events.changed = true;
+                state.dirty = true;
             }
         }
         let outputs: Vec<OH> = state.workflow.node_outputs(nh).collect();
@@ -327,6 +329,7 @@ pub fn delete_selected(ui: &mut egui::Ui, state: &mut EditorState) -> bool {
         state.workflow.delete_node(nh);
     }
     state.layout_converged = false;
+    state.dirty = true;
     true
 }
 

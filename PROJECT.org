@@ -596,11 +596,13 @@
        with something, just stop the traversal and use an approximate position based on what you
        know at that point, and render the block in an error state.
 
-**** NEXT Phase 2: Hit Testing + Interaction + Context Menu
+**** DONE Phase 2: Hit Testing + Interaction + Context Menu
+     CLOSED: [2026-09-08 Tue 19:00]
      :PROPERTIES:
      :CREATED:  2026-09-08 Tue 18:21
      :END:
      :LOGBOOK:
+     - State "DONE"       from "NEXT"       [2026-09-08 Tue 19:00]
      - State "NEXT"       from "TODO"       [2026-09-08 Tue 17:51]
      - State "TODO"       from              [2026-09-07 Mon 23:11]
      :END:
@@ -685,17 +687,18 @@
 
      <2026-09-08 Tue 18:53> Some more bug fixing and testing, almost done.
 
-**** TODO Phase 3: File I/O
+**** NEXT Phase 3: File I/O
      :LOGBOOK:
+     - State "NEXT"       from "TODO"       [2026-09-08 Tue 19:14]
      - State "TODO"       from              [2026-09-07 Mon 23:11]
      :END:
 
-     - [ ] File menu in the top bar: Save, Save As, Open.
-     - [ ] Save: serialize workflow via ~workflow.write_to_msgpack()~, write to file path.
-     - [ ] Open: read file, deserialize via ~Workflow::read_from_msgpack()~, build new EditorState,
+     - [X] File menu in the top bar: Save, Save As, Open.
+     - [X] Save: serialize workflow via ~workflow.write_to_msgpack()~, write to file path.
+     - [X] Open: read file, deserialize via ~Workflow::read_from_msgpack()~, build new EditorState,
        run layout from scratch (topological seeding + convergence).
-     - [ ] Track current file path for subsequent saves. Prompt for path on first save (Save As).
-     - [ ] Dirty flag: track whether workflow has been modified since last save. Show indicator in
+     - [X] Track current file path for subsequent saves. Prompt for path on first save (Save As).
+     - [X] Dirty flag: track whether workflow has been modified since last save. Show indicator in
        title bar (e.g. asterisk).
 
 **** TODO Phase 4: Execution + Inspect Display

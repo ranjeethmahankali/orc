@@ -5,6 +5,7 @@ use crate::layout;
 use crate::render;
 use eframe::egui::{self, Rect};
 use orc_sdk::{NodeProperty, OH, Workflow};
+use std::path::PathBuf;
 
 pub struct EditorState {
     pub workflow: Workflow,
@@ -29,6 +30,15 @@ pub struct EditorState {
     pub context_menu: Option<ContextMenuState>,
     /// Whether the "Session Info" window is open.
     pub session_info_open: bool,
+    /// Path last opened or saved to, if any. `Save` writes here directly; with no path yet it
+    /// falls back to `Save As`.
+    pub current_path: Option<PathBuf>,
+    /// Message from the last failed load/save, shown in a popup until dismissed.
+    pub file_error: Option<String>,
+    /// Whether the workflow has changed since the last save (or since it was opened). Node
+    /// positions, selection, pan/zoom etc. don't count — none of that is persisted to disk, so
+    /// none of it should mark the file dirty.
+    pub dirty: bool,
 }
 
 impl EditorState {
@@ -51,6 +61,9 @@ impl EditorState {
             pending_wire: None,
             context_menu: None,
             session_info_open: false,
+            current_path: None,
+            file_error: None,
+            dirty: false,
         };
         layout::topological_seed(&mut state);
         state
