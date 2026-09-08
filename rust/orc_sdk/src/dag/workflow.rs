@@ -199,6 +199,10 @@ impl Workflow {
         Ok(n)
     }
 
+    pub fn delete_node(&mut self, n: NH) {
+        self.graph.delete_node(n);
+    }
+
     pub fn add_function(
         &mut self,
         info: FuncInfo,
@@ -223,6 +227,20 @@ impl Workflow {
             node_infos[n] = NodeInfo::Constant(data);
         }
         Ok((n, output_handle))
+    }
+
+    pub fn add_inspect_node(
+        &mut self,
+        label: String,
+        input_handles: &mut [IH],
+    ) -> Result<NH, DagError> {
+        // Adding an inspect node is almost the same as adding a function node, with no outputs.
+        let n = self.graph.push_node(input_handles, &mut [])?;
+        {
+            let mut node_infos = self.node_infos.try_borrow_mut()?;
+            node_infos[n] = NodeInfo::Inspect { label };
+        }
+        Ok(n)
     }
 
     pub fn connect(&mut self, from: OH, to: IH) -> Result<LH, DagError> {
@@ -333,6 +351,34 @@ impl Workflow {
             Some(_) => None,
             None => Some(OH { idx: i }),
         })
+    }
+
+    pub fn node_iter(&self) -> impl Iterator<Item = NH> {
+        self.graph.node_iter()
+    }
+
+    pub fn link_iter(&self) -> impl Iterator<Item = LH> {
+        self.graph.link_iter()
+    }
+
+    pub fn node_inputs(&self, n: NH) -> impl Iterator<Item = IH> {
+        self.graph.node_inputs(n)
+    }
+
+    pub fn node_outputs(&self, n: NH) -> impl Iterator<Item = OH> {
+        self.graph.node_outputs(n)
+    }
+
+    pub fn node_info_prop(&self) -> NodeProperty<NodeInfo> {
+        self.node_infos.clone()
+    }
+
+    pub fn node_from_input(&self, i: IH) -> NH {
+        self.graph.inputs[i.idx].node
+    }
+
+    pub fn node_from_output(&self, o: OH) -> NH {
+        self.graph.outputs[o.idx].node
     }
 
     /// This will run the DAG, and return an iterator over the required outputs. This is super
