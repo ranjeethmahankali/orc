@@ -551,7 +551,7 @@
 
      - [X] Host setup in main.rs: replicate kbb_cli_host pattern (OrcHost, PluginSet, DeckRegistry,
        handle counter, host callbacks). Load plugins at startup.
-     - [ ] EditorState struct with Workflow, NodeProperty for positions/sizes, layout state.
+     - [X] EditorState struct with Workflow, NodeProperty for positions/sizes, layout state.
      - [ ] Load a real workflow from a plugin to render.
      - [ ] Pan/zoom canvas: middle-drag to pan, scroll wheel to zoom (clamped 0.1..5.0).
        Screen-to-canvas coordinate transform.
@@ -613,12 +613,12 @@
      - State "TODO"       from              [2026-09-07 Mon 23:11]
      :END:
 
-     - File menu in the top bar: Save, Save As, Open.
-     - Save: serialize workflow via ~workflow.write_to_msgpack()~, write to file path.
-     - Open: read file, deserialize via ~Workflow::read_from_msgpack()~, build new EditorState,
+     - [ ] File menu in the top bar: Save, Save As, Open.
+     - [ ] Save: serialize workflow via ~workflow.write_to_msgpack()~, write to file path.
+     - [ ] Open: read file, deserialize via ~Workflow::read_from_msgpack()~, build new EditorState,
        run layout from scratch (topological seeding + convergence).
-     - Track current file path for subsequent saves. Prompt for path on first save (Save As).
-     - Dirty flag: track whether workflow has been modified since last save. Show indicator in
+     - [ ] Track current file path for subsequent saves. Prompt for path on first save (Save As).
+     - [ ] Dirty flag: track whether workflow has been modified since last save. Show indicator in
        title bar (e.g. asterisk).
 
 **** TODO Phase 4: Execution + Inspect Display
