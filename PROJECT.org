@@ -680,7 +680,8 @@
        efficiently, otherwise leave it as solid too.
      - [X] Make the fill colors of both selection rectangles more transparent, maybe half as opaque
        as they are now.
-     - [ ] Inspect nodes should have the title "inspect" instead of "a", as it is now.
+     - [X] Inspect nodes should have the title "inspect" instead of "a", as it is now.
+     - [X] Use case insensitive substring check to filter node names.
 
 **** TODO Phase 3: File I/O
      :LOGBOOK:

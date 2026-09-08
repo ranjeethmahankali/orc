@@ -20,17 +20,17 @@ pub struct ContextMenuState {
     focus_requested: bool,
 }
 
-/// Filters the menu's entries as the user types. `starts_with` today; swappable later for
-/// fuzzy/Levenshtein matching without touching the menu itself.
+/// Filters the menu's entries as the user types. Case-insensitive substring match today;
+/// swappable later for fuzzy/Levenshtein matching without touching the menu itself.
 pub trait FunctionFilter {
     fn matches(&self, query: &str, name: &str) -> bool;
 }
 
-pub struct StartsWithFilter;
+pub struct SubstringFilter;
 
-impl FunctionFilter for StartsWithFilter {
+impl FunctionFilter for SubstringFilter {
     fn matches(&self, query: &str, name: &str) -> bool {
-        query.is_empty() || name.to_lowercase().starts_with(&query.to_lowercase())
+        query.is_empty() || name.to_lowercase().contains(&query.to_lowercase())
     }
 }
 
@@ -69,7 +69,7 @@ fn menu_entries(query: &str) -> Vec<(String, MenuAction)> {
         return vec![(SESSION_INFO.to_string(), MenuAction::SessionInfo)];
     }
 
-    let filter = StartsWithFilter;
+    let filter = SubstringFilter;
     let mut entries = Vec::new();
     match parse_literal(query) {
         Some(values) => entries.push((format!("{ADD_CONSTANT}: {values:?}"), MenuAction::Constant(values))),
@@ -251,13 +251,10 @@ pub fn update(ui: &mut egui::Ui, state: &mut EditorState) {
                 MenuAction::SessionInfo => state.session_info_open = true,
                 MenuAction::Constant(values) => create_constant_node(state, &values, screen_pos),
                 MenuAction::Inspect => {
-                    let label = menu.query.trim();
-                    let label = if label.is_empty() {
-                        "inspect".to_string()
-                    } else {
-                        label.to_string()
-                    };
-                    create_inspect_node(state, label, screen_pos, connect_from);
+                    // The search field is a node-name filter, not a label prompt — typing "a"
+                    // to match "Add Inspect Node" must not make that the node's title. There is
+                    // no rename UI in any phase, so this is the node's title for good.
+                    create_inspect_node(state, "inspect".to_string(), screen_pos, connect_from);
                 }
                 MenuAction::Function(info) => {
                     create_function_node(state, info, screen_pos, connect_from);
