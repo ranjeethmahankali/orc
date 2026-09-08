@@ -596,8 +596,9 @@
        with something, just stop the traversal and use an approximate position based on what you
        know at that point, and render the block in an error state.
 
-**** TODO Phase 2: Hit Testing + Interaction + Context Menu
+**** NEXT Phase 2: Hit Testing + Interaction + Context Menu
      :LOGBOOK:
+     - State "NEXT"       from "TODO"       [2026-09-08 Tue 17:51]
      - State "TODO"       from              [2026-09-07 Mon 23:11]
      :END:
 
