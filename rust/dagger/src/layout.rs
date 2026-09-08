@@ -9,7 +9,7 @@ const DAMPING: f32 = 0.85;
 const CENTER_Y_STRENGTH: f32 = 0.02;
 const DAG_MIN_GAP: f32 = 220.0;
 const DAG_CONSTRAINT_STRENGTH: f32 = 0.5;
-const CONVERGENCE_THRESHOLD: f32 = 0.5;
+const CONVERGENCE_THRESHOLD: f32 = 0.1;
 const MAX_DISPLACEMENT: f32 = 50.0;
 
 /// Seed node positions using topological depth (left-to-right) with vertical spread.
