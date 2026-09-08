@@ -19,7 +19,12 @@ impl DaggerApp {
 impl eframe::App for DaggerApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         if !self.state.layout_converged {
-            self.state.layout_converged = layout::step(&mut self.state);
+            for _ in 0..2 {
+                if layout::step(&mut self.state) {
+                    self.state.layout_converged = true;
+                    break;
+                }
+            }
             ui.ctx().request_repaint();
         }
         render::draw(ui, &self.state);
