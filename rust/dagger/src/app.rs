@@ -27,6 +27,7 @@ impl DaggerApp {
 
 impl eframe::App for DaggerApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        file_menu::handle_shortcuts(ui.ctx(), &mut self.state);
         egui::Panel::top("dagger-menu-bar").show(ui, |ui| {
             file_menu::menu_bar(ui, &mut self.state);
         });
