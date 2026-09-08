@@ -668,7 +668,7 @@
 
      <2026-09-08 Tue 18:20> Tweaks to the UX after testing:
 
-     - [ ] When I am about to release a cable connection (drag) at an input pin, I get no visual
+     - [X] When I am about to release a cable connection (drag) at an input pin, I get no visual
        feedback. I would like the emtpy circle of the receiving pin to thicken up (without fill). Do
        this in immediate mode style.
      - [ ] In the right click menu, I want the entire row to actively select that entry, and not
