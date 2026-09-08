@@ -72,7 +72,10 @@ fn menu_entries(query: &str) -> Vec<(String, MenuAction)> {
     let filter = SubstringFilter;
     let mut entries = Vec::new();
     match parse_literal(query) {
-        Some(values) => entries.push((format!("{ADD_CONSTANT}: {values:?}"), MenuAction::Constant(values))),
+        Some(values) => entries.push((
+            format!("{ADD_CONSTANT}: {values:?}"),
+            MenuAction::Constant(values),
+        )),
         None if filter.matches(query, ADD_CONSTANT) => {
             entries.push((ADD_CONSTANT.to_string(), MenuAction::Constant(vec![0.0])));
         }
@@ -108,7 +111,7 @@ pub fn open(state: &mut EditorState, request: ContextMenuRequest) {
 }
 
 fn finish_node_creation(state: &mut EditorState, nh: orc_sdk::NH, screen_pos: Pos2) {
-    let canvas_pos = state.view.to_canvas(screen_pos);
+    let canvas_pos = state.view.screen_to_canvas(screen_pos);
     if let Ok(mut positions) = state.node_positions.try_borrow_mut() {
         positions[nh] = [canvas_pos.x, canvas_pos.y];
     }
@@ -160,7 +163,10 @@ fn create_constant_node(state: &mut EditorState, values: &[f64], screen_pos: Pos
     for (i, &v) in values.iter().enumerate() {
         deck.push(v, if values.len() > 1 && i == 0 { 1 } else { 0 });
     }
-    if crate::REGISTRY.alloc_with_value(Some(deck), &mut handle).is_err() {
+    if crate::REGISTRY
+        .alloc_with_value(Some(deck), &mut handle)
+        .is_err()
+    {
         return;
     }
     let Ok((nh, _oh)) = state.workflow.add_constant(handle) else {
@@ -214,9 +220,8 @@ pub fn update(ui: &mut egui::Ui, state: &mut EditorState) {
     // just the bounds of its text — a much bigger, easier target for the mouse.
     .layout(egui::Layout::top_down_justified(egui::Align::Min))
     .show(|ui| {
-        let response = ui.add(
-            egui::TextEdit::singleline(&mut menu.query).hint_text("type to add node..."),
-        );
+        let response =
+            ui.add(egui::TextEdit::singleline(&mut menu.query).hint_text("type to add node..."));
         if !menu.focus_requested {
             response.request_focus();
             menu.focus_requested = true;
@@ -272,28 +277,31 @@ pub fn update(ui: &mut egui::Ui, state: &mut EditorState) {
 /// Plugins, their functions and their registered types, opened from the context menu's
 /// "Session Info..." entry.
 pub fn session_info_window(ctx: &egui::Context, open: &mut bool) {
-    egui::Window::new("Session Info").open(open).show(ctx, |ui| {
-        let plugin_set: &PluginSet = &crate::PLUGIN_SET;
-        for plugin in plugin_set.plugins() {
-            ui.collapsing(plugin.name(), |ui| {
-                ui.label("Functions:");
-                for f in plugin.functions() {
-                    let arity = |n: Option<usize>| n.map_or("variadic".to_string(), |n| n.to_string());
-                    ui.label(format!(
-                        "{} ({} in, {} out) — {}",
-                        f.name,
-                        arity(f.n_inputs),
-                        arity(f.n_outputs),
-                        f.desc
-                    ));
-                }
-                ui.label("Types:");
-                for t in plugin.types() {
-                    ui.label(format!("{} — {}", t.name, t.desc));
-                }
-            });
-        }
-    });
+    egui::Window::new("Session Info")
+        .open(open)
+        .show(ctx, |ui| {
+            let plugin_set: &PluginSet = &crate::PLUGIN_SET;
+            for plugin in plugin_set.plugins() {
+                ui.collapsing(plugin.name(), |ui| {
+                    ui.label("Functions:");
+                    for f in plugin.functions() {
+                        let arity =
+                            |n: Option<usize>| n.map_or("variadic".to_string(), |n| n.to_string());
+                        ui.label(format!(
+                            "{} ({} in, {} out) — {}",
+                            f.name,
+                            arity(f.n_inputs),
+                            arity(f.n_outputs),
+                            f.desc
+                        ));
+                    }
+                    ui.label("Types:");
+                    for t in plugin.types() {
+                        ui.label(format!("{} — {}", t.name, t.desc));
+                    }
+                });
+            }
+        });
 }
 
 #[cfg(test)]

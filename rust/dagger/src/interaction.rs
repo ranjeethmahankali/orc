@@ -78,7 +78,8 @@ fn update_box_select(
         SelectBoxKind::Crossing
     };
     let screen_rect = Rect::from_two_pos(start, current);
-    let canvas_rect = Rect::from_two_pos(view.to_canvas(start), view.to_canvas(current));
+    let canvas_rect =
+        Rect::from_two_pos(view.screen_to_canvas(start), view.screen_to_canvas(current));
     let nodes: Vec<NH> = state.workflow.node_iter().collect();
     if let (Ok(positions), Ok(sizes), Ok(mut selected)) = (
         state.node_positions.try_borrow(),
@@ -130,14 +131,18 @@ fn creates_cycle(workflow: &Workflow, src: NH, dst: NH) -> bool {
     false
 }
 
-pub(crate) fn find_input_pin_at(state: &EditorState, screen_pos: Pos2, view: &Transform) -> Option<IH> {
+pub(crate) fn find_input_pin_at(
+    state: &EditorState,
+    screen_pos: Pos2,
+    view: &Transform,
+) -> Option<IH> {
     let positions = state.node_positions.try_borrow().ok()?;
     let sizes = state.node_sizes.try_borrow().ok()?;
     let grab = view.scale(render::PIN_GRAB_RADIUS);
     for nh in state.workflow.node_iter() {
         let rect = render::node_rect(positions[nh], sizes[nh]);
         for (i, ih) in state.workflow.node_inputs(nh).enumerate() {
-            let center = view.to_screen(render::input_pin_pos(rect, i));
+            let center = view.canvas_to_screen(render::input_pin_pos(rect, i));
             if center.distance(screen_pos) <= grab {
                 return Some(ih);
             }
@@ -178,7 +183,11 @@ fn update_pending_wire(ui: &mut egui::Ui, state: &mut EditorState, source: OH) -
 /// Pins are interacted after the body, in the same order they're painted in, so a press on the
 /// sliver of a pin that overlaps the node's edge is claimed by the pin rather than starting a
 /// node drag — later interacts win ties in egui's hit test.
-pub fn update(ui: &mut egui::Ui, state: &mut EditorState, canvas_response: &egui::Response) -> FrameEvents {
+pub fn update(
+    ui: &mut egui::Ui,
+    state: &mut EditorState,
+    canvas_response: &egui::Response,
+) -> FrameEvents {
     let view = state.view;
     let shift = ui.input(|i| i.modifiers.shift);
     let mut events = FrameEvents::default();
@@ -206,7 +215,7 @@ pub fn update(ui: &mut egui::Ui, state: &mut EditorState, canvas_response: &egui
 
         let inputs: Vec<IH> = state.workflow.node_inputs(nh).collect();
         for (i, ih) in inputs.into_iter().enumerate() {
-            let center = view.to_screen(render::input_pin_pos(rect, i));
+            let center = view.canvas_to_screen(render::input_pin_pos(rect, i));
             let response = ui.interact(
                 pin_rect(center, &view),
                 Id::new(("dagger-input-pin", ih)),
@@ -222,7 +231,7 @@ pub fn update(ui: &mut egui::Ui, state: &mut EditorState, canvas_response: &egui
         }
         let outputs: Vec<OH> = state.workflow.node_outputs(nh).collect();
         for (i, oh) in outputs.into_iter().enumerate() {
-            let center = view.to_screen(render::output_pin_pos(rect, i));
+            let center = view.canvas_to_screen(render::output_pin_pos(rect, i));
             let response = ui.interact(
                 pin_rect(center, &view),
                 Id::new(("dagger-output-pin", oh)),

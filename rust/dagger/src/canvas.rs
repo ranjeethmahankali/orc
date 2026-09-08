@@ -30,16 +30,16 @@ impl Default for Transform {
 }
 
 impl Transform {
-    pub fn to_screen(&self, p: Pos2) -> Pos2 {
+    pub fn canvas_to_screen(&self, p: Pos2) -> Pos2 {
         (p.to_vec2() * self.zoom + self.pan).to_pos2()
     }
 
-    pub fn to_canvas(&self, p: Pos2) -> Pos2 {
+    pub fn screen_to_canvas(&self, p: Pos2) -> Pos2 {
         ((p.to_vec2() - self.pan) / self.zoom).to_pos2()
     }
 
     pub fn rect_to_screen(&self, r: Rect) -> Rect {
-        Rect::from_min_max(self.to_screen(r.min), self.to_screen(r.max))
+        Rect::from_min_max(self.canvas_to_screen(r.min), self.canvas_to_screen(r.max))
     }
 
     /// Canvas length to screen length.
@@ -50,7 +50,7 @@ impl Transform {
     /// Multiply the zoom by `factor`, keeping the canvas point currently under
     /// `anchor` (screen space) pinned to `anchor`.
     pub fn zoom_about(&mut self, anchor: Pos2, factor: f32) {
-        let pivot = self.to_canvas(anchor);
+        let pivot = self.screen_to_canvas(anchor);
         self.zoom = (self.zoom * factor).clamp(MIN_ZOOM, MAX_ZOOM);
         self.pan = anchor.to_vec2() - pivot.to_vec2() * self.zoom;
     }
@@ -80,11 +80,11 @@ pub fn interact(ui: &mut egui::Ui, view: &mut Transform) -> (egui::Response, boo
         (i.modifiers.shift && i.pointer.button_down(egui::PointerButton::Secondary))
             .then(|| i.pointer.delta())
     });
-    if let Some(delta) = pan_delta {
-        if delta != Vec2::ZERO {
-            view.pan += delta;
-            moved = true;
-        }
+    if let Some(delta) = pan_delta
+        && delta != Vec2::ZERO
+    {
+        view.pan += delta;
+        moved = true;
     }
 
     if response.contains_pointer() {
@@ -123,18 +123,18 @@ mod test {
             zoom: 2.5,
         };
         let p = Pos2::new(123.0, 456.0);
-        assert_close(view.to_canvas(view.to_screen(p)), p);
-        assert_close(view.to_screen(view.to_canvas(p)), p);
+        assert_close(view.screen_to_canvas(view.canvas_to_screen(p)), p);
+        assert_close(view.canvas_to_screen(view.screen_to_canvas(p)), p);
     }
 
     #[test]
     fn t_zoom_pins_the_point_under_the_anchor() {
         let mut view = Transform::default();
         let anchor = Pos2::new(640.0, 400.0);
-        let pivot = view.to_canvas(anchor);
+        let pivot = view.screen_to_canvas(anchor);
         for factor in [1.1, 1.1, 0.8, 3.0, 0.5] {
             view.zoom_about(anchor, factor);
-            assert_close(view.to_screen(pivot), anchor);
+            assert_close(view.canvas_to_screen(pivot), anchor);
         }
     }
 
@@ -148,7 +148,7 @@ mod test {
         }
         assert_eq!(view.zoom, MAX_ZOOM);
         // The anchor stays pinned even when the zoom saturates.
-        assert_close(view.to_screen(view.to_canvas(anchor)), anchor);
+        assert_close(view.canvas_to_screen(view.screen_to_canvas(anchor)), anchor);
 
         let mut view = Transform::default();
         for _ in 0..100 {
@@ -163,9 +163,9 @@ mod test {
             pan: Vec2::ZERO,
             zoom: 0.5,
         };
-        let before = view.to_screen(Pos2::new(10.0, 20.0));
+        let before = view.canvas_to_screen(Pos2::new(10.0, 20.0));
         view.pan += Vec2::new(15.0, -5.0);
-        let after = view.to_screen(Pos2::new(10.0, 20.0));
+        let after = view.canvas_to_screen(Pos2::new(10.0, 20.0));
         assert_close(after, before + Vec2::new(15.0, -5.0));
         assert_eq!(view.zoom, 0.5);
     }

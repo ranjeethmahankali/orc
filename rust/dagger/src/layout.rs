@@ -424,7 +424,11 @@ mod test {
         }
         step(&mut state, Some(a));
         let pos = state.node_positions.try_borrow().unwrap();
-        assert_eq!(pos[a], [0.0, 0.0], "the pinned node must not move under physics");
+        assert_eq!(
+            pos[a],
+            [0.0, 0.0],
+            "the pinned node must not move under physics"
+        );
         assert_ne!(
             pos[b],
             [2000.0, 0.0],

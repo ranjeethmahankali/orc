@@ -247,7 +247,7 @@ fn draw_pending_wire(ui: &mut egui::Ui, state: &EditorState, view: &Transform) {
         .node_outputs(src_nh)
         .position(|o| o == source)
         .unwrap_or(0);
-    let start = view.to_screen(output_pin_pos(src_rect, output_idx));
+    let start = view.canvas_to_screen(output_pin_pos(src_rect, output_idx));
 
     let points = bezier_control_points(start, cursor, CONTROL_POINT_OFFSET * view.zoom);
     ui.painter().add(link_shape(points, view.scale(LINK_WIDTH)));
@@ -315,7 +315,7 @@ fn draw_links(ui: &mut egui::Ui, state: &EditorState, view: &Transform) {
             let end = input_pin_pos(dst_rect, input_idx);
 
             let points = bezier_control_points(start, end, CONTROL_POINT_OFFSET)
-                .map(|p| view.to_screen(p));
+                .map(|p| view.canvas_to_screen(p));
             painter.add(link_shape(points, view.scale(LINK_WIDTH)));
         }
     }
@@ -393,7 +393,7 @@ fn draw_nodes(ui: &mut egui::Ui, state: &EditorState, view: &Transform, wire_tar
         // Title text.
         if draw_text {
             painter.text(
-                view.to_screen(Pos2::new(rect.min.x + TITLE_PADDING, rect.min.y + 4.0)),
+                view.canvas_to_screen(Pos2::new(rect.min.x + TITLE_PADDING, rect.min.y + 4.0)),
                 egui::Align2::LEFT_TOP,
                 info.name(),
                 font.clone(),
@@ -406,7 +406,7 @@ fn draw_nodes(ui: &mut egui::Ui, state: &EditorState, view: &Transform, wire_tar
 
         // Input pins.
         for (i, ih) in inputs.iter().enumerate() {
-            let pin_center = view.to_screen(input_pin_pos(rect, i));
+            let pin_center = view.canvas_to_screen(input_pin_pos(rect, i));
             let connected = state.workflow.input_source(*ih).is_some();
             if connected {
                 painter.circle_filled(pin_center, pin_radius, Color32::from_rgb(200, 200, 200));
@@ -436,7 +436,7 @@ fn draw_nodes(ui: &mut egui::Ui, state: &EditorState, view: &Transform, wire_tar
 
         // Output pins.
         for (i, oh) in outputs.iter().enumerate() {
-            let pin_center = view.to_screen(output_pin_pos(rect, i));
+            let pin_center = view.canvas_to_screen(output_pin_pos(rect, i));
             painter.circle_filled(pin_center, pin_radius, Color32::from_rgb(200, 200, 200));
             let label = pin_label(&output_labels[*oh], declared_name(out_args, i));
             if draw_text && !label.is_empty() {
