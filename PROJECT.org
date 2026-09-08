@@ -680,6 +680,7 @@
        efficiently, otherwise leave it as solid too.
      - [ ] Make the fill colors of both selection rectangles more transparent, maybe half as opaque
        as they are now.
+     - [ ] Inspect nodes should have the title "inspect" instead of "a", as it is now.
 
 **** TODO Phase 3: File I/O
      :LOGBOOK:

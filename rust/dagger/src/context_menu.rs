@@ -61,12 +61,16 @@ fn parse_literal(text: &str) -> Option<Vec<f64>> {
     }
 }
 
+/// Before anything is typed, the menu doesn't assume the user wants to add a node — it just
+/// offers the other context menu actions. Typing anything is equivalent to picking "add a
+/// node": the menu switches to showing filtered node candidates instead.
 fn menu_entries(query: &str) -> Vec<(String, MenuAction)> {
+    if query.is_empty() {
+        return vec![(SESSION_INFO.to_string(), MenuAction::SessionInfo)];
+    }
+
     let filter = StartsWithFilter;
     let mut entries = Vec::new();
-    if filter.matches(query, SESSION_INFO) {
-        entries.push((SESSION_INFO.to_string(), MenuAction::SessionInfo));
-    }
     match parse_literal(query) {
         Some(values) => entries.push((format!("{ADD_CONSTANT}: {values:?}"), MenuAction::Constant(values))),
         None if filter.matches(query, ADD_CONSTANT) => {
@@ -210,7 +214,9 @@ pub fn update(ui: &mut egui::Ui, state: &mut EditorState) {
     // just the bounds of its text — a much bigger, easier target for the mouse.
     .layout(egui::Layout::top_down_justified(egui::Align::Min))
     .show(|ui| {
-        let response = ui.text_edit_singleline(&mut menu.query);
+        let response = ui.add(
+            egui::TextEdit::singleline(&mut menu.query).hint_text("type to add node..."),
+        );
         if !menu.focus_requested {
             response.request_focus();
             menu.focus_requested = true;
@@ -224,8 +230,13 @@ pub fn update(ui: &mut egui::Ui, state: &mut EditorState) {
         if !entries.is_empty() {
             menu.selected = menu.selected.min(entries.len() - 1);
         }
+        // Before typing, these are just plain actions — none of them is "the" default choice,
+        // so none is drawn as pre-selected. Once in add-node mode, the highlight tracks arrow
+        // key navigation as usual.
+        let show_highlight = !menu.query.is_empty();
         for (i, (label, _)) in entries.iter().enumerate() {
-            if ui.selectable_label(menu.selected == i, label).clicked() {
+            let selected = show_highlight && menu.selected == i;
+            if ui.selectable_label(selected, label).clicked() {
                 menu.selected = i;
                 activate = true;
             }
