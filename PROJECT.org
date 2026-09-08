@@ -597,17 +597,30 @@
        know at that point, and render the block in an error state.
 
 **** NEXT Phase 2: Hit Testing + Interaction + Context Menu
+     :PROPERTIES:
+     :CREATED:  2026-09-08 Tue 18:21
+     :END:
      :LOGBOOK:
      - State "NEXT"       from "TODO"       [2026-09-08 Tue 17:51]
      - State "TODO"       from              [2026-09-07 Mon 23:11]
      :END:
 
      *Hit testing:*
-     - [X] Spatial hash grid (~200x200 canvas-unit cells). Each node inserted into all cells its
-       bounding box overlaps. Rebuilt on layout change.
-     - [X] Point query: transform cursor to canvas coords, look up cell, test candidate nodes.
-     - [ ] Hit result is an enum: Empty, Node(NH), InputPin(IH), OutputPin(IH). Pin positions are
-       computed from the owning node's position + fixed offsets per pin index.
+     - [X] No spatial index. Each node's body and each pin get their own
+       ~ui.interact(rect, id, Sense::click_and_drag())~ call every frame, in
+       ~interaction::update~. egui's own hit test is itself a linear scan and already resolves
+       overlaps by paint order (pins are interacted after the body, so they win ties over the
+       sliver of themselves that overlaps the node's edge), so this scales the same way and
+       needs no index to rebuild every time the layout moves. Matches Qt's own guidance
+       (~QGraphicsScene::NoIndex~ for small, frequently-animated scenes) and how existing egui
+       node-graph crates (egui_snarl, egui_node_graph) do it.
+     - [X] Point query: no separate function. The ~Response~ returned by each node/pin's
+       ~ui.interact~ answers hover/click/drag directly (~.dragged()~, ~.clicked()~,
+       ~.drag_started()~, ...), keyed by stable ~Id~s derived from ~NH~/~IH~/~OH~.
+     - [X] No ~HitTarget~ enum. Each node exposes two kinds of hit target instead: its pins
+       (drag to start or rewire a connection) and the rest of its body (drag to move the node).
+       Pin positions are still computed from the owning node's position + fixed offsets per pin
+       index (~render::input_pin_pos~/~output_pin_pos~).
 
      *Dragging and Connecting pins:*
 
@@ -615,43 +628,58 @@
      directed graph should still try to revert to it's equilibrium. If the drag starts at a pin, it
      should create a link.
 
-     - [ ] Implement dragging for nodes. This is meant to just make the graph rendering feel
+     - [X] Implement dragging for nodes. This is meant to just make the graph rendering feel
        alive. Not meant to actually move nodes, because the force-directed-graphs will restore the
        nodes to their equilibrium, position, which may not be the same as their position before
        dragging, same as obsidian graph rendering.
 
-     - [ ] Click output pin -> enter connecting state, draw in-progress Bezier from pin to cursor.
-     - [ ] Release on input pin -> call ~workflow.connect()~, trigger layout recompute.
-     - [ ] Release on empty canvas or invalid target -> cancel, no connection made.
-     - [ ] Dragging from an already-connected input pin disconnects it first, then enters connecting
+     - [X] Click output pin -> enter connecting state, draw in-progress Bezier from pin to cursor.
+     - [X] Release on input pin -> call ~workflow.connect()~, trigger layout recompute.
+     - [X] Release on empty canvas or invalid target -> cancel, no connection made.
+     - [X] Dragging from an already-connected input pin disconnects it first, then enters connecting
        state from the upstream output (rewire gesture).
 
      *Selection:*
-     - [ ] Click node -> select it, deselect all others.
-     - [ ] Shift+click node -> toggle that node's selection without affecting others.
-     - [ ] Click empty canvas -> deselect all.
-     - [ ] Click+drag on empty canvas -> draw a selection rectangle, select all nodes whose bounding
+     - [X] Click node -> select it, deselect all others.
+     - [X] Shift+click node -> toggle that node's selection without affecting others.
+     - [X] Click empty canvas -> deselect all.
+     - [X] Click+drag on empty canvas -> draw a selection rectangle, select all nodes whose bounding
        boxes intersect it.
 
      *Delete:*
-     - [ ] Delete key removes all selected nodes (~workflow.delete_node()~ for each).
-     - [ ] Triggers layout recompute and staleness propagation for incremental execution.
+     - [X] Delete key removes all selected nodes (~workflow.delete_node()~ for each).
+     - [X] Triggers layout recompute and staleness propagation for incremental execution.
 
      *Right-click context menu:*
-     - [ ] Right-click (no shift) on empty canvas -> popup at click position, creates
+     - [X] Right-click (no shift) on empty canvas -> popup at click position, creates
        disconnected node.
-     - [ ] Right-click (no shift) on output pin -> popup, creates node AND connects its first
+     - [X] Right-click (no shift) on output pin -> popup, creates node AND connects its first
        input to that pin.
-     - [ ] Popup UI: focused text field at top. Typing filters available functions via FunctionFilter
+     - [X] Popup UI: focused text field at top. Typing filters available functions via FunctionFilter
        trait (~starts_with~ initially, swappable for fuzzy/levenshtein later). Arrow keys without
        typing navigate default options: "Add Constant Node", "Add Inspect Node",
        "Session Info...".
-     - [ ] Selecting an entry creates the node, closes the popup, triggers layout recompute.
+     - [X] Selecting an entry creates the node, closes the popup, triggers layout recompute.
 
      *Session info window:*
-     - [ ] Opened from context menu "Session Info..." option.
-     - [ ] Separate ~egui::Window~ showing loaded plugins, their functions (name, n_inputs, n_outputs,
+     - [X] Opened from context menu "Session Info..." option.
+     - [X] Separate ~egui::Window~ showing loaded plugins, their functions (name, n_inputs, n_outputs,
        description), and their registered types.
+
+     <2026-09-08 Tue 18:20> Tweaks to the UX after testing:
+
+     - [ ] When I am about to release a cable connection (drag) at an input pin, I get no visual
+       feedback. I would like the emtpy circle of the receiving pin to thicken up (without fill). Do
+       this in immediate mode style.
+     - [ ] In the right click menu, I want the entire row to actively select that entry, and not
+       just the bounds of the text. Smaller targets are harder to hit with the mouse.
+     - [ ] Nuanced selection rectangles. Dragging to the right should create a selection rectangle
+       that only selects nodes that are fully inside it. This rectangle should have a solid stroke
+       line. Dragging to the left creates a selection rectangle that selects all nodes that overlap
+       with it. This selection rectangle should have a dashed line stroke if egui supports this
+       efficiently, otherwise leave it as solid too.
+     - [ ] Make the fill colors of both selection rectangles more transparent, maybe half as opaque
+       as they are now.
 
 **** TODO Phase 3: File I/O
      :LOGBOOK:

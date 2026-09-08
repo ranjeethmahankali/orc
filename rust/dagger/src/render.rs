@@ -13,6 +13,9 @@ const PIN_RADIUS: f32 = 5.0;
 /// Half-size of a pin's hit rect, in canvas units. Wider than the drawn radius since
 /// pins straddle the node edge and are otherwise fiddly to grab.
 pub const PIN_GRAB_RADIUS: f32 = 10.0;
+const PIN_STROKE_WIDTH: f32 = 1.5;
+/// Stroke width for an unconnected input pin that a wire drag would land on if released now.
+const PIN_HOVER_STROKE_WIDTH: f32 = 3.5;
 const PIN_SPACING: f32 = 20.0;
 const PIN_TOP_OFFSET: f32 = TITLE_HEIGHT + 12.0;
 const NODE_ROUNDING: f32 = 6.0;
@@ -203,10 +206,20 @@ pub fn measure_nodes(ctx: &egui::Context, workflow: &Workflow, sizes: &mut NodeP
 
 pub fn draw(ui: &mut egui::Ui, state: &EditorState) {
     let view = state.view;
+    let wire_target = pending_wire_target(ui, state, &view);
     draw_links(ui, state, &view);
-    draw_nodes(ui, state, &view);
+    draw_nodes(ui, state, &view, wire_target);
     draw_pending_wire(ui, state, &view);
     draw_select_box(ui, state);
+}
+
+/// The input pin (if any) that releasing a wire drag right now would connect to, so it can be
+/// highlighted as feedback before the drop actually happens. `None` when no wire is being
+/// dragged, recomputed fresh every frame like everything else here.
+fn pending_wire_target(ui: &egui::Ui, state: &EditorState, view: &Transform) -> Option<IH> {
+    state.pending_wire?;
+    let pos = ui.input(|i| i.pointer.interact_pos())?;
+    crate::interaction::find_input_pin_at(state, pos, view)
 }
 
 /// The in-progress bezier while a wire is being dragged from an output pin (or an
@@ -295,7 +308,7 @@ fn draw_links(ui: &mut egui::Ui, state: &EditorState, view: &Transform) {
     }
 }
 
-fn draw_nodes(ui: &mut egui::Ui, state: &EditorState, view: &Transform) {
+fn draw_nodes(ui: &mut egui::Ui, state: &EditorState, view: &Transform, wire_target: Option<IH>) {
     let painter = ui.painter();
     let font = FontId::new(view.scale(FONT_SIZE), FontFamily::Monospace);
     let label_font = FontId::new(view.scale(LABEL_FONT_SIZE), FontFamily::Monospace);
@@ -385,10 +398,15 @@ fn draw_nodes(ui: &mut egui::Ui, state: &EditorState, view: &Transform) {
             if connected {
                 painter.circle_filled(pin_center, pin_radius, Color32::from_rgb(200, 200, 200));
             } else {
+                let stroke_width = if wire_target == Some(*ih) {
+                    PIN_HOVER_STROKE_WIDTH
+                } else {
+                    PIN_STROKE_WIDTH
+                };
                 painter.circle_stroke(
                     pin_center,
                     pin_radius,
-                    Stroke::new(view.scale(1.5), Color32::from_rgb(160, 160, 160)),
+                    Stroke::new(view.scale(stroke_width), Color32::from_rgb(160, 160, 160)),
                 );
             }
             let label = pin_label(&input_labels[*ih], declared_name(in_args, i));

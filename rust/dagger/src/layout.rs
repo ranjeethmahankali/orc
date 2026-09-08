@@ -125,8 +125,15 @@ pub fn topological_seed(state: &mut EditorState) {
 }
 
 /// Run one step of the force-directed layout simulation.
+///
+/// `pinned` is the node being actively dragged this frame, if any. Its position still feeds
+/// into the forces on every other node, so neighbours keep reacting to it live, but it is
+/// excluded from the displacement step itself — otherwise the simulation would keep pulling it
+/// back toward equilibrium in the same frame the cursor is pushing it away, and the drag would
+/// feel like a tug-of-war instead of tracking the mouse.
+///
 /// Returns true if the layout has converged (all displacements below threshold).
-pub fn step(state: &mut EditorState) -> bool {
+pub fn step(state: &mut EditorState, pinned: Option<NH>) -> bool {
     let nodes: Vec<NH> = state.workflow.node_iter().collect();
     let n = nodes.len();
     if n == 0 {
@@ -254,9 +261,17 @@ pub fn step(state: &mut EditorState) -> bool {
     }
 
     // Apply forces with damping and max displacement.
+    let pinned_idx = pinned.and_then(|nh| {
+        let idx = nh_to_idx[nh.index()];
+        (idx != usize::MAX).then_some(idx)
+    });
     let mut max_move: f32 = 0.0;
     let mut new_positions = positions.clone();
     for i in 0..n {
+        if Some(i) == pinned_idx {
+            // Actively dragged this frame: the cursor has full control of its position.
+            continue;
+        }
         let mut dx = forces[i][0] * DAMPING;
         let mut dy = forces[i][1] * DAMPING;
         let mag = (dx * dx + dy * dy).sqrt();
@@ -283,7 +298,8 @@ pub fn step(state: &mut EditorState) -> bool {
 
 #[cfg(test)]
 mod test {
-    use super::compute_depths;
+    use super::{compute_depths, step};
+    use crate::state::EditorState;
     use orc_sdk::{DagHandle, FuncInfo, IH, NH, OH, Workflow};
 
     /// Add a function node with the given pin counts, returning its handle and pins.
@@ -389,5 +405,30 @@ mod test {
         assert!(!depths.in_cycle[reachable.index()]);
         assert!(depths.in_cycle[a.index()]);
         assert!(depths.in_cycle[b.index()]);
+    }
+
+    /// A node being dragged must track the cursor exactly. If the physics step also moved it,
+    /// a drag away from equilibrium would fight the large spring force pulling it back, and the
+    /// drag would feel jerky instead of tracking the mouse 1:1.
+    #[test]
+    fn t_pinned_node_is_excluded_from_the_displacement() {
+        let mut wf = Workflow::default();
+        let (a, _, a_out) = node(&mut wf, 0, 1);
+        let (b, b_in, _) = node(&mut wf, 1, 0);
+        wf.connect(a_out[0], b_in[0]).unwrap();
+        let mut state = EditorState::from_workflow(wf);
+        {
+            let mut pos = state.node_positions.try_borrow_mut().unwrap();
+            pos[a] = [0.0, 0.0];
+            pos[b] = [2000.0, 0.0];
+        }
+        step(&mut state, Some(a));
+        let pos = state.node_positions.try_borrow().unwrap();
+        assert_eq!(pos[a], [0.0, 0.0], "the pinned node must not move under physics");
+        assert_ne!(
+            pos[b],
+            [2000.0, 0.0],
+            "the unpinned node should still react to the force"
+        );
     }
 }

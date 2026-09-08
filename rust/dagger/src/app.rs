@@ -27,9 +27,19 @@ impl eframe::App for DaggerApp {
         let (canvas_response, view_moved) = canvas::interact(ui, &mut self.state.view);
         let deleted = interaction::delete_selected(ui, &mut self.state);
 
+        // Runs before the layout step, using hit rects from the end of the previous frame, so
+        // a drag this frame can tell the layout step which node to leave alone.
+        let events = interaction::update(ui, &mut self.state, &canvas_response);
+        if events.changed || deleted {
+            ui.ctx().request_repaint();
+        }
+        if let Some(request) = events.context_menu {
+            context_menu::open(&mut self.state, request);
+        }
+
         if !self.state.layout_converged {
             for _ in 0..2 {
-                if layout::step(&mut self.state) {
+                if layout::step(&mut self.state, events.dragged_node) {
                     self.state.layout_converged = true;
                     break;
                 }
@@ -39,16 +49,6 @@ impl eframe::App for DaggerApp {
             // Scroll deltas are smoothed over several frames, so keep painting
             // until the zoom has caught up with the wheel.
             ui.ctx().request_repaint();
-        }
-
-        // Runs after the layout step so a drag has the final say on the dragged node's
-        // position for this frame, and reads hit rects that match what gets painted below.
-        let events = interaction::update(ui, &mut self.state, &canvas_response);
-        if events.changed || deleted {
-            ui.ctx().request_repaint();
-        }
-        if let Some(request) = events.context_menu {
-            context_menu::open(&mut self.state, request);
         }
 
         render::draw(ui, &self.state);

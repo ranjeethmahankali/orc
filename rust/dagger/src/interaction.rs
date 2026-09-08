@@ -20,6 +20,9 @@ pub struct FrameEvents {
     /// Something changed that's worth an extra repaint (a drag, a selection, a connection).
     pub changed: bool,
     pub context_menu: Option<ContextMenuRequest>,
+    /// The node being actively dragged this frame, if any, so the layout step can exclude it
+    /// from the physics displacement while still reacting to its (cursor-driven) position.
+    pub dragged_node: Option<NH>,
 }
 
 fn pin_rect(center: Pos2, view: &Transform) -> Rect {
@@ -105,7 +108,7 @@ fn creates_cycle(workflow: &Workflow, src: NH, dst: NH) -> bool {
     false
 }
 
-fn find_input_pin_at(state: &EditorState, screen_pos: Pos2, view: &Transform) -> Option<IH> {
+pub(crate) fn find_input_pin_at(state: &EditorState, screen_pos: Pos2, view: &Transform) -> Option<IH> {
     let positions = state.node_positions.try_borrow().ok()?;
     let sizes = state.node_sizes.try_borrow().ok()?;
     let grab = view.scale(render::PIN_GRAB_RADIUS);
@@ -239,6 +242,7 @@ pub fn update(ui: &mut egui::Ui, state: &mut EditorState, canvas_response: &egui
         }
         state.layout_converged = false;
         events.changed = true;
+        events.dragged_node = Some(nh);
     }
 
     if let Some(source) = state.pending_wire {
