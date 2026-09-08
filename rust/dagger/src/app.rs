@@ -19,6 +19,9 @@ impl DaggerApp {
 
 impl eframe::App for DaggerApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        if self.state.needs_measure {
+            self.state.measure(ui.ctx());
+        }
         let (_canvas, view_moved) = canvas::interact(ui, &mut self.state.view);
         if !self.state.layout_converged {
             for _ in 0..2 {

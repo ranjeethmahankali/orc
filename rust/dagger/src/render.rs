@@ -4,9 +4,10 @@ use eframe::egui::{
     self, Color32, FontFamily, FontId, Pos2, Rect, Shape, Stroke, StrokeKind, Vec2,
 };
 use eframe::epaint::{CubicBezierShape, PathStroke};
-use orc_sdk::{IH, NodeInfo, OH};
+use orc_sdk::{ArgInfo, IH, NodeInfo, NodePropBuf, OH, Workflow};
 
-pub const NODE_WIDTH: f32 = 160.0;
+/// Nodes are never narrower than this, however short their labels are.
+pub const MIN_NODE_WIDTH: f32 = 120.0;
 const TITLE_HEIGHT: f32 = 24.0;
 const PIN_RADIUS: f32 = 5.0;
 const PIN_SPACING: f32 = 20.0;
@@ -14,6 +15,12 @@ const PIN_TOP_OFFSET: f32 = TITLE_HEIGHT + 12.0;
 const NODE_ROUNDING: f32 = 6.0;
 const FONT_SIZE: f32 = 13.0;
 const LABEL_FONT_SIZE: f32 = 11.0;
+/// Gap between the edge of a pin and the start of its label.
+const LABEL_GAP: f32 = 4.0;
+/// Horizontal padding around the title text.
+const TITLE_PADDING: f32 = 8.0;
+/// Minimum gap between the input and output label columns.
+const LABEL_COLUMN_GAP: f32 = 12.0;
 /// Below this zoom level text is too small to read, so it is not drawn at all.
 const MIN_TEXT_ZOOM: f32 = 0.35;
 
@@ -44,18 +51,119 @@ pub fn node_height(n_inputs: usize, n_outputs: usize) -> f32 {
     PIN_TOP_OFFSET + n_pins as f32 * PIN_SPACING + 8.0
 }
 
-pub fn input_pin_pos(node_pos: Pos2, pin_index: usize) -> Pos2 {
+pub fn node_rect(pos: [f32; 2], size: [f32; 2]) -> Rect {
+    Rect::from_min_size(Pos2::new(pos[0], pos[1]), Vec2::new(size[0], size[1]))
+}
+
+pub fn input_pin_pos(rect: Rect, pin_index: usize) -> Pos2 {
     Pos2::new(
-        node_pos.x,
-        node_pos.y + PIN_TOP_OFFSET + pin_index as f32 * PIN_SPACING,
+        rect.min.x,
+        rect.min.y + PIN_TOP_OFFSET + pin_index as f32 * PIN_SPACING,
     )
 }
 
-pub fn output_pin_pos(node_pos: Pos2, pin_index: usize) -> Pos2 {
+pub fn output_pin_pos(rect: Rect, pin_index: usize) -> Pos2 {
     Pos2::new(
-        node_pos.x + NODE_WIDTH,
-        node_pos.y + PIN_TOP_OFFSET + pin_index as f32 * PIN_SPACING,
+        rect.max.x,
+        rect.min.y + PIN_TOP_OFFSET + pin_index as f32 * PIN_SPACING,
     )
+}
+
+/// The label to show beside a pin. An explicit label carried by the workflow wins; otherwise
+/// we fall back to the argument name the plugin declared through the ABI.
+///
+/// A plugin may leave its argument arrays null, in which case there is no declared name and
+/// the pin stays bare. `example_c_plugin` does exactly that.
+fn pin_label<'a>(explicit: &'a str, declared: Option<&'a str>) -> &'a str {
+    if explicit.is_empty() {
+        declared.unwrap_or("")
+    } else {
+        explicit
+    }
+}
+
+/// Declared argument names for a node, or `None` for node kinds with no plugin function
+/// behind them.
+fn declared_args(info: &NodeInfo) -> (Option<&[ArgInfo]>, Option<&[ArgInfo]>) {
+    match info {
+        NodeInfo::Function(func) => (
+            Some(func.input_args.as_slice()),
+            Some(func.output_args.as_slice()),
+        ),
+        _ => (None, None),
+    }
+}
+
+fn declared_name(args: Option<&[ArgInfo]>, index: usize) -> Option<&str> {
+    args?.get(index).map(|arg| arg.name.as_str())
+}
+
+fn text_width(ctx: &egui::Context, text: &str, size: f32) -> f32 {
+    if text.is_empty() {
+        return 0.0;
+    }
+    ctx.fonts_mut(|fonts| {
+        fonts
+            .layout_no_wrap(
+                text.to_owned(),
+                FontId::new(size, FontFamily::Monospace),
+                Color32::WHITE,
+            )
+            .rect
+            .width()
+    })
+}
+
+/// Recompute every node's canvas-space size so that its title and both pin label columns fit.
+///
+/// This must run inside a frame, because it measures text through the font system. The layout
+/// simulation reads these sizes, so it has to re-settle whenever they change.
+pub fn measure_nodes(ctx: &egui::Context, workflow: &Workflow, sizes: &mut NodePropBuf<[f32; 2]>) {
+    let node_info_prop = workflow.node_info_prop();
+    let input_labels_prop = workflow.input_labels_prop();
+    let output_labels_prop = workflow.output_labels_prop();
+    let (node_infos, input_labels, output_labels) = match (
+        node_info_prop.try_borrow(),
+        input_labels_prop.try_borrow(),
+        output_labels_prop.try_borrow(),
+    ) {
+        (Ok(n), Ok(i), Ok(o)) => (n, i, o),
+        _ => return,
+    };
+
+    for nh in workflow.node_iter() {
+        let info = &node_infos[nh];
+        let (in_args, out_args) = declared_args(info);
+
+        let mut n_inputs = 0usize;
+        let mut inputs_width = 0.0f32;
+        for (i, ih) in workflow.node_inputs(nh).enumerate() {
+            let label = pin_label(&input_labels[ih], declared_name(in_args, i));
+            inputs_width = inputs_width.max(text_width(ctx, label, LABEL_FONT_SIZE));
+            n_inputs += 1;
+        }
+
+        let mut n_outputs = 0usize;
+        let mut outputs_width = 0.0f32;
+        for (i, oh) in workflow.node_outputs(nh).enumerate() {
+            let label = pin_label(&output_labels[oh], declared_name(out_args, i));
+            outputs_width = outputs_width.max(text_width(ctx, label, LABEL_FONT_SIZE));
+            n_outputs += 1;
+        }
+
+        // Each label column is inset from its pin, and the pin sits on the node edge.
+        let label_inset = 2.0 * (PIN_RADIUS + LABEL_GAP);
+        let mut labels_width = inputs_width + outputs_width + label_inset;
+        if inputs_width > 0.0 && outputs_width > 0.0 {
+            labels_width += LABEL_COLUMN_GAP;
+        }
+        let title_width = text_width(ctx, info.name(), FONT_SIZE) + 2.0 * TITLE_PADDING;
+
+        sizes[nh] = [
+            labels_width.max(title_width).max(MIN_NODE_WIDTH),
+            node_height(n_inputs, n_outputs),
+        ];
+    }
 }
 
 pub fn draw(ui: &mut egui::Ui, state: &EditorState) {
@@ -66,14 +174,16 @@ pub fn draw(ui: &mut egui::Ui, state: &EditorState) {
 
 fn draw_links(ui: &mut egui::Ui, state: &EditorState, view: &Transform) {
     let painter = ui.painter();
-    let positions = match state.node_positions.try_borrow() {
-        Ok(p) => p,
-        Err(_) => return,
+    let (positions, sizes) = match (
+        state.node_positions.try_borrow(),
+        state.node_sizes.try_borrow(),
+    ) {
+        (Ok(p), Ok(s)) => (p, s),
+        _ => return,
     };
 
     for nh in state.workflow.node_iter() {
-        let dst_pos_arr = positions[nh];
-        let dst_node_pos = Pos2::new(dst_pos_arr[0], dst_pos_arr[1]);
+        let dst_rect = node_rect(positions[nh], sizes[nh]);
 
         for (input_idx, ih) in state.workflow.node_inputs(nh).enumerate() {
             let src_oh = match state.workflow.input_source(ih) {
@@ -82,8 +192,7 @@ fn draw_links(ui: &mut egui::Ui, state: &EditorState, view: &Transform) {
             };
 
             let src_nh = state.workflow.node_from_output(src_oh);
-            let src_pos_arr = positions[src_nh];
-            let src_node_pos = Pos2::new(src_pos_arr[0], src_pos_arr[1]);
+            let src_rect = node_rect(positions[src_nh], sizes[src_nh]);
 
             let output_idx = state
                 .workflow
@@ -93,8 +202,8 @@ fn draw_links(ui: &mut egui::Ui, state: &EditorState, view: &Transform) {
 
             // The curve is laid out in canvas space and then mapped to the screen.
             // The transform is affine, so mapping the four control points is exact.
-            let start = output_pin_pos(src_node_pos, output_idx);
-            let end = input_pin_pos(dst_node_pos, input_idx);
+            let start = output_pin_pos(src_rect, output_idx);
+            let end = input_pin_pos(dst_rect, input_idx);
 
             let dx = (end.x - start.x).abs().max(CONTROL_POINT_OFFSET) * 0.5;
             let cp1 = Pos2::new(start.x + dx, start.y);
@@ -120,38 +229,35 @@ fn draw_nodes(ui: &mut egui::Ui, state: &EditorState, view: &Transform) {
     let input_labels_prop = state.workflow.input_labels_prop();
     let output_labels_prop = state.workflow.output_labels_prop();
 
-    let node_infos = match node_info_prop.try_borrow() {
-        Ok(infos) => infos,
-        Err(_) => return,
+    let (node_infos, input_labels, output_labels) = match (
+        node_info_prop.try_borrow(),
+        input_labels_prop.try_borrow(),
+        output_labels_prop.try_borrow(),
+    ) {
+        (Ok(n), Ok(i), Ok(o)) => (n, i, o),
+        _ => return,
     };
-    let input_labels = match input_labels_prop.try_borrow() {
-        Ok(l) => l,
-        Err(_) => return,
-    };
-    let output_labels = match output_labels_prop.try_borrow() {
-        Ok(l) => l,
-        Err(_) => return,
-    };
-    let positions = match state.node_positions.try_borrow() {
-        Ok(p) => p,
-        Err(_) => return,
+    let (positions, sizes) = match (
+        state.node_positions.try_borrow(),
+        state.node_sizes.try_borrow(),
+    ) {
+        (Ok(p), Ok(s)) => (p, s),
+        _ => return,
     };
 
     for nh in state.workflow.node_iter() {
         let info = &node_infos[nh];
-        let pos = positions[nh];
-        let node_pos = Pos2::new(pos[0], pos[1]);
+        let (in_args, out_args) = declared_args(info);
+        let rect = node_rect(positions[nh], sizes[nh]);
 
         let inputs: Vec<IH> = state.workflow.node_inputs(nh).collect();
         let outputs: Vec<OH> = state.workflow.node_outputs(nh).collect();
-        let height = node_height(inputs.len(), outputs.len());
 
         let rounding = view.scale(NODE_ROUNDING);
-        let body_rect =
-            view.rect_to_screen(Rect::from_min_size(node_pos, Vec2::new(NODE_WIDTH, height)));
+        let body_rect = view.rect_to_screen(rect);
         let title_rect = view.rect_to_screen(Rect::from_min_size(
-            node_pos,
-            Vec2::new(NODE_WIDTH, TITLE_HEIGHT),
+            rect.min,
+            Vec2::new(rect.width(), TITLE_HEIGHT),
         ));
 
         // Node body.
@@ -165,10 +271,10 @@ fn draw_nodes(ui: &mut egui::Ui, state: &EditorState, view: &Transform) {
 
         // Title bar.
         painter.rect_filled(title_rect, rounding, title_color(info));
-        if height > TITLE_HEIGHT {
+        if rect.height() > TITLE_HEIGHT {
             let patch = view.rect_to_screen(Rect::from_min_size(
-                Pos2::new(node_pos.x, node_pos.y + TITLE_HEIGHT - NODE_ROUNDING),
-                Vec2::new(NODE_WIDTH, NODE_ROUNDING),
+                Pos2::new(rect.min.x, rect.min.y + TITLE_HEIGHT - NODE_ROUNDING),
+                Vec2::new(rect.width(), NODE_ROUNDING),
             ));
             painter.rect_filled(patch, 0.0, title_color(info));
         }
@@ -176,7 +282,7 @@ fn draw_nodes(ui: &mut egui::Ui, state: &EditorState, view: &Transform) {
         // Title text.
         if draw_text {
             painter.text(
-                view.to_screen(Pos2::new(node_pos.x + 8.0, node_pos.y + 4.0)),
+                view.to_screen(Pos2::new(rect.min.x + TITLE_PADDING, rect.min.y + 4.0)),
                 egui::Align2::LEFT_TOP,
                 info.name(),
                 font.clone(),
@@ -185,11 +291,11 @@ fn draw_nodes(ui: &mut egui::Ui, state: &EditorState, view: &Transform) {
         }
 
         let pin_radius = view.scale(PIN_RADIUS);
-        let label_gap = pin_radius + view.scale(4.0);
+        let label_offset = pin_radius + view.scale(LABEL_GAP);
 
         // Input pins.
         for (i, ih) in inputs.iter().enumerate() {
-            let pin_center = view.to_screen(input_pin_pos(node_pos, i));
+            let pin_center = view.to_screen(input_pin_pos(rect, i));
             let connected = state.workflow.input_source(*ih).is_some();
             if connected {
                 painter.circle_filled(pin_center, pin_radius, Color32::from_rgb(200, 200, 200));
@@ -200,10 +306,10 @@ fn draw_nodes(ui: &mut egui::Ui, state: &EditorState, view: &Transform) {
                     Stroke::new(view.scale(1.5), Color32::from_rgb(160, 160, 160)),
                 );
             }
-            let label = &input_labels[*ih];
+            let label = pin_label(&input_labels[*ih], declared_name(in_args, i));
             if draw_text && !label.is_empty() {
                 painter.text(
-                    pin_center + Vec2::new(label_gap, 0.0),
+                    pin_center + Vec2::new(label_offset, 0.0),
                     egui::Align2::LEFT_CENTER,
                     label,
                     label_font.clone(),
@@ -214,12 +320,12 @@ fn draw_nodes(ui: &mut egui::Ui, state: &EditorState, view: &Transform) {
 
         // Output pins.
         for (i, oh) in outputs.iter().enumerate() {
-            let pin_center = view.to_screen(output_pin_pos(node_pos, i));
+            let pin_center = view.to_screen(output_pin_pos(rect, i));
             painter.circle_filled(pin_center, pin_radius, Color32::from_rgb(200, 200, 200));
-            let label = &output_labels[*oh];
+            let label = pin_label(&output_labels[*oh], declared_name(out_args, i));
             if draw_text && !label.is_empty() {
                 painter.text(
-                    pin_center - Vec2::new(label_gap, 0.0),
+                    pin_center - Vec2::new(label_offset, 0.0),
                     egui::Align2::RIGHT_CENTER,
                     label,
                     label_font.clone(),

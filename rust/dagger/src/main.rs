@@ -248,3 +248,57 @@ fn main() -> eframe::Result {
         Box::new(|cc| Ok(Box::new(app::DaggerApp::new(cc, workflow)))),
     )
 }
+
+#[cfg(test)]
+mod test {
+    use super::PLUGIN_SET;
+    use orc_sdk::{FuncInfo, PluginSet};
+
+    /// Plugins are loaded from the directory holding the binary, which on a tree where only
+    /// cargo has run may not contain them yet. Skip loudly rather than fail.
+    fn lookup(name: &str) -> Option<FuncInfo> {
+        let plugin_set: &PluginSet = &PLUGIN_SET;
+        let found = plugin_set.get_function(name).cloned();
+        if found.is_none() {
+            println!("skipping: no plugin providing {name} was loaded");
+        }
+        found
+    }
+
+    /// Pin labels come from the argument names the plugin declares over the ABI, so a
+    /// regression in that FFI conversion would silently blank every label in the editor.
+    #[test]
+    fn t_declared_argument_names_survive_the_abi() {
+        let Some(add) = lookup("add") else { return };
+        assert_eq!(add.n_inputs, Some(2));
+        assert_eq!(add.n_outputs, Some(1));
+        let inputs: Vec<&str> = add.input_args.iter().map(|a| a.name.as_str()).collect();
+        let outputs: Vec<&str> = add.output_args.iter().map(|a| a.name.as_str()).collect();
+        assert_eq!(inputs, ["lhs", "rhs"]);
+        assert_eq!(outputs, ["out"]);
+    }
+
+    /// A function may declare a concrete arity while leaving its argument arrays null, meaning
+    /// any type and no names. Those pins have to stay bare instead of picking up junk.
+    #[test]
+    fn t_null_argument_arrays_yield_no_names() {
+        let Some(func) = lookup("list_length") else {
+            return;
+        };
+        assert_eq!(func.n_inputs, Some(1));
+        assert!(func.input_args.is_empty());
+        assert!(func.output_args.is_empty());
+    }
+
+    /// Variadic functions declare no arity, so there is nothing to read the arrays against.
+    #[test]
+    fn t_variadic_functions_have_no_declared_args() {
+        let Some(func) = lookup("flatten_deck") else {
+            return;
+        };
+        assert_eq!(func.n_inputs, None);
+        assert_eq!(func.n_outputs, None);
+        assert!(func.input_args.is_empty());
+        assert!(func.output_args.is_empty());
+    }
+}

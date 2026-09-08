@@ -575,9 +575,12 @@
        right-drag to match Grasshopper. Requiring shift leaves a plain right-click free for the
        context menu, so the two gestures can share the button.
 
-**** TODO Phase 1B: Misc clean up after phase 1
+**** NEXT Phase 1B: Misc clean up after phase 1
      :PROPERTIES:
      :CREATED:  2026-09-08 Tue 15:44
+     :END:
+     :LOGBOOK:
+     - State "NEXT"       from "TODO"       [2026-09-08 Tue 16:51]
      :END:
 
      - [ ] The app should respect the argument names provided by the plugin via the ABI. Just added
