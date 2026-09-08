@@ -1,13 +1,27 @@
-use orc_sdk::Workflow;
+use eframe::egui;
+use orc_sdk::{NH, NodeProperty, Workflow};
 
 pub struct EditorState {
     pub workflow: Workflow,
+    pub node_positions: NodeProperty<[f32; 2]>,
+    pub node_sizes: NodeProperty<[f32; 2]>,
+    pub layout_converged: bool,
+    pub pan_offset: egui::Vec2,
+    pub zoom: f32,
 }
 
 impl EditorState {
     pub fn new() -> Self {
+        let mut workflow = Workflow::default();
+        let node_positions = workflow.create_node_property([0.0f32, 0.0]);
+        let node_sizes = workflow.create_node_property([160.0f32, 60.0]);
         Self {
-            workflow: Workflow::default(),
+            workflow,
+            node_positions,
+            node_sizes,
+            layout_converged: true,
+            pan_offset: egui::Vec2::ZERO,
+            zoom: 1.0,
         }
     }
 }
