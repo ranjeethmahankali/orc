@@ -547,8 +547,10 @@
 
 *** Implementation Phases
 
-**** NEXT Phase 1: Host Setup + Render + Layout
+**** DONE Phase 1: Host Setup + Render + Layout
+     CLOSED: [2026-09-08 Tue 15:34]
      :LOGBOOK:
+     - State "DONE"       from "NEXT"       [2026-09-08 Tue 15:34]
      - State "NEXT"       from "TODO"       [2026-09-07 Mon 23:12]
      - State "TODO"       from              [2026-09-07 Mon 23:11]
      :END:
@@ -572,6 +574,22 @@
        <2026-09-08 Tue 15:34> Pan was originally specified as middle-drag. Changed to shift +
        right-drag to match Grasshopper. Requiring shift leaves a plain right-click free for the
        context menu, so the two gestures can share the button.
+
+**** TODO Phase 1B: Misc clean up after phase 1
+     :PROPERTIES:
+     :CREATED:  2026-09-08 Tue 15:44
+     :END:
+
+     - [ ] The app should respect the argument names provided by the plugin via the ABI. Just added
+       that stuff to the SDK. Check it and use it in the rendering. The rendered blocks should show
+       the names, and should be appropriately sized based on the largest input / output names. This
+       also addresses your concerns about pin labels.
+     - [ ] ~push_link~ is not responsible for checking for cycles. The graph is allowed to exist
+       with cycles. It should be shown as an error state. For now, just make the nodes in a cycle
+       red to indicate a problem. [[file:rust/orc_sdk/src/dag/workflow.rs::pub fn run(][This function]] shows how to detect cycles when walking the
+       graph. Use that approach when computing the layout too. But you still need to seed the layout
+       with something, just stop the traversal and use an approximate position based on what you
+       know at that point, and render the block in an error state.
 
 **** TODO Phase 2: Hit Testing + Interaction + Context Menu
      :LOGBOOK:
