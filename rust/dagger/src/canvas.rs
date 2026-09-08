@@ -109,7 +109,7 @@ mod test {
     }
 
     #[test]
-    fn canvas_screen_round_trip() {
+    fn t_canvas_screen_round_trip() {
         let view = Transform {
             pan: Vec2::new(37.0, -12.0),
             zoom: 2.5,
@@ -120,7 +120,7 @@ mod test {
     }
 
     #[test]
-    fn zoom_pins_the_point_under_the_anchor() {
+    fn t_zoom_pins_the_point_under_the_anchor() {
         let mut view = Transform::default();
         let anchor = Pos2::new(640.0, 400.0);
         let pivot = view.to_canvas(anchor);
@@ -131,7 +131,7 @@ mod test {
     }
 
     #[test]
-    fn zoom_is_clamped() {
+    fn t_zoom_is_clamped() {
         let anchor = Pos2::new(100.0, 100.0);
 
         let mut view = Transform::default();
@@ -150,7 +150,7 @@ mod test {
     }
 
     #[test]
-    fn pan_translates_without_scaling() {
+    fn t_pan_translates_without_scaling() {
         let mut view = Transform {
             pan: Vec2::ZERO,
             zoom: 0.5,

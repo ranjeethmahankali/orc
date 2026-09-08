@@ -1,5 +1,5 @@
 use crate::state::EditorState;
-use orc_sdk::{DagHandle, NH};
+use orc_sdk::{DagHandle, NH, Workflow};
 
 const SPRING_K: f32 = 0.3;
 const SPRING_REST_LENGTH: f32 = 250.0;
@@ -12,33 +12,94 @@ const DAG_CONSTRAINT_STRENGTH: f32 = 0.5;
 const CONVERGENCE_THRESHOLD: f32 = 0.1;
 const MAX_DISPLACEMENT: f32 = 50.0;
 
-/// Seed node positions using topological depth (left-to-right) with vertical spread.
+/// The nodes feeding a node, via its connected inputs.
+fn predecessors(workflow: &Workflow, node: NH) -> impl Iterator<Item = NH> + '_ {
+    workflow.node_inputs(node).filter_map(move |ih| {
+        workflow
+            .input_source(ih)
+            .map(|oh| workflow.node_from_output(oh))
+    })
+}
+
+/// Longest-path depth of every node, plus which nodes take part in a cycle. Both are indexed
+/// by `NH::index()`.
+pub struct Depths {
+    pub depth: Vec<u32>,
+    pub in_cycle: Vec<bool>,
+}
+
+/// Walk the graph upstream and give each node a depth one past its deepest predecessor.
+///
+/// This mirrors the Euler tour in `Workflow::run`: each node is pushed twice, and meeting a
+/// node that is still on the current path means an edge closes a cycle. Unlike `run`, a cycle
+/// is not an error here. The traversal stops at the closing edge and the node keeps whatever
+/// depth its other predecessors gave it, so seeding still has an approximate position to work
+/// from, and the nodes making up the cycle are reported so they can be drawn as an error.
+pub fn compute_depths(workflow: &Workflow) -> Depths {
+    let n_nodes = workflow.num_nodes();
+    let mut depth = vec![0u32; n_nodes];
+    let mut in_cycle = vec![false; n_nodes];
+    let mut finished = vec![false; n_nodes];
+    let mut on_current_path = vec![false; n_nodes];
+    // The nodes on the current path, so that a closing edge can name the cycle it closes.
+    // Mirrors `on_current_path`, but ordered.
+    let mut path = Vec::<NH>::new();
+    let mut stack = Vec::<(NH, bool)>::new();
+
+    // Every node is a starting point, so that arms not reachable from the workflow outputs are
+    // laid out too. `Workflow::run` only needs to start from the outputs.
+    for root in workflow.node_iter() {
+        if finished[root.index()] {
+            continue;
+        }
+        stack.push((root, false));
+        while let Some((node, visited_children)) = stack.pop() {
+            if finished[node.index()] {
+                continue;
+            }
+            if visited_children {
+                // Every predecessor we were willing to walk has finished, so its depth is final.
+                let deepest = predecessors(workflow, node)
+                    .map(|pred| depth[pred.index()] + 1)
+                    .max()
+                    .unwrap_or(0);
+                depth[node.index()] = deepest;
+                finished[node.index()] = true;
+                on_current_path[node.index()] = false;
+                path.pop();
+            } else if on_current_path[node.index()] {
+                // This edge closes a cycle. Flag the nodes it runs through and stop here, since
+                // walking into it would not terminate.
+                let start = path.iter().rposition(|&n| n == node).unwrap_or(0);
+                for &member in &path[start..] {
+                    in_cycle[member.index()] = true;
+                }
+            } else {
+                stack.push((node, true));
+                on_current_path[node.index()] = true;
+                path.push(node);
+                stack.extend(predecessors(workflow, node).map(|pred| (pred, false)));
+            }
+        }
+    }
+
+    Depths { depth, in_cycle }
+}
+
+/// Seed node positions using topological depth (left-to-right) with vertical spread, and record
+/// which nodes are part of a cycle so they can be drawn as an error.
 pub fn topological_seed(state: &mut EditorState) {
     let n_nodes = state.workflow.num_nodes();
     if n_nodes == 0 {
         return;
     }
 
-    // Compute topological depth for each node.
-    // depth[nh.index()] = max depth of any input predecessor + 1, or 0 for sources.
-    let mut depth = vec![0u32; n_nodes];
     let nodes: Vec<NH> = state.workflow.node_iter().collect();
+    let Depths { depth, in_cycle } = compute_depths(&state.workflow);
 
-    // Iterate until stable (simple relaxation — works for DAGs).
-    let mut changed = true;
-    while changed {
-        changed = false;
+    if let Ok(mut flags) = state.node_in_cycle.try_borrow_mut() {
         for &nh in &nodes {
-            for ih in state.workflow.node_inputs(nh) {
-                if let Some(src_oh) = state.workflow.input_source(ih) {
-                    let src_nh = state.workflow.node_from_output(src_oh);
-                    let new_depth = depth[src_nh.index()] + 1;
-                    if new_depth > depth[nh.index()] {
-                        depth[nh.index()] = new_depth;
-                        changed = true;
-                    }
-                }
-            }
+            flags[nh] = in_cycle[nh.index()];
         }
     }
 
@@ -218,4 +279,115 @@ pub fn step(state: &mut EditorState) -> bool {
     }
 
     max_move < CONVERGENCE_THRESHOLD
+}
+
+#[cfg(test)]
+mod test {
+    use super::compute_depths;
+    use orc_sdk::{DagHandle, FuncInfo, IH, NH, OH, Workflow};
+
+    /// Add a function node with the given pin counts, returning its handle and pins.
+    fn node(wf: &mut Workflow, n_in: usize, n_out: usize) -> (NH, Vec<IH>, Vec<OH>) {
+        let mut ins = vec![IH::default(); n_in];
+        let mut outs = vec![OH::default(); n_out];
+        let nh = wf
+            .add_function(FuncInfo::default(), &mut ins, &mut outs)
+            .unwrap();
+        (nh, ins, outs)
+    }
+
+    #[test]
+    fn t_chain_depths_increase_downstream() {
+        let mut wf = Workflow::default();
+        let (a, _, a_out) = node(&mut wf, 0, 1);
+        let (b, b_in, b_out) = node(&mut wf, 1, 1);
+        let (c, c_in, _) = node(&mut wf, 1, 0);
+        wf.connect(a_out[0], b_in[0]).unwrap();
+        wf.connect(b_out[0], c_in[0]).unwrap();
+
+        let depths = compute_depths(&wf);
+        assert_eq!(depths.depth[a.index()], 0);
+        assert_eq!(depths.depth[b.index()], 1);
+        assert_eq!(depths.depth[c.index()], 2);
+        assert!(depths.in_cycle.iter().all(|flagged| !flagged));
+    }
+
+    #[test]
+    fn t_depth_follows_the_longest_path() {
+        // A feeds both B and the far side of C, so C sits one past B, not one past A.
+        let mut wf = Workflow::default();
+        let (a, _, a_out) = node(&mut wf, 0, 1);
+        let (b, b_in, b_out) = node(&mut wf, 1, 1);
+        let (c, c_in, _) = node(&mut wf, 2, 0);
+        wf.connect(a_out[0], b_in[0]).unwrap();
+        wf.connect(b_out[0], c_in[0]).unwrap();
+        wf.connect(a_out[0], c_in[1]).unwrap();
+
+        let depths = compute_depths(&wf);
+        assert_eq!(depths.depth[a.index()], 0);
+        assert_eq!(depths.depth[b.index()], 1);
+        assert_eq!(depths.depth[c.index()], 2);
+        assert!(depths.in_cycle.iter().all(|flagged| !flagged));
+    }
+
+    #[test]
+    fn t_two_node_cycle_terminates_and_is_flagged() {
+        let mut wf = Workflow::default();
+        let (a, a_in, a_out) = node(&mut wf, 1, 1);
+        let (b, b_in, b_out) = node(&mut wf, 1, 1);
+        wf.connect(a_out[0], b_in[0]).unwrap();
+        wf.connect(b_out[0], a_in[0]).unwrap();
+
+        let depths = compute_depths(&wf);
+        assert!(depths.in_cycle[a.index()]);
+        assert!(depths.in_cycle[b.index()]);
+    }
+
+    #[test]
+    fn t_self_loop_is_flagged() {
+        let mut wf = Workflow::default();
+        let (a, a_in, a_out) = node(&mut wf, 1, 1);
+        wf.connect(a_out[0], a_in[0]).unwrap();
+
+        let depths = compute_depths(&wf);
+        assert!(depths.in_cycle[a.index()]);
+    }
+
+    /// Only the nodes the cycle actually runs through are flagged, not the acyclic arm feeding
+    /// into it. This is what separates the reported cycle from the whole search path.
+    #[test]
+    fn t_nodes_feeding_a_cycle_are_not_flagged() {
+        let mut wf = Workflow::default();
+        let (feeder, _, feeder_out) = node(&mut wf, 0, 1);
+        let (a, a_in, a_out) = node(&mut wf, 2, 1);
+        let (b, b_in, b_out) = node(&mut wf, 1, 1);
+        wf.connect(feeder_out[0], a_in[0]).unwrap();
+        wf.connect(a_out[0], b_in[0]).unwrap();
+        wf.connect(b_out[0], a_in[1]).unwrap();
+
+        let depths = compute_depths(&wf);
+        assert!(depths.in_cycle[a.index()]);
+        assert!(depths.in_cycle[b.index()]);
+        assert!(
+            !depths.in_cycle[feeder.index()],
+            "the acyclic feeder must not be reported as part of the cycle"
+        );
+    }
+
+    /// A cycle sitting in an arm that no workflow output reaches is still found, because seeding
+    /// has to place those nodes too. `Workflow::run` would never visit them.
+    #[test]
+    fn t_cycle_in_a_dangling_arm_is_found() {
+        let mut wf = Workflow::default();
+        let (reachable, _, _) = node(&mut wf, 0, 1);
+        let (a, a_in, a_out) = node(&mut wf, 1, 1);
+        let (b, b_in, b_out) = node(&mut wf, 1, 1);
+        wf.connect(a_out[0], b_in[0]).unwrap();
+        wf.connect(b_out[0], a_in[0]).unwrap();
+
+        let depths = compute_depths(&wf);
+        assert!(!depths.in_cycle[reachable.index()]);
+        assert!(depths.in_cycle[a.index()]);
+        assert!(depths.in_cycle[b.index()]);
+    }
 }

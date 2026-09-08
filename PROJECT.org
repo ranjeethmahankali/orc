@@ -575,11 +575,13 @@
        right-drag to match Grasshopper. Requiring shift leaves a plain right-click free for the
        context menu, so the two gestures can share the button.
 
-**** NEXT Phase 1B: Misc clean up after phase 1
+**** DONE Phase 1B: Misc clean up after phase 1
+     CLOSED: [2026-09-08 Tue 17:08]
      :PROPERTIES:
      :CREATED:  2026-09-08 Tue 15:44
      :END:
      :LOGBOOK:
+     - State "DONE"       from "NEXT"       [2026-09-08 Tue 17:08]
      - State "NEXT"       from "TODO"       [2026-09-08 Tue 16:51]
      :END:
 
@@ -587,7 +589,7 @@
        that stuff to the SDK. Check it and use it in the rendering. The rendered blocks should show
        the names, and should be appropriately sized based on the largest input / output names. This
        also addresses your concerns about pin labels.
-     - [ ] ~push_link~ is not responsible for checking for cycles. The graph is allowed to exist
+     - [X] ~push_link~ is not responsible for checking for cycles. The graph is allowed to exist
        with cycles. It should be shown as an error state. For now, just make the nodes in a cycle
        red to indicate a problem. [[file:rust/orc_sdk/src/dag/workflow.rs::pub fn run(][This function]] shows how to detect cycles when walking the
        graph. Use that approach when computing the layout too. But you still need to seed the layout

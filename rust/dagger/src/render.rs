@@ -24,6 +24,13 @@ const LABEL_COLUMN_GAP: f32 = 12.0;
 /// Below this zoom level text is too small to read, so it is not drawn at all.
 const MIN_TEXT_ZOOM: f32 = 0.35;
 
+/// A node caught in a cycle is drawn in these colours instead of its own. The graph is
+/// allowed to hold cycles, so this flags the problem rather than preventing it.
+const ERROR_BODY_COLOR: Color32 = Color32::from_rgb(120, 45, 45);
+const ERROR_TITLE_COLOR: Color32 = Color32::from_rgb(165, 60, 60);
+const ERROR_STROKE_COLOR: Color32 = Color32::from_rgb(235, 95, 95);
+const NODE_STROKE_COLOR: Color32 = Color32::from_gray(40);
+
 const LINK_COLOR: Color32 = Color32::from_rgb(180, 180, 180);
 const LINK_WIDTH: f32 = 2.0;
 const CONTROL_POINT_OFFSET: f32 = 80.0;
@@ -237,11 +244,12 @@ fn draw_nodes(ui: &mut egui::Ui, state: &EditorState, view: &Transform) {
         (Ok(n), Ok(i), Ok(o)) => (n, i, o),
         _ => return,
     };
-    let (positions, sizes) = match (
+    let (positions, sizes, in_cycle) = match (
         state.node_positions.try_borrow(),
         state.node_sizes.try_borrow(),
+        state.node_in_cycle.try_borrow(),
     ) {
-        (Ok(p), Ok(s)) => (p, s),
+        (Ok(p), Ok(s), Ok(c)) => (p, s, c),
         _ => return,
     };
 
@@ -249,6 +257,11 @@ fn draw_nodes(ui: &mut egui::Ui, state: &EditorState, view: &Transform) {
         let info = &node_infos[nh];
         let (in_args, out_args) = declared_args(info);
         let rect = node_rect(positions[nh], sizes[nh]);
+        let (body_fill, title_fill, outline) = if in_cycle[nh] {
+            (ERROR_BODY_COLOR, ERROR_TITLE_COLOR, ERROR_STROKE_COLOR)
+        } else {
+            (node_color(info), title_color(info), NODE_STROKE_COLOR)
+        };
 
         let inputs: Vec<IH> = state.workflow.node_inputs(nh).collect();
         let outputs: Vec<OH> = state.workflow.node_outputs(nh).collect();
@@ -261,22 +274,22 @@ fn draw_nodes(ui: &mut egui::Ui, state: &EditorState, view: &Transform) {
         ));
 
         // Node body.
-        painter.rect_filled(body_rect, rounding, node_color(info));
+        painter.rect_filled(body_rect, rounding, body_fill);
         painter.rect_stroke(
             body_rect,
             rounding,
-            Stroke::new(view.scale(1.0), Color32::from_gray(40)),
+            Stroke::new(view.scale(1.0), outline),
             StrokeKind::Outside,
         );
 
         // Title bar.
-        painter.rect_filled(title_rect, rounding, title_color(info));
+        painter.rect_filled(title_rect, rounding, title_fill);
         if rect.height() > TITLE_HEIGHT {
             let patch = view.rect_to_screen(Rect::from_min_size(
                 Pos2::new(rect.min.x, rect.min.y + TITLE_HEIGHT - NODE_ROUNDING),
                 Vec2::new(rect.width(), NODE_ROUNDING),
             ));
-            painter.rect_filled(patch, 0.0, title_color(info));
+            painter.rect_filled(patch, 0.0, title_fill);
         }
 
         // Title text.
