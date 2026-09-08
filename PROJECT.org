@@ -558,7 +558,7 @@
      - [X] Node rendering: rounded rect body (color by NodeInfo variant), monospace title bar,
        input pins (circles on left edge with labels), output pins (circles on right edge with
        labels). Workflow input/output chips as pill-shaped nodes with distinct styling.
-     - [ ] Link rendering: cubic Bezier curves from output pin center to input pin center, control
+     - [X] Link rendering: cubic Bezier curves from output pin center to input pin center, control
        points extending horizontally.
      - [ ] Force-directed layout: bounding-box repulsion, spring attraction along edges, vertical
        centering, DAG flow constraint (hard). Topological seeding on startup, convergence
