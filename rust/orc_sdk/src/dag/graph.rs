@@ -548,13 +548,15 @@ impl Graph {
             .flat_map(|o| self.output_links(*o))
             .map(|l| self.links[l.idx].end)
             .collect();
-        // First, we disconnect all the inputs of this node. Iterating over the inputs required
+        // Disconnect inputs.
         for i in inputs.iter() {
             self.disconnect_input(*i);
         }
+        // Disconnect from downstream.
         for i in downstream_inputs.iter() {
             self.disconnect_input(*i);
         }
+        // Mark everything deleted.
         for i in inputs {
             self.inputs[i.idx].deleted = true;
         }

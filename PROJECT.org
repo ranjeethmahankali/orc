@@ -221,8 +221,13 @@
         exec.rs             -- Background thread execution via mpsc channels
     #+end_src
 
-*** NEXT Changes to orc_sdk
+*** DONE Changes to orc_sdk
+    CLOSED: [2026-09-07 Mon 22:58]
+    :PROPERTIES:
+    :CREATED:  2026-09-07 Mon 22:58
+    :END:
     :LOGBOOK:
+    - State "DONE"       from "NEXT"       [2026-09-07 Mon 22:58]
     - State "NEXT"       from "TODO"       [2026-09-07 Mon 22:28]
     - State "TODO"       from              [2026-09-07 Mon 22:28]
     :END:
@@ -244,6 +249,8 @@
     - [X] ~add_inspect(label) -> Result<(NH, IH)>~ -- create inspect node (1 input, 0 outputs)
     - [X] ~delete_node(NH)~ -- disconnect all pins, mark node and its pins as
     - [X] Add ~Hash~ derive to NH, IH, OH, LH in graph.rs.
+
+    <2026-09-07 Mon 22:54> Did all the above. Marking as done, after a review.
 
 *** Custom Rendering (not egui-snarl or egui-graph-edit)
 
