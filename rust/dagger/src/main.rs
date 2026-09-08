@@ -13,14 +13,17 @@ use eframe::egui;
 use orc_sdk::{
     ContextArena, DeckRegistry, Error, ORC_ABI_VERSION, ORC_DECK_PROXY_COPY_ALL,
     ORC_ERROR_INVALID_HANDLE, ORC_ERROR_INVALID_PROXY, ORC_ERROR_NONE, ORC_TYPE_F32, ORC_TYPE_F64,
-    ORC_TYPE_I16, ORC_TYPE_I32, ORC_TYPE_I64, ORC_TYPE_I8, ORC_TYPE_U16, ORC_TYPE_U32,
-    ORC_TYPE_U64, ORC_TYPE_U8, OrcError, OrcHandle, OrcHandleBorrowed, OrcHost,
-    OrcHostCallbackAPI, OrcHostMemoryAPI, OrcProxyType, PluginSet, ProxyType, TypeOwner, Workflow,
-    reset_handle, slice_from_ptr,
+    ORC_TYPE_I8, ORC_TYPE_I16, ORC_TYPE_I32, ORC_TYPE_I64, ORC_TYPE_U8, ORC_TYPE_U16, ORC_TYPE_U32,
+    ORC_TYPE_U64, OrcError, OrcHandle, OrcHandleBorrowed, OrcHost, OrcHostCallbackAPI,
+    OrcHostMemoryAPI, OrcProxyType, PluginSet, ProxyType, TypeOwner, Workflow, reset_handle,
+    slice_from_ptr,
 };
 use std::alloc::{Layout, alloc, dealloc};
 use std::ffi::{CStr, c_void};
-use std::sync::{LazyLock, atomic::{AtomicU64, Ordering}};
+use std::sync::{
+    LazyLock,
+    atomic::{AtomicU64, Ordering},
+};
 
 static REGISTRY: LazyLock<DeckRegistry> = LazyLock::new(DeckRegistry::new);
 pub static HANDLE_COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -36,11 +39,7 @@ unsafe extern "C" fn host_dealloc(ptr: *mut c_void, size: u64, alignment: u64) {
     unsafe { dealloc(ptr as *mut u8, layout) }
 }
 
-unsafe extern "C" fn serial_write_callback(
-    ctx: u64,
-    data: *const c_void,
-    len: u64,
-) -> OrcError {
+unsafe extern "C" fn serial_write_callback(ctx: u64, data: *const c_void, len: u64) -> OrcError {
     let incoming_slice: &[u8] = unsafe { slice_from_ptr(data.cast(), len as usize) };
     match SERIAL_CONTEXT_ARENA.visit_mut(ctx, |buf| buf.extend_from_slice(incoming_slice)) {
         Ok(_) => ORC_ERROR_NONE,

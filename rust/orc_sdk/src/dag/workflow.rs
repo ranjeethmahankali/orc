@@ -373,6 +373,14 @@ impl Workflow {
         self.node_infos.clone()
     }
 
+    pub fn input_labels_prop(&self) -> InputProperty<String> {
+        self.input_labels.clone()
+    }
+
+    pub fn output_labels_prop(&self) -> OutputProperty<String> {
+        self.output_labels.clone()
+    }
+
     pub fn node_from_input(&self, i: IH) -> NH {
         self.graph.inputs[i.idx].node
     }
