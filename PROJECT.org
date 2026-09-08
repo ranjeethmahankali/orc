@@ -197,33 +197,6 @@
    - State "TODO"       from              [2026-09-07 Mon 22:28]
    :END:
 
-*** NEXT Crate: rust/dagger/
-    :LOGBOOK:
-    - State "NEXT"       from "TODO"       [2026-09-07 Mon 23:06]
-    - State "TODO"       from              [2026-09-07 Mon 22:28]
-    :END:
-
-    New workspace member. Dependencies: eframe 0.31, egui 0.31, orc_sdk.
-
-    #+begin_src
-    rust/dagger/
-      Cargo.toml
-      src/
-        main.rs             -- eframe entry, host setup (OrcHost, PluginSet, DeckRegistry, handle counter)
-        app.rs              -- DaggerApp: eframe::App, top-level layout, window management
-        canvas.rs           -- Pan/zoom canvas, coordinate transforms (screen <-> canvas)
-        node_render.rs      -- Draw node bodies, title bars, pins, labels (all monospace)
-        link_render.rs      -- Draw cubic Bezier connections
-        interaction.rs      -- Pin connect/disconnect, select, delete, box-select
-        state.rs            -- EditorState: Workflow + properties + computed outputs + layout
-        layout.rs           -- Force-directed layout with DAG flow constraint, spatial hash grid
-        context_menu.rs     -- Right-click menu with search field, pluggable FunctionFilter trait
-        inspect.rs          -- Inspect node display: scrollable text, resizable viewport, pop-out
-        exec.rs             -- Background thread execution via mpsc channels
-    #+end_src
-
-    <2026-09-07 Mon 23:06> Created a stub crate, not implemented anything yet.
-
 *** Custom Rendering (not egui-snarl or egui-graph-edit)
 
     Existing egui node editor crates (egui-snarl, egui-graph-edit) maintain their own internal graph
@@ -606,6 +579,35 @@
 
      - 3D geometry inspect via wgpu PaintCallback
      - Undo/redo (approach TBD -- possibly reversible user actions / diffs, not decided yet)
+
+*** DONE Crate: rust/dagger/
+    CLOSED: [2026-09-07 Mon 23:06]
+    :LOGBOOK:
+    - State "DONE"       from "NEXT"       [2026-09-07 Mon 23:06]
+    - State "NEXT"       from "TODO"       [2026-09-07 Mon 23:06]
+    - State "TODO"       from              [2026-09-07 Mon 22:28]
+    :END:
+
+    New workspace member. Dependencies: eframe 0.31, egui 0.31, orc_sdk.
+
+    #+begin_src
+    rust/dagger/
+      Cargo.toml
+      src/
+        main.rs             -- eframe entry, host setup (OrcHost, PluginSet, DeckRegistry, handle counter)
+        app.rs              -- DaggerApp: eframe::App, top-level layout, window management
+        canvas.rs           -- Pan/zoom canvas, coordinate transforms (screen <-> canvas)
+        node_render.rs      -- Draw node bodies, title bars, pins, labels (all monospace)
+        link_render.rs      -- Draw cubic Bezier connections
+        interaction.rs      -- Pin connect/disconnect, select, delete, box-select
+        state.rs            -- EditorState: Workflow + properties + computed outputs + layout
+        layout.rs           -- Force-directed layout with DAG flow constraint, spatial hash grid
+        context_menu.rs     -- Right-click menu with search field, pluggable FunctionFilter trait
+        inspect.rs          -- Inspect node display: scrollable text, resizable viewport, pop-out
+        exec.rs             -- Background thread execution via mpsc channels
+    #+end_src
+
+    <2026-09-07 Mon 23:06> Created a stub crate, not implemented anything yet.
 
 *** DONE Changes to orc_sdk
     CLOSED: [2026-09-07 Mon 22:58]
