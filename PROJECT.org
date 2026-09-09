@@ -323,7 +323,7 @@
 
 *** Incremental Execution
 
-    Computed outputs are stored as ~OutputProperty<Option<OrcHandle>>~. When topology changes
+    Computed outputs are stored as ~OutputProperty<OrcHandle>~. When topology changes
     (connect, disconnect, add/remove node):
     1. Mark affected outputs as stale (set to None).
     2. Propagate staleness downstream through links -- any node whose input comes from a stale
@@ -331,18 +331,14 @@
     3. On next execution, only evaluate nodes with stale outputs.
 
     The execution engine needs a modified version of ~Workflow::run~ that:
-    - Accepts pre-computed output values for non-stale nodes and skips evaluating them.
-    - Returns ALL intermediate output values (not just the final workflow outputs).
-    - At NestedCall nodes, recursively captures internal state into ~NestedExecState~.
+    - Walks the DAG similar to what Workflow::run does, starting from all the stale nodes, but
+      expecting that some nodes might not be stale. It only needs to compute the nodes that are
+      stale. And just use the outputs from the non-stale nodes.
+    - At NestedCall nodes, recursively executes, using the ~NestedExecState~ corresponding to that
+      call node.
 
-    Background thread communication: serialize the stale subgraph + its input values via mpsc
-    channel, deserialize + run on the background thread, send results back (both the output values
-    and any NestedExecState trees). The UI thread stores results into ~computed_outputs~ and
-    ~nested_exec_state~. The UI thread never freezes.
-
-    The serialization-to-background-thread approach is necessary because ~Workflow~ is not ~Send~
-    (it contains ~Rc<RefCell<...>>~ in the property system). The serialization cost is negligible
-    relative to actual execution time.
+    How to do this all over multiple background threads is a bit of an open problem. Needs more
+    brainstorming.
 
 *** Nested Workflow Execution State
 
@@ -730,7 +726,7 @@
      <2026-09-09 Wed 00:25> Force directed graph was a wrong move. Getting rid of it
      altogether. More important things need attention right now.
 
-**** NEXT Phase 4: Execution + Inspect Display
+**** NEXT Phase 4: Execution + Inspect Display 
      :LOGBOOK:
      - State "NEXT"       from "TODO"       [2026-09-08 Tue 19:31]
      - State "TODO"       from              [2026-09-07 Mon 23:11]
