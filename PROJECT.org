@@ -730,6 +730,16 @@
        output also has all its outputs marked stale.
      - [ ] Execution only evaluates nodes with stale outputs.
 
+     *Inspect node display:*
+     - [ ] Render ~deck_to_str()~ output of connected upstream data in a scrollable monospace text
+       area embedded in the node body.
+     - [ ] Inspect nodes are resizable by the user (drag bottom-right corner). Size stored in
+       ~node_sizes~ property. Layout simulation accounts for current size (bounding-box
+       repulsion pushes neighbors away from enlarged inspect nodes).
+     - [ ] Minimize/maximize toggle: expand to fill viewport, or shrink back.
+     - [ ] Pop-out button: open inspect view in a separate OS window via
+       ~ctx.show_viewport_deferred()~.
+
      *Background thread:*
      - [ ] Serialize the stale subgraph + its non-stale input values to bytes via mpsc channel.
        Deserialize + run on background thread (necessary because Workflow is not Send due to
@@ -742,16 +752,6 @@
      - [ ] Accept pre-computed output values for non-stale nodes and skip evaluating them.
      - [ ] Return ALL intermediate output values (not just final workflow outputs).
      - [ ] At NestedCall nodes, recursively capture internal state into ~NestedExecState~.
-
-     *Inspect node display:*
-     - [ ] Render ~deck_to_str()~ output of connected upstream data in a scrollable monospace text
-       area embedded in the node body.
-     - [ ] Inspect nodes are resizable by the user (drag bottom-right corner). Size stored in
-       ~node_sizes~ property. Layout simulation accounts for current size (bounding-box
-       repulsion pushes neighbors away from enlarged inspect nodes).
-     - [ ] Minimize/maximize toggle: expand to fill viewport, or shrink back.
-     - [ ] Pop-out button: open inspect view in a separate OS window via
-       ~ctx.show_viewport_deferred()~.
 
 **** TODO Phase 5: Nested Workflow Editing
      :LOGBOOK:
