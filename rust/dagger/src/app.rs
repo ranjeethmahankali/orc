@@ -15,10 +15,20 @@ pub struct DaggerApp {
 
 impl DaggerApp {
     pub fn new(
-        _cc: &eframe::CreationContext<'_>,
+        cc: &eframe::CreationContext<'_>,
         workflow: Workflow,
         path: Option<PathBuf>,
     ) -> Self {
+        // By default egui snaps text to the nearest physical pixel so static text stays crisp.
+        // Node labels are essentially never static here — they're carried along by node
+        // dragging, the settling force layout and canvas pan/zoom — so that snap becomes visible
+        // as the label hopping between pixels a frame at a time instead of sliding smoothly,
+        // most noticeably right before the layout settles, when everything else has slowed to
+        // sub-pixel motion and the snap is the only thing left to see. Shapes don't have this
+        // problem: they're antialiased by feathering the edge, which blends smoothly across a
+        // sub-pixel offset instead of rounding it away.
+        cc.egui_ctx
+            .tessellation_options_mut(|options| options.round_text_to_pixels = false);
         let mut state = EditorState::from_workflow(workflow);
         state.current_path = path;
         Self { state }

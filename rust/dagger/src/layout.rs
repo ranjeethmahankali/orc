@@ -8,7 +8,7 @@ const REPULSION_MARGIN: f32 = 30.0;
 /// Coefficient for the extra `overlap^2` push once two node boxes (plus margin) actually
 /// overlap. See `repulsion_force` for why this is squared rather than linear.
 const OVERLAP_PUSH_STRENGTH: f32 = 0.03;
-const DAMPING: f32 = 0.85;
+const DAMPING: f32 = 0.5;
 const CENTER_Y_STRENGTH: f32 = 0.02;
 const DAG_MIN_GAP: f32 = 220.0;
 const DAG_CONSTRAINT_STRENGTH: f32 = 0.5;
@@ -185,13 +185,15 @@ pub fn step(state: &mut EditorState, pinned: Option<NH>) -> bool {
         return true;
     }
 
-    // Read current positions and sizes into local vecs for fast access.
-    let (positions, sizes) = {
+    // Read current positions, sizes and velocities into local vecs for fast access.
+    let (positions, sizes, velocities) = {
         let pos = state.node_positions.try_borrow().unwrap();
         let sz = state.node_sizes.try_borrow().unwrap();
+        let vel = state.node_velocities.try_borrow().unwrap();
         let positions: Vec<[f32; 2]> = nodes.iter().map(|&nh| pos[nh]).collect();
         let sizes: Vec<[f32; 2]> = nodes.iter().map(|&nh| sz[nh]).collect();
-        (positions, sizes)
+        let velocities: Vec<[f32; 2]> = nodes.iter().map(|&nh| vel[nh]).collect();
+        (positions, sizes, velocities)
     };
 
     let mut forces = vec![[0.0f32; 2]; n];
@@ -268,36 +270,51 @@ pub fn step(state: &mut EditorState, pinned: Option<NH>) -> bool {
         }
     }
 
-    // Apply forces with damping and max displacement.
+    // Integrate velocity, then position from velocity, rather than moving directly by
+    // `force * DAMPING` each step. A position-only update has no memory of which way a node was
+    // already headed, so once forces roughly balance near equilibrium it has nothing to smooth
+    // out small frame-to-frame imbalances in the force calculation — it reacts to each one
+    // independently, which shows up as a persistent low-amplitude jitter that's easy to miss
+    // while there's large sweeping motion elsewhere, but is the only thing left to see once
+    // everything else has settled. Carrying a damped velocity between steps means a node's
+    // motion is an average over recent forces instead of a direct copy of the latest one, so
+    // that noise gets smoothed out instead of re-appearing every frame.
     let pinned_idx = pinned.and_then(|nh| {
         let idx = nh_to_idx[nh.index()];
         (idx != usize::MAX).then_some(idx)
     });
     let mut max_move: f32 = 0.0;
     let mut new_positions = positions.clone();
+    let mut new_velocities = velocities.clone();
     for i in 0..n {
         if Some(i) == pinned_idx {
-            // Actively dragged this frame: the cursor has full control of its position.
+            // Actively dragged this frame: the cursor has full control of its position. Zero
+            // its velocity so that letting go doesn't fling it off with whatever velocity it
+            // happened to have before the drag started — it resumes from rest.
+            new_velocities[i] = [0.0, 0.0];
             continue;
         }
-        let mut dx = forces[i][0] * DAMPING;
-        let mut dy = forces[i][1] * DAMPING;
-        let mag = (dx * dx + dy * dy).sqrt();
-        if mag > MAX_DISPLACEMENT {
-            let scale = MAX_DISPLACEMENT / mag;
-            dx *= scale;
-            dy *= scale;
+        let mut vx = (velocities[i][0] + forces[i][0]) * DAMPING;
+        let mut vy = (velocities[i][1] + forces[i][1]) * DAMPING;
+        let speed = (vx * vx + vy * vy).sqrt();
+        if speed > MAX_DISPLACEMENT {
+            let scale = MAX_DISPLACEMENT / speed;
+            vx *= scale;
+            vy *= scale;
         }
-        new_positions[i][0] += dx;
-        new_positions[i][1] += dy;
-        max_move = max_move.max(mag);
+        new_velocities[i] = [vx, vy];
+        new_positions[i][0] += vx;
+        new_positions[i][1] += vy;
+        max_move = max_move.max(speed);
     }
 
     // Write back.
     {
         let mut pos = state.node_positions.try_borrow_mut().unwrap();
+        let mut vel = state.node_velocities.try_borrow_mut().unwrap();
         for (i, &nh) in nodes.iter().enumerate() {
             pos[nh] = new_positions[i];
+            vel[nh] = new_velocities[i];
         }
     }
 
@@ -499,5 +516,49 @@ mod test {
             gap >= 80.0,
             "siblings should end up clear of each other, gap was {gap}"
         );
+    }
+
+    /// A position-only relaxation (no carried velocity) has nothing to smooth out small
+    /// per-frame imbalances between the spring, repulsion and centering forces once they're
+    /// roughly in balance, so `layout_converged` can flap between true and false forever even
+    /// though nothing is visibly settling any further — the app would keep repainting on a
+    /// jitter too small to see as motion but large enough to keep tripping the threshold. Once
+    /// `step` reports converged, it must stay converged.
+    #[test]
+    fn t_stays_converged_once_settled() {
+        let mut wf = Workflow::default();
+        let (a, _, a_out) = node(&mut wf, 0, 2);
+        let (b, b_in, b_out) = node(&mut wf, 1, 1);
+        let (c, c_in, _) = node(&mut wf, 1, 0);
+        wf.connect(a_out[0], b_in[0]).unwrap();
+        wf.connect(b_out[0], c_in[0]).unwrap();
+        // A sibling of b with no edge to anything, so repulsion and the centering force are
+        // also in play, not just the spring.
+        let (d, _, _) = node(&mut wf, 0, 1);
+        let mut state = EditorState::from_workflow(wf);
+        {
+            let mut sizes = state.node_sizes.try_borrow_mut().unwrap();
+            for nh in [a, b, c, d] {
+                sizes[nh] = [160.0, 80.0];
+            }
+        }
+
+        let mut converged_at = None;
+        for i in 0..1000 {
+            if step(&mut state, None) {
+                converged_at = Some(i);
+                break;
+            }
+        }
+        let converged_at = converged_at.expect("layout must settle");
+
+        for i in 0..50 {
+            assert!(
+                step(&mut state, None),
+                "layout reported converged at step {converged_at} but flapped back to \
+                 unconverged {} step(s) later — a residual jitter, not a settled layout",
+                i + 1
+            );
+        }
     }
 }

@@ -11,6 +11,9 @@ pub struct EditorState {
     pub workflow: Workflow,
     pub node_positions: NodeProperty<[f32; 2]>,
     pub node_sizes: NodeProperty<[f32; 2]>,
+    /// Carried between layout steps so the simulation is damped-velocity rather than
+    /// damped-position — see `layout::step` for why.
+    pub node_velocities: NodeProperty<[f32; 2]>,
     /// Set on every node that takes part in a cycle. The graph is allowed to hold cycles, so
     /// these are drawn as an error rather than rejected.
     pub node_in_cycle: NodeProperty<bool>,
@@ -45,12 +48,14 @@ impl EditorState {
     pub fn from_workflow(mut workflow: Workflow) -> Self {
         let node_positions = workflow.create_node_property();
         let node_sizes = workflow.create_node_property();
+        let node_velocities = workflow.create_node_property();
         let node_in_cycle = workflow.create_node_property();
         let selected = workflow.create_node_property();
         let mut state = Self {
             workflow,
             node_positions,
             node_sizes,
+            node_velocities,
             node_in_cycle,
             selected,
             layout_converged: false,
