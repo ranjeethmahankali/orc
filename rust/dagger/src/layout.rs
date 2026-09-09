@@ -5,6 +5,9 @@ const SPRING_K: f32 = 0.3;
 const SPRING_REST_LENGTH: f32 = 250.0;
 const REPULSION_STRENGTH: f32 = 5000.0;
 const REPULSION_MARGIN: f32 = 30.0;
+/// Coefficient for the extra `overlap^2` push once two node boxes (plus margin) actually
+/// overlap. See `repulsion_force` for why this is squared rather than linear.
+const OVERLAP_PUSH_STRENGTH: f32 = 0.03;
 const DAMPING: f32 = 0.85;
 const CENTER_Y_STRENGTH: f32 = 0.02;
 const DAG_MIN_GAP: f32 = 220.0;
@@ -124,6 +127,48 @@ pub fn topological_seed(state: &mut EditorState) {
     }
 }
 
+/// Repulsion between one pair of node boxes, as the force to apply to `a` (the force on `b` is
+/// its negation).
+///
+/// A weak inverse-square background repulsion applies at every separation, so nodes never drift
+/// arbitrarily close under some other attractive force (e.g. up/down neighbors at the same DAG
+/// depth, which — unlike DAG-connected neighbors — have no spring pulling them apart and only
+/// this repulsion to keep them from coasting together). On top of that, once the boxes (plus
+/// margin) actually overlap, an extra push ramps in *quadratically* with how deep the
+/// penetration is.
+///
+/// The quadratic ramp matters, not just its zero value at the boundary: a linear ramp is
+/// continuous too, but starts contributing at its full slope the instant `overlap` turns
+/// positive, which is still a sharp kink relative to the tiny background slope right next to
+/// it — close enough to a jump in practice that neighbors could still be seen to clip and snap.
+/// A quadratic starts with *zero* slope as well as zero value at the boundary, so the curve
+/// really is smooth there, and only grows firm once the penetration is significant. A previous
+/// version used an entirely different, ~10x stronger formula the instant boxes overlapped
+/// instead of blending anything in, which is what caused the clip-and-snap bug this replaces.
+#[inline]
+fn repulsion_force(pos_a: [f32; 2], size_a: [f32; 2], pos_b: [f32; 2], size_b: [f32; 2]) -> [f32; 2] {
+    let cx_a = pos_a[0] + size_a[0] / 2.0;
+    let cy_a = pos_a[1] + size_a[1] / 2.0;
+    let cx_b = pos_b[0] + size_b[0] / 2.0;
+    let cy_b = pos_b[1] + size_b[1] / 2.0;
+
+    let dx = cx_a - cx_b;
+    let dy = cy_a - cy_b;
+    let dist_sq = (dx * dx + dy * dy).max(100.0);
+    let dist = dist_sq.sqrt();
+
+    let mut force = REPULSION_STRENGTH * 0.1 / dist_sq;
+
+    let overlap_x = (size_a[0] + size_b[0]) / 2.0 + REPULSION_MARGIN - dx.abs();
+    let overlap_y = (size_a[1] + size_b[1]) / 2.0 + REPULSION_MARGIN - dy.abs();
+    let overlap = overlap_x.min(overlap_y);
+    if overlap > 0.0 {
+        force += OVERLAP_PUSH_STRENGTH * overlap * overlap;
+    }
+
+    [dx / dist * force, dy / dist * force]
+}
+
 /// Run one step of the force-directed layout simulation.
 ///
 /// `pinned` is the node being actively dragged this frame, if any. Its position still feeds
@@ -151,52 +196,15 @@ pub fn step(state: &mut EditorState, pinned: Option<NH>) -> bool {
 
     let mut forces = vec![[0.0f32; 2]; n];
 
-    // 1. Bounding-box repulsion between all node pairs.
+    // 1. Bounding-box repulsion between all node pairs. See `repulsion_force` for why this is
+    // one continuous formula rather than a hard switch between "overlapping" and "not".
     for i in 0..n {
-        let (ax, ay) = (positions[i][0], positions[i][1]);
-        let (aw, ah) = (sizes[i][0], sizes[i][1]);
         for j in (i + 1)..n {
-            let (bx, by) = (positions[j][0], positions[j][1]);
-            let (bw, bh) = (sizes[j][0], sizes[j][1]);
-
-            // Overlap with margin.
-            let overlap_x =
-                (aw + bw) / 2.0 + REPULSION_MARGIN - ((ax + aw / 2.0) - (bx + bw / 2.0)).abs();
-            let overlap_y =
-                (ah + bh) / 2.0 + REPULSION_MARGIN - ((ay + ah / 2.0) - (by + bh / 2.0)).abs();
-
-            if overlap_x > 0.0 && overlap_y > 0.0 {
-                // Nodes overlap — push apart.
-                let cx_a = ax + aw / 2.0;
-                let cy_a = ay + ah / 2.0;
-                let cx_b = bx + bw / 2.0;
-                let cy_b = by + bh / 2.0;
-                let mut dx = cx_a - cx_b;
-                let mut dy = cy_a - cy_b;
-                let dist = (dx * dx + dy * dy).sqrt().max(1.0);
-                dx /= dist;
-                dy /= dist;
-                let force = REPULSION_STRENGTH / (dist * dist).max(100.0);
-                forces[i][0] += dx * force;
-                forces[i][1] += dy * force;
-                forces[j][0] -= dx * force;
-                forces[j][1] -= dy * force;
-            } else {
-                // Even non-overlapping nodes get a mild repulsion.
-                let cx_a = ax + aw / 2.0;
-                let cy_a = ay + ah / 2.0;
-                let cx_b = bx + bw / 2.0;
-                let cy_b = by + bh / 2.0;
-                let dx = cx_a - cx_b;
-                let dy = cy_a - cy_b;
-                let dist_sq = (dx * dx + dy * dy).max(100.0);
-                let force = REPULSION_STRENGTH * 0.1 / dist_sq;
-                let dist = dist_sq.sqrt();
-                forces[i][0] += (dx / dist) * force;
-                forces[i][1] += (dy / dist) * force;
-                forces[j][0] -= (dx / dist) * force;
-                forces[j][1] -= (dy / dist) * force;
-            }
+            let f = repulsion_force(positions[i], sizes[i], positions[j], sizes[j]);
+            forces[i][0] += f[0];
+            forces[i][1] += f[1];
+            forces[j][0] -= f[0];
+            forces[j][1] -= f[1];
         }
     }
 
@@ -298,7 +306,7 @@ pub fn step(state: &mut EditorState, pinned: Option<NH>) -> bool {
 
 #[cfg(test)]
 mod test {
-    use super::{compute_depths, step};
+    use super::{compute_depths, repulsion_force, step};
     use crate::state::EditorState;
     use orc_sdk::{DagHandle, FuncInfo, IH, NH, OH, Workflow};
 
@@ -433,6 +441,63 @@ mod test {
             pos[b],
             [2000.0, 0.0],
             "the unpinned node should still react to the force"
+        );
+    }
+
+    /// With 160x80 boxes and no x offset, the vertical overlap-with-margin boundary sits at a
+    /// gap of exactly `(80 + 80) / 2 + REPULSION_MARGIN` = 110. Sampling the force right on
+    /// either side of that boundary directly (bypassing `step`'s spring/centering forces, which
+    /// would otherwise swamp the tiny repulsion values involved) catches the exact bug this
+    /// guards against: the old formula switched to a completely different, ~10x stronger
+    /// expression the instant `overlap` turned positive, so two starting points barely a canvas
+    /// unit apart produced wildly different pushes.
+    #[test]
+    fn t_repulsion_has_no_jump_at_the_overlap_boundary() {
+        let size = [160.0, 80.0];
+        let just_inside = repulsion_force([0.0, 0.0], size, [0.0, 109.0], size)[1].abs();
+        let just_outside = repulsion_force([0.0, 0.0], size, [0.0, 111.0], size)[1].abs();
+        let ratio = just_inside.max(just_outside) / just_inside.min(just_outside).max(0.001);
+        assert!(
+            ratio < 3.0,
+            "force should vary smoothly across the overlap boundary, got {just_inside} vs \
+             {just_outside} (ratio {ratio})"
+        );
+    }
+
+    /// Two nodes with no edge between them (siblings at the same depth) have nothing but the
+    /// bounding-box repulsion keeping them apart, since neither the spring nor the DAG-flow
+    /// constraint reaches unconnected nodes. Companion to the boundary test above: starting deep
+    /// inside the overlap, the nodes must actually separate and settle rather than oscillate.
+    #[test]
+    fn t_overlapping_siblings_settle_without_oscillating() {
+        let mut wf = Workflow::default();
+        let (a, _, _) = node(&mut wf, 0, 1);
+        let (b, _, _) = node(&mut wf, 0, 1);
+        let mut state = EditorState::from_workflow(wf);
+        {
+            let mut sizes = state.node_sizes.try_borrow_mut().unwrap();
+            sizes[a] = [160.0, 80.0];
+            sizes[b] = [160.0, 80.0];
+            let mut pos = state.node_positions.try_borrow_mut().unwrap();
+            // Deeply overlapping to start: centers only 10 units apart, same x.
+            pos[a] = [0.0, 0.0];
+            pos[b] = [0.0, 10.0];
+        }
+
+        let mut converged = false;
+        for _ in 0..500 {
+            if step(&mut state, None) {
+                converged = true;
+                break;
+            }
+        }
+        assert!(converged, "layout must settle instead of oscillating forever");
+
+        let pos = state.node_positions.try_borrow().unwrap();
+        let gap = (pos[b][1] - pos[a][1]).abs();
+        assert!(
+            gap >= 80.0,
+            "siblings should end up clear of each other, gap was {gap}"
         );
     }
 }
