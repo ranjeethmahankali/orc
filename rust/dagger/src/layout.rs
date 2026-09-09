@@ -14,6 +14,15 @@ const DAG_MIN_GAP: f32 = 220.0;
 const DAG_CONSTRAINT_STRENGTH: f32 = 0.5;
 const CONVERGENCE_THRESHOLD: f32 = 0.1;
 const MAX_DISPLACEMENT: f32 = 50.0;
+/// Top-left starting point for the depth-0 layer's seed positions, in canvas units. Purely a
+/// visual choice for where the layout starts before the user ever pans.
+const SEED_ORIGIN_X: f32 = 100.0;
+const SEED_ORIGIN_Y: f32 = 300.0;
+/// Vertical spacing between nodes seeded into the same depth layer. Not derived from any
+/// measured node height, since sizes aren't known yet at seed time (`measure()` hasn't run on
+/// the first frame) — just a reasonable guess the force simulation is free to correct once real
+/// sizes are available.
+const SEED_ROW_HEIGHT: f32 = 120.0;
 
 /// The nodes feeding a node, via its connected inputs.
 fn predecessors(workflow: &Workflow, node: NH) -> impl Iterator<Item = NH> + '_ {
@@ -25,10 +34,10 @@ fn predecessors(workflow: &Workflow, node: NH) -> impl Iterator<Item = NH> + '_ 
 }
 
 /// Longest-path depth of every node, plus which nodes take part in a cycle. Both are indexed
-/// by `NH::index()`.
-pub struct Depths {
-    pub depth: Vec<u32>,
-    pub in_cycle: Vec<bool>,
+/// by `NH::index()`. Only used within this module (by `topological_seed` and its own tests).
+struct Depths {
+    depth: Vec<u32>,
+    in_cycle: Vec<bool>,
 }
 
 /// Walk the graph upstream and give each node a depth one past its deepest predecessor.
@@ -38,7 +47,7 @@ pub struct Depths {
 /// is not an error here. The traversal stops at the closing edge and the node keeps whatever
 /// depth its other predecessors gave it, so seeding still has an approximate position to work
 /// from, and the nodes making up the cycle are reported so they can be drawn as an error.
-pub fn compute_depths(workflow: &Workflow) -> Depths {
+fn compute_depths(workflow: &Workflow) -> Depths {
     let n_nodes = workflow.num_nodes();
     let mut depth = vec![0u32; n_nodes];
     let mut in_cycle = vec![false; n_nodes];
@@ -121,8 +130,8 @@ pub fn topological_seed(state: &mut EditorState) {
         let d = depth[nh.index()] as usize;
         let idx_in_layer = layer_indices[nh.index()] as f32;
         let layer_size = layer_counts[d] as f32;
-        let x = 100.0 + d as f32 * DAG_MIN_GAP;
-        let y = 100.0 + idx_in_layer * 120.0 - (layer_size - 1.0) * 60.0 + 200.0;
+        let x = SEED_ORIGIN_X + d as f32 * DAG_MIN_GAP;
+        let y = SEED_ORIGIN_Y + (idx_in_layer - (layer_size - 1.0) / 2.0) * SEED_ROW_HEIGHT;
         pos[nh] = [x, y];
     }
 }
@@ -185,8 +194,10 @@ pub fn step(state: &mut EditorState, pinned: Option<NH>) -> bool {
         return true;
     }
 
-    // Read current positions, sizes and velocities into local vecs for fast access.
-    let (positions, sizes, velocities) = {
+    // Read current positions, sizes and velocities into local vecs for fast access. `positions`
+    // and `velocities` are mutated in place by the integration step below; `sizes` is read-only
+    // throughout.
+    let (mut positions, sizes, mut velocities) = {
         let pos = state.node_positions.try_borrow().unwrap();
         let sz = state.node_sizes.try_borrow().unwrap();
         let vel = state.node_velocities.try_borrow().unwrap();
@@ -284,14 +295,12 @@ pub fn step(state: &mut EditorState, pinned: Option<NH>) -> bool {
         (idx != usize::MAX).then_some(idx)
     });
     let mut max_move: f32 = 0.0;
-    let mut new_positions = positions.clone();
-    let mut new_velocities = velocities.clone();
     for i in 0..n {
         if Some(i) == pinned_idx {
             // Actively dragged this frame: the cursor has full control of its position. Zero
             // its velocity so that letting go doesn't fling it off with whatever velocity it
             // happened to have before the drag started — it resumes from rest.
-            new_velocities[i] = [0.0, 0.0];
+            velocities[i] = [0.0, 0.0];
             continue;
         }
         let mut vx = (velocities[i][0] + forces[i][0]) * DAMPING;
@@ -302,9 +311,9 @@ pub fn step(state: &mut EditorState, pinned: Option<NH>) -> bool {
             vx *= scale;
             vy *= scale;
         }
-        new_velocities[i] = [vx, vy];
-        new_positions[i][0] += vx;
-        new_positions[i][1] += vy;
+        velocities[i] = [vx, vy];
+        positions[i][0] += vx;
+        positions[i][1] += vy;
         max_move = max_move.max(speed);
     }
 
@@ -313,8 +322,8 @@ pub fn step(state: &mut EditorState, pinned: Option<NH>) -> bool {
         let mut pos = state.node_positions.try_borrow_mut().unwrap();
         let mut vel = state.node_velocities.try_borrow_mut().unwrap();
         for (i, &nh) in nodes.iter().enumerate() {
-            pos[nh] = new_positions[i];
-            vel[nh] = new_velocities[i];
+            pos[nh] = positions[i];
+            vel[nh] = velocities[i];
         }
     }
 
@@ -335,6 +344,47 @@ mod test {
             .add_function(FuncInfo::default(), &mut ins, &mut outs)
             .unwrap();
         (nh, ins, outs)
+    }
+
+    /// `topological_seed` (run once, inside `EditorState::from_workflow`) had no test at all
+    /// before this: every other test in this module overwrites `node_positions` right after
+    /// construction, so a broken seed formula (nodes stacked on top of each other within a
+    /// layer, or depth not increasing left to right) would ship unnoticed, even though it's the
+    /// very first thing a user sees when opening a workflow. Asserts relative properties of the
+    /// formula rather than exact coordinates, so retuning the seed constants doesn't break this.
+    #[test]
+    fn t_topological_seed_places_layers_left_to_right_and_centers_each_layer() {
+        let mut wf = Workflow::default();
+        let (a, _, a_out) = node(&mut wf, 0, 3);
+        // Three siblings at depth 1, all fed by `a`, none connected to each other.
+        let (b1, b1_in, _) = node(&mut wf, 1, 0);
+        let (b2, b2_in, _) = node(&mut wf, 1, 0);
+        let (b3, b3_in, _) = node(&mut wf, 1, 0);
+        wf.connect(a_out[0], b1_in[0]).unwrap();
+        wf.connect(a_out[1], b2_in[0]).unwrap();
+        wf.connect(a_out[2], b3_in[0]).unwrap();
+
+        let state = EditorState::from_workflow(wf);
+        let pos = state.node_positions.try_borrow().unwrap();
+
+        assert!(
+            pos[b1][0] > pos[a][0],
+            "depth 1 must be seeded to the right of depth 0"
+        );
+        assert_eq!(
+            pos[b1][0], pos[b2][0],
+            "siblings in the same layer share an x"
+        );
+        assert_eq!(pos[b2][0], pos[b3][0]);
+
+        let ys = [pos[b1][1], pos[b2][1], pos[b3][1]];
+        assert_ne!(ys[0], ys[1], "siblings must not be stacked on top of each other");
+        assert_ne!(ys[1], ys[2]);
+        let center = (ys[0] + ys[2]) / 2.0;
+        assert!(
+            (ys[1] - center).abs() < 0.01,
+            "the middle of three siblings should sit on the layer's center, got {ys:?}"
+        );
     }
 
     #[test]

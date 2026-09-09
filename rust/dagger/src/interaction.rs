@@ -131,6 +131,17 @@ fn creates_cycle(workflow: &Workflow, src: NH, dst: NH) -> bool {
     false
 }
 
+/// Whether `oh`'s owning node is still live, i.e. present in `workflow.node_iter()`.
+///
+/// `Workflow::delete_node` only tombstones a node — it stays numerically indexable, so an `OH`
+/// captured before the delete (e.g. in `EditorState::pending_wire`) still resolves via
+/// `node_from_output`, and nothing in orc_sdk checks the deleted flag on connect. Anything that
+/// held onto an `OH` across a frame must recheck this before acting on it.
+pub(crate) fn output_is_live(workflow: &Workflow, oh: OH) -> bool {
+    let owner = workflow.node_from_output(oh);
+    workflow.node_iter().any(|nh| nh == owner)
+}
+
 pub(crate) fn find_input_pin_at(
     state: &EditorState,
     screen_pos: Pos2,
@@ -157,6 +168,16 @@ fn update_pending_wire(ui: &mut egui::Ui, state: &mut EditorState, source: OH) -
     if !ui.input(|i| i.pointer.button_released(PointerButton::Primary)) {
         return false;
     }
+    state.pending_wire = None;
+
+    // The node owning `source` may have been tombstoned since the drag started — nothing
+    // currently blocks Delete during a pin drag, since a canvas drag never takes keyboard focus.
+    // Without this check, releasing over a valid input would silently wire it to whatever output
+    // now resolves from a stale, deleted source.
+    if !output_is_live(&state.workflow, source) {
+        return true;
+    }
+
     let view = state.view;
     let target = ui
         .input(|i| i.pointer.interact_pos())
@@ -165,12 +186,15 @@ fn update_pending_wire(ui: &mut egui::Ui, state: &mut EditorState, source: OH) -
         let dst = state.workflow.node_from_input(target);
         let src = state.workflow.node_from_output(source);
         if !creates_cycle(&state.workflow, src, dst) {
-            let _ = state.workflow.connect(source, target);
-            state.layout_converged = false;
-            state.dirty = true;
+            match state.workflow.connect(source, target) {
+                Ok(_) => {
+                    state.layout_converged = false;
+                    state.dirty = true;
+                }
+                Err(e) => state.file_error = Some(format!("Failed to connect: {e}")),
+            }
         }
     }
-    state.pending_wire = None;
     true
 }
 
@@ -328,6 +352,15 @@ pub fn delete_selected(ui: &mut egui::Ui, state: &mut EditorState) -> bool {
     for nh in selected_nodes {
         state.workflow.delete_node(nh);
     }
+    // A wire drag started from one of these nodes' output pins would otherwise still try to
+    // complete against a now-tombstoned pin on release — `update_pending_wire` guards against
+    // that too, but clearing it here cancels the drag visually right away instead of leaving a
+    // dangling wire on screen until the mouse button comes up.
+    if let Some(oh) = state.pending_wire
+        && !output_is_live(&state.workflow, oh)
+    {
+        state.pending_wire = None;
+    }
     state.layout_converged = false;
     state.dirty = true;
     true
@@ -416,5 +449,54 @@ mod test {
             ),
             _ => panic!("expected a constant node"),
         }
+    }
+
+    /// Regression test for a stale-handle bug found in review: `Workflow::delete_node` only
+    /// tombstones, so an `OH` captured before the delete (like `pending_wire`) still numerically
+    /// resolves via `node_from_output` even though its owning node is gone. Without this check,
+    /// completing a wire drag from a just-deleted output would silently create a real link
+    /// sourced from a tombstoned node.
+    #[test]
+    fn t_output_is_live_is_false_once_the_owning_node_is_deleted() {
+        let mut wf = Workflow::default();
+        let (nh, _, outs) = node(&mut wf, 0, 1);
+        assert!(output_is_live(&wf, outs[0]));
+        wf.delete_node(nh);
+        assert!(!output_is_live(&wf, outs[0]));
+    }
+
+    /// Companion regression test, exercising the real `delete_selected` end to end (via egui's
+    /// own `Context::run_ui` test harness, fed a synthetic Delete key press): it must clear a
+    /// pending wire whose source it just tombstoned, so the in-progress wire disappears
+    /// immediately rather than dangling until the drag is released.
+    #[test]
+    fn t_delete_selected_clears_a_pending_wire_sourced_from_a_deleted_node() {
+        let mut wf = Workflow::default();
+        let (nh, _, outs) = node(&mut wf, 0, 1);
+        let mut state = EditorState::from_workflow(wf);
+        state.pending_wire = Some(outs[0]);
+        select_node(&mut state, nh, false);
+
+        let ctx = egui::Context::default();
+        ctx.set_fonts(egui::FontDefinitions::empty());
+        let mut raw_input = egui::RawInput::default();
+        raw_input.events.push(egui::Event::Key {
+            key: Key::Delete,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: egui::Modifiers::NONE,
+        });
+        let mut deleted = false;
+        let output = ctx.run_ui(raw_input, |ui| {
+            deleted = delete_selected(ui, &mut state);
+        });
+        output.drop_without_applying_deltas();
+
+        assert!(deleted, "Delete should have removed the selected node");
+        assert!(
+            state.pending_wire.is_none(),
+            "a pending wire sourced from the deleted node must be cleared"
+        );
     }
 }

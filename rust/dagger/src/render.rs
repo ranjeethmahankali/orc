@@ -5,7 +5,7 @@ use eframe::egui::{
     self, Color32, FontFamily, FontId, Pos2, Rect, Shape, Stroke, StrokeKind, Vec2,
 };
 use eframe::epaint::{CubicBezierShape, PathStroke};
-use orc_sdk::{ArgInfo, IH, NodeInfo, NodePropBuf, OH, Workflow};
+use orc_sdk::{ArgInfo, IH, NodeInfo, NodePropBuf, Workflow};
 
 /// Nodes are never narrower than this, however short their labels are.
 pub const MIN_NODE_WIDTH: f32 = 120.0;
@@ -361,9 +361,6 @@ fn draw_nodes(ui: &mut egui::Ui, state: &EditorState, view: &Transform, wire_tar
             (node_color(info), title_color(info), NODE_STROKE_COLOR, 1.0)
         };
 
-        let inputs: Vec<IH> = state.workflow.node_inputs(nh).collect();
-        let outputs: Vec<OH> = state.workflow.node_outputs(nh).collect();
-
         let rounding = view.scale(NODE_ROUNDING);
         let body_rect = view.rect_to_screen(rect);
         let title_rect = view.rect_to_screen(Rect::from_min_size(
@@ -405,13 +402,13 @@ fn draw_nodes(ui: &mut egui::Ui, state: &EditorState, view: &Transform, wire_tar
         let label_offset = pin_radius + view.scale(LABEL_GAP);
 
         // Input pins.
-        for (i, ih) in inputs.iter().enumerate() {
+        for (i, ih) in state.workflow.node_inputs(nh).enumerate() {
             let pin_center = view.canvas_to_screen(input_pin_pos(rect, i));
-            let connected = state.workflow.input_source(*ih).is_some();
+            let connected = state.workflow.input_source(ih).is_some();
             if connected {
                 painter.circle_filled(pin_center, pin_radius, Color32::from_rgb(200, 200, 200));
             } else {
-                let stroke_width = if wire_target == Some(*ih) {
+                let stroke_width = if wire_target == Some(ih) {
                     PIN_HOVER_STROKE_WIDTH
                 } else {
                     PIN_STROKE_WIDTH
@@ -422,7 +419,7 @@ fn draw_nodes(ui: &mut egui::Ui, state: &EditorState, view: &Transform, wire_tar
                     Stroke::new(view.scale(stroke_width), Color32::from_rgb(160, 160, 160)),
                 );
             }
-            let label = pin_label(&input_labels[*ih], declared_name(in_args, i));
+            let label = pin_label(&input_labels[ih], declared_name(in_args, i));
             if draw_text && !label.is_empty() {
                 painter.text(
                     pin_center + Vec2::new(label_offset, 0.0),
@@ -435,10 +432,10 @@ fn draw_nodes(ui: &mut egui::Ui, state: &EditorState, view: &Transform, wire_tar
         }
 
         // Output pins.
-        for (i, oh) in outputs.iter().enumerate() {
+        for (i, oh) in state.workflow.node_outputs(nh).enumerate() {
             let pin_center = view.canvas_to_screen(output_pin_pos(rect, i));
             painter.circle_filled(pin_center, pin_radius, Color32::from_rgb(200, 200, 200));
-            let label = pin_label(&output_labels[*oh], declared_name(out_args, i));
+            let label = pin_label(&output_labels[oh], declared_name(out_args, i));
             if draw_text && !label.is_empty() {
                 painter.text(
                     pin_center - Vec2::new(label_offset, 0.0),
@@ -449,5 +446,87 @@ fn draw_nodes(ui: &mut egui::Ui, state: &EditorState, view: &Transform, wire_tar
                 );
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    /// Node width has its own floor (`MIN_NODE_WIDTH`, driven by measured text), but height is
+    /// purely a function of pin count — this is the contract `input_pin_pos`/`output_pin_pos`
+    /// and every hit-test in `interaction.rs` built on top of `node_rect` rely on staying in
+    /// sync with.
+    #[test]
+    fn t_node_height_grows_with_pin_count() {
+        assert!(node_height(1, 1) < node_height(5, 1));
+        assert!(node_height(1, 1) < node_height(1, 5));
+        assert!(node_height(0, 0) > TITLE_HEIGHT, "even an empty node reserves room below the title");
+    }
+
+    /// Regression guard for the exact desync the review flagged as possible: if `node_height`'s
+    /// formula and `input_pin_pos`'s per-pin offset ever drift apart, the last pin on a many-pin
+    /// node would sit outside the node's own body with no test catching it.
+    #[test]
+    fn t_node_height_reserves_room_for_the_last_pin() {
+        for n in [1usize, 4, 10] {
+            let rect = node_rect([0.0, 0.0], [200.0, node_height(n, n)]);
+            let last_input_y = input_pin_pos(rect, n - 1).y;
+            let last_output_y = output_pin_pos(rect, n - 1).y;
+            assert!(
+                last_input_y < rect.max.y,
+                "last input pin (n={n}) must fit inside the node body: {last_input_y} vs bottom {}",
+                rect.max.y
+            );
+            assert!(
+                last_output_y < rect.max.y,
+                "last output pin (n={n}) must fit inside the node body: {last_output_y} vs bottom {}",
+                rect.max.y
+            );
+        }
+    }
+
+    #[test]
+    fn t_input_and_output_pins_sit_on_opposite_edges_at_the_same_height() {
+        let rect = node_rect([10.0, 20.0], [200.0, 100.0]);
+        let input = input_pin_pos(rect, 2);
+        let output = output_pin_pos(rect, 2);
+        assert_eq!(input.x, rect.min.x, "input pins sit on the left edge");
+        assert_eq!(output.x, rect.max.x, "output pins sit on the right edge");
+        assert_eq!(
+            input.y, output.y,
+            "the same pin index should line up horizontally across both columns"
+        );
+    }
+
+    #[test]
+    fn t_node_rect_uses_position_as_the_min_corner() {
+        let rect = node_rect([5.0, 7.0], [40.0, 30.0]);
+        assert_eq!(rect.min, Pos2::new(5.0, 7.0));
+        assert_eq!(rect.max, Pos2::new(45.0, 37.0));
+    }
+
+    /// A reversed condition here (returning `declared` whenever it exists, regardless of
+    /// `explicit`) would silently discard every user-set pin label; nothing else in the crate
+    /// would catch it since labels are just cosmetic text.
+    #[test]
+    fn t_pin_label_prefers_explicit_over_declared() {
+        assert_eq!(pin_label("custom", Some("declared")), "custom");
+        assert_eq!(pin_label("", Some("declared")), "declared");
+        assert_eq!(pin_label("", None), "");
+    }
+
+    #[test]
+    fn t_bezier_control_points_respect_the_minimum_handle_offset() {
+        // Start and end are much closer together than `min_offset`, so the handles must still
+        // bow out by min_offset/2 rather than collapsing to a near-straight, near-zero-length
+        // curve.
+        let start = Pos2::new(0.0, 0.0);
+        let end = Pos2::new(1.0, 0.0);
+        let points = bezier_control_points(start, end, 80.0);
+        assert_eq!(points[0], start);
+        assert_eq!(points[3], end);
+        assert!(points[1].x - start.x >= 40.0 - 1e-4);
+        assert!(end.x - points[2].x >= 40.0 - 1e-4);
     }
 }

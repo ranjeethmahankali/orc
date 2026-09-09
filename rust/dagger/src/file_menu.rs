@@ -25,29 +25,37 @@ fn display_name(state: &EditorState) -> String {
     )
 }
 
+/// Given the user's answer to "save before continuing?" and whether a save was actually
+/// attempted and succeeded, decide whether it's OK to discard the current workflow. Kept as a
+/// pure function, independent of `rfd`, so this decision can be unit tested without driving a
+/// real native dialog — `confirm_discard` below is otherwise untestable end to end.
+fn resolve_discard(answer: rfd::MessageDialogResult, saved_successfully: bool) -> bool {
+    match answer {
+        // If Save (or Save As) failed or was cancelled, treat that the same as the user
+        // cancelling the whole operation, rather than discarding.
+        rfd::MessageDialogResult::Yes => saved_successfully,
+        rfd::MessageDialogResult::No => true,
+        _ => false,
+    }
+}
+
 /// Ask (via a native dialog) whether it's OK to discard the current workflow, saving it first
-/// if the user wants to. Every path that would otherwise throw away unsaved work — New, Open —
-/// must gate on this first.
-fn confirm_discard(state: &mut EditorState) -> bool {
+/// if the user wants to. Every path that would otherwise throw away unsaved work — New, Open,
+/// closing the app — must gate on this first.
+pub(crate) fn confirm_discard(state: &mut EditorState) -> bool {
     if !state.dirty {
         return true;
     }
     let name = display_name(state);
-    match rfd::MessageDialog::new()
+    let answer = rfd::MessageDialog::new()
         .set_title("Unsaved Changes")
         .set_description(format!("Save changes to \"{name}\" before continuing?"))
         .set_buttons(rfd::MessageButtons::YesNoCancel)
-        .show()
-    {
-        rfd::MessageDialogResult::Yes => {
-            save(state);
-            // If Save (or Save As) failed or was cancelled, `dirty` is still true — treat that
-            // the same as the user cancelling the whole operation, rather than discarding.
-            !state.dirty
-        }
-        rfd::MessageDialogResult::No => true,
-        _ => false,
+        .show();
+    if answer == rfd::MessageDialogResult::Yes {
+        save(state);
     }
+    resolve_discard(answer, !state.dirty)
 }
 
 pub(crate) fn open_workflow(path: &Path) -> Result<Workflow, String> {
@@ -66,11 +74,20 @@ pub(crate) fn open_workflow(path: &Path) -> Result<Workflow, String> {
 
 /// `write_to_msgpack` refuses to run while anything is flagged deleted, so every save first
 /// collapses tombstoned nodes and links for good.
-fn save_workflow(workflow: &mut Workflow, path: &Path) -> Result<(), String> {
-    workflow.garbage_collection().map_err(|e| e.to_string())?;
+///
+/// `garbage_collection()` compacts and renumbers every surviving output/input/link with no way
+/// for the caller to remap a handle it's holding onto — so any `OH` captured in UI-side state
+/// across a frame (an in-progress wire drag, or a context menu mid-"connect from output") would
+/// be silently invalidated by it, either pointing at the wrong pin afterward or panicking. There
+/// is no way to safely carry either across this call, so both are dropped first.
+fn save_workflow(state: &mut EditorState, path: &Path) -> Result<(), String> {
+    state.pending_wire = None;
+    state.context_menu = None;
+    state.workflow.garbage_collection().map_err(|e| e.to_string())?;
     let file = std::fs::File::create(path).map_err(|e| e.to_string())?;
     let mut writer = std::io::BufWriter::new(file);
-    workflow
+    state
+        .workflow
         .write_to_msgpack(&crate::PLUGIN_SET, &crate::SERIAL_CONTEXT_ARENA, &mut writer)
         .map_err(|e| e.to_string())
 }
@@ -79,7 +96,7 @@ fn save_as(state: &mut EditorState) {
     let Some(path) = dialog().save_file() else {
         return;
     };
-    match save_workflow(&mut state.workflow, &path) {
+    match save_workflow(state, &path) {
         Ok(()) => {
             state.current_path = Some(path);
             state.dirty = false;
@@ -92,7 +109,7 @@ fn save(state: &mut EditorState) {
     let Some(path) = state.current_path.clone() else {
         return save_as(state);
     };
-    match save_workflow(&mut state.workflow, &path) {
+    match save_workflow(state, &path) {
         Ok(()) => state.dirty = false,
         Err(e) => state.file_error = Some(format!("Failed to save {}: {e}", path.display())),
     }
@@ -238,15 +255,75 @@ mod test {
         workflow
             .add_inspect_node("inspect".to_string(), &mut inputs)
             .unwrap();
+        let mut state = EditorState::from_workflow(workflow);
 
         let path = std::env::temp_dir().join(format!(
             "dagger_test_{}.orc",
             crate::HANDLE_COUNTER.fetch_add(1, Ordering::Relaxed)
         ));
-        save_workflow(&mut workflow, &path).expect("save should succeed");
+        save_workflow(&mut state, &path).expect("save should succeed");
         let reloaded = open_workflow(&path).expect("open should succeed");
         std::fs::remove_file(&path).ok();
 
-        assert_eq!(reloaded.node_iter().count(), workflow.node_iter().count());
+        assert_eq!(
+            reloaded.node_iter().count(),
+            state.workflow.node_iter().count()
+        );
+    }
+
+    /// Regression test for a stale-handle bug found in review: `garbage_collection()` (which
+    /// every save runs) compacts and renumbers surviving outputs with no remap table exposed to
+    /// the caller, so any `OH` a UI gesture is still holding onto (an in-progress wire drag, or
+    /// a context menu's "connect from output") must not survive it — otherwise finishing that
+    /// gesture after the save could silently wire up the wrong pin, or panic.
+    #[test]
+    fn t_save_clears_pending_gestures_that_garbage_collection_would_invalidate() {
+        let mut wf = Workflow::default();
+        let mut ins: Vec<orc_sdk::IH> = vec![];
+        let mut outs: Vec<orc_sdk::OH> = vec![orc_sdk::OH::default()];
+        wf.add_function(orc_sdk::FuncInfo::default(), &mut ins, &mut outs)
+            .unwrap();
+        let oh = outs[0];
+        let mut state = EditorState::from_workflow(wf);
+
+        state.pending_wire = Some(oh);
+        crate::context_menu::open(
+            &mut state,
+            crate::interaction::ContextMenuRequest::FromOutput(oh, egui::Pos2::ZERO),
+        );
+        assert!(state.context_menu.is_some());
+
+        let path = std::env::temp_dir().join(format!(
+            "dagger_test_gc_clear_{}.orc",
+            crate::HANDLE_COUNTER.fetch_add(1, Ordering::Relaxed)
+        ));
+        save_workflow(&mut state, &path).expect("save should succeed");
+        std::fs::remove_file(&path).ok();
+
+        assert!(
+            state.pending_wire.is_none(),
+            "a pending wire must not survive garbage_collection"
+        );
+        assert!(
+            state.context_menu.is_none(),
+            "an open context menu's connect_from must not survive garbage_collection"
+        );
+    }
+
+    #[test]
+    fn t_resolve_discard_yes_only_discards_if_the_save_actually_succeeded() {
+        assert!(resolve_discard(rfd::MessageDialogResult::Yes, true));
+        assert!(!resolve_discard(rfd::MessageDialogResult::Yes, false));
+    }
+
+    #[test]
+    fn t_resolve_discard_no_always_discards() {
+        assert!(resolve_discard(rfd::MessageDialogResult::No, false));
+        assert!(resolve_discard(rfd::MessageDialogResult::No, true));
+    }
+
+    #[test]
+    fn t_resolve_discard_cancel_never_discards() {
+        assert!(!resolve_discard(rfd::MessageDialogResult::Cancel, true));
     }
 }

@@ -22,11 +22,11 @@ pub struct ContextMenuState {
 
 /// Filters the menu's entries as the user types. Case-insensitive substring match today;
 /// swappable later for fuzzy/Levenshtein matching without touching the menu itself.
-pub trait FunctionFilter {
+trait FunctionFilter {
     fn matches(&self, query: &str, name: &str) -> bool;
 }
 
-pub struct SubstringFilter;
+struct SubstringFilter;
 
 impl FunctionFilter for SubstringFilter {
     fn matches(&self, query: &str, name: &str) -> bool {
@@ -120,6 +120,22 @@ fn finish_node_creation(state: &mut EditorState, nh: orc_sdk::NH, screen_pos: Po
     state.dirty = true;
 }
 
+/// Connect `from` to `first`, but only if `from`'s owning node is still live. A `connect_from`
+/// carried in `ContextMenuState` is just as vulnerable as `EditorState::pending_wire` to being
+/// invalidated by a node deletion that happens while the menu is open, even though today the
+/// menu's own text field holds keyboard focus for its whole lifetime (which already blocks
+/// Delete via `delete_selected`'s focus guard) — this is a second line of defense against that
+/// assumption ever changing. Any real connect failure is surfaced the same way file I/O errors
+/// are, via `state.file_error`.
+fn connect_from_menu(state: &mut EditorState, from: OH, to: IH) {
+    if !crate::interaction::output_is_live(&state.workflow, from) {
+        return;
+    }
+    if let Err(e) = state.workflow.connect(from, to) {
+        state.file_error = Some(format!("Failed to connect new node: {e}"));
+    }
+}
+
 fn create_function_node(
     state: &mut EditorState,
     info: FuncInfo,
@@ -130,11 +146,15 @@ fn create_function_node(
     let n_out = info.n_outputs.unwrap_or(2);
     let mut inputs = vec![IH::default(); n_in];
     let mut outputs = vec![OH::default(); n_out];
-    let Ok(nh) = state.workflow.add_function(info, &mut inputs, &mut outputs) else {
-        return;
+    let nh = match state.workflow.add_function(info, &mut inputs, &mut outputs) {
+        Ok(nh) => nh,
+        Err(e) => {
+            state.file_error = Some(format!("Failed to create node: {e}"));
+            return;
+        }
     };
     if let (Some(from), Some(&first)) = (connect_from, inputs.first()) {
-        let _ = state.workflow.connect(from, first);
+        connect_from_menu(state, from, first);
     }
     finish_node_creation(state, nh, screen_pos);
 }
@@ -146,11 +166,15 @@ fn create_inspect_node(
     connect_from: Option<OH>,
 ) {
     let mut inputs = vec![IH::default(); 1];
-    let Ok(nh) = state.workflow.add_inspect_node(label, &mut inputs) else {
-        return;
+    let nh = match state.workflow.add_inspect_node(label, &mut inputs) {
+        Ok(nh) => nh,
+        Err(e) => {
+            state.file_error = Some(format!("Failed to create node: {e}"));
+            return;
+        }
     };
     if let Some(from) = connect_from {
-        let _ = state.workflow.connect(from, inputs[0]);
+        connect_from_menu(state, from, inputs[0]);
     }
     finish_node_creation(state, nh, screen_pos);
 }
@@ -164,14 +188,16 @@ fn create_constant_node(state: &mut EditorState, values: &[f64], screen_pos: Pos
     for (i, &v) in values.iter().enumerate() {
         deck.push(v, if values.len() > 1 && i == 0 { 1 } else { 0 });
     }
-    if crate::REGISTRY
-        .alloc_with_value(Some(deck), &mut handle)
-        .is_err()
-    {
+    if let Err(e) = crate::REGISTRY.alloc_with_value(Some(deck), &mut handle) {
+        state.file_error = Some(format!("Failed to allocate constant: {e}"));
         return;
     }
-    let Ok((nh, _oh)) = state.workflow.add_constant(handle) else {
-        return;
+    let nh = match state.workflow.add_constant(handle) {
+        Ok((nh, _oh)) => nh,
+        Err(e) => {
+            state.file_error = Some(format!("Failed to create node: {e}"));
+            return;
+        }
     };
     finish_node_creation(state, nh, screen_pos);
 }
@@ -208,6 +234,12 @@ pub fn update(ui: &mut egui::Ui, state: &mut EditorState) {
     let mut activate = enter;
     let screen_pos = menu.screen_pos;
 
+    // Computed once inside the popup closure below (after this frame's edit to menu.query, if
+    // any) and reused for both rendering and activation — `menu_entries` does a full plugin scan
+    // with per-candidate allocations, so recomputing it a second time for the exact same query
+    // on the same frame is pure waste.
+    let mut entries: Vec<(String, MenuAction)> = Vec::new();
+
     egui::Popup::new(
         egui::Id::new("dagger-context-menu"),
         ui.ctx().clone(),
@@ -232,7 +264,7 @@ pub fn update(ui: &mut egui::Ui, state: &mut EditorState) {
         }
 
         ui.separator();
-        let entries = menu_entries(&menu.query);
+        entries = menu_entries(&menu.query);
         if !entries.is_empty() {
             menu.selected = menu.selected.min(entries.len() - 1);
         }
@@ -250,7 +282,6 @@ pub fn update(ui: &mut egui::Ui, state: &mut EditorState) {
     });
 
     if activate {
-        let entries = menu_entries(&menu.query);
         if let Some((_, action)) = entries.into_iter().nth(menu.selected) {
             let connect_from = menu.connect_from;
             match action {

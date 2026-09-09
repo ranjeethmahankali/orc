@@ -37,6 +37,20 @@ impl DaggerApp {
 
 impl eframe::App for DaggerApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        // eframe's default close behavior exits immediately once the OS close event arrives, so
+        // unlike File > New/Open (which already gate on confirm_discard), closing the window
+        // directly would otherwise silently discard unsaved work with no prompt at all.
+        let close_requested = ui.ctx().input(|i| {
+            i.viewport()
+                .events
+                .iter()
+                .any(|e| matches!(e, egui::ViewportEvent::Close))
+        });
+        if close_requested && !file_menu::confirm_discard(&mut self.state) {
+            ui.ctx()
+                .send_viewport_cmd(egui::ViewportCommand::CancelClose);
+        }
+
         file_menu::handle_shortcuts(ui.ctx(), &mut self.state);
         egui::Panel::top("dagger-menu-bar").show(ui, |ui| {
             file_menu::menu_bar(ui, &mut self.state);
