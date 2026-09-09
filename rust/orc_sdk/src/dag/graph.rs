@@ -272,32 +272,32 @@ impl Graph {
         self.link_props.push_value()
     }
 
-    pub fn create_input_property<T>(&mut self, default: T) -> InputProperty<T>
+    pub fn create_input_property<T>(&mut self) -> InputProperty<T>
     where
-        T: Clone + 'static,
+        T: Default + 'static,
     {
-        InputProperty::new(&mut self.input_props, default)
+        InputProperty::new(&mut self.input_props)
     }
 
-    pub fn create_output_property<T>(&mut self, default: T) -> OutputProperty<T>
+    pub fn create_output_property<T>(&mut self) -> OutputProperty<T>
     where
-        T: Clone + 'static,
+        T: Default + 'static,
     {
-        OutputProperty::new(&mut self.output_props, default)
+        OutputProperty::new(&mut self.output_props)
     }
 
-    pub fn create_link_property<T>(&mut self, default: T) -> LinkProperty<T>
+    pub fn create_link_property<T>(&mut self) -> LinkProperty<T>
     where
-        T: Clone + 'static,
+        T: Default + 'static,
     {
-        LinkProperty::new(&mut self.link_props, default)
+        LinkProperty::new(&mut self.link_props)
     }
 
-    pub fn create_node_property<T>(&mut self, default: T) -> NodeProperty<T>
+    pub fn create_node_property<T>(&mut self) -> NodeProperty<T>
     where
-        T: Clone + 'static,
+        T: Default + 'static,
     {
-        NodeProperty::new(&mut self.node_props, default)
+        NodeProperty::new(&mut self.node_props)
     }
 
     fn link_consecutive_inputs(&mut self, prev: IH, next: IH) {

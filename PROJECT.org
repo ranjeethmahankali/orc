@@ -719,11 +719,12 @@
      :END:
 
      *Incremental execution:*
-     - [ ] ~OutputProperty<Rc<OrcHandle>>~ in EditorState stores cached results per output pin,
-       defaulting to ~Rc::new(OrcHandle::default())~ as the "not yet computed" sentinel.
-       ~OrcHandle~ has an owning ~Drop~ and isn't ~Clone~, so the ~Rc~ wrapper is there only to
-       satisfy ~Property~'s ~T: Clone~ bound — cloning it bumps a refcount, it never duplicates
-       the underlying handle.
+     - [ ] ~OutputProperty<OrcHandle>~ in EditorState stores cached results per output pin,
+       defaulting to ~OrcHandle::default()~ (zeroed, no backing deck) as the "not yet computed"
+       sentinel. Now that ~Property<H, T>~ only requires ~T: Default~ (not ~Clone~, since
+       09/08's "Remove Clone from Properties" commit), this needs no wrapper at all — properties
+       seed new/missing slots with ~T::default()~ instead of cloning a stored default value, and
+       ~OrcHandle~ already implements ~Default~.
      - [ ] On topology change (connect, disconnect, add, delete), mark affected outputs as stale
        (set to None). Propagate staleness downstream: any node whose input comes from a stale
        output also has all its outputs marked stale.

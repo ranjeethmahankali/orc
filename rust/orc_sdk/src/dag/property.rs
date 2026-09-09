@@ -79,13 +79,6 @@ where
         Ok(())
     }
 
-    pub fn copy(&mut self, src: H, dst: H) -> Result<(), DagError> {
-        for prop in self.props.iter_mut() {
-            prop.copy(src.index(), dst.index())?;
-        }
-        Ok(())
-    }
-
     pub fn len(&self) -> usize {
         self.length
     }
@@ -109,8 +102,6 @@ where
 
     fn swap(&mut self, i: usize, j: usize) -> Result<(), DagError>;
 
-    fn copy(&mut self, src: usize, dst: usize) -> Result<(), DagError>;
-
     fn is_valid(&self) -> bool;
 }
 
@@ -125,7 +116,7 @@ where
 pub struct PropBuf<H, T>
 where
     H: Handle,
-    T: Clone,
+    T: Default,
 {
     buf: Vec<T>,
     _phantom: PhantomData<H>,
@@ -186,17 +177,16 @@ pub type NodePropBuf<T> = PropBuf<NH, T>;
 struct WeakProperty<H, T>
 where
     H: Handle,
-    T: Clone,
+    T: Default,
 {
     data: Weak<RefCell<PropBuf<H, T>>>,
-    default: T,
 }
 
 /// The element handle can be used to index into the property buffer.
 impl<H, T> Index<H> for PropBuf<H, T>
 where
     H: Handle,
-    T: Clone,
+    T: Default,
 {
     type Output = T;
 
@@ -209,7 +199,7 @@ where
 impl<H, T> IndexMut<H> for PropBuf<H, T>
 where
     H: Handle,
-    T: Clone + 'static,
+    T: Default + 'static,
 {
     /// Get the mutable reference to the property of the element corresponding
     /// to handle `h`.
@@ -222,7 +212,7 @@ where
 impl<H, T> Deref for PropBuf<H, T>
 where
     H: Handle,
-    T: Clone,
+    T: Default,
 {
     type Target = [T];
 
@@ -233,7 +223,7 @@ where
 
 impl<H, T> GenericProperty<H> for WeakProperty<H, T>
 where
-    T: Clone,
+    T: Default,
     H: Handle,
 {
     /**
@@ -254,7 +244,7 @@ where
             prop.try_borrow_mut()
                 .map_err(|_| DagError::BorrowedPropertyAccess)?
                 .buf
-                .resize(n, self.default.clone());
+                .resize_with(n, || T::default());
         }
         Ok(())
     }
@@ -274,7 +264,7 @@ where
             prop.try_borrow_mut()
                 .map_err(|_| DagError::BorrowedPropertyAccess)?
                 .buf
-                .push(self.default.clone());
+                .push(T::default());
         }
         Ok(())
     }
@@ -284,17 +274,6 @@ where
             prop.try_borrow_mut()
                 .map_err(|_| DagError::BorrowedPropertyAccess)?
                 .swap(i, j);
-        }
-        Ok(())
-    }
-
-    fn copy(&mut self, src: usize, dst: usize) -> Result<(), DagError> {
-        if let Some(prop) = self.data.upgrade() {
-            let mut buf = prop
-                .try_borrow_mut()
-                .map_err(|_| DagError::BorrowedPropertyAccess)?;
-            let buf: &mut [T] = &mut buf;
-            buf[dst] = buf[src].clone();
         }
         Ok(())
     }
@@ -320,42 +299,35 @@ where
 pub struct Property<H, T>
 where
     H: Handle,
-    T: Clone,
+    T: Default,
 {
     data: Rc<RefCell<PropBuf<H, T>>>,
-    default: T,
 }
 
 impl<H, T> Property<H, T>
 where
     H: Handle,
-    T: Clone + 'static,
+    T: Default + 'static,
 {
-    pub(crate) fn new(container: &mut PropertyContainer<H>, default: T) -> Self {
+    pub(crate) fn new(container: &mut PropertyContainer<H>) -> Self {
         let prop = Property {
             data: Rc::new(RefCell::new(PropBuf {
-                buf: vec![default.clone(); container.len()],
+                buf: (0..container.len()).map(|_| T::default()).collect(),
                 _phantom: PhantomData,
             })),
-            default,
         };
         container.push_property(prop.generic_ref());
         prop
     }
 
-    pub(crate) fn with_capacity(
-        n: usize,
-        container: &mut PropertyContainer<H>,
-        default: T,
-    ) -> Self {
+    pub(crate) fn with_capacity(n: usize, container: &mut PropertyContainer<H>) -> Self {
         let mut buf = Vec::with_capacity(n);
-        buf.resize(container.len(), default.clone());
+        buf.resize_with(container.len(), || T::default());
         let prop = Property {
             data: Rc::new(RefCell::new(PropBuf {
                 buf,
                 _phantom: PhantomData,
             })),
-            default,
         };
         container.push_property(prop.generic_ref());
         prop
@@ -364,7 +336,6 @@ where
     fn generic_ref(&self) -> Box<dyn GenericProperty<H>> {
         Box::new(WeakProperty::<H, T> {
             data: Rc::downgrade(&self.data),
-            default: self.default.clone(),
         })
     }
 
@@ -409,7 +380,10 @@ where
     ///
     /// The function internally tries to borrow the property and returns an
     /// error if borrowing fails.
-    pub fn get_cloned(&self, h: H) -> Result<T, DagError> {
+    pub fn get_cloned(&self, h: H) -> Result<T, DagError>
+    where
+        T: Clone,
+    {
         let buf = self.try_borrow()?;
         Ok(buf[h].clone())
     }
@@ -449,7 +423,7 @@ where
 impl<H, T> DerefMut for PropBuf<H, T>
 where
     H: Handle,
-    T: Clone,
+    T: Default,
 {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.buf
@@ -466,17 +440,17 @@ mod test {
     #[test]
     fn t_property_default_on_creation() {
         let mut g = Graph::default();
-        let labels = g.create_node_property("unnamed".to_string());
+        let labels = g.create_node_property::<String>();
         let mut ins = [IH::default()];
         let mut outs = [OH::default()];
         let n = g.push_node(&mut ins, &mut outs).unwrap();
-        assert_eq!(*labels.get(n).unwrap(), "unnamed");
+        assert_eq!(*labels.get(n).unwrap(), "");
     }
 
     #[test]
     fn t_property_set_and_get() {
         let mut g = Graph::default();
-        let mut labels = g.create_node_property(0i32);
+        let mut labels = g.create_node_property::<i32>();
         let n0 = g.push_node(&mut [], &mut []).unwrap();
         let n1 = g.push_node(&mut [], &mut []).unwrap();
         labels.set(n0, 42).unwrap();
@@ -488,7 +462,7 @@ mod test {
     #[test]
     fn t_property_get_cloned() {
         let mut g = Graph::default();
-        let mut labels = g.create_node_property(String::new());
+        let mut labels = g.create_node_property::<String>();
         let n = g.push_node(&mut [], &mut []).unwrap();
         labels.set(n, "hello".into()).unwrap();
         let val = labels.get_cloned(n).unwrap();
@@ -501,27 +475,27 @@ mod test {
         let n0 = g.push_node(&mut [], &mut []).unwrap();
         let n1 = g.push_node(&mut [], &mut []).unwrap();
         // Property created after 2 nodes exist — should have 2 entries with default.
-        let labels = g.create_node_property(7i32);
-        assert_eq!(*labels.get(n0).unwrap(), 7);
-        assert_eq!(*labels.get(n1).unwrap(), 7);
+        let labels = g.create_node_property::<i32>();
+        assert_eq!(*labels.get(n0).unwrap(), i32::default());
+        assert_eq!(*labels.get(n1).unwrap(), i32::default());
     }
 
     #[test]
     fn t_property_grows_with_new_elements() {
         let mut g = Graph::default();
-        let mut labels = g.create_node_property(-1i32);
+        let mut labels = g.create_node_property::<i32>();
         let n0 = g.push_node(&mut [], &mut []).unwrap();
         labels.set(n0, 100).unwrap();
         // Add another node — property should grow with default.
         let n1 = g.push_node(&mut [], &mut []).unwrap();
         assert_eq!(*labels.get(n0).unwrap(), 100);
-        assert_eq!(*labels.get(n1).unwrap(), -1);
+        assert_eq!(*labels.get(n1).unwrap(), i32::default());
     }
 
     #[test]
     fn t_input_property_on_multi_input_node() {
         let mut g = Graph::default();
-        let mut costs = g.create_input_property(0.0f64);
+        let mut costs = g.create_input_property::<f64>();
         let mut ins = [IH::default(); 3];
         let _n = g.push_node(&mut ins, &mut []).unwrap();
         costs.set(ins[0], 1.0).unwrap();
@@ -535,7 +509,7 @@ mod test {
     #[test]
     fn t_link_property() {
         let (mut g, _, ins, outs, links) = chain_graph();
-        let mut weights = g.create_link_property(1.0f64);
+        let mut weights = g.create_link_property::<f64>();
         weights.set(links[0], 0.5).unwrap();
         weights.set(links[1], 0.8).unwrap();
         assert_eq!(*weights.get(links[0]).unwrap(), 0.5);
@@ -548,8 +522,8 @@ mod test {
     #[test]
     fn t_multiple_properties_on_same_handle_type() {
         let mut g = Graph::default();
-        let mut names = g.create_node_property(String::new());
-        let mut flags = g.create_node_property(false);
+        let mut names = g.create_node_property::<String>();
+        let mut flags = g.create_node_property::<bool>();
         let n = g.push_node(&mut [], &mut []).unwrap();
         names.set(n, "add".into()).unwrap();
         flags.set(n, true).unwrap();
@@ -562,7 +536,7 @@ mod test {
         let mut g = Graph::default();
         let _n = g.push_node(&mut [], &mut []).unwrap();
         {
-            let _temp = g.create_node_property(0i32);
+            let _temp = g.create_node_property::<i32>();
             assert_eq!(g.node_props.props.len(), 1);
             // _temp dropped here
         }
@@ -573,7 +547,7 @@ mod test {
     #[test]
     fn t_propbuf_deref_to_slice() {
         let mut g = Graph::default();
-        let mut vals = g.create_node_property(0i32);
+        let mut vals = g.create_node_property::<i32>();
         let n0 = g.push_node(&mut [], &mut []).unwrap();
         let n1 = g.push_node(&mut [], &mut []).unwrap();
         vals.set(n0, 10).unwrap();
@@ -586,7 +560,7 @@ mod test {
     #[test]
     fn t_propbuf_index_by_handle() {
         let mut g = Graph::default();
-        let mut vals = g.create_node_property(0i32);
+        let mut vals = g.create_node_property::<i32>();
         let n0 = g.push_node(&mut [], &mut []).unwrap();
         let n1 = g.push_node(&mut [], &mut []).unwrap();
         vals.set(n0, 10).unwrap();

@@ -43,11 +43,10 @@ pub struct EditorState {
 
 impl EditorState {
     pub fn from_workflow(mut workflow: Workflow) -> Self {
-        let node_positions = workflow.create_node_property([0.0f32, 0.0]);
-        let node_sizes =
-            workflow.create_node_property([render::MIN_NODE_WIDTH, render::node_height(1, 1)]);
-        let node_in_cycle = workflow.create_node_property(false);
-        let selected = workflow.create_node_property(false);
+        let node_positions = workflow.create_node_property();
+        let node_sizes = workflow.create_node_property();
+        let node_in_cycle = workflow.create_node_property();
+        let selected = workflow.create_node_property();
         let mut state = Self {
             workflow,
             node_positions,

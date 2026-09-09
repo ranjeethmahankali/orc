@@ -63,11 +63,11 @@ pub struct Workflow {
 impl Default for Workflow {
     fn default() -> Self {
         let mut graph = Graph::default();
-        let node_infos = graph.create_node_property(NodeInfo::default());
-        let input_labels = graph.create_input_property(String::default());
-        let output_labels = graph.create_output_property(String::default());
-        let node_comments = graph.create_node_property(String::default());
-        let workflow_input_index = graph.create_input_property(None);
+        let node_infos = graph.create_node_property();
+        let input_labels = graph.create_input_property();
+        let output_labels = graph.create_output_property();
+        let node_comments = graph.create_node_property();
+        let workflow_input_index = graph.create_input_property();
         Self {
             graph,
             node_infos,
@@ -90,12 +90,11 @@ impl Workflow {
         n_nodes: usize,
     ) -> Self {
         let mut graph = Graph::with_capacity(n_inputs, n_outputs, n_links, n_nodes);
-        let node_infos =
-            Property::with_capacity(n_nodes, &mut graph.node_props, NodeInfo::default());
-        let input_labels = graph.create_input_property(String::default());
-        let output_labels = graph.create_output_property(String::default());
-        let node_comments = graph.create_node_property(String::default());
-        let workflow_input_index = graph.create_input_property(None);
+        let node_infos = Property::with_capacity(n_nodes, &mut graph.node_props);
+        let input_labels = graph.create_input_property();
+        let output_labels = graph.create_output_property();
+        let node_comments = graph.create_node_property();
+        let workflow_input_index = graph.create_input_property();
         Workflow {
             graph,
             node_infos,
@@ -273,39 +272,39 @@ impl Workflow {
         self.graph.clear()
     }
 
-    pub fn create_input_property<T>(&mut self, default: T) -> InputProperty<T>
+    pub fn create_input_property<T>(&mut self) -> InputProperty<T>
     where
-        T: Clone + 'static,
+        T: Default + 'static,
     {
-        self.graph.create_input_property(default)
+        self.graph.create_input_property()
     }
 
-    pub fn create_output_property<T>(&mut self, default: T) -> OutputProperty<T>
+    pub fn create_output_property<T>(&mut self) -> OutputProperty<T>
     where
-        T: Clone + 'static,
+        T: Default + 'static,
     {
-        self.graph.create_output_property(default)
+        self.graph.create_output_property()
     }
 
-    pub fn create_link_property<T>(&mut self, default: T) -> LinkProperty<T>
+    pub fn create_link_property<T>(&mut self) -> LinkProperty<T>
     where
-        T: Clone + 'static,
+        T: Default + 'static,
     {
-        self.graph.create_link_property(default)
+        self.graph.create_link_property()
     }
 
-    pub fn create_node_property<T>(&mut self, default: T) -> NodeProperty<T>
+    pub fn create_node_property<T>(&mut self) -> NodeProperty<T>
     where
-        T: Clone + 'static,
+        T: Default + 'static,
     {
-        self.graph.create_node_property(default)
+        self.graph.create_node_property()
     }
 
     pub fn garbage_collection(&mut self) -> Result<(), DagError> {
         // Cache the workflow outputs in properties first. This will preserve them through the
         // shuffling that happens in garbage collection.
         let mut output_prop: OutputProperty<Option<(usize, String)>> =
-            self.create_output_property(None);
+            self.create_output_property();
         {
             let mut temp = output_prop.try_borrow_mut()?;
             for (i, (output, name)) in self.workflow_outputs.drain(..).enumerate() {
@@ -326,24 +325,6 @@ impl Workflow {
         self.workflow_outputs
             .extend(temp.into_iter().map(|(_, handle, name)| (handle, name)));
         Ok(())
-    }
-
-    pub fn duplicate_node(&mut self, old: NH) -> Result<NH, DagError> {
-        let src_inputs = self.graph.node_inputs(old).collect::<Box<[_]>>();
-        let mut input_handles = vec![IH::default(); src_inputs.len()];
-        let src_outputs = self.graph.node_outputs(old).collect::<Box<[_]>>();
-        let mut output_handles = vec![OH::default(); src_outputs.len()];
-        let new = self
-            .graph
-            .push_node(&mut input_handles, &mut output_handles)?;
-        self.graph.node_props.copy(old, new)?;
-        for (&new, &old) in input_handles.iter().zip(src_inputs.iter()) {
-            self.graph.input_props.copy(old, new)?;
-        }
-        for (&new, &old) in output_handles.iter().zip(src_outputs.iter()) {
-            self.graph.output_props.copy(old, new)?;
-        }
-        Ok(new)
     }
 
     pub fn get_terminal_outputs(&self) -> impl Iterator<Item = OH> {
@@ -676,37 +657,6 @@ mod test {
     }
 
     #[test]
-    fn t_workflow_duplicate_node() {
-        let mut w = Workflow::default();
-        let mut input_labels = w.create_input_property("default_in".to_string());
-        let mut ins = [IH::default(); 2];
-        let mut outs = [OH::default(); 1];
-        let orig = w
-            .add_function(make_func_info("mul"), &mut ins, &mut outs)
-            .unwrap();
-        input_labels.set(ins[0], "x".into()).unwrap();
-        input_labels.set(ins[1], "y".into()).unwrap();
-        let dup = w.duplicate_node(orig).unwrap();
-        assert_ne!(orig, dup);
-        // Duplicated node has same func info.
-        let orig_info = w.node_infos.get_cloned(orig).unwrap();
-        let dup_info = w.node_infos.get_cloned(dup).unwrap();
-        assert_eq!(orig_info.name(), dup_info.name());
-        // Duplicated node has same number of inputs/outputs.
-        assert_eq!(w.graph.node_inputs(dup).count(), 2);
-        assert_eq!(w.graph.node_outputs(dup).count(), 1);
-        // Input properties are copied.
-        let mut dup_ins = w.graph.node_inputs(dup);
-        assert_eq!(*input_labels.get(dup_ins.next().unwrap()).unwrap(), "x");
-        assert_eq!(*input_labels.get(dup_ins.next().unwrap()).unwrap(), "y");
-        assert!(dup_ins.next().is_none());
-        // Duplicated node is disconnected.
-        for ih in w.graph.node_inputs(dup) {
-            assert!(w.graph.inputs[ih.index()].link.is_none());
-        }
-    }
-
-    #[test]
     fn t_workflow_diamond_topology() {
         // A -> B, A -> C, B -> D, C -> D
         let mut w = Workflow::default();
@@ -823,8 +773,8 @@ mod test {
     #[test]
     fn t_workflow_with_custom_properties() {
         let mut w = Workflow::default();
-        let mut dirty = w.create_node_property(false);
-        let mut input_vals = w.create_input_property(0.0f64);
+        let mut dirty = w.create_node_property::<bool>();
+        let mut input_vals = w.create_input_property::<f64>();
 
         let mut a_out = [OH::default()];
         let na = w
