@@ -20,9 +20,6 @@ pub struct FrameEvents {
     /// Something changed that's worth an extra repaint (a drag, a selection, a connection).
     pub changed: bool,
     pub context_menu: Option<ContextMenuRequest>,
-    /// The node being actively dragged this frame, if any, so the layout step can exclude it
-    /// from the physics displacement while still reacting to its (cursor-driven) position.
-    pub dragged_node: Option<NH>,
 }
 
 fn pin_rect(center: Pos2, view: &Transform) -> Rect {
@@ -187,10 +184,7 @@ fn update_pending_wire(ui: &mut egui::Ui, state: &mut EditorState, source: OH) -
         let src = state.workflow.node_from_output(source);
         if !creates_cycle(&state.workflow, src, dst) {
             match state.workflow.connect(source, target) {
-                Ok(_) => {
-                    state.layout_converged = false;
-                    state.dirty = true;
-                }
+                Ok(_) => state.dirty = true,
                 Err(e) => state.file_error = Some(format!("Failed to connect: {e}")),
             }
         }
@@ -202,8 +196,8 @@ fn update_pending_wire(ui: &mut egui::Ui, state: &mut EditorState, source: OH) -
 /// this frame.
 ///
 /// A node's body senses drag so grabbing it anywhere (not just the title) moves the node,
-/// matching Obsidian's graph view: the force layout keeps running and pulls neighbours toward
-/// the moved node, but is free to settle it somewhere else entirely once the drag is released.
+/// matching a plain diagramming tool: dragging repositions the node directly and nothing else
+/// reacts, and it simply stays wherever it's released.
 ///
 /// Pins are interacted after the body, in the same order they're painted in, so a press on the
 /// sliver of a pin that overlaps the node's edge is claimed by the pin rather than starting a
@@ -297,9 +291,7 @@ pub fn update(
             positions[nh][0] += canvas_delta.x;
             positions[nh][1] += canvas_delta.y;
         }
-        state.layout_converged = false;
         events.changed = true;
-        events.dragged_node = Some(nh);
     }
 
     if let Some(source) = state.pending_wire {
@@ -361,7 +353,6 @@ pub fn delete_selected(ui: &mut egui::Ui, state: &mut EditorState) -> bool {
     {
         state.pending_wire = None;
     }
-    state.layout_converged = false;
     state.dirty = true;
     true
 }

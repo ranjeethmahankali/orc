@@ -2,7 +2,6 @@ use crate::canvas;
 use crate::context_menu;
 use crate::file_menu;
 use crate::interaction;
-use crate::layout;
 use crate::render;
 use crate::state::EditorState;
 use eframe::egui;
@@ -20,13 +19,11 @@ impl DaggerApp {
         path: Option<PathBuf>,
     ) -> Self {
         // By default egui snaps text to the nearest physical pixel so static text stays crisp.
-        // Node labels are essentially never static here — they're carried along by node
-        // dragging, the settling force layout and canvas pan/zoom — so that snap becomes visible
-        // as the label hopping between pixels a frame at a time instead of sliding smoothly,
-        // most noticeably right before the layout settles, when everything else has slowed to
-        // sub-pixel motion and the snap is the only thing left to see. Shapes don't have this
-        // problem: they're antialiased by feathering the edge, which blends smoothly across a
-        // sub-pixel offset instead of rounding it away.
+        // Node labels are not static here — they're carried along by node dragging and canvas
+        // pan/zoom — so that snap becomes visible as the label hopping between pixels a frame
+        // at a time instead of sliding smoothly. Shapes don't have this problem: they're
+        // antialiased by feathering the edge, which blends smoothly across a sub-pixel offset
+        // instead of rounding it away.
         cc.egui_ctx
             .tessellation_options_mut(|options| options.round_text_to_pixels = false);
         let mut state = EditorState::from_workflow(workflow);
@@ -78,15 +75,7 @@ impl eframe::App for DaggerApp {
                     context_menu::open(&mut self.state, request);
                 }
 
-                if !self.state.layout_converged {
-                    for _ in 0..2 {
-                        if layout::step(&mut self.state, events.dragged_node) {
-                            self.state.layout_converged = true;
-                            break;
-                        }
-                    }
-                    ui.ctx().request_repaint();
-                } else if view_moved {
+                if view_moved {
                     // Scroll deltas are smoothed over several frames, so keep painting
                     // until the zoom has caught up with the wheel.
                     ui.ctx().request_repaint();
@@ -95,6 +84,14 @@ impl eframe::App for DaggerApp {
                 render::draw(ui, &self.state);
 
                 context_menu::update(ui, &mut self.state);
+                if self.state.needs_measure {
+                    // A node created this frame (by the context menu) needs its real size
+                    // measured before it draws correctly, which only happens at the top of
+                    // the next frame — nothing else here guarantees one occurs, unlike
+                    // before, when the (now-removed) layout simulation kept repainting on
+                    // its own until it settled.
+                    ui.ctx().request_repaint();
+                }
                 if self.state.session_info_open {
                     let mut open = self.state.session_info_open;
                     context_menu::session_info_window(ui.ctx(), &mut open);

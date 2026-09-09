@@ -155,8 +155,8 @@ fn text_width(ctx: &egui::Context, text: &str, size: f32) -> f32 {
 
 /// Recompute every node's canvas-space size so that its title and both pin label columns fit.
 ///
-/// This must run inside a frame, because it measures text through the font system. The layout
-/// simulation reads these sizes, so it has to re-settle whenever they change.
+/// This must run inside a frame, because it measures text through the font system — which is
+/// why the layout can't be computed until the first frame, not at construction.
 pub fn measure_nodes(ctx: &egui::Context, workflow: &Workflow, sizes: &mut NodePropBuf<[f32; 2]>) {
     let node_info_prop = workflow.node_info_prop();
     let input_labels_prop = workflow.input_labels_prop();

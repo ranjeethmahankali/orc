@@ -1,36 +1,19 @@
-use crate::quadtree::{Contribution, QuadTree};
 use crate::state::EditorState;
 use orc_sdk::{DagHandle, NH, Workflow};
 
-const SPRING_K: f32 = 0.3;
-const SPRING_REST_LENGTH: f32 = 250.0;
-const REPULSION_STRENGTH: f32 = 5000.0;
-const REPULSION_MARGIN: f32 = 30.0;
-/// Coefficient for the extra `overlap^2` push once two node boxes (plus margin) actually
-/// overlap. See `repulsion_force` for why this is squared rather than linear.
-const OVERLAP_PUSH_STRENGTH: f32 = 0.03;
-const DAMPING: f32 = 0.5;
-const CENTER_Y_STRENGTH: f32 = 0.02;
-const DAG_MIN_GAP: f32 = 220.0;
-const DAG_CONSTRAINT_STRENGTH: f32 = 0.5;
-const CONVERGENCE_THRESHOLD: f32 = 0.1;
-const MAX_DISPLACEMENT: f32 = 50.0;
-/// Below this many nodes, summing repulsion directly over every pair is faster than
-/// building a quadtree first — confirmed by the before/after numbers in `bench` (see
-/// `quadtree.rs`'s module doc for why the tree wins at all above some size: it turns an
-/// O(n^2) scan into an O(n log n) one by approximating distant clusters as a single point).
-/// Below the crossover the tree's own build cost dominates instead, since it's still
-/// O(n log n) work just to construct.
-const BRUTE_FORCE_NODE_THRESHOLD: usize = 200;
-/// Top-left starting point for the depth-0 layer's seed positions, in canvas units. Purely a
-/// visual choice for where the layout starts before the user ever pans.
-const SEED_ORIGIN_X: f32 = 100.0;
-const SEED_ORIGIN_Y: f32 = 300.0;
-/// Vertical spacing between nodes seeded into the same depth layer. Not derived from any
-/// measured node height, since sizes aren't known yet at seed time (`measure()` hasn't run on
-/// the first frame) — just a reasonable guess the force simulation is free to correct once real
-/// sizes are available.
-const SEED_ROW_HEIGHT: f32 = 120.0;
+/// Top-left starting point for the depth-0 layer, in canvas units. Purely a visual choice for
+/// where the layout starts before the user ever pans.
+const LAYOUT_ORIGIN_X: f32 = 100.0;
+const LAYOUT_ORIGIN_Y: f32 = 300.0;
+/// Breathing room between adjacent layers' bounding boxes, beyond their actual half-widths.
+const LAYOUT_LAYER_GAP: f32 = 100.0;
+/// Breathing room between adjacent siblings within a layer, beyond their actual half-heights.
+const LAYOUT_ROW_GAP: f32 = 30.0;
+/// Nominal row spacing used only to order depth-0 nodes before they have anything upstream to
+/// align to (see the `d == 0` branch below) — every layer, including this one, still gets
+/// resolved to real per-node spacing by the overlap-removal pass right after, so this only
+/// needs to be a reasonable rough guess, not an accurate one.
+const LAYOUT_INITIAL_ROW_STEP: f32 = 90.0;
 
 /// The nodes feeding a node, via its connected inputs.
 fn predecessors(workflow: &Workflow, node: NH) -> impl Iterator<Item = NH> + '_ {
@@ -42,7 +25,7 @@ fn predecessors(workflow: &Workflow, node: NH) -> impl Iterator<Item = NH> + '_ 
 }
 
 /// Longest-path depth of every node, plus which nodes take part in a cycle. Both are indexed
-/// by `NH::index()`. Only used within this module (by `topological_seed` and its own tests).
+/// by `NH::index()`. Only used within this module (by `compute_layout` and its own tests).
 struct Depths {
     depth: Vec<u32>,
     in_cycle: Vec<bool>,
@@ -106,9 +89,23 @@ fn compute_depths(workflow: &Workflow) -> Depths {
     Depths { depth, in_cycle }
 }
 
-/// Seed node positions using topological depth (left-to-right) with vertical spread, and record
-/// which nodes are part of a cycle so they can be drawn as an error.
-pub fn topological_seed(state: &mut EditorState) {
+/// Compute the entire node layout: a static, one-shot Sugiyama-style layered placement. Nodes
+/// are grouped into depth layers left to right, and within a layer each node's y is the
+/// average y of its already-placed predecessors (its "barycenter"), so it lands close to
+/// where its actual neighbors are rather than at some index-driven position independent of the
+/// graph's shape. Also records which nodes are part of a cycle so they can be drawn as an
+/// error.
+///
+/// This is the *only* layout mechanism — there is no ongoing force simulation to iron out a
+/// rough placement afterward, so this has to be the final answer. Dragging moves a node
+/// directly and nothing else reacts; newly created nodes are placed at the click position and
+/// stay there. This only runs when the whole graph needs laying out from scratch: once from
+/// `EditorState::measure`, right after real sizes are measured (which needs a live frame, so
+/// it can't happen at construction) — never in response to a drag, a delete, or a new node,
+/// since those are meant to leave every other node's position alone. Assumes `state.node_sizes`
+/// already holds real sizes for every node; callers (tests included) must measure or set them
+/// first.
+pub fn compute_layout(state: &mut EditorState) {
     let n_nodes = state.workflow.num_nodes();
     if n_nodes == 0 {
         return;
@@ -123,285 +120,88 @@ pub fn topological_seed(state: &mut EditorState) {
         }
     }
 
-    // Group nodes by depth layer, assign positions.
-    let max_depth = depth.iter().copied().max().unwrap_or(0);
-    let mut layer_counts = vec![0u32; (max_depth + 1) as usize];
-    let mut layer_indices = vec![0u32; n_nodes];
+    let max_depth = depth.iter().copied().max().unwrap_or(0) as usize;
+    let mut layers: Vec<Vec<NH>> = vec![Vec::new(); max_depth + 1];
     for &nh in &nodes {
-        let d = depth[nh.index()] as usize;
-        layer_indices[nh.index()] = layer_counts[d];
-        layer_counts[d] += 1;
+        layers[depth[nh.index()] as usize].push(nh);
     }
 
+    let sizes = state.node_sizes.try_borrow().unwrap();
     let mut pos = state.node_positions.try_borrow_mut().unwrap();
-    for &nh in &nodes {
-        let d = depth[nh.index()] as usize;
-        let idx_in_layer = layer_indices[nh.index()] as f32;
-        let layer_size = layer_counts[d] as f32;
-        let x = SEED_ORIGIN_X + d as f32 * DAG_MIN_GAP;
-        let y = SEED_ORIGIN_Y + (idx_in_layer - (layer_size - 1.0) / 2.0) * SEED_ROW_HEIGHT;
-        pos[nh] = [x, y];
-    }
-}
-
-/// Repulsion between one pair of node boxes, as the force to apply to `a` (the force on `b` is
-/// its negation).
-///
-/// A weak inverse-square background repulsion applies at every separation, so nodes never drift
-/// arbitrarily close under some other attractive force (e.g. up/down neighbors at the same DAG
-/// depth, which — unlike DAG-connected neighbors — have no spring pulling them apart and only
-/// this repulsion to keep them from coasting together). On top of that, once the boxes (plus
-/// margin) actually overlap, an extra push ramps in *quadratically* with how deep the
-/// penetration is.
-///
-/// The quadratic ramp matters, not just its zero value at the boundary: a linear ramp is
-/// continuous too, but starts contributing at its full slope the instant `overlap` turns
-/// positive, which is still a sharp kink relative to the tiny background slope right next to
-/// it — close enough to a jump in practice that neighbors could still be seen to clip and snap.
-/// A quadratic starts with *zero* slope as well as zero value at the boundary, so the curve
-/// really is smooth there, and only grows firm once the penetration is significant. A previous
-/// version used an entirely different, ~10x stronger formula the instant boxes overlapped
-/// instead of blending anything in, which is what caused the clip-and-snap bug this replaces.
-#[inline]
-fn repulsion_force(pos_a: [f32; 2], size_a: [f32; 2], pos_b: [f32; 2], size_b: [f32; 2]) -> [f32; 2] {
-    let cx_a = pos_a[0] + size_a[0] / 2.0;
-    let cy_a = pos_a[1] + size_a[1] / 2.0;
-    let cx_b = pos_b[0] + size_b[0] / 2.0;
-    let cy_b = pos_b[1] + size_b[1] / 2.0;
-
-    let dx = cx_a - cx_b;
-    let dy = cy_a - cy_b;
-    let dist_sq = (dx * dx + dy * dy).max(100.0);
-    let dist = dist_sq.sqrt();
-
-    let mut force = REPULSION_STRENGTH * 0.1 / dist_sq;
-
-    let overlap_x = (size_a[0] + size_b[0]) / 2.0 + REPULSION_MARGIN - dx.abs();
-    let overlap_y = (size_a[1] + size_b[1]) / 2.0 + REPULSION_MARGIN - dy.abs();
-    let overlap = overlap_x.min(overlap_y);
-    if overlap > 0.0 {
-        force += OVERLAP_PUSH_STRENGTH * overlap * overlap;
-    }
-
-    [dx / dist * force, dy / dist * force]
-}
-
-/// Applies bounding-box repulsion between every pair of nodes to `forces`.
-///
-/// Below `BRUTE_FORCE_NODE_THRESHOLD`, sums every pair directly, exploiting Newton's third
-/// law (the force on `b` is the negation of the force on `a`) to halve the work. Above it,
-/// approximates distant clusters via a Barnes-Hut quadtree (`quadtree.rs`) instead of
-/// visiting every pair: each node's force becomes an O(log n) tree walk rather than an
-/// O(n) scan, so the whole pass is O(n log n) instead of O(n^2). The quadtree only reports
-/// geometry (which points are close enough to need an exact comparison, which clusters are
-/// far enough to summarize as one mass at their center); the actual repulsion law —
-/// including the overlap-margin term, which only ever matters at the close range the tree
-/// always resolves down to individual points for — is applied here, identically to the
-/// brute-force path.
-fn apply_repulsion(positions: &[[f32; 2]], sizes: &[[f32; 2]], forces: &mut [[f32; 2]]) {
-    if positions.len() <= BRUTE_FORCE_NODE_THRESHOLD {
-        apply_repulsion_brute_force(positions, sizes, forces);
-    } else {
-        apply_repulsion_quadtree(positions, sizes, forces);
-    }
-}
-
-fn apply_repulsion_brute_force(positions: &[[f32; 2]], sizes: &[[f32; 2]], forces: &mut [[f32; 2]]) {
-    let n = positions.len();
-    for i in 0..n {
-        for j in (i + 1)..n {
-            let f = repulsion_force(positions[i], sizes[i], positions[j], sizes[j]);
-            forces[i][0] += f[0];
-            forces[i][1] += f[1];
-            forces[j][0] -= f[0];
-            forces[j][1] -= f[1];
-        }
-    }
-}
-
-fn apply_repulsion_quadtree(positions: &[[f32; 2]], sizes: &[[f32; 2]], forces: &mut [[f32; 2]]) {
-    let tree = QuadTree::build(positions);
-    for i in 0..positions.len() {
-        let mut force = [0.0f32; 2];
-        tree.visit(i, positions[i], |c| {
-            let f = match c {
-                Contribution::Exact(j) => {
-                    repulsion_force(positions[i], sizes[i], positions[j], sizes[j])
-                }
-                Contribution::Approx { com, mass } => {
-                    let dx = positions[i][0] - com[0];
-                    let dy = positions[i][1] - com[1];
-                    let dist_sq = (dx * dx + dy * dy).max(100.0);
-                    let dist = dist_sq.sqrt();
-                    // The monopole approximation: `mass` coincident nodes at their shared
-                    // center behave, at this range, like one node repelling with `mass`
-                    // times the strength of one. There's no overlap-margin term here
-                    // because a cluster this far away — far enough for `dist` to clear the
-                    // opening-angle test against its own width — is never anywhere near
-                    // actually overlapping node `i`.
-                    let mag = REPULSION_STRENGTH * 0.1 * mass as f32 / dist_sq;
-                    [dx / dist * mag, dy / dist * mag]
-                }
-            };
-            force[0] += f[0];
-            force[1] += f[1];
-        });
-        forces[i][0] += force[0];
-        forces[i][1] += force[1];
-    }
-}
-
-/// Run one step of the force-directed layout simulation.
-///
-/// `pinned` is the node being actively dragged this frame, if any. Its position still feeds
-/// into the forces on every other node, so neighbours keep reacting to it live, but it is
-/// excluded from the displacement step itself — otherwise the simulation would keep pulling it
-/// back toward equilibrium in the same frame the cursor is pushing it away, and the drag would
-/// feel like a tug-of-war instead of tracking the mouse.
-///
-/// Returns true if the layout has converged (all displacements below threshold).
-pub fn step(state: &mut EditorState, pinned: Option<NH>) -> bool {
-    let nodes: Vec<NH> = state.workflow.node_iter().collect();
-    let n = nodes.len();
-    if n == 0 {
-        return true;
-    }
-
-    // Read current positions, sizes and velocities into local vecs for fast access. `positions`
-    // and `velocities` are mutated in place by the integration step below; `sizes` is read-only
-    // throughout.
-    let (mut positions, sizes, mut velocities) = {
-        let pos = state.node_positions.try_borrow().unwrap();
-        let sz = state.node_sizes.try_borrow().unwrap();
-        let vel = state.node_velocities.try_borrow().unwrap();
-        let positions: Vec<[f32; 2]> = nodes.iter().map(|&nh| pos[nh]).collect();
-        let sizes: Vec<[f32; 2]> = nodes.iter().map(|&nh| sz[nh]).collect();
-        let velocities: Vec<[f32; 2]> = nodes.iter().map(|&nh| vel[nh]).collect();
-        (positions, sizes, velocities)
-    };
-
-    let mut forces = vec![[0.0f32; 2]; n];
-
-    // 1. Bounding-box repulsion between all node pairs. See `apply_repulsion` for the
-    // brute-force/quadtree split, and `repulsion_force` for why the pairwise formula is
-    // one continuous expression rather than a hard switch between "overlapping" and "not".
-    apply_repulsion(&positions, &sizes, &mut forces);
-
-    // Build a NH index lookup (NH -> index in nodes vec).
-    let max_idx = nodes.iter().map(|nh| nh.index()).max().unwrap_or(0);
-    let mut nh_to_idx = vec![usize::MAX; max_idx + 1];
-    for (i, &nh) in nodes.iter().enumerate() {
-        nh_to_idx[nh.index()] = i;
-    }
-
-    // 2. Spring attraction along edges.
-    for (i, &nh) in nodes.iter().enumerate() {
-        for ih in state.workflow.node_inputs(nh) {
-            if let Some(src_oh) = state.workflow.input_source(ih) {
-                let src_nh = state.workflow.node_from_output(src_oh);
-                let j = nh_to_idx[src_nh.index()];
-                if j == usize::MAX {
-                    continue;
-                }
-
-                let dx = positions[i][0] - positions[j][0];
-                let dy = positions[i][1] - positions[j][1];
-                let dist = (dx * dx + dy * dy).sqrt().max(1.0);
-                let displacement = dist - SPRING_REST_LENGTH;
-                let fx = SPRING_K * displacement * (dx / dist);
-                let fy = SPRING_K * displacement * (dy / dist);
-                forces[i][0] -= fx;
-                forces[i][1] -= fy;
-                forces[j][0] += fx;
-                forces[j][1] += fy;
-            }
-        }
-    }
-
-    // 3. Vertical centering — pull all nodes gently toward a common y center.
-    let avg_y: f32 = positions.iter().map(|p| p[1]).sum::<f32>() / n as f32;
-    for i in 0..n {
-        forces[i][1] += (avg_y - positions[i][1]) * CENTER_Y_STRENGTH;
-    }
-
-    // 4. DAG flow constraint — if a source node is not sufficiently left of its target,
-    //    push both apart horizontally.
-    for (i, &nh) in nodes.iter().enumerate() {
-        for ih in state.workflow.node_inputs(nh) {
-            if let Some(src_oh) = state.workflow.input_source(ih) {
-                let src_nh = state.workflow.node_from_output(src_oh);
-                let j = nh_to_idx[src_nh.index()];
-                if j == usize::MAX {
-                    continue;
-                }
-                // src (j) should be left of dst (i).
-                let src_right = positions[j][0] + sizes[j][0];
-                let dst_left = positions[i][0];
-                let gap = dst_left - src_right;
-                if gap < DAG_MIN_GAP * 0.3 {
-                    let push = (DAG_MIN_GAP * 0.3 - gap) * DAG_CONSTRAINT_STRENGTH;
-                    forces[i][0] += push;
-                    forces[j][0] -= push;
-                }
-            }
-        }
-    }
-
-    // Integrate velocity, then position from velocity, rather than moving directly by
-    // `force * DAMPING` each step. A position-only update has no memory of which way a node was
-    // already headed, so once forces roughly balance near equilibrium it has nothing to smooth
-    // out small frame-to-frame imbalances in the force calculation — it reacts to each one
-    // independently, which shows up as a persistent low-amplitude jitter that's easy to miss
-    // while there's large sweeping motion elsewhere, but is the only thing left to see once
-    // everything else has settled. Carrying a damped velocity between steps means a node's
-    // motion is an average over recent forces instead of a direct copy of the latest one, so
-    // that noise gets smoothed out instead of re-appearing every frame.
-    let pinned_idx = pinned.and_then(|nh| {
-        let idx = nh_to_idx[nh.index()];
-        (idx != usize::MAX).then_some(idx)
-    });
-    let mut max_move: f32 = 0.0;
-    for i in 0..n {
-        if Some(i) == pinned_idx {
-            // Actively dragged this frame: the cursor has full control of its position. Zero
-            // its velocity so that letting go doesn't fling it off with whatever velocity it
-            // happened to have before the drag started — it resumes from rest.
-            velocities[i] = [0.0, 0.0];
+    let mut x = LAYOUT_ORIGIN_X;
+    let mut prev_half_width = 0.0f32;
+    for (d, layer) in layers.iter().enumerate() {
+        if layer.is_empty() {
             continue;
         }
-        let mut vx = (velocities[i][0] + forces[i][0]) * DAMPING;
-        let mut vy = (velocities[i][1] + forces[i][1]) * DAMPING;
-        let speed = (vx * vx + vy * vy).sqrt();
-        if speed > MAX_DISPLACEMENT {
-            let scale = MAX_DISPLACEMENT / speed;
-            vx *= scale;
-            vy *= scale;
+        let half_width = layer.iter().map(|&nh| sizes[nh][0]).fold(0.0f32, f32::max) / 2.0;
+        if d > 0 {
+            x += prev_half_width + LAYOUT_LAYER_GAP + half_width;
         }
-        velocities[i] = [vx, vy];
-        positions[i][0] += vx;
-        positions[i][1] += vy;
-        max_move = max_move.max(speed);
-    }
+        prev_half_width = half_width;
 
-    // Write back.
-    {
-        let mut pos = state.node_positions.try_borrow_mut().unwrap();
-        let mut vel = state.node_velocities.try_borrow_mut().unwrap();
-        for (i, &nh) in nodes.iter().enumerate() {
-            pos[nh] = positions[i];
-            vel[nh] = velocities[i];
+        // Barycenter: each node starts at the average y of its predecessors, which were
+        // seeded in an earlier iteration of this same loop (depth strictly increases).
+        // Depth-0 nodes have no predecessors at all, so they fall back to an even spread
+        // around a shared center — there's nothing upstream to align to yet.
+        let mut targets: Vec<(NH, f32)> = layer
+            .iter()
+            .map(|&nh| {
+                let mut sum = 0.0f32;
+                let mut count = 0u32;
+                for pred in predecessors(&state.workflow, nh) {
+                    sum += pos[pred][1];
+                    count += 1;
+                }
+                let y = if count > 0 {
+                    sum / count as f32
+                } else {
+                    0.0
+                };
+                (nh, y)
+            })
+            .collect();
+        if d == 0 {
+            let n = targets.len() as f32;
+            for (i, (_, y)) in targets.iter_mut().enumerate() {
+                *y = LAYOUT_ORIGIN_Y
+                    + (i as f32 - (n - 1.0) / 2.0) * (LAYOUT_INITIAL_ROW_STEP + LAYOUT_ROW_GAP);
+            }
+        }
+        let target_mean = targets.iter().map(|&(_, y)| y).sum::<f32>() / targets.len() as f32;
+
+        // Resolve overlaps: two nodes that share a parent start at the same barycenter, so
+        // without this pass they'd be seeded exactly on top of each other. Sorting by the
+        // barycenter and pushing each node just far enough below the previous one keeps
+        // siblings in their natural relative order while guaranteeing real separation.
+        targets.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
+        let mut prev_bottom: Option<f32> = None;
+        for (nh, y) in targets.iter_mut() {
+            let half_height = sizes[*nh][1] / 2.0;
+            if let Some(bottom) = prev_bottom {
+                let floor = bottom + LAYOUT_ROW_GAP + half_height;
+                if *y < floor {
+                    *y = floor;
+                }
+            }
+            prev_bottom = Some(*y + half_height);
+        }
+        // The push-down pass only ever moves nodes later (down), which drifts the whole
+        // layer away from where its parents actually pointed. Re-center on the original
+        // barycenter mean so relative spacing (just established above) is preserved but the
+        // layer as a whole stays where its neighbors expect it.
+        let adjusted_mean = targets.iter().map(|&(_, y)| y).sum::<f32>() / targets.len() as f32;
+        let recenter = target_mean - adjusted_mean;
+
+        for (nh, y) in targets {
+            pos[nh] = [x, y + recenter];
         }
     }
-
-    max_move < CONVERGENCE_THRESHOLD
 }
 
 #[cfg(test)]
 mod test {
-    use super::{
-        BRUTE_FORCE_NODE_THRESHOLD, apply_repulsion_brute_force, apply_repulsion_quadtree,
-        compute_depths, repulsion_force, step,
-    };
+    use super::{compute_depths, compute_layout};
     use crate::state::EditorState;
     use orc_sdk::{DagHandle, FuncInfo, IH, NH, OH, Workflow};
 
@@ -415,14 +215,12 @@ mod test {
         (nh, ins, outs)
     }
 
-    /// `topological_seed` (run once, inside `EditorState::from_workflow`) had no test at all
-    /// before this: every other test in this module overwrites `node_positions` right after
-    /// construction, so a broken seed formula (nodes stacked on top of each other within a
-    /// layer, or depth not increasing left to right) would ship unnoticed, even though it's the
-    /// very first thing a user sees when opening a workflow. Asserts relative properties of the
-    /// formula rather than exact coordinates, so retuning the seed constants doesn't break this.
+    /// `compute_layout` is the *only* layout mechanism — there's no force simulation to correct
+    /// a bad placement afterward — so asserting its shape here matters more than it used to.
+    /// Asserts relative properties of the formula rather than exact coordinates, so retuning
+    /// the layout constants doesn't break this.
     #[test]
-    fn t_topological_seed_places_layers_left_to_right_and_centers_each_layer() {
+    fn t_compute_layout_places_layers_left_to_right_and_centers_each_layer() {
         let mut wf = Workflow::default();
         let (a, _, a_out) = node(&mut wf, 0, 3);
         // Three siblings at depth 1, all fed by `a`, none connected to each other.
@@ -433,7 +231,14 @@ mod test {
         wf.connect(a_out[1], b2_in[0]).unwrap();
         wf.connect(a_out[2], b3_in[0]).unwrap();
 
-        let state = EditorState::from_workflow(wf);
+        let mut state = EditorState::from_workflow(wf);
+        {
+            let mut sizes = state.node_sizes.try_borrow_mut().unwrap();
+            for nh in [a, b1, b2, b3] {
+                sizes[nh] = [160.0, 80.0];
+            }
+        }
+        compute_layout(&mut state);
         let pos = state.node_positions.try_borrow().unwrap();
 
         assert!(
@@ -551,221 +356,5 @@ mod test {
         assert!(depths.in_cycle[b.index()]);
     }
 
-    /// A node being dragged must track the cursor exactly. If the physics step also moved it,
-    /// a drag away from equilibrium would fight the large spring force pulling it back, and the
-    /// drag would feel jerky instead of tracking the mouse 1:1.
-    #[test]
-    fn t_pinned_node_is_excluded_from_the_displacement() {
-        let mut wf = Workflow::default();
-        let (a, _, a_out) = node(&mut wf, 0, 1);
-        let (b, b_in, _) = node(&mut wf, 1, 0);
-        wf.connect(a_out[0], b_in[0]).unwrap();
-        let mut state = EditorState::from_workflow(wf);
-        {
-            let mut pos = state.node_positions.try_borrow_mut().unwrap();
-            pos[a] = [0.0, 0.0];
-            pos[b] = [2000.0, 0.0];
-        }
-        step(&mut state, Some(a));
-        let pos = state.node_positions.try_borrow().unwrap();
-        assert_eq!(
-            pos[a],
-            [0.0, 0.0],
-            "the pinned node must not move under physics"
-        );
-        assert_ne!(
-            pos[b],
-            [2000.0, 0.0],
-            "the unpinned node should still react to the force"
-        );
-    }
-
-    /// With 160x80 boxes and no x offset, the vertical overlap-with-margin boundary sits at a
-    /// gap of exactly `(80 + 80) / 2 + REPULSION_MARGIN` = 110. Sampling the force right on
-    /// either side of that boundary directly (bypassing `step`'s spring/centering forces, which
-    /// would otherwise swamp the tiny repulsion values involved) catches the exact bug this
-    /// guards against: the old formula switched to a completely different, ~10x stronger
-    /// expression the instant `overlap` turned positive, so two starting points barely a canvas
-    /// unit apart produced wildly different pushes.
-    #[test]
-    fn t_repulsion_has_no_jump_at_the_overlap_boundary() {
-        let size = [160.0, 80.0];
-        let just_inside = repulsion_force([0.0, 0.0], size, [0.0, 109.0], size)[1].abs();
-        let just_outside = repulsion_force([0.0, 0.0], size, [0.0, 111.0], size)[1].abs();
-        let ratio = just_inside.max(just_outside) / just_inside.min(just_outside).max(0.001);
-        assert!(
-            ratio < 3.0,
-            "force should vary smoothly across the overlap boundary, got {just_inside} vs \
-             {just_outside} (ratio {ratio})"
-        );
-    }
-
-    /// Two nodes with no edge between them (siblings at the same depth) have nothing but the
-    /// bounding-box repulsion keeping them apart, since neither the spring nor the DAG-flow
-    /// constraint reaches unconnected nodes. Companion to the boundary test above: starting deep
-    /// inside the overlap, the nodes must actually separate and settle rather than oscillate.
-    #[test]
-    fn t_overlapping_siblings_settle_without_oscillating() {
-        let mut wf = Workflow::default();
-        let (a, _, _) = node(&mut wf, 0, 1);
-        let (b, _, _) = node(&mut wf, 0, 1);
-        let mut state = EditorState::from_workflow(wf);
-        {
-            let mut sizes = state.node_sizes.try_borrow_mut().unwrap();
-            sizes[a] = [160.0, 80.0];
-            sizes[b] = [160.0, 80.0];
-            let mut pos = state.node_positions.try_borrow_mut().unwrap();
-            // Deeply overlapping to start: centers only 10 units apart, same x.
-            pos[a] = [0.0, 0.0];
-            pos[b] = [0.0, 10.0];
-        }
-
-        let mut converged = false;
-        for _ in 0..500 {
-            if step(&mut state, None) {
-                converged = true;
-                break;
-            }
-        }
-        assert!(converged, "layout must settle instead of oscillating forever");
-
-        let pos = state.node_positions.try_borrow().unwrap();
-        let gap = (pos[b][1] - pos[a][1]).abs();
-        assert!(
-            gap >= 80.0,
-            "siblings should end up clear of each other, gap was {gap}"
-        );
-    }
-
-    /// A position-only relaxation (no carried velocity) has nothing to smooth out small
-    /// per-frame imbalances between the spring, repulsion and centering forces once they're
-    /// roughly in balance, so `layout_converged` can flap between true and false forever even
-    /// though nothing is visibly settling any further — the app would keep repainting on a
-    /// jitter too small to see as motion but large enough to keep tripping the threshold. Once
-    /// `step` reports converged, it must stay converged.
-    #[test]
-    fn t_stays_converged_once_settled() {
-        let mut wf = Workflow::default();
-        let (a, _, a_out) = node(&mut wf, 0, 2);
-        let (b, b_in, b_out) = node(&mut wf, 1, 1);
-        let (c, c_in, _) = node(&mut wf, 1, 0);
-        wf.connect(a_out[0], b_in[0]).unwrap();
-        wf.connect(b_out[0], c_in[0]).unwrap();
-        // A sibling of b with no edge to anything, so repulsion and the centering force are
-        // also in play, not just the spring.
-        let (d, _, _) = node(&mut wf, 0, 1);
-        let mut state = EditorState::from_workflow(wf);
-        {
-            let mut sizes = state.node_sizes.try_borrow_mut().unwrap();
-            for nh in [a, b, c, d] {
-                sizes[nh] = [160.0, 80.0];
-            }
-        }
-
-        let mut converged_at = None;
-        for i in 0..1000 {
-            if step(&mut state, None) {
-                converged_at = Some(i);
-                break;
-            }
-        }
-        let converged_at = converged_at.expect("layout must settle");
-
-        for i in 0..50 {
-            assert!(
-                step(&mut state, None),
-                "layout reported converged at step {converged_at} but flapped back to \
-                 unconverged {} step(s) later — a residual jitter, not a settled layout",
-                i + 1
-            );
-        }
-    }
-
-    /// `apply_repulsion` picks brute force or the quadtree purely based on node count — this
-    /// checks the two paths agree on the same input, which is what makes that switch safe.
-    /// A scattered (not clustered) layout, unlike `quadtree.rs`'s own approximation-error
-    /// test, since that's the shape a real settling layout actually has, and it's a much
-    /// harder case for Barnes-Hut than a single tight cluster: many cells end up close to
-    /// the opening-angle threshold at once instead of one comfortably far cluster.
-    #[test]
-    fn t_quadtree_repulsion_matches_brute_force_for_a_scattered_layout() {
-        let n = 300;
-        let positions: Vec<[f32; 2]> = (0..n)
-            .map(|i| {
-                [
-                    ((i * 37) % 2000) as f32,
-                    ((i * 53) % 1500) as f32,
-                ]
-            })
-            .collect();
-        let sizes = vec![[160.0f32, 80.0]; n];
-
-        let mut brute = vec![[0.0f32; 2]; n];
-        apply_repulsion_brute_force(&positions, &sizes, &mut brute);
-        let mut tree = vec![[0.0f32; 2]; n];
-        apply_repulsion_quadtree(&positions, &sizes, &mut tree);
-
-        // Aggregate (RMS) error against aggregate magnitude, not a per-node worst-case
-        // ratio: individual nodes can have a near-zero net force from cancellation between
-        // neighbors on opposite sides, where even a tiny absolute approximation error
-        // balloons into a huge relative one despite the layout looking (and behaving)
-        // fine. The layout is a visual aid settled over many damped iterations, not a
-        // physics simulation with a correctness contract, so what matters is that the
-        // approximation is close in aggregate, not bit-exact per node.
-        let mut sum_err_sq = 0.0f32;
-        let mut sum_mag_sq = 0.0f32;
-        for i in 0..n {
-            sum_err_sq += (tree[i][0] - brute[i][0]).powi(2) + (tree[i][1] - brute[i][1]).powi(2);
-            sum_mag_sq += brute[i][0].powi(2) + brute[i][1].powi(2);
-        }
-        let rms_rel_err = (sum_err_sq / sum_mag_sq).sqrt();
-        assert!(
-            rms_rel_err < 0.6,
-            "quadtree repulsion drifted too far from brute force in aggregate: rms relative \
-             error {rms_rel_err}"
-        );
-    }
-
-    /// `step` itself must dispatch to the quadtree path once a layout crosses
-    /// `BRUTE_FORCE_NODE_THRESHOLD` without blowing up — the two repulsion paths agreeing
-    /// in isolation (previous test) doesn't guarantee the switch is wired correctly into
-    /// the rest of the integration loop (spring, centering, DAG constraint, damping).
-    /// Starts from `topological_seed`'s ordinary starting layout, same as opening a real
-    /// workflow. A smoke test, not a physics-quality check: whether this many mutually
-    /// repelling, spring-free siblings fully settle within any given step budget is a
-    /// property of the existing force model at this scale, not of the quadtree switch.
-    #[test]
-    fn t_large_layout_above_the_quadtree_threshold_stays_finite_and_bounded() {
-        let n = BRUTE_FORCE_NODE_THRESHOLD + 50;
-        let mut wf = Workflow::default();
-        let mut handles = Vec::with_capacity(n);
-        for _ in 0..n {
-            let (nh, _, _) = node(&mut wf, 0, 1);
-            handles.push(nh);
-        }
-        let mut state = EditorState::from_workflow(wf);
-        {
-            let mut sizes = state.node_sizes.try_borrow_mut().unwrap();
-            for &nh in &handles {
-                sizes[nh] = [160.0, 80.0];
-            }
-        }
-
-        for _ in 0..500 {
-            step(&mut state, None);
-        }
-
-        let pos = state.node_positions.try_borrow().unwrap();
-        for &nh in &handles {
-            assert!(
-                pos[nh][0].is_finite() && pos[nh][1].is_finite(),
-                "quadtree repulsion must never produce a non-finite position"
-            );
-            assert!(
-                pos[nh][0].abs() < 1_000_000.0 && pos[nh][1].abs() < 1_000_000.0,
-                "layout should not blow up to an unbounded position, got {:?}",
-                pos[nh]
-            );
-        }
-    }
 }
+

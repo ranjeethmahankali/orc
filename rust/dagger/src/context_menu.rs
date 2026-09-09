@@ -115,8 +115,9 @@ fn finish_node_creation(state: &mut EditorState, nh: orc_sdk::NH, screen_pos: Po
     if let Ok(mut positions) = state.node_positions.try_borrow_mut() {
         positions[nh] = [canvas_pos.x, canvas_pos.y];
     }
+    // Only needs its own size measured — the new node stays exactly where it was placed, and
+    // `measure` only recomputes the whole layout once, the very first time it ever runs.
     state.needs_measure = true;
-    state.layout_converged = false;
     state.dirty = true;
 }
 

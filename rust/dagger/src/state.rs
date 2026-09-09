@@ -11,17 +11,19 @@ pub struct EditorState {
     pub workflow: Workflow,
     pub node_positions: NodeProperty<[f32; 2]>,
     pub node_sizes: NodeProperty<[f32; 2]>,
-    /// Carried between layout steps so the simulation is damped-velocity rather than
-    /// damped-position — see `layout::step` for why.
-    pub node_velocities: NodeProperty<[f32; 2]>,
     /// Set on every node that takes part in a cycle. The graph is allowed to hold cycles, so
     /// these are drawn as an error rather than rejected.
     pub node_in_cycle: NodeProperty<bool>,
     pub selected: NodeProperty<bool>,
-    pub layout_converged: bool,
     /// Node sizes are derived from measured label text, which needs a live frame, so they are
     /// computed on the first frame rather than at construction.
     pub needs_measure: bool,
+    /// Whether `layout::compute_layout` has run with real sizes yet. Sizes aren't known until
+    /// the first live frame (see `needs_measure`), so the real layout happens exactly once,
+    /// the first time `measure` runs. Later calls to `measure` (e.g. to size a newly created
+    /// node) must not repeat it — a full re-layout would move every existing node, undoing
+    /// anything the user dragged.
+    layout_computed: bool,
     /// Canvas to screen transform, driven by pan/zoom input.
     pub view: Transform,
     /// Screen-space rect and direction of an in-progress box-select drag, for rendering the
@@ -48,18 +50,16 @@ impl EditorState {
     pub fn from_workflow(mut workflow: Workflow) -> Self {
         let node_positions = workflow.create_node_property();
         let node_sizes = workflow.create_node_property();
-        let node_velocities = workflow.create_node_property();
         let node_in_cycle = workflow.create_node_property();
         let selected = workflow.create_node_property();
-        let mut state = Self {
+        Self {
             workflow,
             node_positions,
             node_sizes,
-            node_velocities,
             node_in_cycle,
             selected,
-            layout_converged: false,
             needs_measure: true,
+            layout_computed: false,
             view: Transform::default(),
             select_box: None,
             pending_wire: None,
@@ -68,18 +68,24 @@ impl EditorState {
             current_path: None,
             file_error: None,
             dirty: false,
-        };
-        layout::topological_seed(&mut state);
-        state
+        }
     }
 
-    /// Re-measure node sizes from the current labels, and let the layout settle again since
-    /// the simulation reads those sizes.
+    /// Re-measure node sizes from the current labels.
+    ///
+    /// The very first call also computes the whole layout: sizes aren't known until this runs
+    /// (measuring text needs a live frame, so it can't happen at construction), and the layout
+    /// needs real sizes to space nodes correctly. Later calls — e.g. to size a node just
+    /// created by the context menu — only remeasure; they must not repeat the layout, since
+    /// that would move every existing node back to a computed position, discarding any drag.
     pub fn measure(&mut self, ctx: &egui::Context) {
         if let Ok(mut sizes) = self.node_sizes.try_borrow_mut() {
             render::measure_nodes(ctx, &self.workflow, &mut sizes);
         }
         self.needs_measure = false;
-        self.layout_converged = false;
+        if !self.layout_computed {
+            layout::compute_layout(self);
+            self.layout_computed = true;
+        }
     }
 }
