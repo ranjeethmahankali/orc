@@ -1000,6 +1000,17 @@
      - [ ] In all states, the inspect window displays text, and will have scroll bars in horizontal
        and vertical directions as needed.
 
+     *Const node display:*
+     - [ ] The display story for most const nodes and inpsect nodes is the same. The only difference is
+       that const owns the data that is displayed, whereas inspect nodes display data they receive
+       from upstream, data that they do not own.
+     - [ ] The second difference is editability. Since the const nodes own the data, and they're the
+       'generators' of the DAG, we can make them editable. This will require making them text boxes,
+       that display the values. Structure cannot be edited, at least not right now. For now, I want
+       each value in the deck, displayed with this ruler structure, to be editable like a text
+       box. That means the UI element should parse those strings into either f64 or i64 deck
+       depending on the type of data the constant node holds.
+
 **** TODO Phase 5: Nested Workflow Editing
      :LOGBOOK:
      - State "TODO"       from              [2026-09-07 Mon 23:11]
