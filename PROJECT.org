@@ -712,6 +712,14 @@
      - [X] Show these shortcuts next to the menu options, with righ alignment. Again very
        conventional UI.
 
+**** NEXT Phase 3b: Try out Barnes-Hut method to speed up the force directed graph.
+     :PROPERTIES:
+     :CREATED:  2026-09-08 Tue 23:33
+     :END:
+
+     The performance of the force directed graph updates is O(n^2), with this method we can bring it
+     down to O(n * log(n)).
+
 **** NEXT Phase 4: Execution + Inspect Display
      :LOGBOOK:
      - State "NEXT"       from "TODO"       [2026-09-08 Tue 19:31]
