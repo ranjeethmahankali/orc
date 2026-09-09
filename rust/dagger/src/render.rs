@@ -98,6 +98,13 @@ pub fn node_height(n_inputs: usize, n_outputs: usize) -> f32 {
     PIN_TOP_OFFSET + n_pins as f32 * PIN_SPACING + 8.0
 }
 
+/// Default content area reserved below an Inspect node's pins for its text, until resizing (not
+/// implemented yet) lets the user override it.
+const INSPECT_CONTENT_WIDTH: f32 = 260.0;
+const INSPECT_CONTENT_HEIGHT: f32 = 160.0;
+const INSPECT_TEXT_FONT_SIZE: f32 = 11.0;
+const INSPECT_TEXT_PADDING: f32 = 6.0;
+
 pub fn node_rect(pos: [f32; 2], size: [f32; 2]) -> Rect {
     Rect::from_min_size(Pos2::new(pos[0], pos[1]), Vec2::new(size[0], size[1]))
 }
@@ -205,11 +212,17 @@ pub fn measure_nodes(ctx: &egui::Context, workflow: &Workflow, sizes: &mut NodeP
             labels_width += LABEL_COLUMN_GAP;
         }
         let title_width = text_width(ctx, info.name(), FONT_SIZE) + 2.0 * TITLE_PADDING;
+        let width = labels_width.max(title_width).max(MIN_NODE_WIDTH);
+        let height = node_height(n_inputs, n_outputs);
 
-        sizes[nh] = [
-            labels_width.max(title_width).max(MIN_NODE_WIDTH),
-            node_height(n_inputs, n_outputs),
-        ];
+        sizes[nh] = if matches!(info, NodeInfo::Inspect { .. }) {
+            [
+                width.max(INSPECT_CONTENT_WIDTH),
+                height + INSPECT_CONTENT_HEIGHT,
+            ]
+        } else {
+            [width, height]
+        };
     }
 }
 
@@ -381,6 +394,8 @@ fn draw_nodes(
         (Ok(p), Ok(s), Ok(c), Ok(sel)) => (p, s, c, sel),
         _ => return,
     };
+    let inspect_cache = state.inspect_cache.try_borrow().ok();
+    let inspect_font = FontId::new(view.scale(INSPECT_TEXT_FONT_SIZE), FontFamily::Monospace);
 
     for nh in state.workflow.node_iter() {
         let info = &node_infos[nh];
@@ -481,6 +496,26 @@ fn draw_nodes(
                     Color32::from_gray(200),
                 );
             }
+        }
+
+        if draw_text
+            && matches!(info, NodeInfo::Inspect { .. })
+            && let Some(cache) = &inspect_cache
+        {
+            let n_pins = state.workflow.node_inputs(nh).count().max(1);
+            let content_top = rect.min.y + PIN_TOP_OFFSET + n_pins as f32 * PIN_SPACING;
+            let content_rect = view.rect_to_screen(Rect::from_min_max(
+                Pos2::new(rect.min.x, content_top),
+                rect.max,
+            ));
+            let clipped = painter.with_clip_rect(content_rect);
+            clipped.text(
+                content_rect.min + Vec2::splat(view.scale(INSPECT_TEXT_PADDING)),
+                egui::Align2::LEFT_TOP,
+                &cache[nh].text,
+                inspect_font.clone(),
+                Color32::from_gray(220),
+            );
         }
     }
 }

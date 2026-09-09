@@ -433,6 +433,16 @@ pub fn tick(state: &mut EditorState) {
     dispatch_ready(state);
 }
 
+/// `pool()` is a process-wide singleton -- correct for the real app (one `EditorState` per
+/// process, for now), but Rust's default test harness runs tests concurrently within the same
+/// process, and results carry only an `NH`, which is just a small index that collides across
+/// separate `Workflow` instances. Two tests dispatching onto the real pool at the same time can
+/// silently steal each other's results. Any test that touches `pool()` (directly or via
+/// `tick`/`dispatch`) must hold this for its whole duration; tests that don't touch the pool are
+/// unaffected and still run fully in parallel.
+#[cfg(test)]
+pub(crate) static POOL_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -554,6 +564,7 @@ mod test {
     /// the real worker pool, and polls `tick` until it settles.
     #[test]
     fn t_dispatch_computes_a_real_function_via_the_pool() {
+        let _guard = POOL_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let Some(add) = crate::PLUGIN_SET.get_function("add").cloned() else {
             println!("skipping: no plugin providing `add` was loaded");
             return;

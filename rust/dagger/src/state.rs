@@ -1,6 +1,7 @@
 use crate::canvas::Transform;
 use crate::context_menu::ContextMenuState;
 use crate::exec;
+use crate::inspect;
 use crate::interaction::SelectBoxKind;
 use crate::layout;
 use crate::render;
@@ -59,6 +60,9 @@ pub struct EditorState {
     pub execution_error: NodeProperty<Option<String>>,
     /// Scheduling bookkeeping private to `exec` (in-flight jobs, the dispatch worklist).
     pub(crate) exec: exec::ExecState,
+    /// Cached `deck_to_str` text per Inspect node, refreshed lazily (only when the upstream
+    /// value actually changes) rather than reconverted every frame.
+    pub(crate) inspect_cache: NodeProperty<inspect::InspectCache>,
 }
 
 impl EditorState {
@@ -70,6 +74,7 @@ impl EditorState {
         let computed_outputs = workflow.create_output_property();
         let dirty_version = workflow.create_node_property();
         let execution_error = workflow.create_node_property();
+        let inspect_cache = workflow.create_node_property();
         let exec_state = exec::ExecState::new(&mut workflow);
         let mut state = Self {
             workflow,
@@ -91,6 +96,7 @@ impl EditorState {
             dirty_version,
             execution_error,
             exec: exec_state,
+            inspect_cache,
         };
         exec::mark_all_dirty(&mut state);
         state

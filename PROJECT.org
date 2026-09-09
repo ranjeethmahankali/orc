@@ -953,7 +953,7 @@
        original 100ms-poll idea, which would make the sweep stutter).
 
      *Inspect node display:*
-     - [ ] Render ~deck_to_str()~ output of connected upstream data in a scrollable monospace text
+     - [X] Render ~deck_to_str()~ output of connected upstream data in a scrollable monospace text
        area embedded in the node body. ~DeckView~'s recursive ~child()~/~advance_iter()~ (already
        exercised by ~kbb_cli_host~'s ~to_str_groups~ test helper) is the reference for turning
        the resulting ~Deck<u8>~ handle into readable strings. This needs to be done in a particular
@@ -994,7 +994,6 @@
      - [ ] Inspect nodes are resizable by the user (drag bottom-right corner), size stored in
        ~node_sizes~. No layout simulation reacts to the new size anymore (Phase 3b removed it) —
        resizing just grows the node in place; neighbors don't move.
-     - [ ] Minimize/maximize toggle: expand to fill viewport, or shrink back.
      - [ ] Pop-out button: open inspect view in a separate OS window via
        ~ctx.show_viewport_deferred()~.
      - [ ] In all states, the inspect window displays text, and will have scroll bars in horizontal

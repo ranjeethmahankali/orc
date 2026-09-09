@@ -15,7 +15,9 @@ search_dir = os.path.join(project_root, "build", "debug")
 orc.load_plugins(search_dir)
 
 
-def test_pipeline(x, y):
+def test_pipeline():
+    x = orc.make_deck([1.23])
+    y = orc.make_deck([2.34])
     summed = orc.add(x, y)
     scale = orc.make_deck([2.0])
     scaled = orc.multiply(summed, scale)

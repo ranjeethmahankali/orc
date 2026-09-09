@@ -225,6 +225,50 @@ pub fn host_clone_orc_handle(src: OrcHandleBorrowed) -> Result<OrcHandle, Error>
     Error::from_raw(err).map(|()| out)
 }
 
+/// Converts an arbitrary handle into a `Deck<u8>` handle via `deck_to_str` -- dispatching to the
+/// owning plugin for a plugin type, or calling `orc_sdk::to_str_deck` directly for a built-in
+/// one. Mirrors pyorc's `host_deck_to_str`.
+pub fn host_deck_to_str(input: &OrcHandle) -> Result<OrcHandle, Error> {
+    let mut out = OrcHandle {
+        handle: HANDLE_COUNTER.fetch_add(1, Ordering::Relaxed),
+        ..Default::default()
+    };
+    let plugin_set: &PluginSet = &PLUGIN_SET;
+    match plugin_set.get_type_owner(input.type_id) {
+        Some(TypeOwner::Plugin(plugin_index, _)) => {
+            let plugin = &plugin_set.plugins()[*plugin_index];
+            plugin.to_str_deck(input, &mut out)?;
+        }
+        Some(TypeOwner::BuiltIn(_)) => {
+            REGISTRY.alloc::<u8>(&mut out)?;
+            REGISTRY
+                .with_mut(&[out.handle], |decks| -> Result<(), Error> {
+                    let deck = decks[0]
+                        .downcast_mut::<orc_sdk::Deck<u8>>()
+                        .ok_or(Error::DeckTypeMismatch)?;
+                    match input.type_id {
+                        ORC_TYPE_U8 => orc_sdk::to_str_deck::<u8>(input, deck),
+                        ORC_TYPE_U16 => orc_sdk::to_str_deck::<u16>(input, deck),
+                        ORC_TYPE_U32 => orc_sdk::to_str_deck::<u32>(input, deck),
+                        ORC_TYPE_U64 => orc_sdk::to_str_deck::<u64>(input, deck),
+                        ORC_TYPE_I8 => orc_sdk::to_str_deck::<i8>(input, deck),
+                        ORC_TYPE_I16 => orc_sdk::to_str_deck::<i16>(input, deck),
+                        ORC_TYPE_I32 => orc_sdk::to_str_deck::<i32>(input, deck),
+                        ORC_TYPE_I64 => orc_sdk::to_str_deck::<i64>(input, deck),
+                        ORC_TYPE_F32 => orc_sdk::to_str_deck::<f32>(input, deck),
+                        ORC_TYPE_F64 => orc_sdk::to_str_deck::<f64>(input, deck),
+                        _ => Err(Error::DeckTypeMismatch),
+                    }?;
+                    unsafe { orc_sdk::update_handle_from_deck(deck, &mut out) };
+                    Ok(())
+                })
+                .flatten()?;
+        }
+        None => return Err(Error::InvalidProxy),
+    }
+    Ok(out)
+}
+
 fn main() -> eframe::Result {
     // Force plugin loading at startup.
     let plugin_set: &PluginSet = &PLUGIN_SET;

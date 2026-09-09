@@ -2,6 +2,7 @@ use crate::canvas;
 use crate::context_menu;
 use crate::exec;
 use crate::file_menu;
+use crate::inspect;
 use crate::interaction;
 use crate::render;
 use crate::state::EditorState;
@@ -68,6 +69,7 @@ impl eframe::App for DaggerApp {
                 // Drains completed jobs and dispatches whatever just became ready. Cheap when
                 // nothing is stale or in flight, so this runs unconditionally every frame.
                 exec::tick(&mut self.state);
+                inspect::refresh_all(&mut self.state);
                 if exec::any_in_flight(&self.state) {
                     // Needed both to keep draining the results channel and to animate the
                     // in-progress sweep on whichever node(s) are running.
