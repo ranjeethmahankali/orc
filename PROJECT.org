@@ -852,6 +852,9 @@
      altogether. More important things need attention right now.
 
 **** NEXT Phase 4: Execution + Inspect Display
+     :PROPERTIES:
+     :CREATED:  2026-09-07 Mon 23:11
+     :END:
      :LOGBOOK:
      - State "NEXT"       from "TODO"       [2026-09-08 Tue 19:31]
      - State "TODO"       from              [2026-09-07 Mon 23:11]
@@ -866,7 +869,7 @@
      its current signature and behavior.
 
      *orc_sdk prerequisite:*
-     - [ ] Add a public forward-adjacency accessor on ~Workflow~ (e.g. ~output_links(OH)~),
+     - [X] Add a public forward-adjacency accessor on ~Workflow~ (e.g. ~output_links(OH)~),
        wrapping the ~Graph::output_links~ machinery that already exists internally but isn't
        reachable from outside the crate. Needed for downstream staleness propagation and
        worklist scheduling without full-graph scans. (No other ~orc_sdk~ changes needed —
@@ -953,13 +956,48 @@
      - [ ] Render ~deck_to_str()~ output of connected upstream data in a scrollable monospace text
        area embedded in the node body. ~DeckView~'s recursive ~child()~/~advance_iter()~ (already
        exercised by ~kbb_cli_host~'s ~to_str_groups~ test helper) is the reference for turning
-       the resulting ~Deck<u8>~ handle into readable strings.
+       the resulting ~Deck<u8>~ handle into readable strings. This needs to be done in a particular
+       way. The way deck<u8> is displayed should resemble how decks are displayed now. It resembles
+       an ascii ruler structure indicated with box drawing characters of hyphens. Except we don't
+       want to render individual characters along this ruler. Instead we should collapse it by one
+       level, and render first level (list) as a single string item. Ruler structure still holds for
+       lists of strings, and lists of lists of strings etc.
+
+       Here's an example. This is the original deck of numbers:
+
+       Original deck:
+           2 ─────┤ 10
+                  ┤ 20
+              1 ──┤ 30
+
+       If I display the string deck (Deck<u8>) directly, it will look like:
+
+           3 ────────┤ 49
+                     ┤ 48
+                 1 ──┤ 50
+                     ┤ 48
+              2 ─────┤ 51
+                     ┤ 48
+
+       Displaying in this form is not useful. The second deck should instead be interpreted and
+       displayed in the form:
+
+           2 ─────┤ 10
+                  ┤ 20
+              1 ──┤ 30
+
+       Just so happens it looks identical to the orignal deck because these are integers, but for
+       complex numbers, it will make them readable. This is because the ascii letters 48 and 49
+       represent the first value "10".
+
      - [ ] Inspect nodes are resizable by the user (drag bottom-right corner), size stored in
        ~node_sizes~. No layout simulation reacts to the new size anymore (Phase 3b removed it) —
        resizing just grows the node in place; neighbors don't move.
      - [ ] Minimize/maximize toggle: expand to fill viewport, or shrink back.
      - [ ] Pop-out button: open inspect view in a separate OS window via
        ~ctx.show_viewport_deferred()~.
+     - [ ] In all states, the inspect window displays text, and will have scroll bars in horizontal
+       and vertical directions as needed.
 
 **** TODO Phase 5: Nested Workflow Editing
      :LOGBOOK:
