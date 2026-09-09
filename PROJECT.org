@@ -713,12 +713,12 @@
        conventional UI.
 
 **** CLOSED Phase 3b: Try out Barnes-Hut method to speed up the force directed graph.
-     CLOSED: [2026-09-09 Wed 00:30]
+     CLOSED: [2026-09-09 Wed 10:19]
      :PROPERTIES:
      :CREATED:  2026-09-08 Tue 23:33
      :END:
      :LOGBOOK:
-     - State "CLOSED"     from "NEXT"       [2026-09-09 Wed 00:30]
+     - State "CLOSED"     from "NEXT"       [2026-09-09 Wed 10:19]
      :END:
 
      The performance of the force directed graph updates is O(n^2), with this method we can bring it
