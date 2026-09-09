@@ -876,80 +876,80 @@
        handle-lifetime safety below is built entirely out of types that already exist.)
 
      *Staleness tracking:*
-     - [ ] ~computed_outputs: OutputProperty<Arc<OrcHandle>>~ in EditorState, cached per output
+     - [X] ~computed_outputs: OutputProperty<Arc<OrcHandle>>~ in EditorState, cached per output
        pin — see "Handle lifetime across threads" below for why it's ~Arc~-wrapped.
        "Not yet computed" sentinel is ~free_fn.is_none()~, not equality on the raw ~handle~ id
        (id 0 is a legitimate value once ~HANDLE_COUNTER~ has issued it).
-     - [ ] ~dirty_version: NodeProperty<u64>~, bumped (not just set true) on a direct edit and
+     - [X] ~dirty_version: NodeProperty<u64>~, bumped (not just set true) on a direct edit and
        propagated forward to every downstream node via the new adjacency accessor.
-     - [ ] Dispatch readiness via a small worklist of touched/just-resolved candidate nodes, each
+     - [X] Dispatch readiness via a small worklist of touched/just-resolved candidate nodes, each
        checked against its own (small) fan-in when popped — not a full per-frame graph scan, and
        not a fully precise per-edge in-degree counter either.
 
      *Own executor (not ~Workflow::run~):*
-     - [ ] Walks every node (~workflow.node_iter()~ as roots), not just declared
+     - [X] Walks every node (~workflow.node_iter()~ as roots), not just declared
        ~workflow_outputs~ (which dagger never sets), so Inspect node dead ends are reached.
-     - [ ] Skips nodes whose ~dirty_version~ already matches what their cached output was
+     - [X] Skips nodes whose ~dirty_version~ already matches what their cached output was
        computed for; only stale nodes are dispatched.
-     - [ ] Nodes flagged ~in_cycle~ are skipped, via the executor's own cycle check each walk —
+     - [X] Nodes flagged ~in_cycle~ are skipped, via the executor's own cycle check each walk —
        layout's cached ~node_in_cycle~ is only computed once (first ~measure~) and goes stale
        after later topology edits.
-     - [ ] ~NodeInfo::NestedCall~ is left unimplemented in this executor (no UI path creates one
+     - [X] ~NodeInfo::NestedCall~ is left unimplemented in this executor (no UI path creates one
        yet); revisit alongside Phase 5.
 
      *Thread pool:*
-     - [ ] Fixed-size pool, ~max(available_parallelism() - 1, 1)~ long-lived worker threads,
+     - [X] Fixed-size pool, ~max(available_parallelism() - 1, 1)~ long-lived worker threads,
        spawned once, blocking on a shared ~Arc<Mutex<Receiver<NodeJob>>>~ — no thread
        creation/teardown during interactive use, independent branches run genuinely in parallel.
-     - [ ] Results delivered over a second ~mpsc~ channel, drained via ~try_recv()~ on the UI
+     - [X] Results delivered over a second ~mpsc~ channel, drained via ~try_recv()~ on the UI
        thread once per frame — the UI thread never blocks.
-     - [ ] ~NodeJob~: node handle, plugin function pointer, inputs as cloned ~Arc<OrcHandle>~
+     - [X] ~NodeJob~: node handle, plugin function pointer, inputs as cloned ~Arc<OrcHandle>~
        (an ~OrcHandleBorrowed<'_>~ is derived from each, locally on the worker, right before the
        actual call — same zero-copy pattern as ~Workflow::run~'s ~.borrowed()~, just constructed
        just-in-time instead of shipped across the channel), output count, a cancellation ~ctx~
        id, and the ~dirty_version~ it was launched for.
-     - [ ] ~NodeResult~: node handle, that same ~ctx~/launched version, and the outcome —
+     - [X] ~NodeResult~: node handle, that same ~ctx~/launched version, and the outcome —
        ~Ok(outputs)~, ~Err(OperationCancelled)~, or ~Err(other)~.
 
      *Cancellation — per node job, not per pass or global:*
-     - [ ] One ~ContextArena<bool>~ slot per dispatched job (mirrors ~SERIAL_CONTEXT_ARENA~).
+     - [X] One ~ContextArena<bool>~ slot per dispatched job (mirrors ~SERIAL_CONTEXT_ARENA~).
        ~check_cancellation(ctx)~ reads it; whether a plugin checks it at all is entirely up to
        whoever implemented that node.
-     - [ ] Only the specific job whose own node gets invalidated has its flag flipped — editing
+     - [X] Only the specific job whose own node gets invalidated has its flag flipped — editing
        an unrelated, independent branch must never disturb a node that's currently running.
-     - [ ] Relies on ~ORC_ERROR_OPERATION_CANCELLED~ (added in commit e1b1320) to tell a
+     - [X] Relies on ~ORC_ERROR_OPERATION_CANCELLED~ (added in commit e1b1320) to tell a
        cooperative abort apart from a real failure.
 
      *Handle lifetime across threads (~Arc<OrcHandle>~, no wrapper type):*
-     - [ ] Don't reach into ~DeckRegistry~'s own internal ~Arc~ (~util.rs:96~) — it only exists
+     - [X] Don't reach into ~DeckRegistry~'s own internal ~Arc~ (~util.rs:96~) — it only exists
        for ~TypeOwner::BuiltIn~ handles; a plugin-owned handle's storage lives entirely on the
        other side of the FFI boundary (possibly not even Rust), with no such ~Arc~ to acquire.
-     - [ ] No guard/wrapper type needed either — ~OrcHandle~ already has ~impl Drop { fn
+     - [X] No guard/wrapper type needed either — ~OrcHandle~ already has ~impl Drop { fn
        drop(&mut self) { self.free(); } }~ (~ffi.rs:212~), so plain ~Arc<OrcHandle>~ is enough:
        cloning it for each borrowed input and holding the clone in the ~NodeJob~ keeps the
        handle alive exactly as long as the job needs it, uniformly regardless of whether the
        handle is built-in or plugin-owned.
-     - [ ] Committing a result is just ~computed_outputs[oh] = Arc::new(new_handle)~ — the old
+     - [X] Committing a result is just ~computed_outputs[oh] = Arc::new(new_handle)~ — the old
        ~Arc~ drops (and, via ~OrcHandle~'s own ~Drop~, frees) immediately if nothing else holds
        a clone, or lingers until whichever in-flight job does drop its clone. No explicit
        ~.free()~ call anywhere in dagger's own code, no reader-count bookkeeping, no
        pending-commit staging slot.
-     - [ ] Relies on the executor always allocating a fresh handle id per computed output (never
+     - [X] Relies on the executor always allocating a fresh handle id per computed output (never
        reusing one), matching ~Workflow::run~'s existing convention.
 
      *Commit policy on job completion:*
-     - [ ] ~Ok(outputs)~ is always committed immediately (~computed_outputs[oh] = Arc::new(...)~,
+     - [X] ~Ok(outputs)~ is always committed immediately (~computed_outputs[oh] = Arc::new(...)~,
        no staging needed), even if the node was invalidated again after this job launched. The
        node is still redispatched afterward if still marked dirty.
-     - [ ] ~Err(OperationCancelled)~ commits nothing; the node is simply eligible for redispatch
+     - [X] ~Err(OperationCancelled)~ commits nothing; the node is simply eligible for redispatch
        right away.
-     - [ ] Any other ~Err~ is a genuine fault: shown on the node, and the node settles (does not
+     - [X] Any other ~Err~ is a genuine fault: shown on the node, and the node settles (does not
        retry every time the scheduler looks for ready work) until a future edit touches it again.
 
      *In-progress UI indicator:*
-     - [ ] A node with an in-flight job gets a looping left-to-right pulse/sweep drawn into its
+     - [X] A node with an in-flight job gets a looping left-to-right pulse/sweep drawn into its
        title bar fill (indefinite-progress-bar style), driven by wall-clock time.
-     - [ ] Continuous repaint requested every frame while any node is in-flight (replaces the
+     - [X] Continuous repaint requested every frame while any node is in-flight (replaces the
        original 100ms-poll idea, which would make the sweep stutter).
 
      *Inspect node display:*
@@ -966,18 +966,19 @@
        Here's an example. This is the original deck of numbers:
 
        Original deck:
-           2 ─────┤ 10
-                  ┤ 20
-              1 ──┤ 30
+
+         2 ─────┤ 10
+                ┤ 20
+            1 ──┤ 30
 
        If I display the string deck (Deck<u8>) directly, it will look like:
 
-           3 ────────┤ 49
-                     ┤ 48
-                 1 ──┤ 50
-                     ┤ 48
-              2 ─────┤ 51
-                     ┤ 48
+         3 ────────┤ 49
+                   ┤ 48
+               1 ──┤ 50
+                   ┤ 48
+            2 ─────┤ 51
+                   ┤ 48
 
        Displaying in this form is not useful. The second deck should instead be interpreted and
        displayed in the form:
