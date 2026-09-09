@@ -726,7 +726,7 @@
      <2026-09-09 Wed 00:25> Force directed graph was a wrong move. Getting rid of it
      altogether. More important things need attention right now.
 
-**** NEXT Phase 4: Execution + Inspect Display 
+**** NEXT Phase 4: Execution + Inspect Display
      :LOGBOOK:
      - State "NEXT"       from "TODO"       [2026-09-08 Tue 19:31]
      - State "TODO"       from              [2026-09-07 Mon 23:11]
