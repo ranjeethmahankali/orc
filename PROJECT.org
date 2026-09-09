@@ -323,24 +323,145 @@
 
 *** Incremental Execution
 
-    Computed outputs are stored as ~OutputProperty<OrcHandle>~. When topology changes
-    (connect, disconnect, add/remove node):
-    1. Mark affected outputs as stale (set to None).
-    2. Propagate staleness downstream through links -- any node whose input comes from a stale
-       output also has its outputs marked stale.
-    3. On next execution, only evaluate nodes with stale outputs.
+    <2026-09-09 Wed> Brainstormed the execution engine and threading model in detail. Nesting is
+    out of scope for now -- see Phase 5, which is where ~NestedExecState~ (below) actually
+    belongs; this section only covers a flat, non-nested workflow. Dagger gets its own executor,
+    separate from ~Workflow::run~ -- that function is a live public API other hosts depend on
+    (pyorc's ~run_workflow~, ~kbb_cli_host~'s tests both call it with its current
+    signature/behavior), so it stays as-is rather than growing incremental/threading concerns
+    bolted on.
 
-    The execution engine needs a modified version of ~Workflow::run~ that:
-    - Walks the DAG similar to what Workflow::run does, starting from all the stale nodes, but
-      expecting that some nodes might not be stale. It only needs to compute the nodes that are
-      stale. And just use the outputs from the non-stale nodes.
-    - At NestedCall nodes, recursively executes, using the ~NestedExecState~ corresponding to that
-      call node.
+**** Why every node is a root
 
-    How to do this all over multiple background threads is a bit of an open problem. Needs more
-    brainstorming.
+     ~Workflow::run~'s traversal starts only from ~self.workflow_outputs~ (the explicit named
+     terminal outputs set via ~set_outputs~). Dagger never calls ~set_outputs~/~set_inputs~, so
+     that list is always empty here, and Inspect nodes -- dead ends, no outputs -- would never be
+     reached by that traversal at all. Dagger's own executor instead walks every node
+     (~workflow.node_iter()~ as roots, same shape as ~layout::compute_depths~), so Inspect dead
+     ends and anything else get evaluated regardless of whether they feed a declared output.
+     Nodes flagged as part of a cycle are skipped -- but the executor does its own cycle check
+     each time it walks, rather than trusting ~state.node_in_cycle~, which ~layout::compute_layout~
+     only ever computes once (the first ~measure~ call) and does not update after later
+     topology edits.
+
+**** Staleness tracking
+
+     - ~computed_outputs: OutputProperty<Arc<OrcHandle>>~ in ~EditorState~, cached per output
+       pin (~Arc~-wrapped -- see "Handle lifetime across threads" below). The "not yet computed"
+       sentinel is ~free_fn.is_none()~ on the wrapped handle (the zeroed default) -- *not*
+       equality against a zeroed ~handle~ id, since ~HANDLE_COUNTER~ starts at 0 and a
+       legitimately computed value could be assigned handle id 0. Only ~free_fn~ tells "no
+       backing deck" apart from "really is handle 0", matching the pattern already used
+       elsewhere in the crate (e.g. the constant-deletion regression test in ~interaction.rs~).
+     - ~dirty_version: NodeProperty<u64>~ per node, bumped (not just set to a bool) on a direct
+       edit -- connect, disconnect, add, delete, a constant's value changing -- and propagated
+       forward to every downstream node. This requires a small addition to ~orc_sdk~: a public
+       forward-adjacency accessor on ~Workflow~ (e.g. ~output_links(OH)~), thinly wrapping the
+       ~Graph::output_links~ machinery that already exists internally (an intrusive linked list
+       per output, walked in O(fan-out)) but isn't reachable from outside the crate today --
+       ~Workflow~ only exposes the backward lookup (~input_source~).
+     - Dispatch readiness is tracked via a small worklist of "candidate" nodes -- anything just
+       touched by a staleness-propagation pass, or whose upstream just finished computing -- each
+       checked locally against its own (small) fan-in when popped. This is deliberately not a
+       fully precise per-edge in-degree counter (more bookkeeping than it is worth at typical
+       node arity) and not a per-frame full-graph scan either -- work stays proportional to
+       whatever actually changed, not to graph size.
+
+**** Thread pool
+
+     A fixed-size pool of ~max(available_parallelism() - 1, 1)~ long-lived worker threads,
+     spawned once and blocking on a shared ~Arc<Mutex<Receiver<NodeJob>>>~ -- no thread creation
+     or teardown during interactive use, and independent branches genuinely run in parallel
+     (whichever worker is free picks up the next ready job), which is the whole reason for a pool
+     over a single background thread. A single-background-thread design was considered and
+     rejected: it's simpler and sidesteps the handle-lifetime issue below, but gives up true
+     cross-branch parallelism, which is a hard requirement here, not a nice-to-have.
+
+     Results come back over a second ~mpsc~ channel, drained via ~try_recv()~ on the UI thread
+     once per frame -- the UI thread never blocks on execution, matching or exceeding the
+     original 100ms-poll idea.
+
+     ~NodeJob~ carries everything a worker needs without ever touching the live ~Workflow~ (whose
+     ~Rc~/~RefCell~-based properties are not ~Send~): the node handle, the plugin function
+     pointer, its inputs as cloned ~Arc<OrcHandle>~ (see "Handle lifetime across threads" below),
+     the output count, a cancellation ~ctx~ id, and the ~dirty_version~ it was launched for.
+     ~NodeResult~ carries the node handle, that same ~ctx~/launched version, and the outcome:
+     ~Ok(outputs)~, ~Err(OperationCancelled)~, or ~Err(other)~.
+
+**** Cancellation is per node job, not per pass or global
+
+     One ~ContextArena<bool>~ slot per dispatched job (mirrors the existing
+     ~SERIAL_CONTEXT_ARENA~ pattern already used for ~serial_write_callback~). The plugin's
+     ~check_cancellation(ctx)~ callback reads it; whether a plugin checks it at all is entirely
+     up to whoever implemented that node -- the host impose no policy here. Only the specific job
+     whose own node gets invalidated has its flag flipped: editing an unrelated, independent
+     branch must never disturb a node that is currently running, since its output is still
+     perfectly valid. This relies on ~ORC_ERROR_OPERATION_CANCELLED~ (added in commit e1b1320) to
+     tell a cooperative abort apart from a real failure returned by the same call.
+
+**** Handle lifetime across threads: ~Arc<OrcHandle>~
+
+     ~OrcHandle~ already has ~impl Drop { fn drop(&mut self) { self.free(); } }~ (~ffi.rs:212~) --
+     dropping an owning handle calls ~.free()~, dropping a borrowed one (~free_fn: None~, as
+     produced by ~.borrowed()~) is already a safe no-op. It's a move-only, RAII-owning type
+     already (why ~Workflow::run~ has to ~std::mem::take~ out of ~computed_outputs[o.idx]~
+     instead of just reading it). So sharing one across an in-flight job needs nothing more than
+     the standard tool for shared ownership: ~computed_outputs: OutputProperty<Arc<OrcHandle>>~.
+
+     Dispatching a job clones the ~Arc~ for each borrowed input and stores the clones directly in
+     ~NodeJob~. On the worker, right before the actual plugin call, an ~OrcHandleBorrowed<'_>~ is
+     derived locally from each ~Arc<OrcHandle>~ (~arc.borrowed()~) into a short-lived stack
+     buffer -- an ordinary, fully compiler-checked borrow, since the owning ~Arc~ clones are
+     sitting on the same stack frame the whole time. ~OrcHandleBorrowed~ never has to cross the
+     channel or have its lifetime unsafely asserted away; only the ~Arc~ travels, and it's
+     ordinarily ~Send~.
+
+     Committing a fresh result is just ~computed_outputs[oh] = Arc::new(new_handle)~. If the UI
+     thread held the only reference, the old ~Arc~ drops immediately and ~.free()~ runs right
+     there, via ~OrcHandle~'s own ~Drop~ -- nothing in dagger calls ~.free()~ explicitly anywhere.
+     If some worker still holds a clone (an in-flight downstream job that captured the old
+     value), the old ~Arc~ simply lives on until that worker drops its copy, whereupon ~.free()~
+     runs automatically -- on whichever thread happens to drop last, which is why a plugin's
+     ~free_fn~ must be safe to call from any thread (the same expectation the whole design
+     already places on plugin code called concurrently in general). No reader-count bookkeeping,
+     no pending-commit staging slot, no ~orc_sdk~ changes at all -- this works uniformly for
+     built-in and plugin-owned handles alike, since it never needs to look behind the handle at
+     what's managing the actual backing memory (which, for a plugin-owned type, may not even be
+     Rust).
+
+     Relies on one existing invariant: the executor always allocates a *fresh* handle id per
+     computed output (never reuses one), matching how ~Workflow::run~ already works via
+     ~handle_counter.fetch_add~. ~DeckRegistry::alloc_with_value~ has a same-id-reuse path
+     (~util.rs:134~) that mutates a built-in deck's contents in place under a write lock when the
+     id is already occupied with a matching type -- irrelevant as long as the executor never
+     reuses an id, but worth remembering if that ever changes.
+
+**** Commit policy on job completion
+
+     - ~Ok(outputs)~ is always committed immediately (replacing the ~Arc<OrcHandle>~ in
+       ~computed_outputs~ -- no staging needed), even if the node was invalidated again after
+       this job launched -- a stale-but-real value beats showing
+       nothing, and this is exactly what makes continuously dragging a slider feel alive while a
+       slow, non-cooperative node is mid-flight. The node is still redispatched afterward if it's
+       still marked dirty.
+     - ~Err(OperationCancelled)~ commits nothing; the node is simply eligible for redispatch again
+       right away.
+     - Any other ~Err~ is a genuine fault: shown on the node, and the node settles rather than
+       retrying every time the scheduler looks for ready work -- it only becomes a candidate
+       again once a future edit actually touches it or its inputs.
+
+**** In-progress indicator
+
+     A node with an in-flight job gets a looping left-to-right pulse/sweep drawn into its title
+     bar fill (indefinite-progress-bar style), driven by wall-clock time. Continuous repaint is
+     requested every frame while any node is in-flight -- gated on "something is actually
+     running", so it costs nothing the rest of the time, but needed for the sweep to animate
+     smoothly (a 100ms poll interval, as originally planned, would make it stutter).
 
 *** Nested Workflow Execution State
+
+    <2026-09-09 Wed> Deferred to Phase 5 -- out of scope for the flat, non-nested executor above.
+    Kept here since it's still the right shape for when nesting comes back into scope.
 
     Each NestedCall node in the outer workflow may be called with different inputs, so each call
     produces different internal values. The state is stored per-call-node and is recursive for
@@ -413,6 +534,8 @@
      3. Same pattern. Works for arbitrary depth.
 
 *** Nested Workflow Window Lifecycle
+
+    <2026-09-09 Wed> Deferred to Phase 5, same as the execution state above.
 
     Uses ~ctx.show_viewport_deferred()~ to open real OS-level windows. Each nested editor has its
     own ~EditorState~ and renders identically to the main canvas (same node rendering, same
@@ -516,11 +639,13 @@
     - Pin connection wire drag (drawing the in-progress Bezier to the cursor)
     - Inspect node interaction: scrolling text content, resizing the inspect viewport, future
       pan/zoom/orbit within an embedded 2D/3D viewport
-    - Layout settling: while ~layout_converged == false~, request repaint each frame to animate
-      nodes settling into place after a topology change or resize. Stops when forces drop below
-      the convergence threshold.
-    - Execution polling: ~ctx.request_repaint_after(Duration::from_millis(100))~ while a background
-      execution is in-flight, to poll the mpsc channel for results. Stops when the result arrives.
+    - Layout settling: stale -- Phase 3b removed the force-directed simulation entirely, so this
+      no longer applies. Layout is now a one-shot computation (see "Force-Directed Layout with
+      DAG Flow Constraint" above, itself written before that removal).
+    - Execution: continuous repaint every frame while any node has an in-flight job (both to
+      drain the results channel and to animate the in-progress sweep on that node's title bar --
+      see "In-progress indicator" under "Incremental Execution"). Replaces the original
+      100ms-poll idea, which would make the sweep stutter. Stops the instant nothing is running.
 
     When no interaction is active, no layout is settling, and no execution is running, the app
     sleeps completely and consumes zero CPU.
@@ -732,40 +857,109 @@
      - State "TODO"       from              [2026-09-07 Mon 23:11]
      :END:
 
-     *Incremental execution:*
-     - [ ] ~OutputProperty<OrcHandle>~ in EditorState stores cached results per output pin,
-       defaulting to ~OrcHandle::default()~ (zeroed, no backing deck) as the "not yet computed"
-       sentinel. Now that ~Property<H, T>~ only requires ~T: Default~ (not ~Clone~, since
-       09/08's "Remove Clone from Properties" commit), this needs no wrapper at all — properties
-       seed new/missing slots with ~T::default()~ instead of cloning a stored default value, and
-       ~OrcHandle~ already implements ~Default~.
-     - [ ] On topology change (connect, disconnect, add, delete), mark affected outputs as stale
-       (set to None). Propagate staleness downstream: any node whose input comes from a stale
-       output also has all its outputs marked stale.
-     - [ ] Execution only evaluates nodes with stale outputs.
+     <2026-09-09 Wed 15:55> Added a new error code for cancellation.
+
+     <2026-09-09 Wed> Brainstormed the execution engine and threading model to a concrete design
+     (see "Incremental Execution" under the Detailed Plan above for the full rationale). Nesting
+     is out of scope for this phase — moved to Phase 5. Dagger gets its own executor; the
+     existing ~Workflow::run~ is left untouched, since pyorc and ~kbb_cli_host~ already depend on
+     its current signature and behavior.
+
+     *orc_sdk prerequisite:*
+     - [ ] Add a public forward-adjacency accessor on ~Workflow~ (e.g. ~output_links(OH)~),
+       wrapping the ~Graph::output_links~ machinery that already exists internally but isn't
+       reachable from outside the crate. Needed for downstream staleness propagation and
+       worklist scheduling without full-graph scans. (No other ~orc_sdk~ changes needed —
+       handle-lifetime safety below is built entirely out of types that already exist.)
+
+     *Staleness tracking:*
+     - [ ] ~computed_outputs: OutputProperty<Arc<OrcHandle>>~ in EditorState, cached per output
+       pin — see "Handle lifetime across threads" below for why it's ~Arc~-wrapped.
+       "Not yet computed" sentinel is ~free_fn.is_none()~, not equality on the raw ~handle~ id
+       (id 0 is a legitimate value once ~HANDLE_COUNTER~ has issued it).
+     - [ ] ~dirty_version: NodeProperty<u64>~, bumped (not just set true) on a direct edit and
+       propagated forward to every downstream node via the new adjacency accessor.
+     - [ ] Dispatch readiness via a small worklist of touched/just-resolved candidate nodes, each
+       checked against its own (small) fan-in when popped — not a full per-frame graph scan, and
+       not a fully precise per-edge in-degree counter either.
+
+     *Own executor (not ~Workflow::run~):*
+     - [ ] Walks every node (~workflow.node_iter()~ as roots), not just declared
+       ~workflow_outputs~ (which dagger never sets), so Inspect node dead ends are reached.
+     - [ ] Skips nodes whose ~dirty_version~ already matches what their cached output was
+       computed for; only stale nodes are dispatched.
+     - [ ] Nodes flagged ~in_cycle~ are skipped, via the executor's own cycle check each walk —
+       layout's cached ~node_in_cycle~ is only computed once (first ~measure~) and goes stale
+       after later topology edits.
+     - [ ] ~NodeInfo::NestedCall~ is left unimplemented in this executor (no UI path creates one
+       yet); revisit alongside Phase 5.
+
+     *Thread pool:*
+     - [ ] Fixed-size pool, ~max(available_parallelism() - 1, 1)~ long-lived worker threads,
+       spawned once, blocking on a shared ~Arc<Mutex<Receiver<NodeJob>>>~ — no thread
+       creation/teardown during interactive use, independent branches run genuinely in parallel.
+     - [ ] Results delivered over a second ~mpsc~ channel, drained via ~try_recv()~ on the UI
+       thread once per frame — the UI thread never blocks.
+     - [ ] ~NodeJob~: node handle, plugin function pointer, inputs as cloned ~Arc<OrcHandle>~
+       (an ~OrcHandleBorrowed<'_>~ is derived from each, locally on the worker, right before the
+       actual call — same zero-copy pattern as ~Workflow::run~'s ~.borrowed()~, just constructed
+       just-in-time instead of shipped across the channel), output count, a cancellation ~ctx~
+       id, and the ~dirty_version~ it was launched for.
+     - [ ] ~NodeResult~: node handle, that same ~ctx~/launched version, and the outcome —
+       ~Ok(outputs)~, ~Err(OperationCancelled)~, or ~Err(other)~.
+
+     *Cancellation — per node job, not per pass or global:*
+     - [ ] One ~ContextArena<bool>~ slot per dispatched job (mirrors ~SERIAL_CONTEXT_ARENA~).
+       ~check_cancellation(ctx)~ reads it; whether a plugin checks it at all is entirely up to
+       whoever implemented that node.
+     - [ ] Only the specific job whose own node gets invalidated has its flag flipped — editing
+       an unrelated, independent branch must never disturb a node that's currently running.
+     - [ ] Relies on ~ORC_ERROR_OPERATION_CANCELLED~ (added in commit e1b1320) to tell a
+       cooperative abort apart from a real failure.
+
+     *Handle lifetime across threads (~Arc<OrcHandle>~, no wrapper type):*
+     - [ ] Don't reach into ~DeckRegistry~'s own internal ~Arc~ (~util.rs:96~) — it only exists
+       for ~TypeOwner::BuiltIn~ handles; a plugin-owned handle's storage lives entirely on the
+       other side of the FFI boundary (possibly not even Rust), with no such ~Arc~ to acquire.
+     - [ ] No guard/wrapper type needed either — ~OrcHandle~ already has ~impl Drop { fn
+       drop(&mut self) { self.free(); } }~ (~ffi.rs:212~), so plain ~Arc<OrcHandle>~ is enough:
+       cloning it for each borrowed input and holding the clone in the ~NodeJob~ keeps the
+       handle alive exactly as long as the job needs it, uniformly regardless of whether the
+       handle is built-in or plugin-owned.
+     - [ ] Committing a result is just ~computed_outputs[oh] = Arc::new(new_handle)~ — the old
+       ~Arc~ drops (and, via ~OrcHandle~'s own ~Drop~, frees) immediately if nothing else holds
+       a clone, or lingers until whichever in-flight job does drop its clone. No explicit
+       ~.free()~ call anywhere in dagger's own code, no reader-count bookkeeping, no
+       pending-commit staging slot.
+     - [ ] Relies on the executor always allocating a fresh handle id per computed output (never
+       reusing one), matching ~Workflow::run~'s existing convention.
+
+     *Commit policy on job completion:*
+     - [ ] ~Ok(outputs)~ is always committed immediately (~computed_outputs[oh] = Arc::new(...)~,
+       no staging needed), even if the node was invalidated again after this job launched. The
+       node is still redispatched afterward if still marked dirty.
+     - [ ] ~Err(OperationCancelled)~ commits nothing; the node is simply eligible for redispatch
+       right away.
+     - [ ] Any other ~Err~ is a genuine fault: shown on the node, and the node settles (does not
+       retry every time the scheduler looks for ready work) until a future edit touches it again.
+
+     *In-progress UI indicator:*
+     - [ ] A node with an in-flight job gets a looping left-to-right pulse/sweep drawn into its
+       title bar fill (indefinite-progress-bar style), driven by wall-clock time.
+     - [ ] Continuous repaint requested every frame while any node is in-flight (replaces the
+       original 100ms-poll idea, which would make the sweep stutter).
 
      *Inspect node display:*
      - [ ] Render ~deck_to_str()~ output of connected upstream data in a scrollable monospace text
-       area embedded in the node body.
-     - [ ] Inspect nodes are resizable by the user (drag bottom-right corner). Size stored in
-       ~node_sizes~ property. Layout simulation accounts for current size (bounding-box
-       repulsion pushes neighbors away from enlarged inspect nodes).
+       area embedded in the node body. ~DeckView~'s recursive ~child()~/~advance_iter()~ (already
+       exercised by ~kbb_cli_host~'s ~to_str_groups~ test helper) is the reference for turning
+       the resulting ~Deck<u8>~ handle into readable strings.
+     - [ ] Inspect nodes are resizable by the user (drag bottom-right corner), size stored in
+       ~node_sizes~. No layout simulation reacts to the new size anymore (Phase 3b removed it) —
+       resizing just grows the node in place; neighbors don't move.
      - [ ] Minimize/maximize toggle: expand to fill viewport, or shrink back.
      - [ ] Pop-out button: open inspect view in a separate OS window via
        ~ctx.show_viewport_deferred()~.
-
-     *Background thread:*
-     - [ ] Serialize the stale subgraph + its non-stale input values to bytes via mpsc channel.
-       Deserialize + run on background thread (necessary because Workflow is not Send due to
-       Rc/RefCell in properties). Send results back via mpsc.
-     - [ ] UI thread polls channel each frame while execution is in-flight
-       (~ctx.request_repaint_after(100ms)~). Stores results into ~computed_outputs~ and
-       ~nested_exec_state~. Stops polling when result arrives.
-
-     *Modified Workflow::run:*
-     - [ ] Accept pre-computed output values for non-stale nodes and skip evaluating them.
-     - [ ] Return ALL intermediate output values (not just final workflow outputs).
-     - [ ] At NestedCall nodes, recursively capture internal state into ~NestedExecState~.
 
 **** TODO Phase 5: Nested Workflow Editing
      :LOGBOOK:
