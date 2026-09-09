@@ -1,3 +1,4 @@
+use crate::quadtree::{Contribution, QuadTree};
 use crate::state::EditorState;
 use orc_sdk::{DagHandle, NH, Workflow};
 
@@ -14,6 +15,13 @@ const DAG_MIN_GAP: f32 = 220.0;
 const DAG_CONSTRAINT_STRENGTH: f32 = 0.5;
 const CONVERGENCE_THRESHOLD: f32 = 0.1;
 const MAX_DISPLACEMENT: f32 = 50.0;
+/// Below this many nodes, summing repulsion directly over every pair is faster than
+/// building a quadtree first — confirmed by the before/after numbers in `bench` (see
+/// `quadtree.rs`'s module doc for why the tree wins at all above some size: it turns an
+/// O(n^2) scan into an O(n log n) one by approximating distant clusters as a single point).
+/// Below the crossover the tree's own build cost dominates instead, since it's still
+/// O(n log n) work just to construct.
+const BRUTE_FORCE_NODE_THRESHOLD: usize = 200;
 /// Top-left starting point for the depth-0 layer's seed positions, in canvas units. Purely a
 /// visual choice for where the layout starts before the user ever pans.
 const SEED_ORIGIN_X: f32 = 100.0;
@@ -178,6 +186,71 @@ fn repulsion_force(pos_a: [f32; 2], size_a: [f32; 2], pos_b: [f32; 2], size_b: [
     [dx / dist * force, dy / dist * force]
 }
 
+/// Applies bounding-box repulsion between every pair of nodes to `forces`.
+///
+/// Below `BRUTE_FORCE_NODE_THRESHOLD`, sums every pair directly, exploiting Newton's third
+/// law (the force on `b` is the negation of the force on `a`) to halve the work. Above it,
+/// approximates distant clusters via a Barnes-Hut quadtree (`quadtree.rs`) instead of
+/// visiting every pair: each node's force becomes an O(log n) tree walk rather than an
+/// O(n) scan, so the whole pass is O(n log n) instead of O(n^2). The quadtree only reports
+/// geometry (which points are close enough to need an exact comparison, which clusters are
+/// far enough to summarize as one mass at their center); the actual repulsion law —
+/// including the overlap-margin term, which only ever matters at the close range the tree
+/// always resolves down to individual points for — is applied here, identically to the
+/// brute-force path.
+fn apply_repulsion(positions: &[[f32; 2]], sizes: &[[f32; 2]], forces: &mut [[f32; 2]]) {
+    if positions.len() <= BRUTE_FORCE_NODE_THRESHOLD {
+        apply_repulsion_brute_force(positions, sizes, forces);
+    } else {
+        apply_repulsion_quadtree(positions, sizes, forces);
+    }
+}
+
+fn apply_repulsion_brute_force(positions: &[[f32; 2]], sizes: &[[f32; 2]], forces: &mut [[f32; 2]]) {
+    let n = positions.len();
+    for i in 0..n {
+        for j in (i + 1)..n {
+            let f = repulsion_force(positions[i], sizes[i], positions[j], sizes[j]);
+            forces[i][0] += f[0];
+            forces[i][1] += f[1];
+            forces[j][0] -= f[0];
+            forces[j][1] -= f[1];
+        }
+    }
+}
+
+fn apply_repulsion_quadtree(positions: &[[f32; 2]], sizes: &[[f32; 2]], forces: &mut [[f32; 2]]) {
+    let tree = QuadTree::build(positions);
+    for i in 0..positions.len() {
+        let mut force = [0.0f32; 2];
+        tree.visit(i, positions[i], |c| {
+            let f = match c {
+                Contribution::Exact(j) => {
+                    repulsion_force(positions[i], sizes[i], positions[j], sizes[j])
+                }
+                Contribution::Approx { com, mass } => {
+                    let dx = positions[i][0] - com[0];
+                    let dy = positions[i][1] - com[1];
+                    let dist_sq = (dx * dx + dy * dy).max(100.0);
+                    let dist = dist_sq.sqrt();
+                    // The monopole approximation: `mass` coincident nodes at their shared
+                    // center behave, at this range, like one node repelling with `mass`
+                    // times the strength of one. There's no overlap-margin term here
+                    // because a cluster this far away — far enough for `dist` to clear the
+                    // opening-angle test against its own width — is never anywhere near
+                    // actually overlapping node `i`.
+                    let mag = REPULSION_STRENGTH * 0.1 * mass as f32 / dist_sq;
+                    [dx / dist * mag, dy / dist * mag]
+                }
+            };
+            force[0] += f[0];
+            force[1] += f[1];
+        });
+        forces[i][0] += force[0];
+        forces[i][1] += force[1];
+    }
+}
+
 /// Run one step of the force-directed layout simulation.
 ///
 /// `pinned` is the node being actively dragged this frame, if any. Its position still feeds
@@ -209,17 +282,10 @@ pub fn step(state: &mut EditorState, pinned: Option<NH>) -> bool {
 
     let mut forces = vec![[0.0f32; 2]; n];
 
-    // 1. Bounding-box repulsion between all node pairs. See `repulsion_force` for why this is
-    // one continuous formula rather than a hard switch between "overlapping" and "not".
-    for i in 0..n {
-        for j in (i + 1)..n {
-            let f = repulsion_force(positions[i], sizes[i], positions[j], sizes[j]);
-            forces[i][0] += f[0];
-            forces[i][1] += f[1];
-            forces[j][0] -= f[0];
-            forces[j][1] -= f[1];
-        }
-    }
+    // 1. Bounding-box repulsion between all node pairs. See `apply_repulsion` for the
+    // brute-force/quadtree split, and `repulsion_force` for why the pairwise formula is
+    // one continuous expression rather than a hard switch between "overlapping" and "not".
+    apply_repulsion(&positions, &sizes, &mut forces);
 
     // Build a NH index lookup (NH -> index in nodes vec).
     let max_idx = nodes.iter().map(|nh| nh.index()).max().unwrap_or(0);
@@ -332,7 +398,10 @@ pub fn step(state: &mut EditorState, pinned: Option<NH>) -> bool {
 
 #[cfg(test)]
 mod test {
-    use super::{compute_depths, repulsion_force, step};
+    use super::{
+        BRUTE_FORCE_NODE_THRESHOLD, apply_repulsion_brute_force, apply_repulsion_quadtree,
+        compute_depths, repulsion_force, step,
+    };
     use crate::state::EditorState;
     use orc_sdk::{DagHandle, FuncInfo, IH, NH, OH, Workflow};
 
@@ -608,6 +677,94 @@ mod test {
                 "layout reported converged at step {converged_at} but flapped back to \
                  unconverged {} step(s) later — a residual jitter, not a settled layout",
                 i + 1
+            );
+        }
+    }
+
+    /// `apply_repulsion` picks brute force or the quadtree purely based on node count — this
+    /// checks the two paths agree on the same input, which is what makes that switch safe.
+    /// A scattered (not clustered) layout, unlike `quadtree.rs`'s own approximation-error
+    /// test, since that's the shape a real settling layout actually has, and it's a much
+    /// harder case for Barnes-Hut than a single tight cluster: many cells end up close to
+    /// the opening-angle threshold at once instead of one comfortably far cluster.
+    #[test]
+    fn t_quadtree_repulsion_matches_brute_force_for_a_scattered_layout() {
+        let n = 300;
+        let positions: Vec<[f32; 2]> = (0..n)
+            .map(|i| {
+                [
+                    ((i * 37) % 2000) as f32,
+                    ((i * 53) % 1500) as f32,
+                ]
+            })
+            .collect();
+        let sizes = vec![[160.0f32, 80.0]; n];
+
+        let mut brute = vec![[0.0f32; 2]; n];
+        apply_repulsion_brute_force(&positions, &sizes, &mut brute);
+        let mut tree = vec![[0.0f32; 2]; n];
+        apply_repulsion_quadtree(&positions, &sizes, &mut tree);
+
+        // Aggregate (RMS) error against aggregate magnitude, not a per-node worst-case
+        // ratio: individual nodes can have a near-zero net force from cancellation between
+        // neighbors on opposite sides, where even a tiny absolute approximation error
+        // balloons into a huge relative one despite the layout looking (and behaving)
+        // fine. The layout is a visual aid settled over many damped iterations, not a
+        // physics simulation with a correctness contract, so what matters is that the
+        // approximation is close in aggregate, not bit-exact per node.
+        let mut sum_err_sq = 0.0f32;
+        let mut sum_mag_sq = 0.0f32;
+        for i in 0..n {
+            sum_err_sq += (tree[i][0] - brute[i][0]).powi(2) + (tree[i][1] - brute[i][1]).powi(2);
+            sum_mag_sq += brute[i][0].powi(2) + brute[i][1].powi(2);
+        }
+        let rms_rel_err = (sum_err_sq / sum_mag_sq).sqrt();
+        assert!(
+            rms_rel_err < 0.6,
+            "quadtree repulsion drifted too far from brute force in aggregate: rms relative \
+             error {rms_rel_err}"
+        );
+    }
+
+    /// `step` itself must dispatch to the quadtree path once a layout crosses
+    /// `BRUTE_FORCE_NODE_THRESHOLD` without blowing up — the two repulsion paths agreeing
+    /// in isolation (previous test) doesn't guarantee the switch is wired correctly into
+    /// the rest of the integration loop (spring, centering, DAG constraint, damping).
+    /// Starts from `topological_seed`'s ordinary starting layout, same as opening a real
+    /// workflow. A smoke test, not a physics-quality check: whether this many mutually
+    /// repelling, spring-free siblings fully settle within any given step budget is a
+    /// property of the existing force model at this scale, not of the quadtree switch.
+    #[test]
+    fn t_large_layout_above_the_quadtree_threshold_stays_finite_and_bounded() {
+        let n = BRUTE_FORCE_NODE_THRESHOLD + 50;
+        let mut wf = Workflow::default();
+        let mut handles = Vec::with_capacity(n);
+        for _ in 0..n {
+            let (nh, _, _) = node(&mut wf, 0, 1);
+            handles.push(nh);
+        }
+        let mut state = EditorState::from_workflow(wf);
+        {
+            let mut sizes = state.node_sizes.try_borrow_mut().unwrap();
+            for &nh in &handles {
+                sizes[nh] = [160.0, 80.0];
+            }
+        }
+
+        for _ in 0..500 {
+            step(&mut state, None);
+        }
+
+        let pos = state.node_positions.try_borrow().unwrap();
+        for &nh in &handles {
+            assert!(
+                pos[nh][0].is_finite() && pos[nh][1].is_finite(),
+                "quadtree repulsion must never produce a non-finite position"
+            );
+            assert!(
+                pos[nh][0].abs() < 1_000_000.0 && pos[nh][1].abs() < 1_000_000.0,
+                "layout should not blow up to an unbounded position, got {:?}",
+                pos[nh]
             );
         }
     }

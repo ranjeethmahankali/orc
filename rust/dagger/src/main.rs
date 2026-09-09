@@ -6,6 +6,7 @@ mod file_menu;
 mod inspect;
 mod interaction;
 mod layout;
+mod quadtree;
 mod render;
 mod state;
 
