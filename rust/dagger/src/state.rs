@@ -1,11 +1,13 @@
 use crate::canvas::Transform;
 use crate::context_menu::ContextMenuState;
+use crate::exec;
 use crate::interaction::SelectBoxKind;
 use crate::layout;
 use crate::render;
 use eframe::egui::{self, Rect};
-use orc_sdk::{NodeProperty, OH, Workflow};
+use orc_sdk::{NodeProperty, OH, OrcHandle, OutputProperty, Workflow};
 use std::path::PathBuf;
+use std::sync::Arc;
 
 pub struct EditorState {
     pub workflow: Workflow,
@@ -44,6 +46,19 @@ pub struct EditorState {
     /// positions, selection, pan/zoom etc. don't count — none of that is persisted to disk, so
     /// none of it should mark the file dirty.
     pub dirty: bool,
+    /// Cached execution result per output pin, `Arc`-wrapped so an in-flight job on another
+    /// thread can share a clone without copying the underlying deck — see "Handle lifetime
+    /// across threads" in PROJECT.org. The "not yet computed" sentinel is a handle whose
+    /// `free_fn` is `None` (the zeroed default), not a specific `handle` id.
+    pub computed_outputs: OutputProperty<Arc<OrcHandle>>,
+    /// Bumped (not just flagged) whenever a node is directly edited or something upstream of it
+    /// is. A node is settled once its cached result reflects its current `dirty_version`.
+    pub dirty_version: NodeProperty<u64>,
+    /// Set when a node's last execution attempt returned a real (non-cancellation) error.
+    /// Cleared the next time it computes successfully.
+    pub execution_error: NodeProperty<Option<String>>,
+    /// Scheduling bookkeeping private to `exec` (in-flight jobs, the dispatch worklist).
+    pub(crate) exec: exec::ExecState,
 }
 
 impl EditorState {
@@ -52,7 +67,11 @@ impl EditorState {
         let node_sizes = workflow.create_node_property();
         let node_in_cycle = workflow.create_node_property();
         let selected = workflow.create_node_property();
-        Self {
+        let computed_outputs = workflow.create_output_property();
+        let dirty_version = workflow.create_node_property();
+        let execution_error = workflow.create_node_property();
+        let exec_state = exec::ExecState::new(&mut workflow);
+        let mut state = Self {
             workflow,
             node_positions,
             node_sizes,
@@ -68,7 +87,13 @@ impl EditorState {
             current_path: None,
             file_error: None,
             dirty: false,
-        }
+            computed_outputs,
+            dirty_version,
+            execution_error,
+            exec: exec_state,
+        };
+        exec::mark_all_dirty(&mut state);
+        state
     }
 
     /// Re-measure node sizes from the current labels.

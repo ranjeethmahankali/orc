@@ -45,6 +45,14 @@ const LINK_COLOR: Color32 = Color32::from_rgb(180, 180, 180);
 const LINK_WIDTH: f32 = 2.0;
 const CONTROL_POINT_OFFSET: f32 = 80.0;
 
+/// Indefinite-progress-bar style sweep drawn into an in-flight node's title bar. Purely
+/// cosmetic; the node is genuinely running on a worker thread regardless of what this looks
+/// like, since the app never blocks on execution.
+const PULSE_COLOR: Color32 = Color32::from_rgba_premultiplied(255, 255, 255, 65);
+const PULSE_BAND_FRACTION: f32 = 0.35;
+/// Full sweeps per second.
+const PULSE_SPEED: f64 = 0.6;
+
 /// Control points for a cubic bezier between `start` and `end`, both in the same space. The
 /// caller maps them into screen space, since a link's endpoints are in canvas space but an
 /// in-progress wire's cursor endpoint is already in screen space.
@@ -208,10 +216,29 @@ pub fn measure_nodes(ctx: &egui::Context, workflow: &Workflow, sizes: &mut NodeP
 pub fn draw(ui: &mut egui::Ui, state: &EditorState) {
     let view = state.view;
     let wire_target = pending_wire_target(ui, state, &view);
+    let time = ui.input(|i| i.time);
     draw_links(ui, state, &view);
-    draw_nodes(ui, state, &view, wire_target);
+    draw_nodes(ui, state, &view, wire_target, time);
     draw_pending_wire(ui, state, &view);
     draw_select_box(ui, state);
+}
+
+/// Sweeps a soft highlight band left to right across `title_rect`, looping forever. The band
+/// travels from fully off the left edge to fully off the right edge so it fades in/out at the
+/// boundary instead of popping.
+fn draw_in_flight_pulse(painter: &egui::Painter, title_rect: Rect, time: f64) {
+    let phase = (time * PULSE_SPEED).rem_euclid(1.0) as f32;
+    let band_width = title_rect.width() * PULSE_BAND_FRACTION;
+    let travel = title_rect.width() + band_width;
+    let center_x = title_rect.min.x - band_width / 2.0 + phase * travel;
+    let band = Rect::from_center_size(
+        Pos2::new(center_x, title_rect.center().y),
+        Vec2::new(band_width, title_rect.height()),
+    );
+    let clipped = band.intersect(title_rect);
+    if clipped.width() > 0.0 && clipped.height() > 0.0 {
+        painter.rect_filled(clipped, 0.0, PULSE_COLOR);
+    }
 }
 
 /// The input pin (if any) that releasing a wire drag right now would connect to, so it can be
@@ -321,7 +348,13 @@ fn draw_links(ui: &mut egui::Ui, state: &EditorState, view: &Transform) {
     }
 }
 
-fn draw_nodes(ui: &mut egui::Ui, state: &EditorState, view: &Transform, wire_target: Option<IH>) {
+fn draw_nodes(
+    ui: &mut egui::Ui,
+    state: &EditorState,
+    view: &Transform,
+    wire_target: Option<IH>,
+    time: f64,
+) {
     let painter = ui.painter();
     let font = FontId::new(view.scale(FONT_SIZE), FontFamily::Monospace);
     let label_font = FontId::new(view.scale(LABEL_FONT_SIZE), FontFamily::Monospace);
@@ -385,6 +418,9 @@ fn draw_nodes(ui: &mut egui::Ui, state: &EditorState, view: &Transform, wire_tar
                 Vec2::new(rect.width(), NODE_ROUNDING),
             ));
             painter.rect_filled(patch, 0.0, title_fill);
+        }
+        if crate::exec::is_node_in_flight(state, nh) {
+            draw_in_flight_pulse(painter, title_rect, time);
         }
 
         // Title text.

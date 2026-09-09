@@ -132,8 +132,9 @@ fn connect_from_menu(state: &mut EditorState, from: OH, to: IH) {
     if !crate::interaction::output_is_live(&state.workflow, from) {
         return;
     }
-    if let Err(e) = state.workflow.connect(from, to) {
-        state.file_error = Some(format!("Failed to connect new node: {e}"));
+    match state.workflow.connect(from, to) {
+        Ok(_) => crate::exec::mark_dirty(state, state.workflow.node_from_input(to)),
+        Err(e) => state.file_error = Some(format!("Failed to connect new node: {e}")),
     }
 }
 
@@ -157,6 +158,7 @@ fn create_function_node(
     if let (Some(from), Some(&first)) = (connect_from, inputs.first()) {
         connect_from_menu(state, from, first);
     }
+    crate::exec::mark_dirty(state, nh);
     finish_node_creation(state, nh, screen_pos);
 }
 

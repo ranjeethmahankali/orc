@@ -20,11 +20,18 @@ use orc_sdk::{
 };
 use std::alloc::{Layout, alloc, dealloc};
 use std::ffi::{CStr, c_void};
-use std::sync::{LazyLock, atomic::AtomicU64};
+use std::sync::{
+    LazyLock,
+    atomic::{AtomicU64, Ordering},
+};
 
 pub(crate) static REGISTRY: LazyLock<DeckRegistry> = LazyLock::new(DeckRegistry::new);
 pub static HANDLE_COUNTER: AtomicU64 = AtomicU64::new(0);
 static SERIAL_CONTEXT_ARENA: LazyLock<ContextArena<Vec<u8>>> = LazyLock::new(ContextArena::default);
+/// One slot per in-flight `exec::NodeJob`. `check_cancellation_callback` reads a slot; the
+/// scheduler flips it to `true` for exactly the job whose own node got invalidated while
+/// running — never for unrelated, still-valid in-flight work.
+pub(crate) static CANCEL_ARENA: LazyLock<ContextArena<bool>> = LazyLock::new(ContextArena::default);
 
 unsafe extern "C" fn host_alloc(size: u64, alignment: u64) -> *mut c_void {
     let layout = Layout::from_size_align(size as usize, alignment as usize).unwrap();
@@ -164,6 +171,13 @@ unsafe extern "C" fn report_message(
     );
 }
 
+/// Looks up the cancellation flag for one in-flight job. Whether a plugin function ever calls
+/// this at all is entirely up to whoever implemented it — the host imposes no policy here beyond
+/// exposing the flag.
+unsafe extern "C" fn check_cancellation_callback(ctx: u64) -> bool {
+    CANCEL_ARENA.visit_mut(ctx, |cancelled| *cancelled).unwrap_or(false)
+}
+
 pub const HOST: OrcHost = OrcHost {
     abi_version: ORC_ABI_VERSION,
     memory_api: OrcHostMemoryAPI {
@@ -173,7 +187,7 @@ pub const HOST: OrcHost = OrcHost {
     callbacks: OrcHostCallbackAPI {
         report_progress: None,
         report_message: Some(report_message),
-        check_cancellation: None,
+        check_cancellation: Some(check_cancellation_callback),
         report_intermediate_output: None,
         serial_write: Some(serial_write_callback),
     },
@@ -192,7 +206,13 @@ pub static PLUGIN_SET: LazyLock<PluginSet> = LazyLock::new(|| {
 });
 
 pub fn host_clone_orc_handle(src: OrcHandleBorrowed) -> Result<OrcHandle, Error> {
-    let mut out = OrcHandle::default();
+    // `out.handle` is the key `DeckRegistry::alloc` inserts under -- leaving it at its
+    // `Default::default()` value (0) would collide with whatever already holds handle id 0 and
+    // silently clone into (mutating in place) that unrelated entry instead of a fresh one.
+    let mut out = OrcHandle {
+        handle: HANDLE_COUNTER.fetch_add(1, Ordering::Relaxed),
+        ..Default::default()
+    };
     let err = unsafe {
         host_create_proxy_deck(
             src.inner(),

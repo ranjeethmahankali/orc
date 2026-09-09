@@ -184,7 +184,10 @@ fn update_pending_wire(ui: &mut egui::Ui, state: &mut EditorState, source: OH) -
         let src = state.workflow.node_from_output(source);
         if !creates_cycle(&state.workflow, src, dst) {
             match state.workflow.connect(source, target) {
-                Ok(_) => state.dirty = true,
+                Ok(_) => {
+                    state.dirty = true;
+                    crate::exec::mark_dirty(state, dst);
+                }
                 Err(e) => state.file_error = Some(format!("Failed to connect: {e}")),
             }
         }
@@ -222,6 +225,10 @@ pub fn update(
     let mut dragged_node: Option<(NH, Vec2)> = None;
     let mut wire_start: Option<OH> = None;
     let mut clicked_node: Option<NH> = None;
+    // The node whose input pin was just yanked off an upstream connection (rewire gesture),
+    // deferred until `positions`/`sizes` are dropped below since `mark_dirty` needs `&mut
+    // EditorState` and those `Ref`s borrow `state`'s fields for the whole loop.
+    let mut disconnected_input_owner: Option<NH> = None;
 
     let nodes: Vec<NH> = state.workflow.node_iter().collect();
     for nh in nodes {
@@ -245,6 +252,7 @@ pub fn update(
             {
                 state.workflow.disconnect(upstream, ih);
                 wire_start = Some(upstream);
+                disconnected_input_owner = Some(nh);
                 events.changed = true;
                 state.dirty = true;
             }
@@ -274,6 +282,10 @@ pub fn update(
     }
     drop(positions);
     drop(sizes);
+
+    if let Some(nh) = disconnected_input_owner {
+        crate::exec::mark_dirty(state, nh);
+    }
 
     if let Some(nh) = clicked_node {
         select_node(state, nh, shift);
@@ -342,7 +354,18 @@ pub fn delete_selected(ui: &mut egui::Ui, state: &mut EditorState) -> bool {
         return false;
     }
     for nh in selected_nodes {
+        // Captured before deleting: `Workflow::delete_node` disconnects the deleted node's own
+        // links as part of tombstoning it, so its downstream neighbors can't be discovered
+        // afterward -- by then there's nothing left to walk forward from.
+        let downstream: Vec<NH> = state
+            .workflow
+            .node_outputs(nh)
+            .flat_map(|oh| state.workflow.downstream_nodes(oh))
+            .collect();
         state.workflow.delete_node(nh);
+        for affected in downstream {
+            crate::exec::mark_dirty(state, affected);
+        }
     }
     // A wire drag started from one of these nodes' output pins would otherwise still try to
     // complete against a now-tombstoned pin on release — `update_pending_wire` guards against

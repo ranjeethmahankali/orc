@@ -1,5 +1,6 @@
 use crate::canvas;
 use crate::context_menu;
+use crate::exec;
 use crate::file_menu;
 use crate::interaction;
 use crate::render;
@@ -63,6 +64,15 @@ impl eframe::App for DaggerApp {
                 }
                 let (canvas_response, view_moved) = canvas::interact(ui, &mut self.state.view);
                 let deleted = interaction::delete_selected(ui, &mut self.state);
+
+                // Drains completed jobs and dispatches whatever just became ready. Cheap when
+                // nothing is stale or in flight, so this runs unconditionally every frame.
+                exec::tick(&mut self.state);
+                if exec::any_in_flight(&self.state) {
+                    // Needed both to keep draining the results channel and to animate the
+                    // in-progress sweep on whichever node(s) are running.
+                    ui.ctx().request_repaint();
+                }
 
                 // Runs before the layout step, using hit rects from the end of the previous
                 // frame, so a drag this frame can tell the layout step which node to leave
