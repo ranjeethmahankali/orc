@@ -370,6 +370,26 @@ impl Workflow {
         self.graph.outputs[o.idx].node
     }
 
+    /// Every link fanning out from the given output, i.e. the forward adjacency `input_source`
+    /// doesn't give you. Backed by the same intrusive linked list `Graph::node_outputs` etc.
+    /// already walk, so this is O(fan-out), not a scan over the whole graph.
+    pub fn output_links(&self, o: OH) -> impl Iterator<Item = LH> {
+        self.graph.output_links(o)
+    }
+
+    /// The input pin a link connects into.
+    pub fn link_end(&self, l: LH) -> IH {
+        self.graph.links[l.idx].end
+    }
+
+    /// The nodes fed directly by the given output, i.e. the downstream neighbors reached by
+    /// walking `output_links`. Convenience wrapper around `output_links` + `link_end` +
+    /// `node_from_input`, since that's the query staleness propagation and worklist scheduling
+    /// actually need.
+    pub fn downstream_nodes(&self, o: OH) -> impl Iterator<Item = NH> + '_ {
+        self.output_links(o).map(|l| self.node_from_input(self.link_end(l)))
+    }
+
     /// This will run the DAG, and return an iterator over the required outputs. This is super
     /// sketchy, and sub-optimal. Probably doesn't meet the performance and memory requirements of
     /// any production quality host program. This is good enough for now, for testing as I continue
@@ -614,7 +634,7 @@ impl Workflow {
 
 #[cfg(test)]
 mod test {
-    use crate::{FuncInfo, IH, OH, Workflow, dag::Handle};
+    use crate::{FuncInfo, IH, NH, OH, Workflow, dag::Handle};
 
     fn make_func_info(name: &str) -> FuncInfo {
         FuncInfo {
@@ -654,6 +674,42 @@ mod test {
         let lh = w.connect(a_out[0], b_in[0]).unwrap();
         assert_eq!(w.graph.links[lh.index()].start, a_out[0]);
         assert_eq!(w.graph.links[lh.index()].end, b_in[0]);
+    }
+
+    #[test]
+    fn t_downstream_nodes_follows_fan_out() {
+        // A fans out to both B and C.
+        let mut w = Workflow::default();
+        let mut a_out = [OH::default()];
+        let na = w
+            .add_function(make_func_info("A"), &mut [], &mut a_out)
+            .unwrap();
+        let mut b_in = [IH::default()];
+        let nb = w
+            .add_function(make_func_info("B"), &mut b_in, &mut [])
+            .unwrap();
+        let mut c_in = [IH::default()];
+        let nc = w
+            .add_function(make_func_info("C"), &mut c_in, &mut [])
+            .unwrap();
+        w.connect(a_out[0], b_in[0]).unwrap();
+        w.connect(a_out[0], c_in[0]).unwrap();
+
+        let mut downstream: Vec<NH> = w.downstream_nodes(a_out[0]).collect();
+        downstream.sort_by_key(|n| n.index());
+        let mut expected = vec![nb, nc];
+        expected.sort_by_key(|n| n.index());
+        assert_eq!(downstream, expected);
+        let _ = na;
+    }
+
+    #[test]
+    fn t_downstream_nodes_empty_for_unconnected_output() {
+        let mut w = Workflow::default();
+        let mut a_out = [OH::default()];
+        w.add_function(make_func_info("A"), &mut [], &mut a_out)
+            .unwrap();
+        assert_eq!(w.downstream_nodes(a_out[0]).count(), 0);
     }
 
     #[test]
