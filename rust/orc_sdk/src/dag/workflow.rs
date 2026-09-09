@@ -641,6 +641,8 @@ mod test {
             desc: String::new(),
             n_inputs: Some(0usize),  // good enough for these tests.
             n_outputs: Some(0usize), // good enough for these tests.
+            input_args: Default::default(),
+            output_args: Default::default(),
             func: None,
         }
     }
