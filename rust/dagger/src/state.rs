@@ -84,6 +84,14 @@ pub struct EditorState {
     /// spreadsheet. A `Cell`, not a `NodeProperty`, since it's read from `render.rs` through only
     /// `&EditorState` and needs no per-node storage or garbage collection, just one slot.
     pub(crate) pending_focus_row: Cell<Option<(NH, usize)>>,
+    /// Only ever non-empty for an `EditorState` pushed by `nested::open`: the current values that
+    /// were feeding the calling `NestedCall` node's own input pins one level down, positionally
+    /// matching `Workflow::workflow_input_position`. `exec`'s dispatch reads this to resolve this
+    /// workflow's own dangling workflow-input pins, so editing a nested workflow previews live
+    /// data instead of nothing -- but nothing here is ever written into the graph itself, so
+    /// there's nothing to bake in or revert; reopening a different caller of the same nested
+    /// workflow just gathers a different set of values (see `nested.rs`).
+    pub(crate) simulated_inputs: Vec<Arc<OrcHandle>>,
 }
 
 impl EditorState {
@@ -124,6 +132,7 @@ impl EditorState {
             content_popout,
             const_edit_cache,
             pending_focus_row: Cell::new(None),
+            simulated_inputs: Vec::new(),
         };
         exec::mark_all_dirty(&mut state);
         state

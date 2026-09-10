@@ -3,7 +3,7 @@
 use crate::interaction::ContextMenuRequest;
 use crate::state::EditorState;
 use eframe::egui::{self, Key, Modifiers, Pos2};
-use orc_sdk::{Deck, FuncInfo, IH, OH, OrcHandle, PluginSet};
+use orc_sdk::{Deck, FuncInfo, IH, OH, OrcHandle, PluginSet, Workflow};
 use std::sync::atomic::Ordering;
 
 const ADD_CONSTANT: &str = "Add Constant Node";
@@ -39,6 +39,10 @@ enum MenuAction {
     Constant(Vec<f64>),
     Inspect,
     Function(FuncInfo),
+    /// Call an existing nested workflow, by name. There is no UI to author a nested workflow's
+    /// own interface in this pass (see PROJECT.org's Phase 5) -- this only wires up a `NestedCall`
+    /// node to whatever nested workflows the loaded file already registers.
+    NestedCall(String),
 }
 
 /// A bare number or a bracketed, comma-separated list of numbers, e.g. `3.14` or `[1, 2, 3]`.
@@ -64,7 +68,7 @@ fn parse_literal(text: &str) -> Option<Vec<f64>> {
 /// Before anything is typed, the menu doesn't assume the user wants to add a node — it just
 /// offers the other context menu actions. Typing anything is equivalent to picking "add a
 /// node": the menu switches to showing filtered node candidates instead.
-fn menu_entries(query: &str) -> Vec<(String, MenuAction)> {
+fn menu_entries(query: &str, workflow: &Workflow) -> Vec<(String, MenuAction)> {
     if query.is_empty() {
         return vec![(SESSION_INFO.to_string(), MenuAction::SessionInfo)];
     }
@@ -90,6 +94,14 @@ fn menu_entries(query: &str) -> Vec<(String, MenuAction)> {
             if filter.matches(query, &func.name) {
                 entries.push((func.name.clone(), MenuAction::Function(func.clone())));
             }
+        }
+    }
+    for name in workflow.nested_workflow_names() {
+        if filter.matches(query, name) {
+            entries.push((
+                format!("{name} (nested)"),
+                MenuAction::NestedCall(name.to_string()),
+            ));
         }
     }
     entries
@@ -216,6 +228,57 @@ fn create_constant_node(state: &mut EditorState, values: &[f64], screen_pos: Pos
     finish_node_creation(state, nh, screen_pos);
 }
 
+/// Creates a `NestedCall` node referencing an existing nested workflow, sized and labeled to
+/// match its declared interface -- `add_nested_workflow_call` itself just takes a pin count, so
+/// the arity and pin labels have to come from whatever `name` currently declares via
+/// `set_inputs`/`set_outputs`. Reading that requires a `take`/`put` round trip through
+/// `Workflow::take_nested_workflow` (there's no borrowing accessor -- see PROJECT.org), which is
+/// fine here: it's two `BTreeMap` operations, not a clone of the nested workflow's contents, and
+/// this only runs once per node creation, not on any hot path.
+fn create_nested_call_node(
+    state: &mut EditorState,
+    name: &str,
+    screen_pos: Pos2,
+    connect_from: Option<OH>,
+) {
+    let Some(nested) = state.workflow.take_nested_workflow(name) else {
+        // Only reachable if the name was deleted or checked out for editing between the menu
+        // listing it and the user selecting it -- nothing sensible to create in that case.
+        return;
+    };
+    let in_names = nested.input_names().to_vec();
+    let out_names: Vec<String> = nested
+        .workflow_outputs()
+        .iter()
+        .map(|(_, n)| n.clone())
+        .collect();
+    state.workflow.put_nested_workflow(name.to_string(), nested);
+
+    let mut inputs = vec![IH::default(); in_names.len()];
+    let mut outputs = vec![OH::default(); out_names.len()];
+    let nh = match state
+        .workflow
+        .add_nested_workflow_call(name, &mut inputs, &mut outputs)
+    {
+        Ok(nh) => nh,
+        Err(e) => {
+            state.file_error = Some(format!("Failed to create node: {e}"));
+            return;
+        }
+    };
+    for (&ih, label) in inputs.iter().zip(in_names) {
+        let _ = state.workflow.set_input_label(ih, label);
+    }
+    for (&oh, label) in outputs.iter().zip(out_names) {
+        let _ = state.workflow.set_output_label(oh, label);
+    }
+    if let (Some(from), Some(&first)) = (connect_from, inputs.first()) {
+        connect_from_menu(state, from, first);
+    }
+    crate::exec::mark_dirty(state, nh);
+    finish_node_creation(state, nh, screen_pos);
+}
+
 /// Draw the popup and act on whatever the user selects. Escape and clicking outside close it
 /// via egui's own popup close behavior; selecting an entry creates the node and closes it here.
 pub fn update(ui: &mut egui::Ui, state: &mut EditorState) {
@@ -227,7 +290,7 @@ pub fn update(ui: &mut egui::Ui, state: &mut EditorState) {
     // the field itself would swallow these instead of us seeing them. Wraps against last
     // frame's entry count; the field's own edit (if any) happens after, so the count used here
     // is one frame stale, same as `menu.selected` already is.
-    let prev_count = menu_entries(&menu.query).len();
+    let prev_count = menu_entries(&menu.query, &state.workflow).len();
     let (up, down, enter) = ui.input_mut(|i| {
         (
             i.consume_key(Modifiers::NONE, Key::ArrowUp),
@@ -278,7 +341,7 @@ pub fn update(ui: &mut egui::Ui, state: &mut EditorState) {
         }
 
         ui.separator();
-        entries = menu_entries(&menu.query);
+        entries = menu_entries(&menu.query, &state.workflow);
         if !entries.is_empty() {
             menu.selected = menu.selected.min(entries.len() - 1);
         }
@@ -309,6 +372,9 @@ pub fn update(ui: &mut egui::Ui, state: &mut EditorState) {
                 }
                 MenuAction::Function(info) => {
                     create_function_node(state, info, screen_pos, connect_from);
+                }
+                MenuAction::NestedCall(name) => {
+                    create_nested_call_node(state, &name, screen_pos, connect_from);
                 }
             }
         }

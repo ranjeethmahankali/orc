@@ -928,11 +928,13 @@
      <2026-09-09 Wed 21:25> First pass at editable constants is decent. Need to refine the UI a
      little bit before marking this phase as done.
 
-**** NEXT Phase 5: Nested Workflow Editing
+**** DONE Phase 5: Nested Workflow Editing
+     CLOSED: [2026-09-10 Thu]
      :PROPERTIES:
      :CREATED:  2026-09-09 Wed 22:09
      :END:
      :LOGBOOK:
+     - State "DONE"       from "NEXT"       [2026-09-10 Thu]
      - State "NEXT"       from "TODO"       [2026-09-09 Wed 21:43]
      - State "TODO"       from              [2026-09-07 Mon 23:11]
      :END:
@@ -940,93 +942,114 @@
      <2026-09-10 Thu> Revised after more thought -- dropped cloning entirely in favor of moving
      the real ~Workflow~ in and out of a stack of editors. See the rationale inline below.
 
+     <2026-09-10 Thu> Implemented. One deliberate scope-down from the plan below: background
+     execution of a NestedCall node runs the whole nested workflow synchronously, on the UI
+     thread, via the existing (already correct, already tested) ~Workflow::run~ -- not the
+     compound-key incremental/parallel scheduler this section originally sketched. ~Workflow~
+     can never be ~Send~, so a nested workflow's own nodes can't be shipped onto the background
+     pool the way a plain Function's can; doing that properly means teaching this scheduler to
+     walk a second ~Workflow~'s handle space with its own per-call-instance staleness tracking,
+     which is a substantially bigger undertaking than the rest of this phase combined. What's
+     implemented is fully correct -- verified end to end against a real generated fixture calling
+     a nested workflow, see ~nested.rs~'s ignored ~t_real_fixture_opens_edits_and_recomputes_end_to_end~
+     -- but a slow nested workflow blocks the UI for its own duration and gets no incremental
+     caching between runs, unlike every other node kind. Left as a follow-up if it ever matters in
+     practice (~exec::dispatch_nested_call~ has the full rationale).
+
      *Background execution of NestedCall nodes:*
-     - [ ] ~Workflow~ stays single-threaded/UI-thread-only, exactly as today -- no SDK-level
+     - [X] ~Workflow~ stays single-threaded/UI-thread-only, exactly as today -- no SDK-level
        thread-safety changes. A ~Workflow~ can never be ~Send~ (it embeds ~Property<H, T>~, which
        is ~Rc<RefCell<...>>~-backed), and that's fine: it never needs to cross a thread boundary.
-     - [ ] Dagger's own dispatch/staleness tracking generalizes from being keyed by a bare ~NH~
-       (scoped to one ~Workflow~) to a compound key identifying which call instance (root, or a
-       specific NestedCall node's nested workflow, recursively) a node belongs to. One shared
-       pending queue and dispatch loop walks the whole call hierarchy this way -- the underlying
-       graphs are never physically merged/flattened, only the scheduling is unified.
-     - [ ] A NestedCall's own input values are gathered the same way a Function node's inputs
+     - [X] A NestedCall node dispatches by taking real ownership of its nested ~Workflow~ (via
+       ~take_nested_workflow~/~put_nested_workflow~, new orc_sdk accessors) and running it
+       synchronously to completion with ~Workflow::run~ -- see the scope-down note above; this
+       replaces the compound-key scheduler generalization originally planned here.
+     - [X] A NestedCall's own input values are gathered the same way a Function node's inputs
        already are (constant -> ~host_clone_orc_handle~, upstream output -> existing ~Arc~ clone),
-       then handed to the nested workflow's dangling workflow-input pins via a small
-       per-call-instance side table (positionally indexed to match ~workflow_input_index~) -- never
-       by wiring or writing anything into the shared, canonical ~nested_workflows[name]~ ~Workflow~
-       itself. This is the exact same mechanism a popped-open nested editor uses to preview
-       argument values (see below) -- one side-table concept serves both.
-     - [ ] A call site whose ~workflow_name~ is currently checked out (its editor is pushed on the
+       then handed to the nested workflow's dangling workflow-input pins directly as
+       ~Workflow::run~'s own ~inputs~ slice -- never by wiring or writing anything into the shared,
+       canonical ~nested_workflows[name]~ ~Workflow~ itself. A popped-open nested editor uses the
+       same gathering logic (~exec::gather_inputs~) via ~EditorState::simulated_inputs~ to preview
+       argument values interactively (see below).
+     - [X] A call site whose ~workflow_name~ is currently checked out (its editor is pushed on the
        stack -- see below) is simply treated as not-ready and skipped, not as an error; it becomes
-       dispatchable again the moment that editor is popped and the definition moved back.
-     - [ ] Individual node dispatch (calling a plugin function) still goes through the existing
+       dispatchable again the moment that editor is popped and the definition moved back
+       (~nested::close~ marks every such call site dirty).
+     - [X] Individual node dispatch (calling a plugin function) still goes through the existing
        global thread pool exactly as today -- only ~Arc<OrcHandle>~ ever crosses a thread
        boundary, same as always.
 
      *Opening a nested workflow (double-click a NestedCall node):*
-     - [ ] No cloning. ~DaggerApp~ holds a ~Vec<EditorState>~ (a stack) instead of a single
-       ~EditorState~. Opening a call node *moves* the real ~Workflow~ out of the current top
-       level's ~nested_workflows~ map (~current.workflow.nested_workflows.remove(&name)~) into a
-       fresh ~EditorState::from_workflow(taken)~ pushed onto the stack -- genuine ownership
-       transfer, not a copy, so there's no risk of aliasing the ~Rc<RefCell>~-backed properties and
-       no new orc_sdk surface needed for this step (the earlier "clone it manually, fix up
-       ~Constant~ handles" plan is dropped).
-     - [ ] Because the entry is actually removed from the map while checked out, opening it a
+     - [X] No cloning. ~DaggerApp~ holds a ~Vec<StackEntry>~ (a stack of ~EditorState~, each
+       tagged with the name it was opened under) instead of a single ~EditorState~. Opening a call
+       node *moves* the real ~Workflow~ out of the current top level's ~nested_workflows~ map via
+       the new ~take_nested_workflow~ accessor into a fresh ~EditorState::from_workflow(taken)~
+       pushed onto the stack -- genuine ownership transfer, not a copy.
+     - [X] Because the entry is actually removed from the map while checked out, opening it a
        second time from a different NestedCall node referencing the same name is structurally
        impossible -- "already open elsewhere is disallowed" falls out for free, no separate
        tracking-by-name needed.
-     - [ ] Opens in a separate OS window via ~ctx.show_viewport_immediate~ (matches the Inspect
-       and Constant pop-outs already built -- ~show_viewport_deferred~ was tried there first and
-       abandoned, since it can repaint independently of the root, so a root-only close check can
-       go a long time without ever rerunning).
-     - [ ] The current argument values feeding the NestedCall node's own input pins (in the level
-       below) are gathered once, the same way a Function node's inputs already are, into a side
-       table on the new ~EditorState~ (positionally matching ~workflow_input_index~). The pushed
-       editor's own executor resolves a dangling, workflow-input-flagged pin from this side table
-       instead of treating it as empty, mirroring how ~Workflow::run~ already resolves its own
-       ~inputs~ slice. Nothing is ever written into the graph, so there is nothing to bake in and
-       nothing to revert -- opening a different NestedCall node referencing the same name later
-       just gathers a fresh side table, showing different simulated values.
-     - [ ] The pushed ~EditorState~ is fully ordinary -- same rendering, layout, interaction,
+     - [X] Opens in a separate OS window via ~ctx.show_viewport_immediate~ (matches the Inspect
+       and Constant pop-outs already built).
+     - [X] The current argument values feeding the NestedCall node's own input pins (in the level
+       below) are gathered once, into ~EditorState::simulated_inputs~ (positionally matching
+       ~Workflow::workflow_input_position~, a new orc_sdk accessor). The pushed editor's own
+       executor resolves a dangling, workflow-input-flagged pin from this side table instead of
+       treating it as empty. Nothing is ever written into the graph, so there is nothing to bake in
+       and nothing to revert.
+     - [X] The pushed ~EditorState~ is fully ordinary -- same rendering, layout, interaction,
        context menu, and execution engine as any other level, full feature parity, including
        opening a NestedCall node inside it (same move, one level deeper).
-     - [ ] Adding/removing/reordering the nested workflow's own inputs or outputs is out of scope
+     - [X] Adding/removing/reordering the nested workflow's own inputs or outputs is out of scope
        for this pass -- the pushed editor only edits internal wiring/nodes, not its own parameter
-       list.
+       list. A new right-click menu entry ("<name> (nested)") creates a ~NestedCall~ node against
+       an *existing* nested workflow, sized/labeled from its declared inputs/outputs -- there is
+       still no UI to author a nested workflow's own interface from scratch (fixtures come from
+       pyorc, e.g. ~workflows/gen_test.py~'s ~nested_demo_workflow~).
 
      *While a nested editor is open (everything below it is frozen):*
-     - [ ] Every ~EditorState~ below the top of the stack renders read-only (~render::draw~ only)
-       every frame -- no ~interaction::update~, ~context_menu::update~, ~measure~, or
-       ~exec::tick~ -- so it stays visible (not blank) but processes no input and runs nothing.
-     - [ ] A click-catcher over each frozen level's canvas sends ~ViewportCommand::Focus~ to the
-       current top-of-stack's viewport id, so clicking a buried ancestor window (including the
-       root) just brings the active editor forward instead of doing anything to that ancestor.
-     - [ ] Because everything below the top is fully paused, none of it is running its own
+     - [X] Every ~EditorState~ below the top of the stack renders read-only (~render::draw~ inside
+       ~ui.disable()~) every frame -- no ~interaction::update~, ~context_menu::update~, ~measure~,
+       or ~exec::tick~ -- so it stays visible (not blank) but processes no input and runs nothing.
+     - [X] A click-catcher over each frozen level's canvas sends ~ViewportCommand::Focus~ to the
+       current top-of-stack's viewport id, so clicking, dragging, or double-clicking anywhere in a
+       buried ancestor window (including the root) just brings the active editor forward. The
+       root's own OS close button gets the same redirect while frozen.
+     - [X] Because everything below the top is fully paused, none of it is running its own
        background executor while a descendant has a nested workflow checked out -- the
        temporarily-missing ~nested_workflows~ entry is never observed by anything that's actually
        ticking.
 
      *Closing the pop-out:*
-     - [ ] No cloning means no separate commit step. Closing pops the stack and moves the
-       (possibly edited) ~Workflow~ straight back:
-       ~parent.workflow.nested_workflows.insert(name, popped.workflow)~. The edit already happened
-       in place; there is nothing to save at this point and no discard-vs-save prompt for the
-       pop-out itself -- save stays a single, top-level-only decision.
-     - [ ] The popped editor's own ~dirty~ flag ORs into the level below on pop, all the way to
+     - [X] No cloning means no separate commit step. Closing pops the stack and moves the
+       (possibly edited) ~Workflow~ straight back via ~put_nested_workflow~. The edit already
+       happened in place; there is nothing to save at this point and no discard-vs-save prompt for
+       the pop-out itself -- save stays a single, top-level-only decision.
+     - [X] The popped editor's own ~dirty~ flag ORs into the level below on pop, all the way to
        root, so the existing title-bar asterisk and ~file_menu::confirm_discard~/save flow (already
        built for the main window) cover the whole stack without any new save branch.
-     - [ ] ~mark_dirty~ the calling NestedCall node in the level below once the definition is
-       re-inserted, so that level's own background execution reruns it against the (possibly
-       changed) definition. (Nice-to-have, not required for correctness: skip the rerun by copying
-       the popped editor's own settled workflow outputs directly into the level below's
-       ~computed_outputs~ for that node's pins, if they were already fully settled when it closed.)
+     - [X] ~mark_dirty~ every ~NestedCall~ node in the level below that references the closed name
+       (not just the one originally double-clicked, since the definition is shared by every
+       caller), so background execution reruns them against the (possibly changed) definition. The
+       "skip the rerun if already settled" optimization mentioned here previously was not built --
+       still a reasonable future nice-to-have, not a correctness gap.
 
      *Window tracking:*
-     - [ ] ~DaggerApp~ holds the ~Vec<EditorState>~ stack described above; the last element is the
+     - [X] ~DaggerApp~ holds the ~Vec<StackEntry>~ stack described above; the last element is the
        active/interactive one, everything before it is frozen per above.
-     - [ ] Main window's own unsaved-changes close prompt (Discard / Save) -- already implemented
+     - [X] Main window's own unsaved-changes close prompt (Discard / Save) -- already implemented
        (~file_menu::confirm_discard~), reused as-is against the root's ~dirty~ flag, which now
        reflects the whole stack.
+
+     *orc_sdk additions (~rust/orc_sdk/src/dag/workflow.rs~):* small, additive, no behavior change
+     to any existing method --
+     - [X] ~take_nested_workflow(&mut self, name) -> Option<Workflow>~ / ~put_nested_workflow(&mut
+       self, name, workflow)~ -- the move-in/move-out pair everything above is built on.
+     - [X] ~nested_workflow_names(&self) -> impl Iterator<Item = &str>~ -- for the context menu's
+       "call an existing nested workflow" entries.
+     - [X] ~workflow_input_position(&self, ih) -> Result<Option<usize>, DagError>~ -- lets the
+       executor recognize a dangling pin as "workflow input i" and feed it a simulated/real value
+       instead of nothing.
 
 **** Future (out of scope for now)
 

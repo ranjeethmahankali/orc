@@ -261,15 +261,15 @@ fn is_ready(state: &EditorState, nh: NH) -> bool {
         let upstream = state.workflow.node_from_output(oh);
         match &node_infos[upstream] {
             NodeInfo::Constant(_) => {}
-            NodeInfo::Function(_) => {
+            NodeInfo::Function(_) | NodeInfo::NestedCall { .. } => {
                 if !is_settled(state, upstream) {
                     return false;
                 }
             }
-            // Nesting isn't executed by this engine yet, and an upstream Inspect node is
-            // invalid (Inspect has no outputs, so this shouldn't be reachable) -- either way,
-            // there's nothing for this input to ever resolve to, so never call it ready.
-            NodeInfo::NestedCall { .. } | NodeInfo::Inspect { .. } => return false,
+            // An upstream Inspect node is invalid (Inspect has no outputs, so this shouldn't be
+            // reachable) -- there's nothing for this input to ever resolve to, so never call it
+            // ready.
+            NodeInfo::Inspect { .. } => return false,
         }
     }
     true
@@ -290,53 +290,85 @@ fn settle_trivially(state: &mut EditorState, nh: NH) {
     }
 }
 
-/// Gathers this node's current inputs into cloned `Arc<OrcHandle>`s and sends it to the pool.
-fn dispatch(state: &mut EditorState, nh: NH) {
+/// Gathers `nh`'s current input values as owned `Arc<OrcHandle>`: a real clone for a `Constant`
+/// upstream's value, an `Arc` share for a computed one, or the corresponding
+/// `EditorState::simulated_inputs` entry for a dangling pin registered as this workflow's own
+/// workflow-input (see `nested.rs`) -- never written into the graph itself, just substituted here
+/// at read time. Shared by `dispatch_function` (which ships the result across the thread pool)
+/// and `dispatch_nested_call` (which stays on this thread and only needs a short-lived borrow of
+/// each).
+fn gather_inputs(state: &EditorState, nh: NH) -> Option<Vec<Arc<OrcHandle>>> {
     let node_info_prop = state.workflow.node_info_prop();
-    let Ok(node_infos) = node_info_prop.try_borrow() else {
-        return;
-    };
-    let is_inspect = matches!(node_infos[nh], NodeInfo::Inspect { .. });
-    let func = match &node_infos[nh] {
-        NodeInfo::Function(info) => info.func,
-        _ => {
-            drop(node_infos);
-            // `is_ready` already confirmed this node's (only) input, if any, is itself settled --
-            // an Inspect node has nothing further to compute, so settling is immediate.
-            if is_inspect {
-                settle_trivially(state, nh);
-            }
-            return;
-        }
-    };
-    if func.is_none() {
-        return;
-    }
-
-    let Ok(computed_outputs) = state.computed_outputs.try_borrow() else {
-        return;
-    };
+    let node_infos = node_info_prop.try_borrow().ok()?;
+    let computed_outputs = state.computed_outputs.try_borrow().ok()?;
     let empty = Arc::<OrcHandle>::default();
     let mut inputs = Vec::new();
     for ih in state.workflow.node_inputs(nh) {
         let value = match state.workflow.input_source(ih) {
             // A Constant's value never goes through `computed_outputs` (nothing ever dispatches
             // a job for it), so it's cloned fresh for this job -- a real copy, unlike the
-            // zero-copy `Arc` share used for a Function upstream's cached output.
+            // zero-copy `Arc` share used for a Function/NestedCall upstream's cached output.
             Some(oh) => match &node_infos[state.workflow.node_from_output(oh)] {
                 NodeInfo::Constant(handle) => match crate::host_clone_orc_handle(handle.borrowed())
                 {
                     Ok(cloned) => Arc::new(cloned),
-                    Err(_) => return,
+                    Err(_) => return None,
                 },
                 _ => Arc::clone(&computed_outputs[oh]),
             },
-            None => Arc::clone(&empty),
+            None => match state.workflow.workflow_input_position(ih) {
+                Ok(Some(i)) => state
+                    .simulated_inputs
+                    .get(i)
+                    .cloned()
+                    .unwrap_or_else(|| Arc::clone(&empty)),
+                _ => Arc::clone(&empty),
+            },
         };
         inputs.push(value);
     }
-    drop(computed_outputs);
+    Some(inputs)
+}
+
+/// Dispatches whichever kind of work `nh` actually needs: a plugin function job sent to the
+/// thread pool, a nested workflow run synchronously right here (`Workflow` can never cross a
+/// thread boundary), or nothing at all beyond a trivial settle (Inspect, Constant).
+fn dispatch(state: &mut EditorState, nh: NH) {
+    enum Kind {
+        Function(OrcPluginFunction),
+        Nested(String),
+        Inspect,
+        None,
+    }
+    let node_info_prop = state.workflow.node_info_prop();
+    let Ok(node_infos) = node_info_prop.try_borrow() else {
+        return;
+    };
+    let kind = match &node_infos[nh] {
+        NodeInfo::Function(info) => Kind::Function(info.func),
+        NodeInfo::NestedCall { workflow_name } => Kind::Nested(workflow_name.clone()),
+        NodeInfo::Inspect { .. } => Kind::Inspect,
+        NodeInfo::Constant(_) => Kind::None,
+    };
     drop(node_infos);
+
+    match kind {
+        Kind::None => {}
+        // `is_ready` already confirmed this node's (only) input, if any, is itself settled --
+        // an Inspect node has nothing further to compute, so settling is immediate.
+        Kind::Inspect => settle_trivially(state, nh),
+        Kind::Nested(workflow_name) => dispatch_nested_call(state, nh, &workflow_name),
+        Kind::Function(func) => dispatch_function(state, nh, func),
+    }
+}
+
+fn dispatch_function(state: &mut EditorState, nh: NH, func: OrcPluginFunction) {
+    if func.is_none() {
+        return;
+    }
+    let Some(inputs) = gather_inputs(state, nh) else {
+        return;
+    };
 
     let n_outputs = state.workflow.node_outputs(nh).count();
     let launched_version = match state.dirty_version.try_borrow() {
@@ -366,6 +398,85 @@ fn dispatch(state: &mut EditorState, nh: NH) {
     // If the pool's receiving half is somehow gone, there's nothing left to do — the in_flight
     // marker will just sit there; this only happens during process shutdown.
     let _ = pool().job_tx.send(job);
+}
+
+/// Runs a NestedCall node's referenced workflow to completion, synchronously, right here on the
+/// UI thread. `Workflow` can never be `Send` (it's `Rc`/`RefCell`-backed throughout), so unlike a
+/// plugin function's job, this can't be shipped onto the background pool the way `dispatch_function`
+/// does. That means a slow nested workflow blocks the UI for its own duration, and gets no
+/// incremental caching between runs -- the whole thing reruns from scratch on every dirtying
+/// edit. This is a real, known simplification versus the fully parallel, incremental design
+/// PROJECT.org sketches for background execution of nested calls (a compound-key scheduler that
+/// would dispatch the nested workflow's own nodes individually, same as any other node) — kept
+/// for now because it reuses `Workflow::run` (already correct, already exercised by every other
+/// host) instead of teaching this scheduler to walk a second `Workflow`'s handle space.
+///
+/// Takes real ownership of the nested `Workflow` for the duration of the call (see
+/// `Workflow::take_nested_workflow`/`put_nested_workflow`) rather than requiring a borrow
+/// accessor. If it's currently checked out (its own editor is open), there's nothing to run yet,
+/// so this simply leaves the node pending -- `nested::close` re-marks every caller dirty the
+/// moment the definition is put back, which is what picks this up again.
+fn dispatch_nested_call(state: &mut EditorState, nh: NH, workflow_name: &str) {
+    let Some(nested) = state.workflow.take_nested_workflow(workflow_name) else {
+        return;
+    };
+    let launched_version = match state.dirty_version.try_borrow() {
+        Ok(dv) => dv[nh],
+        Err(_) => {
+            state
+                .workflow
+                .put_nested_workflow(workflow_name.to_string(), nested);
+            return;
+        }
+    };
+    let Some(inputs) = gather_inputs(state, nh) else {
+        state
+            .workflow
+            .put_nested_workflow(workflow_name.to_string(), nested);
+        return;
+    };
+
+    let borrowed: Vec<orc_sdk::OrcHandleBorrowed> = inputs.iter().map(|h| h.borrowed()).collect();
+    let n_outputs = state.workflow.node_outputs(nh).count();
+    let mut outputs: Vec<OrcHandle> = (0..n_outputs).map(|_| OrcHandle::default()).collect();
+    let result = nested.run(
+        &borrowed,
+        &mut outputs,
+        &crate::host_clone_orc_handle,
+        &HANDLE_COUNTER,
+    );
+    state
+        .workflow
+        .put_nested_workflow(workflow_name.to_string(), nested);
+
+    if let Ok(mut cv) = state.exec.computed_version.try_borrow_mut() {
+        cv[nh] = launched_version;
+    }
+    match result {
+        Ok(()) => {
+            if let Ok(mut computed) = state.computed_outputs.try_borrow_mut() {
+                for (oh, handle) in state.workflow.node_outputs(nh).zip(outputs) {
+                    computed[oh] = Arc::new(handle);
+                }
+            }
+            if let Ok(mut err) = state.execution_error.try_borrow_mut() {
+                err[nh] = None;
+            }
+        }
+        Err(e) => {
+            if let Ok(mut err) = state.execution_error.try_borrow_mut() {
+                err[nh] = Some(e.to_string());
+            }
+        }
+    }
+    // Committed (success or fault) either way -- anything downstream waiting on this node needs
+    // a chance to notice and re-check readiness, same as a real plugin function's result.
+    for oh in state.workflow.node_outputs(nh).collect::<Vec<_>>() {
+        state
+            .exec
+            .pending
+            .extend(state.workflow.downstream_nodes(oh));
+    }
 }
 
 fn poll_results(state: &mut EditorState) {

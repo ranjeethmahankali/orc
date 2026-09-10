@@ -7,6 +7,7 @@ mod file_menu;
 mod inspect;
 mod interaction;
 mod layout;
+mod nested;
 mod render;
 mod state;
 

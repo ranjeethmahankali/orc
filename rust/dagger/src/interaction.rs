@@ -4,7 +4,7 @@ use crate::canvas::Transform;
 use crate::render;
 use crate::state::EditorState;
 use eframe::egui::{self, Id, Key, PointerButton, Pos2, Rect, Sense, Vec2};
-use orc_sdk::{IH, NH, OH, Workflow};
+use orc_sdk::{IH, NH, NodeInfo, OH, Workflow};
 use std::collections::{HashMap, HashSet};
 
 /// Where a right-click asked for a context menu to open, and what (if anything) it should
@@ -20,6 +20,9 @@ pub struct FrameEvents {
     /// Something changed that's worth an extra repaint (a drag, a selection, a connection).
     pub changed: bool,
     pub context_menu: Option<ContextMenuRequest>,
+    /// A `NestedCall` node was double-clicked this frame, requesting its nested workflow be
+    /// opened for editing (see `nested::open`).
+    pub open_nested: Option<NH>,
 }
 
 fn pin_rect(center: Pos2, view: &Transform) -> Rect {
@@ -282,6 +285,7 @@ pub fn update(
     // immutably for the loop) is dropped below.
     let mut resized_node: Option<(NH, Vec2)> = None;
     let mut popout_clicked: Option<NH> = None;
+    let mut open_nested: Option<NH> = None;
 
     let nodes: Vec<NH> = state.workflow.node_iter().collect();
     for nh in nodes {
@@ -350,7 +354,9 @@ pub fn update(
             }
         }
 
-        if body_response.dragged_by(PointerButton::Primary) {
+        if body_response.double_clicked() && matches!(node_infos[nh], NodeInfo::NestedCall { .. }) {
+            open_nested = Some(nh);
+        } else if body_response.dragged_by(PointerButton::Primary) {
             dragged_node = Some((nh, body_response.drag_delta()));
         } else if body_response.clicked() {
             clicked_node = Some(nh);
@@ -368,6 +374,8 @@ pub fn update(
         select_node(state, nh, shift);
         events.changed = true;
     }
+
+    events.open_nested = open_nested;
 
     if let Some(oh) = wire_start {
         state.pending_wire = Some(oh);

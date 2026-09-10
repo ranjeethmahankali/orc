@@ -31,6 +31,18 @@ def collatz_experiment_workflow():
     outputs = orc.collatz_parallel_experiment(nums, iterations)
     return outputs
 
+@orc.workflow_function
+def double_add(a, b):
+    s = orc.add(a, b)
+    return orc.add(s, s)
+
+
+def nested_demo_workflow():
+    x = orc.make_deck([1.0, 2.0, 3.0])
+    y = orc.make_deck([10.0])
+    return double_add(x, y)
+
+
 def large_math_workflow(x, y):
     leaves = [orc.add(x, y)]
     for i in range(255):
@@ -53,6 +65,11 @@ if __name__ == "__main__":
 
     graph = orc.make_workflow(collatz_experiment_workflow)
     out_path = os.path.join(project_root, "workflows", "collatz_experiment.orc")
+    orc.save_workflow(graph, out_path)
+    print(f"Saved test workflow to {out_path}")
+
+    graph = orc.make_workflow(nested_demo_workflow)
+    out_path = os.path.join(project_root, "workflows", "nested_demo.orc")
     orc.save_workflow(graph, out_path)
     print(f"Saved test workflow to {out_path}")
 
