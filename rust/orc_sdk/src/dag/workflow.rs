@@ -143,25 +143,31 @@ impl Workflow {
     }
 
     pub fn set_inputs(&mut self, inputs: &[(IH, usize, &str)]) -> Result<(), DagError> {
-        {
-            // Validate the input indices. They must be sequential, and start from zero.
-            let mut unique_indices = inputs
-                .iter()
-                .map(|(_input, idx, _name)| *idx)
-                .collect::<Vec<_>>();
-            unique_indices.sort();
-            unique_indices.dedup();
-            if unique_indices.iter().enumerate().any(|(i, val)| i != *val) {
-                return Err(DagError::InvalidInputs);
-            }
+        // Validate the *distinct* indices. They must be sequential, starting from zero -- but a
+        // single declared input legitimately feeds more than one pin (e.g. a parameter used
+        // twice in the same expression), so the same index can appear more than once in `inputs`
+        // and that alone is not an error. Deduping first is what makes that distinction: without
+        // it, a repeated index shifts every later entry's enumerated position away from its real
+        // index and this would reject valid input, not just genuinely invalid input.
+        let mut unique_indices: Vec<usize> = inputs.iter().map(|(_, idx, _)| *idx).collect();
+        unique_indices.sort_unstable();
+        unique_indices.dedup();
+        if unique_indices.iter().enumerate().any(|(i, val)| i != *val) {
+            return Err(DagError::InvalidInputs);
         }
+
         let mut input_idx = self.workflow_input_index.try_borrow_mut()?;
         let input_idx: &mut InputPropBuf<_> = &mut input_idx;
         input_idx.fill(None);
+        // Written positionally (`names[idx] = ...`), not appended in call order -- appending once
+        // per *pin* rather than once per distinct index is exactly what let a repeated index
+        // inflate this past the true input count and shift every later name out of place.
         self.workflow_input_names.clear();
+        self.workflow_input_names
+            .resize(unique_indices.len(), String::new());
         for (input, idx, name) in inputs.iter() {
             input_idx[*input] = Some(*idx);
-            self.workflow_input_names.push(name.to_string());
+            self.workflow_input_names[*idx] = name.to_string();
         }
         Ok(())
     }
@@ -1103,5 +1109,48 @@ mod test {
 
         assert_eq!(w.workflow_input_position(b_in[0]).unwrap(), Some(0));
         assert!(w.input_source(b_in[0]).is_some());
+    }
+
+    /// A single declared input legitimately feeds more than one pin (e.g. `def f(x): return
+    /// add(x, x)`), which means the same index can appear more than once in the slice passed to
+    /// `set_inputs`. That must not be rejected, must not inflate `input_names()` past the true
+    /// number of distinct inputs, and every pin sharing that index must report the same name.
+    #[test]
+    fn t_set_inputs_accepts_one_index_feeding_multiple_pins() {
+        let mut w = Workflow::default();
+        let mut ins = [IH::default(); 2];
+        w.add_function(make_func_info("add"), &mut ins, &mut [])
+            .unwrap();
+        w.set_inputs(&[(ins[0], 0, "x"), (ins[1], 0, "x")]).unwrap();
+
+        assert_eq!(w.input_names(), ["x"]);
+        assert_eq!(w.workflow_input_position(ins[0]).unwrap(), Some(0));
+        assert_eq!(w.workflow_input_position(ins[1]).unwrap(), Some(0));
+    }
+
+    /// The regression this guards: a repeated index for one parameter must not shift a *later*,
+    /// genuinely distinct parameter's name out of place.
+    #[test]
+    fn t_set_inputs_keeps_later_names_correct_despite_an_earlier_repeat() {
+        let mut w = Workflow::default();
+        let mut ins = [IH::default(); 3];
+        w.add_function(make_func_info("f"), &mut ins, &mut [])
+            .unwrap();
+        w.set_inputs(&[(ins[0], 0, "x"), (ins[1], 0, "x"), (ins[2], 1, "y")])
+            .unwrap();
+
+        assert_eq!(w.input_names(), ["x", "y"]);
+        assert_eq!(w.workflow_input_position(ins[2]).unwrap(), Some(1));
+    }
+
+    #[test]
+    fn t_set_inputs_still_rejects_a_genuine_gap() {
+        let mut w = Workflow::default();
+        let mut ins = [IH::default(); 1];
+        w.add_function(make_func_info("f"), &mut ins, &mut [])
+            .unwrap();
+        // Index 1 with nothing declared at 0 is not a repeat -- it's a real gap.
+        let err = w.set_inputs(&[(ins[0], 1, "y")]).unwrap_err();
+        assert!(matches!(err, crate::dag::DagError::InvalidInputs));
     }
 }
