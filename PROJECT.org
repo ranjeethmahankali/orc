@@ -152,6 +152,35 @@
   serialization story of the workflows throws a bit of a wrench into this. I've given this some
   thought in [[*tkwogf - Overhaul of workflow property serialization][this task]], but I don't yet know what the solution is. This requires more thought.
 
+* DONE tl68t6 - Fix the Pyorc build system
+  CLOSED: [2026-09-10 Thu 19:23]
+  :PROPERTIES:
+  :CREATED:  2026-09-10 Thu 19:18
+  :END:
+  :LOGBOOK:
+  - State "DONE"       from "NEXT"       [2026-09-10 Thu 19:23]
+  - State "NEXT"       from "TODO"       [2026-09-10 Thu 19:20]
+  :END:
+
+  The same linkage cannot be used for a python version agnostic library (which cannot statically
+  link against a specific Python), and unit test binaries that need to link statically.
+
+  <2026-09-10 Thu 19:30> Fixed by splitting pyo3's =extension-module= feature out from a plain
+  dependency feature into a crate feature of its own, defaulted on. With =extension-module=
+  enabled, pyo3 skips linking libpython at build time, since a real Python extension module gets
+  those symbols for free from the host interpreter that =dlopen='s it at import time. A =cargo
+  test= binary has no such host process, so it needs the symbols linked in, and fails with
+  undefined references if =extension-module= is on.
+
+  The fix: define an =extension-module= feature in =pyorc='s own =Cargo.toml= that forwards to
+  =pyo3/extension-module=, and default it on. =maturin build= / =maturin develop= build with
+  default features, so the wheel is unaffected. Tests are run with =cargo test
+  --no-default-features=, which turns the forwarding feature off so pyo3's build script links
+  against libpython normally. Also switched =crate-type= to =["cdylib", "rlib"]=, since a pure
+  =cdylib= can't be linked as a library dependency, which =cargo test= needs for integration
+  tests, doc-tests, etc. Wired =cargo test --no-default-features -p pyorc= into the CI workflow
+  for all three platforms so this stays covered going forward.
+
 * TODO Python code generation from a workflow
   :PROPERTIES:
   :CREATED:  2026-09-06 Sun 22:22
