@@ -469,6 +469,13 @@ mod test {
     /// "<not connected>".
     #[test]
     fn t_refresh_updates_after_connecting_a_previously_unconnected_input() {
+        // `tick` polls the shared, process-wide pool's result channel regardless of whether this
+        // test dispatched anything itself, so without this guard it can race with (and silently
+        // steal a completed result from) any other test that's concurrently mid-dispatch --
+        // corrupting both tests at once. See `exec::POOL_TEST_LOCK`'s own doc comment.
+        let _guard = crate::exec::POOL_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let mut wf = orc_sdk::Workflow::default();
         let mut fn_ins = vec![];
         let mut fn_outs = vec![orc_sdk::OH::default()];
