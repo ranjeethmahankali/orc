@@ -189,11 +189,19 @@
   <2026-09-06 Sun 23:33> Brainstormed some details and created a detailed plan for implementing the
   node editor.
 
-** NEXT Detailed Plan
+  <2026-09-10 Thu 19:55> Finished implementing it. Only tested it a little bit. Doesn't make sense
+  to try and test this too much now. I would rather implement some useful plugin functions, and
+  start making some workflows, and this implementation will get tested organically in that
+  process. This is good enough for now, to mark this task done after some final review, and clean
+  up.
+
+** DONE Detailed Plan
+   CLOSED: [2026-09-10 Thu 19:55]
    :PROPERTIES:
    :CREATED:  2026-09-06 Sun 23:03
    :END:
    :LOGBOOK:
+   - State "DONE"       from "NEXT"       [2026-09-10 Thu 19:55]
    - State "NEXT"       from "TODO"       [2026-09-07 Mon 23:39]
    - State "TODO"       from              [2026-09-07 Mon 22:28]
    :END:
