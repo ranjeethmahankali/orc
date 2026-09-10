@@ -1019,10 +1019,17 @@
      little bit before marking this phase as done.
 
 **** NEXT Phase 5: Nested Workflow Editing
+     :PROPERTIES:
+     :CREATED:  2026-09-09 Wed 22:09
+     :END:
      :LOGBOOK:
      - State "NEXT"       from "TODO"       [2026-09-09 Wed 21:43]
      - State "TODO"       from              [2026-09-07 Mon 23:11]
      :END:
+
+     <2026-09-09 Wed 22:08> Trying to run nested workflows in a UI app on multiple threads is
+     exposing an issue with the property system. Properties are not threadsafe. I need to replace
+     the Rc<RefCell<...>> with Arc<RwLock<...>>.
 
      *Opening nested workflows:*
      - [ ] Double-click a NestedCall node to open the nested workflow in a separate OS window
