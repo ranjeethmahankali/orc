@@ -7,6 +7,7 @@
 //! the worked example and the derivation of the depth arithmetic below.
 
 use crate::state::EditorState;
+use eframe::egui;
 use orc_sdk::{NH, NodeInfo, OrcHandle, OrcMark};
 use std::fmt::Write as _;
 
@@ -43,6 +44,65 @@ pub fn refresh_all(state: &mut EditorState) {
     let nodes: Vec<NH> = state.workflow.node_iter().collect();
     for nh in nodes {
         refresh(state, nh);
+    }
+}
+
+/// Keeps every popped-out Inspect window alive for one more pass, or notices it was closed.
+///
+/// `ctx.show_viewport_deferred` must be called every pass a deferred viewport should keep
+/// existing — not calling it is how it goes away — so this runs unconditionally every frame,
+/// same as `refresh_all`. Each node's viewport id is deterministic (hashed from its `NH`), so
+/// re-registering it here with a fresh snapshot of the cached text is exactly the documented way
+/// to push updated content into an already-open window.
+pub fn update_popouts(ctx: &egui::Context, state: &mut EditorState) {
+    let nodes: Vec<NH> = state.workflow.node_iter().collect();
+    for nh in nodes {
+        let is_open = state
+            .inspect_popout
+            .try_borrow()
+            .map(|p| p[nh])
+            .unwrap_or(false);
+        if !is_open {
+            continue;
+        }
+
+        let viewport_id = egui::ViewportId::from_hash_of(("dagger-inspect-popout", nh));
+        // The close request lands in the *child* viewport's own input, observable from the root
+        // pass via `input_for` -- no shared flag or channel needed to hear about it.
+        if ctx.input_for(viewport_id, |i| i.viewport().close_requested()) {
+            if let Ok(mut popout) = state.inspect_popout.try_borrow_mut() {
+                popout[nh] = false;
+            }
+            continue;
+        }
+
+        let title = {
+            let node_info_prop = state.workflow.node_info_prop();
+            node_info_prop
+                .try_borrow()
+                .map(|infos| infos[nh].name().to_string())
+                .unwrap_or_else(|_| "Inspect".to_string())
+        };
+        let text = state
+            .inspect_cache
+            .try_borrow()
+            .map(|c| c[nh].text.clone())
+            .unwrap_or_default();
+
+        ctx.show_viewport_deferred(
+            viewport_id,
+            egui::ViewportBuilder::default()
+                .with_title(title)
+                .with_inner_size([420.0, 320.0]),
+            move |ui, _class| {
+                egui::ScrollArea::both().show(ui, |ui| {
+                    ui.add(
+                        egui::Label::new(egui::RichText::new(&text).monospace())
+                            .wrap_mode(egui::TextWrapMode::Extend),
+                    );
+                });
+            },
+        );
     }
 }
 

@@ -991,12 +991,12 @@
        complex numbers, it will make them readable. This is because the ascii letters 48 and 49
        represent the first value "10".
 
-     - [ ] Inspect nodes are resizable by the user (drag bottom-right corner), size stored in
+     - [X] Inspect nodes are resizable by the user (drag bottom-right corner), size stored in
        ~node_sizes~. No layout simulation reacts to the new size anymore (Phase 3b removed it) —
        resizing just grows the node in place; neighbors don't move.
-     - [ ] Pop-out button: open inspect view in a separate OS window via
+     - [X] Pop-out button: open inspect view in a separate OS window via
        ~ctx.show_viewport_deferred()~.
-     - [ ] In all states, the inspect window displays text, and will have scroll bars in horizontal
+     - [X] In all states, the inspect window displays text, and will have scroll bars in horizontal
        and vertical directions as needed.
 
      *Const node display:*

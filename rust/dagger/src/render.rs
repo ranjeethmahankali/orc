@@ -98,12 +98,45 @@ pub fn node_height(n_inputs: usize, n_outputs: usize) -> f32 {
     PIN_TOP_OFFSET + n_pins as f32 * PIN_SPACING + 8.0
 }
 
-/// Default content area reserved below an Inspect node's pins for its text, until resizing (not
-/// implemented yet) lets the user override it.
+/// Default content area reserved below an Inspect node's pins for its text, before the user ever
+/// drags its resize handle.
 const INSPECT_CONTENT_WIDTH: f32 = 260.0;
 const INSPECT_CONTENT_HEIGHT: f32 = 160.0;
 const INSPECT_TEXT_FONT_SIZE: f32 = 11.0;
 const INSPECT_TEXT_PADDING: f32 = 6.0;
+/// Bottom-right drag handle that resizes an Inspect node.
+const RESIZE_HANDLE_SIZE: f32 = 14.0;
+/// Button in an Inspect node's title bar that opens its content in a separate OS window.
+const POPOUT_BUTTON_SIZE: f32 = 16.0;
+/// Gap between the pop-out button and the node's right edge.
+const POPOUT_BUTTON_MARGIN: f32 = 6.0;
+
+/// The smallest an Inspect node can be dragged down to — matches the same numbers a freshly
+/// created Inspect node gets from `measure_nodes`, so a manual shrink and a later re-measure
+/// (triggered by creating an unrelated node elsewhere, which re-measures every node) never fight
+/// each other over the node's size.
+pub fn min_inspect_size() -> [f32; 2] {
+    [INSPECT_CONTENT_WIDTH, node_height(1, 0) + INSPECT_CONTENT_HEIGHT]
+}
+
+/// Canvas-space hit rect for the resize handle in `rect`'s bottom-right corner.
+pub fn resize_handle_rect(rect: Rect) -> Rect {
+    Rect::from_min_size(
+        rect.max - Vec2::splat(RESIZE_HANDLE_SIZE),
+        Vec2::splat(RESIZE_HANDLE_SIZE),
+    )
+}
+
+/// Canvas-space hit rect for the pop-out button in `rect`'s title bar, right-aligned.
+pub fn popout_button_rect(rect: Rect) -> Rect {
+    Rect::from_min_size(
+        Pos2::new(
+            rect.max.x - POPOUT_BUTTON_SIZE - POPOUT_BUTTON_MARGIN,
+            rect.min.y + (TITLE_HEIGHT - POPOUT_BUTTON_SIZE) / 2.0,
+        ),
+        Vec2::splat(POPOUT_BUTTON_SIZE),
+    )
+}
 
 pub fn node_rect(pos: [f32; 2], size: [f32; 2]) -> Rect {
     Rect::from_min_size(Pos2::new(pos[0], pos[1]), Vec2::new(size[0], size[1]))
@@ -216,10 +249,15 @@ pub fn measure_nodes(ctx: &egui::Context, workflow: &Workflow, sizes: &mut NodeP
         let height = node_height(n_inputs, n_outputs);
 
         sizes[nh] = if matches!(info, NodeInfo::Inspect { .. }) {
-            [
+            // The user may have dragged the resize handle since the last measure (e.g. a new
+            // node created elsewhere re-measures every node's labels) — a re-measure must only
+            // ever grow to fit new labels, never shrink back over a manual resize.
+            let natural = [
                 width.max(INSPECT_CONTENT_WIDTH),
                 height + INSPECT_CONTENT_HEIGHT,
-            ]
+            ];
+            let current = sizes[nh];
+            [current[0].max(natural[0]), current[1].max(natural[1])]
         } else {
             [width, height]
         };
@@ -368,7 +406,10 @@ fn draw_nodes(
     wire_target: Option<IH>,
     time: f64,
 ) {
-    let painter = ui.painter();
+    // Cloned (cheap — `Painter` is just a layer id + clip rect + context handle) rather than
+    // held as `&ui.painter()`, since the Inspect content area below needs a mutable borrow of
+    // `ui` to create its scrollable child `Ui`.
+    let painter = ui.painter().clone();
     let font = FontId::new(view.scale(FONT_SIZE), FontFamily::Monospace);
     let label_font = FontId::new(view.scale(LABEL_FONT_SIZE), FontFamily::Monospace);
     let draw_text = view.zoom >= MIN_TEXT_ZOOM;
@@ -435,7 +476,7 @@ fn draw_nodes(
             painter.rect_filled(patch, 0.0, title_fill);
         }
         if crate::exec::is_node_in_flight(state, nh) {
-            draw_in_flight_pulse(painter, title_rect, time);
+            draw_in_flight_pulse(&painter, title_rect, time);
         }
 
         // Title text.
@@ -498,31 +539,146 @@ fn draw_nodes(
             }
         }
 
-        if draw_text
-            && matches!(info, NodeInfo::Inspect { .. })
-            && let Some(cache) = &inspect_cache
-        {
-            let n_pins = state.workflow.node_inputs(nh).count().max(1);
-            let content_top = rect.min.y + PIN_TOP_OFFSET + n_pins as f32 * PIN_SPACING;
-            let content_rect = view.rect_to_screen(Rect::from_min_max(
-                Pos2::new(rect.min.x, content_top),
-                rect.max,
-            ));
-            let clipped = painter.with_clip_rect(content_rect);
-            clipped.text(
-                content_rect.min + Vec2::splat(view.scale(INSPECT_TEXT_PADDING)),
-                egui::Align2::LEFT_TOP,
-                &cache[nh].text,
-                inspect_font.clone(),
-                Color32::from_gray(220),
-            );
+        if matches!(info, NodeInfo::Inspect { .. }) {
+            draw_popout_button(&painter, view.rect_to_screen(popout_button_rect(rect)));
+            draw_resize_handle(&painter, view.rect_to_screen(resize_handle_rect(rect)));
+
+            if draw_text
+                && let Some(cache) = &inspect_cache
+            {
+                let n_pins = state.workflow.node_inputs(nh).count().max(1);
+                let content_top = rect.min.y + PIN_TOP_OFFSET + n_pins as f32 * PIN_SPACING;
+                let content_rect = view
+                    .rect_to_screen(Rect::from_min_max(
+                        Pos2::new(rect.min.x, content_top),
+                        rect.max,
+                    ))
+                    .shrink(view.scale(INSPECT_TEXT_PADDING));
+
+                // A real `ScrollArea`, not hand-rolled clipping — it needs egui's own
+                // per-widget scroll-offset memory (keyed by `nh` via `id_salt`) to give real
+                // scrollbars in both directions, which a plain clipped `painter.text()` call
+                // has no way to provide.
+                let mut child = ui.new_child(
+                    egui::UiBuilder::new()
+                        .max_rect(content_rect)
+                        .layout(egui::Layout::top_down(egui::Align::LEFT)),
+                );
+                child.set_clip_rect(content_rect);
+                egui::ScrollArea::both()
+                    .id_salt(("dagger-inspect-scroll", nh))
+                    .auto_shrink([false, false])
+                    .show(&mut child, |ui| {
+                        ui.add(
+                            egui::Label::new(
+                                egui::RichText::new(&cache[nh].text)
+                                    .monospace()
+                                    .size(inspect_font.size)
+                                    .color(Color32::from_gray(220)),
+                            )
+                            // No wrapping: long lines should scroll horizontally, not fold.
+                            .wrap_mode(egui::TextWrapMode::Extend),
+                        );
+                    });
+            }
         }
     }
+}
+
+/// Small diagonal-line resize grip, drawn in an Inspect node's bottom-right corner — the same
+/// visual convention as a native OS window's resize handle.
+fn draw_resize_handle(painter: &egui::Painter, handle: Rect) {
+    let stroke = Stroke::new(1.5, Color32::from_gray(160));
+    for i in 1..=3 {
+        let offset = handle.width() * (i as f32 / 4.0);
+        painter.line_segment(
+            [
+                Pos2::new(handle.max.x - offset, handle.max.y),
+                Pos2::new(handle.max.x, handle.max.y - offset),
+            ],
+            stroke,
+        );
+    }
+}
+
+/// Small external-link-style icon button that opens an Inspect node's content in a separate OS
+/// window. Drawn from vector strokes rather than a text glyph, so it renders identically
+/// regardless of what the active font happens to cover.
+fn draw_popout_button(painter: &egui::Painter, button: Rect) {
+    let stroke = Stroke::new(1.2, Color32::from_gray(220));
+    painter.rect_stroke(button, 2.0, stroke, StrokeKind::Outside);
+    let inset = button.shrink(4.0);
+    painter.line_segment([inset.left_bottom(), inset.right_top()], stroke);
+    let arrow = inset.width().min(inset.height()) * 0.5;
+    painter.line_segment(
+        [
+            inset.right_top() - Vec2::new(arrow, 0.0),
+            inset.right_top(),
+        ],
+        stroke,
+    );
+    painter.line_segment(
+        [
+            inset.right_top(),
+            inset.right_top() + Vec2::new(0.0, arrow),
+        ],
+        stroke,
+    );
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
+
+    fn measure(wf: &Workflow, sizes: &mut NodePropBuf<[f32; 2]>) {
+        let ctx = egui::Context::default();
+        let output = ctx.run_ui(egui::RawInput::default(), |ui| {
+            measure_nodes(ui.ctx(), wf, sizes);
+        });
+        output.drop_without_applying_deltas();
+    }
+
+    /// Regression test for the exact bug the resize feature would otherwise reintroduce: any
+    /// unrelated edit (e.g. creating another node) re-measures every node, including Inspect
+    /// nodes, which used to unconditionally overwrite `node_sizes` with the freshly computed
+    /// default — silently discarding whatever the user had just dragged the resize handle to.
+    #[test]
+    fn t_measure_nodes_never_shrinks_a_manually_resized_inspect_node() {
+        let mut wf = Workflow::default();
+        let mut ins = vec![IH::default()];
+        let nh = wf.add_inspect_node("inspect".to_string(), &mut ins).unwrap();
+        let mut sizes = wf.create_node_property();
+
+        measure(&wf, &mut sizes.try_borrow_mut().unwrap());
+        let natural = sizes.try_borrow().unwrap()[nh];
+
+        let resized = [natural[0] + 400.0, natural[1] + 300.0];
+        sizes.try_borrow_mut().unwrap()[nh] = resized;
+
+        measure(&wf, &mut sizes.try_borrow_mut().unwrap());
+        assert_eq!(
+            sizes.try_borrow().unwrap()[nh],
+            resized,
+            "re-measuring must preserve a manual resize, not snap back to the natural default"
+        );
+    }
+
+    /// A freshly measured (never resized) Inspect node's size must never fall below
+    /// `min_inspect_size` — otherwise the resize handle's own clamp (which floors at exactly
+    /// that) would fight the very first measure, since `measure_nodes` takes the max of the two.
+    #[test]
+    fn t_freshly_measured_inspect_node_is_at_least_the_minimum_size() {
+        let mut wf = Workflow::default();
+        let mut ins = vec![IH::default()];
+        let nh = wf.add_inspect_node("inspect".to_string(), &mut ins).unwrap();
+        let mut sizes = wf.create_node_property();
+
+        measure(&wf, &mut sizes.try_borrow_mut().unwrap());
+
+        let natural = sizes.try_borrow().unwrap()[nh];
+        let [min_w, min_h] = min_inspect_size();
+        assert!(natural[0] >= min_w && natural[1] >= min_h);
+    }
 
     /// Node width has its own floor (`MIN_NODE_WIDTH`, driven by measured text), but height is
     /// purely a function of pin count — this is the contract `input_pin_pos`/`output_pin_pos`

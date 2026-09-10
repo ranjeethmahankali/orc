@@ -4,7 +4,7 @@ use crate::canvas::Transform;
 use crate::render;
 use crate::state::EditorState;
 use eframe::egui::{self, Id, Key, PointerButton, Pos2, Rect, Sense, Vec2};
-use orc_sdk::{IH, NH, OH, Workflow};
+use orc_sdk::{IH, NH, NodeInfo, OH, Workflow};
 use std::collections::{HashMap, HashSet};
 
 /// Where a right-click asked for a context menu to open, and what (if anything) it should
@@ -92,6 +92,18 @@ fn update_box_select(
         }
     }
     Some((screen_rect, kind))
+}
+
+/// Grows (or shrinks) `size` by a screen-space drag `delta`, converted to canvas units via
+/// `zoom`, clamped so an Inspect node can never be dragged smaller than `render::min_inspect_size`
+/// — below that, its pins and pop-out button would no longer fit.
+fn apply_resize_delta(size: [f32; 2], delta: Vec2, zoom: f32) -> [f32; 2] {
+    let canvas_delta = delta / zoom;
+    let [min_w, min_h] = render::min_inspect_size();
+    [
+        (size[0] + canvas_delta.x).max(min_w),
+        (size[1] + canvas_delta.y).max(min_h),
+    ]
 }
 
 /// Whether adding an edge from `src` to `dst` would create a cycle, i.e. whether `dst` can
@@ -221,6 +233,10 @@ pub fn update(
         (Ok(p), Ok(s)) => (p, s),
         _ => return events,
     };
+    let node_info_prop = state.workflow.node_info_prop();
+    let Ok(node_infos) = node_info_prop.try_borrow() else {
+        return events;
+    };
 
     let mut dragged_node: Option<(NH, Vec2)> = None;
     let mut wire_start: Option<OH> = None;
@@ -229,6 +245,10 @@ pub fn update(
     // deferred until `positions`/`sizes` are dropped below since `mark_dirty` needs `&mut
     // EditorState` and those `Ref`s borrow `state`'s fields for the whole loop.
     let mut disconnected_input_owner: Option<NH> = None;
+    // Accumulated resize-handle drag, applied to `node_sizes` after `sizes` (borrowed
+    // immutably for the loop) is dropped below.
+    let mut resized_node: Option<(NH, Vec2)> = None;
+    let mut popout_clicked: Option<NH> = None;
 
     let nodes: Vec<NH> = state.workflow.node_iter().collect();
     for nh in nodes {
@@ -274,6 +294,29 @@ pub fn update(
             }
         }
 
+        // Registered last, after the body and every pin, so a press on the small overlapping
+        // sliver of these controls is claimed by them rather than starting a node drag — same
+        // tie-breaking convention pins already rely on.
+        if matches!(node_infos[nh], NodeInfo::Inspect { .. }) {
+            let popout_response = ui.interact(
+                view.rect_to_screen(render::popout_button_rect(rect)),
+                Id::new(("dagger-inspect-popout", nh)),
+                Sense::click(),
+            );
+            if popout_response.clicked() {
+                popout_clicked = Some(nh);
+            }
+
+            let resize_response = ui.interact(
+                view.rect_to_screen(render::resize_handle_rect(rect)),
+                Id::new(("dagger-inspect-resize", nh)),
+                Sense::drag(),
+            );
+            if resize_response.dragged() {
+                resized_node = Some((nh, resize_response.drag_delta()));
+            }
+        }
+
         if body_response.dragged_by(PointerButton::Primary) {
             dragged_node = Some((nh, body_response.drag_delta()));
         } else if body_response.clicked() {
@@ -282,6 +325,7 @@ pub fn update(
     }
     drop(positions);
     drop(sizes);
+    drop(node_infos);
 
     if let Some(nh) = disconnected_input_owner {
         crate::exec::mark_dirty(state, nh);
@@ -302,6 +346,20 @@ pub fn update(
             let canvas_delta = delta / view.zoom;
             positions[nh][0] += canvas_delta.x;
             positions[nh][1] += canvas_delta.y;
+        }
+        events.changed = true;
+    }
+
+    if let Some((nh, delta)) = resized_node {
+        if let Ok(mut sizes) = state.node_sizes.try_borrow_mut() {
+            sizes[nh] = apply_resize_delta(sizes[nh], delta, view.zoom);
+        }
+        events.changed = true;
+    }
+
+    if let Some(nh) = popout_clicked {
+        if let Ok(mut popout) = state.inspect_popout.try_borrow_mut() {
+            popout[nh] = true;
         }
         events.changed = true;
     }
@@ -393,6 +451,23 @@ mod test {
             .add_function(FuncInfo::default(), &mut ins, &mut outs)
             .unwrap();
         (nh, ins, outs)
+    }
+
+    #[test]
+    fn t_resize_delta_grows_the_size_by_the_canvas_space_delta() {
+        let grown = apply_resize_delta([300.0, 250.0], Vec2::new(20.0, 10.0), 2.0);
+        // Screen-space delta is halved by a 2x zoom before it's added.
+        assert_eq!(grown, [310.0, 255.0]);
+    }
+
+    #[test]
+    fn t_resize_delta_clamps_at_the_minimum_inspect_size() {
+        let shrunk = apply_resize_delta(
+            render::min_inspect_size(),
+            Vec2::new(-1000.0, -1000.0),
+            1.0,
+        );
+        assert_eq!(shrunk, render::min_inspect_size());
     }
 
     #[test]

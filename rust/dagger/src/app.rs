@@ -94,6 +94,7 @@ impl eframe::App for DaggerApp {
                 }
 
                 render::draw(ui, &self.state);
+                inspect::update_popouts(ui.ctx(), &mut self.state);
 
                 context_menu::update(ui, &mut self.state);
                 if self.state.needs_measure {
