@@ -152,6 +152,17 @@
   serialization story of the workflows throws a bit of a wrench into this. I've given this some
   thought in [[*tkwogf - Overhaul of workflow property serialization][this task]], but I don't yet know what the solution is. This requires more thought.
 
+* NEXT tl68t6 - Fix the Pyorc build system
+  :PROPERTIES:
+  :CREATED:  2026-09-10 Thu 19:18
+  :END:
+  :LOGBOOK:
+  - State "NEXT"       from "TODO"       [2026-09-10 Thu 19:20]
+  :END:
+
+  The same linkage cannot be used for a python version agnostic library (which cannot statically
+  link against a specific Python), and unit test binaries that need to link statically.
+
 * TODO Python code generation from a workflow
   :PROPERTIES:
   :CREATED:  2026-09-06 Sun 22:22

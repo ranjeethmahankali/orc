@@ -5,12 +5,18 @@ edition = "2024"
 
 [lib]
 name = "orc"
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 orc_sdk = { path = "../orc_sdk" }
 
 # abi3-py37: Use Python's stable ABI (Python 3.7+). One binary works across Python versions.
+pyo3 = { version = "0.24", features = ["abi3-py37"] }
+
+[features]
 # extension-module: Don't link libpython at build time. Symbols resolve at runtime when Python
-#                   loads the extension. Required on Linux/macOS; avoids a warning on Windows.
-pyo3 = { version = "0.24", features = ["abi3-py37", "extension-module"] }
+#                   loads the extension. Required for `maturin build`/`develop`, but a plain
+#                   `cargo test` binary has no Python host to resolve those symbols, so tests
+#                   must be run with `cargo test --no-default-features`.
+default = ["extension-module"]
+extension-module = ["pyo3/extension-module"]
