@@ -1027,39 +1027,63 @@
      - State "TODO"       from              [2026-09-07 Mon 23:11]
      :END:
 
-     <2026-09-09 Wed 22:08> Trying to run nested workflows in a UI app on multiple threads is
-     exposing an issue with the property system. Properties are not threadsafe. I need to replace
-     the Rc<RefCell<...>> with Arc<RwLock<...>>.
+     *Background execution of NestedCall nodes:*
+     - [ ] ~Workflow~ stays single-threaded/UI-thread-only, exactly as today -- no SDK-level
+       thread-safety changes. A ~Workflow~ can never be ~Send~ (it embeds ~Property<H, T>~, which
+       is ~Rc<RefCell<...>>~-backed), and that's fine: it never needs to cross a thread boundary.
+     - [ ] Dagger's own dispatch/staleness tracking generalizes from being keyed by a bare ~NH~
+       (scoped to one ~Workflow~) to a compound key identifying which call instance (root, or a
+       specific NestedCall node's nested workflow, recursively) a node belongs to. One shared
+       pending queue and dispatch loop walks the whole call hierarchy this way -- the underlying
+       graphs are never physically merged/flattened, only the scheduling is unified.
+     - [ ] A NestedCall's own input values are gathered the same way a Function node's inputs
+       already are (constant -> ~host_clone_orc_handle~, upstream output -> existing ~Arc~ clone),
+       then handed to the nested workflow's dangling workflow-input pins via a small
+       per-call-instance side table (positionally indexed to match ~workflow_input_index~) -- not
+       by wiring or cloning anything into the shared, canonical ~nested_workflows[name]~
+       ~Workflow~, which stays one read-only-borrowed instance shared by every caller (multiple
+       simultaneous calls to the same name never conflict, since nothing ever writes to it).
+     - [ ] Individual node dispatch (calling a plugin function) still goes through the existing
+       global thread pool exactly as today -- only ~Arc<OrcHandle>~ ever crosses a thread
+       boundary, same as always.
 
-     *Opening nested workflows:*
-     - [ ] Double-click a NestedCall node to open the nested workflow in a separate OS window
-       (~ctx.show_viewport_deferred()~).
-     - [ ] Clone the nested workflow from ~parent.nested_workflows[name]~.
-     - [ ] Load the call node's ~NestedExecState.output_values~ into the new editor's
-       ~computed_outputs~ so computed values are immediately visible.
-     - [ ] Load ~NestedExecState.child_call_states~ into the new editor's ~nested_exec_state~
-       property so deeper double-clicks work at arbitrary nesting depth.
-     - [ ] Workflow input chips in the nested editor show the actual argument values flowing into
-       that specific call.
+     *Opening a nested workflow (double-click a NestedCall node):*
+     - [ ] Opens in a separate OS window via ~ctx.show_viewport_immediate~ (matches the Inspect
+       and Constant pop-outs already built -- ~show_viewport_deferred~ was tried there first and
+       abandoned, since it can repaint independently of the root, so a root-only close check can
+       go a long time without ever rerunning).
+     - [ ] Host clones ~parent.nested_workflows[name]~ manually -- ~NodeInfo::clone()~ deliberately
+       nulls out ~Constant~ handles ("the host application is responsible for allocating the
+       variable data manually"), so cloning walks the copy's nodes and replaces each ~Constant~
+       with a real ~host_clone_orc_handle~ copy.
+     - [ ] The clone's dangling workflow-input pins are wired to freshly created ~Constant~ nodes
+       holding cloned *current* argument values (gathered from whatever presently feeds the
+       NestedCall node's own input pins in the parent) -- so the nested editor immediately shows
+       live data, not defaults.
+     - [ ] The pop-out gets its own ordinary ~EditorState~ and runs independently -- same
+       rendering, layout, interaction, context menu, and execution engine as the main canvas, full
+       feature parity. No live sync back to the parent while it's open; the parent's view of that
+       NestedCall node just keeps showing its last-known (possibly stale, possibly "not yet
+       computed") output the whole time.
+     - [ ] Adding/removing/reordering the nested workflow's own inputs or outputs is out of scope
+       for this pass -- the pop-out only edits internal wiring/nodes, not its own parameter list.
+
+     *Closing the pop-out:*
+     - [ ] Always overwrites ~parent.nested_workflows[name]~ with the edited copy -- affects every
+       NestedCall node referencing that name; no per-call clone-and-rewire/"create new" option.
+     - [ ] If the pop-out's own workflow outputs are fully settled, copy them directly into the
+       parent's ~computed_outputs~ for that node's output pins and settle it trivially -- no rerun.
+     - [ ] If it was closed before finishing, ~mark_dirty~ the calling node instead, so the
+       parent's own background execution (see above) reruns it fresh against the now-updated
+       definition.
+     - [ ] No discard-vs-save prompt -- closing the window is the commit.
 
      *Window tracking:*
+     - [X] Main window's own unsaved-changes close prompt (Discard / Save) -- already implemented
+       (~file_menu::confirm_discard~), reused as-is, not new work for this phase.
      - [ ] DaggerApp tracks open nested editors by workflow name.
      - [ ] Opening a nested workflow already open in another window is disallowed. Flash the
        existing window instead.
-
-     *Close prompt (nested window with unsaved changes):*
-     - [ ] *Discard* -- close without saving, all changes lost.
-     - [ ] *Replace All* -- overwrite the nested workflow definition in the parent so ALL NestedCall
-       nodes referencing this workflow use the updated version.
-     - [ ] *Create New* -- insert a new nested workflow (auto-generated name), update only the
-       source call node to reference it, leave other callers unchanged.
-
-     *Close prompt (main window with unsaved changes):*
-     - [ ] Discard / Save (to file).
-
-     *Each nested editor:*
-     - [ ] Has its own EditorState, renders identically to the main canvas (same rendering, layout,
-       interaction, context menu). Full feature parity.
 
 **** Future (out of scope for now)
 
