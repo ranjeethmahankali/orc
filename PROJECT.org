@@ -999,6 +999,9 @@
      - [X] In all states, the inspect window displays text, and will have scroll bars in horizontal
        and vertical directions as needed.
 
+     <2026-09-09 Wed 21:25> Inspect node display is decent. Can iterate and refine later as I use
+     the app more.
+
      *Const node display:*
      - [X] The display story for most const nodes and inpsect nodes is the same. The only difference is
        that const owns the data that is displayed, whereas inspect nodes display data they receive
@@ -1009,6 +1012,9 @@
        each value in the deck, displayed with this ruler structure, to be editable like a text
        box. That means the UI element should parse those strings into either f64 or i64 deck
        depending on the type of data the constant node holds.
+
+     <2026-09-09 Wed 21:25> First pass at editable constants is decent. Need to refine the UI a
+     little bit before marking this phase as done.
 
 **** TODO Phase 5: Nested Workflow Editing
      :LOGBOOK:
