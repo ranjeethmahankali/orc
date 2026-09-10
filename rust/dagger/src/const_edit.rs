@@ -237,9 +237,53 @@ pub fn commit_row(state: &mut EditorState, nh: NH, item_index: usize) {
 }
 
 /// Appends one more value at depth 0 -- extends the deck's last (currently open) run without
-/// creating a new mark, so nothing about the existing structure changes. The new value starts at
-/// zero, same as a freshly created constant's default.
-pub fn append_value(state: &mut EditorState, nh: NH) {
+/// creating a new mark for it (it's a plain continuation, depth 0), so nothing about the
+/// existing structure changes except the one new slot. Works by replaying every original item's
+/// exact external push depth into a fresh deck (recovering that depth is exactly what
+/// `deck_rows`' ruler math already does, just used here to drive `push`/`start_new_arr` instead
+/// of a ruler string), splicing the new value in right after `after_index` -- which also
+/// correctly preserves an empty group's bare mark, unlike naively shifting mark positions by
+/// hand would if not done carefully.
+fn rebuild_with_insertion<T: Copy + Default>(
+    items: &[T],
+    marks: &[OrcMark],
+    after_index: usize,
+    new_value: T,
+) -> orc_sdk::Deck<T> {
+    let mut new_deck = orc_sdk::Deck::<T>::default();
+    let n_items = items.len() as u64;
+
+    let replay_run = |new_deck: &mut orc_sdk::Deck<T>, depth: u8, pos: u64, next_pos: u64| {
+        new_deck.start_new_arr(depth + 1);
+        for i in pos..next_pos.min(n_items) {
+            new_deck.push(items[i as usize], 0);
+            if i as usize == after_index {
+                new_deck.push(new_value, 0);
+            }
+        }
+    };
+
+    let mut tail_start = 0u64;
+    for w in marks.windows(2) {
+        replay_run(&mut new_deck, w[0].depth, w[0].pos, w[1].pos);
+        tail_start = w[1].pos;
+    }
+    if let Some(last) = marks.last() {
+        replay_run(&mut new_deck, last.depth, last.pos, n_items);
+        tail_start = n_items;
+    }
+    for i in tail_start..n_items {
+        new_deck.push(items[i as usize], 0);
+        if i as usize == after_index {
+            new_deck.push(new_value, 0);
+        }
+    }
+    new_deck
+}
+
+/// Inserts one new zero-valued depth-0 row immediately after `after_index` -- the "hit Enter to
+/// add a row" gesture, wherever in the list Enter was pressed, not just at the end.
+pub fn insert_after(state: &mut EditorState, nh: NH, after_index: usize) {
     let mut node_info_prop = state.workflow.node_info_prop();
     let Ok(mut node_infos) = node_info_prop.try_borrow_mut() else {
         return;
@@ -251,29 +295,23 @@ pub fn append_value(state: &mut EditorState, nh: NH) {
         return;
     }
     let type_id = handle.type_id;
-    let write_result = crate::REGISTRY.with_mut(&[handle.handle], |decks| -> Result<(), orc_sdk::Error> {
-        match type_id {
-            ORC_TYPE_I64 => {
-                let deck = decks[0]
-                    .downcast_mut::<orc_sdk::Deck<i64>>()
-                    .ok_or(orc_sdk::Error::DeckTypeMismatch)?;
-                deck.push(0, 0);
-                unsafe { update_handle_from_deck(deck, &mut *handle) };
-            }
-            _ => {
-                let deck = decks[0]
-                    .downcast_mut::<orc_sdk::Deck<f64>>()
-                    .ok_or(orc_sdk::Error::DeckTypeMismatch)?;
-                deck.push(0.0, 0);
-                unsafe { update_handle_from_deck(deck, &mut *handle) };
-            }
-        }
-        Ok(())
-    });
-    if write_result.is_err() {
+    // Copied out (constants are small) rather than borrowed, since `alloc_with_value` below
+    // needs `&mut handle` while these would otherwise still be borrowing from it.
+    let marks = handle.marks().to_vec();
+    let alloc_result = if type_id == ORC_TYPE_I64 {
+        let items = handle.items::<i64>().to_vec();
+        let new_deck = rebuild_with_insertion(&items, &marks, after_index, 0i64);
+        crate::REGISTRY.alloc_with_value(Some(new_deck), handle)
+    } else {
+        let items = handle.items::<f64>().to_vec();
+        let new_deck = rebuild_with_insertion(&items, &marks, after_index, 0.0f64);
+        crate::REGISTRY.alloc_with_value(Some(new_deck), handle)
+    };
+    if alloc_result.is_err() {
         return;
     }
     drop(node_infos);
+    state.pending_focus_row.set(Some((nh, after_index + 1)));
     after_edit(state, nh);
     refresh(state, nh);
 }
@@ -284,15 +322,19 @@ pub fn append_value(state: &mut EditorState, nh: NH) {
 #[derive(Default)]
 pub(crate) struct ConstEditEvents {
     pub(crate) committed_rows: Vec<(NH, usize)>,
-    pub(crate) appended: Vec<NH>,
+    /// `(node, index)`: insert a new row right after this item, requested by pressing Enter
+    /// while editing it.
+    pub(crate) inserted_after: Vec<(NH, usize)>,
 }
 
 pub(crate) fn apply_events(state: &mut EditorState, events: ConstEditEvents) {
+    // A row that both changed text and had Enter pressed in it must commit that text before the
+    // insertion shifts indices out from under it.
     for (nh, item_index) in events.committed_rows {
         commit_row(state, nh, item_index);
     }
-    for nh in events.appended {
-        append_value(state, nh);
+    for (nh, after_index) in events.inserted_after {
+        insert_after(state, nh, after_index);
     }
 }
 
@@ -471,30 +513,85 @@ mod test {
         assert_eq!(state.const_edit_cache.try_borrow().unwrap()[nh].buffers[0], "7");
     }
 
-    #[test]
-    fn t_append_value_grows_the_deck_without_a_new_mark() {
-        let mut deck = Deck::<f64>::default();
-        deck.push(1.0, 1);
-        deck.push(2.0, 0);
-        let (mut state, nh) = constant_node(deck);
-        let n_marks_before = {
-            let node_info_prop = state.workflow.node_info_prop();
-            let node_infos = node_info_prop.try_borrow().unwrap();
-            let NodeInfo::Constant(handle) = &node_infos[nh] else {
-                panic!("expected a constant node")
-            };
-            handle.n_marks
-        };
-
-        append_value(&mut state, nh);
-
+    fn items_of(state: &EditorState, nh: NH) -> Vec<f64> {
         let node_info_prop = state.workflow.node_info_prop();
         let node_infos = node_info_prop.try_borrow().unwrap();
         let NodeInfo::Constant(handle) = &node_infos[nh] else {
             panic!("expected a constant node")
         };
-        assert_eq!(handle.items::<f64>(), &[1.0, 2.0, 0.0]);
-        assert_eq!(handle.n_marks, n_marks_before, "appending at depth 0 adds no new mark");
+        handle.items::<f64>().to_vec()
+    }
+
+    fn n_marks_of(state: &EditorState, nh: NH) -> u64 {
+        let node_info_prop = state.workflow.node_info_prop();
+        let node_infos = node_info_prop.try_borrow().unwrap();
+        let NodeInfo::Constant(handle) = &node_infos[nh] else {
+            panic!("expected a constant node")
+        };
+        handle.n_marks
+    }
+
+    #[test]
+    fn t_insert_after_the_last_row_grows_the_deck_without_a_new_mark() {
+        let mut deck = Deck::<f64>::default();
+        deck.push(1.0, 1);
+        deck.push(2.0, 0);
+        let (mut state, nh) = constant_node(deck);
+        let n_marks_before = n_marks_of(&state, nh);
+
+        insert_after(&mut state, nh, 1);
+
+        assert_eq!(items_of(&state, nh), vec![1.0, 2.0, 0.0]);
+        assert_eq!(n_marks_of(&state, nh), n_marks_before, "a depth-0 insertion adds no new mark");
+        assert_eq!(state.pending_focus_row.get(), Some((nh, 2)));
+    }
+
+    /// The whole point of replacing the "+ Add" button: Enter can be pressed on *any* row, not
+    /// just the last one, and the new value must land immediately after that specific row,
+    /// shifting everything after it down by one -- not tacked onto the end.
+    #[test]
+    fn t_insert_after_a_middle_row_splices_in_rather_than_appending() {
+        let mut deck = Deck::<f64>::default();
+        deck.push(1.0, 1);
+        deck.push(2.0, 0);
+        deck.push(3.0, 0);
+        let (mut state, nh) = constant_node(deck);
+
+        insert_after(&mut state, nh, 0); // right after the first value, "1.0"
+
+        assert_eq!(items_of(&state, nh), vec![1.0, 0.0, 2.0, 3.0]);
+        assert_eq!(state.pending_focus_row.get(), Some((nh, 1)));
+    }
+
+    /// `rebuild_with_insertion` reconstructs the whole deck via replay, so this guards against a
+    /// regression where that replay merges a nearby group into the one being inserted into, or
+    /// fails to shift a later group's mark position by the one newly inserted item.
+    #[test]
+    fn t_insert_after_preserves_nesting_around_the_insertion_point() {
+        let mut deck = Deck::<f64>::default();
+        deck.push(1.0, 2);
+        deck.push(2.0, 0);
+        deck.push(3.0, 1);
+        let (mut state, nh) = constant_node(deck);
+
+        insert_after(&mut state, nh, 0); // inside the first (2-item) group
+
+        assert_eq!(items_of(&state, nh), vec![1.0, 0.0, 2.0, 3.0]);
+        let node_info_prop = state.workflow.node_info_prop();
+        let node_infos = node_info_prop.try_borrow().unwrap();
+        let NodeInfo::Constant(handle) = &node_infos[nh] else {
+            panic!("expected a constant node")
+        };
+        // The first group grew from 2 items to 3 (same mark, same position); the second group
+        // ("3.0") is still its own mark, shifted from position 2 to 3 by the insertion ahead of
+        // it, not merged into the first.
+        assert_eq!(
+            handle.marks(),
+            &[
+                OrcMark { depth: 1, pos: 0 },
+                OrcMark { depth: 0, pos: 3 },
+            ]
+        );
     }
 
     /// End to end: editing a constant must update `computed_outputs` immediately (the only place

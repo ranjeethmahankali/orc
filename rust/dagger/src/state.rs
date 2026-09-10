@@ -7,7 +7,8 @@ use crate::interaction::SelectBoxKind;
 use crate::layout;
 use crate::render;
 use eframe::egui::{self, Rect};
-use orc_sdk::{NodeProperty, OH, OrcHandle, OutputProperty, Workflow};
+use orc_sdk::{NH, NodeProperty, OH, OrcHandle, OutputProperty, Workflow};
+use std::cell::Cell;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -77,6 +78,12 @@ pub struct EditorState {
     /// Per-row edit buffers for a Constant node's editable ruler display, and whether its handle
     /// is actually editable at all (see `const_edit::is_editable`).
     pub(crate) const_edit_cache: NodeProperty<const_edit::ConstEditCache>,
+    /// Set by `const_edit::insert_after` for the row the new value landed at; read (and cleared)
+    /// by `render::draw_editable_const_content` the next time it draws that row, to steal
+    /// keyboard focus onto it -- matches the "press Enter, keep typing on the new row" feel of a
+    /// spreadsheet. A `Cell`, not a `NodeProperty`, since it's read from `render.rs` through only
+    /// `&EditorState` and needs no per-node storage or garbage collection, just one slot.
+    pub(crate) pending_focus_row: Cell<Option<(NH, usize)>>,
 }
 
 impl EditorState {
@@ -116,6 +123,7 @@ impl EditorState {
             inspect_cache,
             content_popout,
             const_edit_cache,
+            pending_focus_row: Cell::new(None),
         };
         exec::mark_all_dirty(&mut state);
         state

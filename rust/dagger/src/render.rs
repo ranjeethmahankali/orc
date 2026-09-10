@@ -120,6 +120,8 @@ const RESIZE_HANDLE_SIZE: f32 = 14.0;
 const POPOUT_BUTTON_SIZE: f32 = 16.0;
 /// Gap between the pop-out button and the node's right edge.
 const POPOUT_BUTTON_MARGIN: f32 = 6.0;
+/// Canvas-space width of an editable Constant row's value box, before zoom scaling.
+const CONST_EDIT_VALUE_WIDTH: f32 = 80.0;
 
 /// The smallest an Inspect node can be dragged down to — matches the same numbers a freshly
 /// created Inspect node gets from `measure_nodes`, so a manual shrink and a later re-measure
@@ -593,6 +595,7 @@ fn draw_nodes(
                             handle,
                             content_rect,
                             inspect_font.size,
+                            view,
                             &mut const_edit_events,
                         );
                     }
@@ -647,10 +650,13 @@ fn draw_static_text_content(ui: &mut egui::Ui, nh: NH, text: &str, content_rect:
 }
 
 /// One editable text box per value, each preceded by the same ruler-prefix label `Deck`'s own
-/// `Display` prints (see `const_edit::deck_rows`), plus a trailing "+ Add" row that appends a new
-/// depth-0 value. A `lost_focus` text box or a click on "+ Add" is recorded into `events` rather
-/// than acted on immediately -- the outstanding `node_infos`/etc. borrows this whole function is
-/// called under would make an immediate commit's own borrow of `node_info_prop` fail silently.
+/// `Display` prints (see `const_edit::deck_rows`). Pressing Enter in any row both commits its
+/// text and inserts a new depth-0 row right after it -- there is no separate "add value" control.
+/// A `lost_focus`/Enter is recorded into `events` rather than acted on immediately -- the
+/// outstanding `node_infos`/etc. borrows this whole function is called under would make an
+/// immediate commit's own borrow of `node_info_prop` fail silently.
+#[allow(clippy::too_many_arguments)] // Every argument here is genuinely distinct context; a
+// grouping struct would just be these same 8 fields with an extra layer of indirection.
 fn draw_editable_const_content(
     ui: &mut egui::Ui,
     state: &EditorState,
@@ -658,6 +664,7 @@ fn draw_editable_const_content(
     handle: &orc_sdk::OrcHandle,
     content_rect: Rect,
     font_size: f32,
+    view: &Transform,
     events: &mut ConstEditEvents,
 ) {
     // `try_borrow_mut` needs `&mut` access to the property handle itself -- cloning it (a cheap
@@ -671,11 +678,13 @@ fn draw_editable_const_content(
     if cache[nh].buffers.len() != n_items {
         // Not yet resynced this frame -- `const_edit::refresh_all` runs before `render::draw`
         // every frame, so in practice this only shows for one frame right after a structural
-        // change (e.g. right after "+ Add" is applied), not indefinitely.
+        // change (e.g. right after an insertion is applied), not indefinitely.
         return;
     }
     let rows = const_edit::deck_rows(n_items, handle.marks());
     let font = egui::FontId::new(font_size, FontFamily::Monospace);
+    let value_width = view.scale(CONST_EDIT_VALUE_WIDTH);
+    let pending_focus = state.pending_focus_row.get();
 
     let mut child = ui.new_child(
         egui::UiBuilder::new()
@@ -692,14 +701,33 @@ fn draw_editable_const_content(
                     RowValue::Item(i) => {
                         ui.horizontal(|ui| {
                             ui.label(egui::RichText::new(&row.ruler).monospace().size(font_size));
-                            if let Some(buf) = cache[nh].buffers.get_mut(i) {
-                                let response = ui.add(
-                                    egui::TextEdit::singleline(buf)
-                                        .font(font.clone())
-                                        .desired_width(80.0),
-                                );
-                                if response.lost_focus() {
-                                    events.committed_rows.push((nh, i));
+                            let Some(buf) = cache[nh].buffers.get_mut(i) else {
+                                return;
+                            };
+                            let id = egui::Id::new(("dagger-const-edit-value", nh, i));
+                            if pending_focus == Some((nh, i)) {
+                                ui.memory_mut(|m| m.request_focus(id));
+                                state.pending_focus_row.set(None);
+                            }
+                            let response = ui.add(
+                                egui::TextEdit::singleline(buf)
+                                    .id(id)
+                                    // Frameless and colored to match the surrounding text: this
+                                    // should read as plain ruler-formatted text (like a
+                                    // non-editable Constant or an Inspect node), just one that
+                                    // happens to be clickable, not as a form full of boxes.
+                                    .frame(egui::Frame::NONE)
+                                    .text_color(egui::Color32::from_gray(220))
+                                    .font(font.clone())
+                                    .desired_width(value_width),
+                            );
+                            if response.lost_focus() {
+                                events.committed_rows.push((nh, i));
+                                // Enter (not a plain click-away) also means "and start a new
+                                // row right after this one" -- the replacement for a separate
+                                // "+ Add" button.
+                                if ui.input(|input| input.key_pressed(egui::Key::Enter)) {
+                                    events.inserted_after.push((nh, i));
                                 }
                             }
                         });
@@ -708,9 +736,6 @@ fn draw_editable_const_content(
                         ui.label(egui::RichText::new(&row.ruler).monospace().size(font_size));
                     }
                 }
-            }
-            if ui.button("+ Add").clicked() {
-                events.appended.push(nh);
             }
         });
 }

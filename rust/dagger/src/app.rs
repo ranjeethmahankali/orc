@@ -101,7 +101,7 @@ impl eframe::App for DaggerApp {
 
                 let const_edit_events = render::draw(ui, &self.state);
                 let const_edit_changed = !const_edit_events.committed_rows.is_empty()
-                    || !const_edit_events.appended.is_empty();
+                    || !const_edit_events.inserted_after.is_empty();
                 const_edit::apply_events(&mut self.state, const_edit_events);
                 if const_edit_changed {
                     ui.ctx().request_repaint();
