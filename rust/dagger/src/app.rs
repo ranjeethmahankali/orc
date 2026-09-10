@@ -1,4 +1,5 @@
 use crate::canvas;
+use crate::const_edit;
 use crate::context_menu;
 use crate::exec;
 use crate::file_menu;
@@ -63,11 +64,9 @@ impl eframe::App for DaggerApp {
                 if self.state.needs_measure {
                     self.state.measure(ui.ctx());
                 }
-                let over_inspect_content = ui
-                    .input(|i| i.pointer.hover_pos())
-                    .is_some_and(|pos| {
-                        interaction::pointer_over_inspect_content(&self.state, &self.state.view, pos)
-                    });
+                let over_inspect_content = ui.input(|i| i.pointer.hover_pos()).is_some_and(|pos| {
+                    interaction::pointer_over_inspect_content(&self.state, &self.state.view, pos)
+                });
                 let (canvas_response, view_moved) =
                     canvas::interact(ui, &mut self.state.view, !over_inspect_content);
                 let deleted = interaction::delete_selected(ui, &mut self.state);
@@ -76,6 +75,7 @@ impl eframe::App for DaggerApp {
                 // nothing is stale or in flight, so this runs unconditionally every frame.
                 exec::tick(&mut self.state);
                 inspect::refresh_all(&mut self.state);
+                const_edit::refresh_all(&mut self.state);
                 if exec::any_in_flight(&self.state) {
                     // Needed both to keep draining the results channel and to animate the
                     // in-progress sweep on whichever node(s) are running.
@@ -99,7 +99,13 @@ impl eframe::App for DaggerApp {
                     ui.ctx().request_repaint();
                 }
 
-                render::draw(ui, &self.state);
+                let const_edit_events = render::draw(ui, &self.state);
+                let const_edit_changed = !const_edit_events.committed_rows.is_empty()
+                    || !const_edit_events.appended.is_empty();
+                const_edit::apply_events(&mut self.state, const_edit_events);
+                if const_edit_changed {
+                    ui.ctx().request_repaint();
+                }
                 inspect::update_popouts(ui.ctx(), &mut self.state);
 
                 context_menu::update(ui, &mut self.state);

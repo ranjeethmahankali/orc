@@ -61,7 +61,7 @@ pub fn update_popouts(ctx: &egui::Context, state: &mut EditorState) {
     let nodes: Vec<NH> = state.workflow.node_iter().collect();
     for nh in nodes {
         let is_open = state
-            .inspect_popout
+            .content_popout
             .try_borrow()
             .map(|p| p[nh])
             .unwrap_or(false);
@@ -76,11 +76,23 @@ pub fn update_popouts(ctx: &egui::Context, state: &mut EditorState) {
                 .map(|infos| infos[nh].name().to_string())
                 .unwrap_or_else(|_| "Inspect".to_string())
         };
-        let text = state
-            .inspect_cache
-            .try_borrow()
-            .map(|c| c[nh].text.clone())
-            .unwrap_or_default();
+        // The pop-out is always a read-only expanded view, even for an editable Constant --
+        // editing happens inline only, so a Constant's window reads straight from its handle
+        // (via the same `host_deck_to_str` path Inspect uses), not from any edit buffer.
+        let text = {
+            let node_info_prop = state.workflow.node_info_prop();
+            let Ok(node_infos) = node_info_prop.try_borrow() else {
+                continue;
+            };
+            match &node_infos[nh] {
+                NodeInfo::Constant(handle) => crate::const_edit::render_readonly(handle),
+                _ => state
+                    .inspect_cache
+                    .try_borrow()
+                    .map(|c| c[nh].text.clone())
+                    .unwrap_or_default(),
+            }
+        };
 
         let viewport_id = egui::ViewportId::from_hash_of(("dagger-inspect-popout", nh));
         let mut close_requested = false;
@@ -113,9 +125,7 @@ pub fn update_popouts(ctx: &egui::Context, state: &mut EditorState) {
                 close_requested |= ui.ctx().input(|i| i.viewport().close_requested());
             },
         );
-        if close_requested
-            && let Ok(mut popout) = state.inspect_popout.try_borrow_mut()
-        {
+        if close_requested && let Ok(mut popout) = state.content_popout.try_borrow_mut() {
             popout[nh] = false;
         }
     }
@@ -264,7 +274,13 @@ fn render_str_deck_raw(items: &[u8], marks: &[OrcMark], out: &mut String) {
         let next_pos = marks.get(i + 1).map(|n| n.pos).unwrap_or(n_items);
         let s = decode(items, m.pos as usize..next_pos.min(n_items) as usize);
         if m.depth == 0 {
-            let _ = writeln!(out, "{:>indent$}   ┤ {}", "", s, indent = continuation_indent);
+            let _ = writeln!(
+                out,
+                "{:>indent$}   ┤ {}",
+                "",
+                s,
+                indent = continuation_indent
+            );
         } else {
             let indent = (dmax - m.depth) as usize * TAB_WIDTH + TAB_WIDTH;
             let bracket_width = m.depth as usize * TAB_WIDTH;
@@ -286,7 +302,8 @@ fn render_str_deck_raw(items: &[u8], marks: &[OrcMark], out: &mut String) {
 /// pointers, same as `HandleDisplayWrapper` does for the plain `Display` case.
 pub fn render_str_deck(handle: &OrcHandle, out: &mut String) {
     let items: &[u8] = handle.items::<u8>();
-    let marks: &[OrcMark] = unsafe { orc_sdk::slice_from_ptr(handle.marks, handle.n_marks as usize) };
+    let marks: &[OrcMark] =
+        unsafe { orc_sdk::slice_from_ptr(handle.marks, handle.n_marks as usize) };
     render_str_deck_raw(items, marks, out);
 }
 
@@ -436,7 +453,10 @@ mod test {
             if done {
                 break;
             }
-            assert!(std::time::Instant::now() < deadline, "inspect text never showed 7");
+            assert!(
+                std::time::Instant::now() < deadline,
+                "inspect text never showed 7"
+            );
             std::thread::sleep(std::time::Duration::from_millis(1));
         }
     }
@@ -502,8 +522,12 @@ mod test {
             return;
         };
         let mut wf = orc_sdk::Workflow::default();
-        let (_, lhs_out) = wf.add_constant(handle_for(Deck::from_value(3.0_f64))).unwrap();
-        let (_, rhs_out) = wf.add_constant(handle_for(Deck::from_value(4.0_f64))).unwrap();
+        let (_, lhs_out) = wf
+            .add_constant(handle_for(Deck::from_value(3.0_f64)))
+            .unwrap();
+        let (_, rhs_out) = wf
+            .add_constant(handle_for(Deck::from_value(4.0_f64)))
+            .unwrap();
         let mut ins = vec![orc_sdk::IH::default(); 2];
         let mut outs = vec![orc_sdk::OH::default()];
         let sum_nh = wf.add_function(add, &mut ins, &mut outs).unwrap();
@@ -539,7 +563,9 @@ mod test {
         loop {
             crate::exec::tick(&mut state);
             refresh_all(&mut state);
-            let text = state.inspect_cache.try_borrow().unwrap()[inspect_nh].text.clone();
+            let text = state.inspect_cache.try_borrow().unwrap()[inspect_nh]
+                .text
+                .clone();
             if text.starts_with("<upstream error") {
                 break;
             }
@@ -565,8 +591,12 @@ mod test {
             return;
         };
         let mut wf = orc_sdk::Workflow::default();
-        let (_, lhs_out) = wf.add_constant(handle_for(Deck::from_value(3.0_f64))).unwrap();
-        let (_, rhs_out) = wf.add_constant(handle_for(Deck::from_value(4.0_f64))).unwrap();
+        let (_, lhs_out) = wf
+            .add_constant(handle_for(Deck::from_value(3.0_f64)))
+            .unwrap();
+        let (_, rhs_out) = wf
+            .add_constant(handle_for(Deck::from_value(4.0_f64)))
+            .unwrap();
         let mut ins = vec![orc_sdk::IH::default(); 2];
         let mut outs = vec![orc_sdk::OH::default()];
         let sum_nh = wf.add_function(add, &mut ins, &mut outs).unwrap();

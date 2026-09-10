@@ -4,7 +4,7 @@ use crate::canvas::Transform;
 use crate::render;
 use crate::state::EditorState;
 use eframe::egui::{self, Id, Key, PointerButton, Pos2, Rect, Sense, Vec2};
-use orc_sdk::{IH, NH, NodeInfo, OH, Workflow};
+use orc_sdk::{IH, NH, OH, Workflow};
 use std::collections::{HashMap, HashSet};
 
 /// Where a right-click asked for a context menu to open, and what (if anything) it should
@@ -94,14 +94,19 @@ fn update_box_select(
     Some((screen_rect, kind))
 }
 
-/// Whether screen-space `pos` falls inside any Inspect node's scrollable content area.
+/// Whether screen-space `pos` falls inside any Inspect or Constant node's scrollable content
+/// area.
 ///
 /// The canvas's own scroll-wheel-zooms-the-view behavior reads raw scroll input directly and
 /// runs before `render::draw` ever creates that content area's `ScrollArea` widget this frame, so
 /// nothing would otherwise stop both from reacting to the same wheel event — the canvas would
 /// zoom *and* the text would scroll. Checking this first and skipping the canvas zoom instead
 /// leaves the wheel input for the `ScrollArea` to consume on its own.
-pub(crate) fn pointer_over_inspect_content(state: &EditorState, view: &Transform, pos: Pos2) -> bool {
+pub(crate) fn pointer_over_inspect_content(
+    state: &EditorState,
+    view: &Transform,
+    pos: Pos2,
+) -> bool {
     let Ok(positions) = state.node_positions.try_borrow() else {
         return false;
     };
@@ -113,7 +118,7 @@ pub(crate) fn pointer_over_inspect_content(state: &EditorState, view: &Transform
         return false;
     };
     state.workflow.node_iter().any(|nh| {
-        matches!(node_infos[nh], NodeInfo::Inspect { .. }) && {
+        render::has_expandable_content(&node_infos[nh]) && {
             let rect = render::node_rect(positions[nh], sizes[nh]);
             let n_pins = state.workflow.node_inputs(nh).count().max(1);
             view.rect_to_screen(render::inspect_content_rect(rect, n_pins))
@@ -325,7 +330,7 @@ pub fn update(
         // Registered last, after the body and every pin, so a press on the small overlapping
         // sliver of these controls is claimed by them rather than starting a node drag — same
         // tie-breaking convention pins already rely on.
-        if matches!(node_infos[nh], NodeInfo::Inspect { .. }) {
+        if render::has_expandable_content(&node_infos[nh]) {
             let popout_response = ui.interact(
                 view.rect_to_screen(render::popout_button_rect(rect)),
                 Id::new(("dagger-inspect-popout", nh)),
@@ -386,7 +391,7 @@ pub fn update(
     }
 
     if let Some(nh) = popout_clicked {
-        if let Ok(mut popout) = state.inspect_popout.try_borrow_mut() {
+        if let Ok(mut popout) = state.content_popout.try_borrow_mut() {
             popout[nh] = true;
         }
         events.changed = true;
@@ -490,11 +495,8 @@ mod test {
 
     #[test]
     fn t_resize_delta_clamps_at_the_minimum_inspect_size() {
-        let shrunk = apply_resize_delta(
-            render::min_inspect_size(),
-            Vec2::new(-1000.0, -1000.0),
-            1.0,
-        );
+        let shrunk =
+            apply_resize_delta(render::min_inspect_size(), Vec2::new(-1000.0, -1000.0), 1.0);
         assert_eq!(shrunk, render::min_inspect_size());
     }
 

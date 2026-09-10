@@ -1,4 +1,5 @@
 use crate::canvas::Transform;
+use crate::const_edit;
 use crate::context_menu::ContextMenuState;
 use crate::exec;
 use crate::inspect;
@@ -68,11 +69,14 @@ pub struct EditorState {
     /// Cached `deck_to_str` text per Inspect node, refreshed lazily (only when the upstream
     /// value actually changes) rather than reconverted every frame.
     pub(crate) inspect_cache: NodeProperty<inspect::InspectCache>,
-    /// Whether an Inspect node's content is currently popped out into its own OS window. Set by
-    /// clicking its pop-out button; cleared once that window's close is observed (see
-    /// `inspect::update_popouts`) — there is no other way back to `false`, so a node whose
+    /// Whether an Inspect or Constant node's content is currently popped out into its own OS
+    /// window. Set by clicking its pop-out button; cleared once that window's close is observed
+    /// (see `inspect::update_popouts`) — there is no other way back to `false`, so a node whose
     /// window the user just closed still shows `true` for one more frame before the check runs.
-    pub(crate) inspect_popout: NodeProperty<bool>,
+    pub(crate) content_popout: NodeProperty<bool>,
+    /// Per-row edit buffers for a Constant node's editable ruler display, and whether its handle
+    /// is actually editable at all (see `const_edit::is_editable`).
+    pub(crate) const_edit_cache: NodeProperty<const_edit::ConstEditCache>,
 }
 
 impl EditorState {
@@ -85,7 +89,8 @@ impl EditorState {
         let dirty_version = workflow.create_node_property();
         let execution_error = workflow.create_node_property();
         let inspect_cache = workflow.create_node_property();
-        let inspect_popout = workflow.create_node_property();
+        let content_popout = workflow.create_node_property();
+        let const_edit_cache = workflow.create_node_property();
         let exec_state = exec::ExecState::new(&mut workflow);
         let mut state = Self {
             workflow,
@@ -109,7 +114,8 @@ impl EditorState {
             execution_error,
             exec: exec_state,
             inspect_cache,
-            inspect_popout,
+            content_popout,
+            const_edit_cache,
         };
         exec::mark_all_dirty(&mut state);
         state

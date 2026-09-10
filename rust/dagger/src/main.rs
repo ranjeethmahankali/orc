@@ -1,5 +1,6 @@
 mod app;
 mod canvas;
+mod const_edit;
 mod context_menu;
 mod exec;
 mod file_menu;
@@ -130,6 +131,9 @@ unsafe extern "C" fn host_create_proxy_deck(
     ORC_ERROR_NONE
 }
 
+/// # Safety
+///
+/// This is a FFI function. Needs to be unsafe.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn orc_deck_free(handle: *mut OrcHandle) -> OrcError {
     if handle.is_null() {
@@ -175,7 +179,9 @@ unsafe extern "C" fn report_message(
 /// this at all is entirely up to whoever implemented it — the host imposes no policy here beyond
 /// exposing the flag.
 unsafe extern "C" fn check_cancellation_callback(ctx: u64) -> bool {
-    CANCEL_ARENA.visit_mut(ctx, |cancelled| *cancelled).unwrap_or(false)
+    CANCEL_ARENA
+        .visit_mut(ctx, |cancelled| *cancelled)
+        .unwrap_or(false)
 }
 
 pub const HOST: OrcHost = OrcHost {

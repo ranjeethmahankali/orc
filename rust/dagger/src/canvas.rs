@@ -67,7 +67,11 @@ impl Transform {
 /// itself (an Inspect node's scrollable content) — see
 /// `interaction::pointer_over_inspect_content`. Panning stays enabled either way: it's a
 /// different gesture (shift + right-drag), not one anything else competes for.
-pub fn interact(ui: &mut egui::Ui, view: &mut Transform, allow_zoom: bool) -> (egui::Response, bool) {
+pub fn interact(
+    ui: &mut egui::Ui,
+    view: &mut Transform,
+    allow_zoom: bool,
+) -> (egui::Response, bool) {
     let rect = ui.max_rect();
     let response = ui.allocate_rect(rect, egui::Sense::click_and_drag());
     let mut moved = false;

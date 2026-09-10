@@ -155,11 +155,7 @@ pub fn compute_layout(state: &mut EditorState) {
                     sum += pos[pred][1];
                     count += 1;
                 }
-                let y = if count > 0 {
-                    sum / count as f32
-                } else {
-                    0.0
-                };
+                let y = if count > 0 { sum / count as f32 } else { 0.0 };
                 (nh, y)
             })
             .collect();
@@ -254,7 +250,10 @@ mod test {
         assert_eq!(pos[b2][0], pos[b3][0]);
 
         let ys = [pos[b1][1], pos[b2][1], pos[b3][1]];
-        assert_ne!(ys[0], ys[1], "siblings must not be stacked on top of each other");
+        assert_ne!(
+            ys[0], ys[1],
+            "siblings must not be stacked on top of each other"
+        );
         assert_ne!(ys[1], ys[2]);
         let center = (ys[0] + ys[2]) / 2.0;
         assert!(
@@ -357,6 +356,4 @@ mod test {
         assert!(depths.in_cycle[a.index()]);
         assert!(depths.in_cycle[b.index()]);
     }
-
 }
-

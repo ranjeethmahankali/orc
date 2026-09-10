@@ -83,12 +83,19 @@ pub(crate) fn open_workflow(path: &Path) -> Result<Workflow, String> {
 fn save_workflow(state: &mut EditorState, path: &Path) -> Result<(), String> {
     state.pending_wire = None;
     state.context_menu = None;
-    state.workflow.garbage_collection().map_err(|e| e.to_string())?;
+    state
+        .workflow
+        .garbage_collection()
+        .map_err(|e| e.to_string())?;
     let file = std::fs::File::create(path).map_err(|e| e.to_string())?;
     let mut writer = std::io::BufWriter::new(file);
     state
         .workflow
-        .write_to_msgpack(&crate::PLUGIN_SET, &crate::SERIAL_CONTEXT_ARENA, &mut writer)
+        .write_to_msgpack(
+            &crate::PLUGIN_SET,
+            &crate::SERIAL_CONTEXT_ARENA,
+            &mut writer,
+        )
         .map_err(|e| e.to_string())
 }
 
@@ -251,7 +258,10 @@ mod test {
     fn t_a_clean_workflow_does_not_need_confirmation_to_discard() {
         let mut state = EditorState::from_workflow(Workflow::default());
         assert!(!state.dirty);
-        assert!(confirm_discard(&mut state), "nothing to lose, nothing to ask");
+        assert!(
+            confirm_discard(&mut state),
+            "nothing to lose, nothing to ask"
+        );
     }
 
     #[test]

@@ -387,7 +387,8 @@ impl Workflow {
     /// `node_from_input`, since that's the query staleness propagation and worklist scheduling
     /// actually need.
     pub fn downstream_nodes(&self, o: OH) -> impl Iterator<Item = NH> + '_ {
-        self.output_links(o).map(|l| self.node_from_input(self.link_end(l)))
+        self.output_links(o)
+            .map(|l| self.node_from_input(self.link_end(l)))
     }
 
     /// This will run the DAG, and return an iterator over the required outputs. This is super

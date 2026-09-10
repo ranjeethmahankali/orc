@@ -208,7 +208,8 @@ fn create_constant_node(state: &mut EditorState, values: &[f64], screen_pos: Pos
             return;
         }
     };
-    if let (Ok(cloned), Ok(mut computed_outputs)) = (cloned, state.computed_outputs.try_borrow_mut())
+    if let (Ok(cloned), Ok(mut computed_outputs)) =
+        (cloned, state.computed_outputs.try_borrow_mut())
     {
         computed_outputs[oh] = std::sync::Arc::new(cloned);
     }
@@ -355,7 +356,7 @@ mod test {
 
     #[test]
     fn t_parses_a_bare_number() {
-        assert_eq!(parse_literal("3.14"), Some(vec![3.14]));
+        assert_eq!(parse_literal("3.123"), Some(vec![3.123]));
         assert_eq!(parse_literal("  -2  "), Some(vec![-2.0]));
     }
 

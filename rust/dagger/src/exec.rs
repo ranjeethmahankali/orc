@@ -5,7 +5,9 @@
 
 use crate::state::EditorState;
 use crate::{CANCEL_ARENA, HANDLE_COUNTER};
-use orc_sdk::{DagHandle, Error, NH, NodeInfo, NodeProperty, OrcHandle, OrcPluginFunction, Workflow};
+use orc_sdk::{
+    DagHandle, Error, NH, NodeInfo, NodeProperty, OrcHandle, OrcPluginFunction, Workflow,
+};
 use std::collections::{HashSet, VecDeque};
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex, OnceLock, mpsc};
@@ -322,7 +324,8 @@ fn dispatch(state: &mut EditorState, nh: NH) {
             // a job for it), so it's cloned fresh for this job -- a real copy, unlike the
             // zero-copy `Arc` share used for a Function upstream's cached output.
             Some(oh) => match &node_infos[state.workflow.node_from_output(oh)] {
-                NodeInfo::Constant(handle) => match crate::host_clone_orc_handle(handle.borrowed()) {
+                NodeInfo::Constant(handle) => match crate::host_clone_orc_handle(handle.borrowed())
+                {
                     Ok(cloned) => Arc::new(cloned),
                     Err(_) => return,
                 },
@@ -366,8 +369,8 @@ fn dispatch(state: &mut EditorState, nh: NH) {
 }
 
 fn poll_results(state: &mut EditorState) {
-    let results: Vec<NodeResult> = std::iter::from_fn(|| pool().result_rx.lock().unwrap().try_recv().ok())
-        .collect();
+    let results: Vec<NodeResult> =
+        std::iter::from_fn(|| pool().result_rx.lock().unwrap().try_recv().ok()).collect();
     for result in results {
         let _ = CANCEL_ARENA.consume(result.ctx, |_| {});
         if let Ok(mut in_flight) = state.exec.in_flight.try_borrow_mut() {
@@ -375,8 +378,9 @@ fn poll_results(state: &mut EditorState) {
             // until this slot clears), so a result should always match the job this node is
             // currently tracked as running.
             debug_assert!(
-                in_flight[result.node].is_none_or(|job| job.ctx == result.ctx
-                    && job.launched_version == result.launched_version),
+                in_flight[result.node]
+                    .is_none_or(|job| job.ctx == result.ctx
+                        && job.launched_version == result.launched_version),
                 "a result arrived that doesn't match this node's tracked in-flight job"
             );
             in_flight[result.node] = None;
@@ -499,7 +503,9 @@ mod test {
         };
         let mut deck = Deck::<f64>::default();
         deck.push(value, 0);
-        crate::REGISTRY.alloc_with_value(Some(deck), &mut handle).unwrap();
+        crate::REGISTRY
+            .alloc_with_value(Some(deck), &mut handle)
+            .unwrap();
         wf.add_constant(handle).unwrap()
     }
 
