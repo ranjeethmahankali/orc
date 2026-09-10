@@ -21,7 +21,11 @@ const TAB_WIDTH: usize = 3;
 enum CacheSource {
     #[default]
     NotConnected,
+    /// This node (or its upstream chain) hasn't caught up with the latest edit yet -- nothing
+    /// to show until it settles, rather than displaying now-questionable old data.
+    Stale,
     NotYetComputed,
+    Error,
     Computed(u64),
 }
 
@@ -54,6 +58,23 @@ fn refresh(state: &mut EditorState, nh: NH) {
     }
     drop(node_infos);
 
+    // Downstream nodes -- Inspect included -- are marked stale on every edit and only settle
+    // again once whatever they depend on catches up (see `exec::mark_dirty` and the trivial
+    // settle `dispatch` gives Inspect nodes). While stale there's nothing worth showing: the
+    // last cached text reflects data from before whatever just changed.
+    if !crate::exec::is_settled(state, nh) {
+        let Ok(mut cache) = state.inspect_cache.try_borrow_mut() else {
+            return;
+        };
+        if cache[nh].source != CacheSource::Stale {
+            cache[nh] = InspectCache {
+                source: CacheSource::Stale,
+                text: String::new(),
+            };
+        }
+        return;
+    }
+
     let Some(ih) = state.workflow.node_inputs(nh).next() else {
         return;
     };
@@ -72,6 +93,30 @@ fn refresh(state: &mut EditorState, nh: NH) {
         }
         return;
     };
+    // A genuine execution fault on the upstream node "settles" without touching
+    // `computed_outputs` (see `exec`'s commit policy) -- so on its own, `computed_outputs[oh]`
+    // would keep showing whatever it last held, with nothing indicating it's now stale relative
+    // to an upstream that's actively failing. Surface that error here instead of silently
+    // trusting old data.
+    let upstream_error = {
+        let upstream_nh = state.workflow.node_from_output(oh);
+        state
+            .execution_error
+            .try_borrow()
+            .ok()
+            .and_then(|errors| errors[upstream_nh].clone())
+    };
+    if let Some(err) = upstream_error {
+        let text = format!("<upstream error: {err}>");
+        if cache[nh].text != text {
+            cache[nh] = InspectCache {
+                source: CacheSource::Error,
+                text,
+            };
+        }
+        return;
+    }
+
     let Ok(computed) = state.computed_outputs.try_borrow() else {
         return;
     };
@@ -103,7 +148,6 @@ fn refresh(state: &mut EditorState, nh: NH) {
         text,
     };
 }
-
 
 /// Decodes one run's bytes as a string. `to_str_deck` only ever writes valid UTF-8 (it formats
 /// numbers and other `Display` types), so the lossy fallback only matters for a pathological
@@ -341,7 +385,13 @@ mod test {
             .unwrap();
 
         let mut state = EditorState::from_workflow(wf);
-        refresh_all(&mut state);
+        // `refresh_all` alone doesn't settle a node -- that's `exec::dispatch_ready`'s job (via
+        // `exec::tick`), same as every real frame in `app.rs` calls `tick` before
+        // `inspect::refresh_all`. A couple of ticks lets the Inspect node's trivial settle land.
+        for _ in 0..3 {
+            crate::exec::tick(&mut state);
+            refresh_all(&mut state);
+        }
         assert_eq!(
             state.inspect_cache.try_borrow().unwrap()[inspect_nh].text,
             "<not connected>"
@@ -349,7 +399,10 @@ mod test {
 
         state.workflow.connect(fn_outs[0], inspect_ins[0]).unwrap();
         crate::exec::mark_dirty(&mut state, inspect_nh);
-        refresh_all(&mut state);
+        for _ in 0..3 {
+            crate::exec::tick(&mut state);
+            refresh_all(&mut state);
+        }
 
         assert_ne!(
             state.inspect_cache.try_borrow().unwrap()[inspect_nh].text,
@@ -357,5 +410,123 @@ mod test {
             "must not still show 'not connected' after a real connection"
         );
     }
-}
 
+    /// Regression test: disconnecting a link *upstream* of the node an Inspect is watching (not
+    /// the Inspect's own input) can leave that upstream node in a genuine error state -- e.g.
+    /// `add` rejecting a now-empty input -- which per `exec`'s commit policy settles without
+    /// touching `computed_outputs`. Without surfacing that error, the Inspect display would
+    /// silently keep showing the old, now-meaningless value forever with no indication anything
+    /// changed. It must show the upstream error instead.
+    #[test]
+    fn t_refresh_surfaces_an_upstream_error_instead_of_stale_data() {
+        let _guard = crate::exec::POOL_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let Some(add) = crate::PLUGIN_SET.get_function("add").cloned() else {
+            println!("skipping: no plugin providing `add` was loaded");
+            return;
+        };
+        let mut wf = orc_sdk::Workflow::default();
+        let (_, lhs_out) = wf.add_constant(handle_for(Deck::from_value(3.0_f64))).unwrap();
+        let (_, rhs_out) = wf.add_constant(handle_for(Deck::from_value(4.0_f64))).unwrap();
+        let mut ins = vec![orc_sdk::IH::default(); 2];
+        let mut outs = vec![orc_sdk::OH::default()];
+        let sum_nh = wf.add_function(add, &mut ins, &mut outs).unwrap();
+        wf.connect(lhs_out, ins[0]).unwrap();
+        wf.connect(rhs_out, ins[1]).unwrap();
+        let mut inspect_ins = vec![orc_sdk::IH::default()];
+        let inspect_nh = wf
+            .add_inspect_node("inspect".to_string(), &mut inspect_ins)
+            .unwrap();
+        wf.connect(outs[0], inspect_ins[0]).unwrap();
+
+        let mut state = EditorState::from_workflow(wf);
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        loop {
+            crate::exec::tick(&mut state);
+            refresh_all(&mut state);
+            if state.inspect_cache.try_borrow().unwrap()[inspect_nh]
+                .text
+                .contains('7')
+            {
+                break;
+            }
+            assert!(std::time::Instant::now() < deadline, "never showed 7");
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        }
+
+        // Disconnect lhs -> add.ins[0], the same call `interaction.rs` makes on a rewire-away
+        // gesture, which leaves `add` with a genuinely empty input.
+        state.workflow.disconnect(lhs_out, ins[0]);
+        crate::exec::mark_dirty(&mut state, sum_nh);
+
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        loop {
+            crate::exec::tick(&mut state);
+            refresh_all(&mut state);
+            let text = state.inspect_cache.try_borrow().unwrap()[inspect_nh].text.clone();
+            if text.starts_with("<upstream error") {
+                break;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "never surfaced the upstream error, still showing: {text:?}"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        }
+    }
+
+    /// A stale node (this edit's whole point) must show nothing the instant it's marked stale --
+    /// not the old value lingering until something eventually recomputes. Checked *before* any
+    /// further `tick`, so this only passes if `mark_dirty` alone (no dispatch yet) is enough to
+    /// make the Inspect node's own settled-ness go false.
+    #[test]
+    fn t_disconnecting_upstream_blanks_the_display_immediately() {
+        let _guard = crate::exec::POOL_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let Some(add) = crate::PLUGIN_SET.get_function("add").cloned() else {
+            println!("skipping: no plugin providing `add` was loaded");
+            return;
+        };
+        let mut wf = orc_sdk::Workflow::default();
+        let (_, lhs_out) = wf.add_constant(handle_for(Deck::from_value(3.0_f64))).unwrap();
+        let (_, rhs_out) = wf.add_constant(handle_for(Deck::from_value(4.0_f64))).unwrap();
+        let mut ins = vec![orc_sdk::IH::default(); 2];
+        let mut outs = vec![orc_sdk::OH::default()];
+        let sum_nh = wf.add_function(add, &mut ins, &mut outs).unwrap();
+        wf.connect(lhs_out, ins[0]).unwrap();
+        wf.connect(rhs_out, ins[1]).unwrap();
+        let mut inspect_ins = vec![orc_sdk::IH::default()];
+        let inspect_nh = wf
+            .add_inspect_node("inspect".to_string(), &mut inspect_ins)
+            .unwrap();
+        wf.connect(outs[0], inspect_ins[0]).unwrap();
+
+        let mut state = EditorState::from_workflow(wf);
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        loop {
+            crate::exec::tick(&mut state);
+            refresh_all(&mut state);
+            if state.inspect_cache.try_borrow().unwrap()[inspect_nh]
+                .text
+                .contains('7')
+            {
+                break;
+            }
+            assert!(std::time::Instant::now() < deadline, "never showed 7");
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        }
+
+        state.workflow.disconnect(lhs_out, ins[0]);
+        crate::exec::mark_dirty(&mut state, sum_nh);
+        // No `tick` here -- `mark_dirty` alone must be enough to make the Inspect node stale.
+        refresh_all(&mut state);
+
+        assert_eq!(
+            state.inspect_cache.try_borrow().unwrap()[inspect_nh].text,
+            "",
+            "a freshly-stale Inspect node must show nothing, not the old value"
+        );
+    }
+}

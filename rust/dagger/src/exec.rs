@@ -213,7 +213,7 @@ pub fn mark_dirty(state: &mut EditorState, nh: NH) {
     }
 }
 
-fn is_settled(state: &EditorState, nh: NH) -> bool {
+pub fn is_settled(state: &EditorState, nh: NH) -> bool {
     match (
         state.dirty_version.try_borrow(),
         state.exec.computed_version.try_borrow(),
@@ -273,15 +273,39 @@ fn is_ready(state: &EditorState, nh: NH) -> bool {
     true
 }
 
+/// Marks `nh` settled with no job at all -- used for node kinds that have nothing to compute
+/// (Inspect) but still need to participate in staleness tracking, so anything watching them
+/// (e.g. the Inspect display) can tell "caught up" apart from "still stale" instead of looking
+/// permanently unsettled the moment `mark_dirty` ever touches them.
+fn settle_trivially(state: &mut EditorState, nh: NH) {
+    let Ok(dv) = state.dirty_version.try_borrow() else {
+        return;
+    };
+    let version = dv[nh];
+    drop(dv);
+    if let Ok(mut cv) = state.exec.computed_version.try_borrow_mut() {
+        cv[nh] = version;
+    }
+}
+
 /// Gathers this node's current inputs into cloned `Arc<OrcHandle>`s and sends it to the pool.
 fn dispatch(state: &mut EditorState, nh: NH) {
     let node_info_prop = state.workflow.node_info_prop();
     let Ok(node_infos) = node_info_prop.try_borrow() else {
         return;
     };
+    let is_inspect = matches!(node_infos[nh], NodeInfo::Inspect { .. });
     let func = match &node_infos[nh] {
         NodeInfo::Function(info) => info.func,
-        _ => return,
+        _ => {
+            drop(node_infos);
+            // `is_ready` already confirmed this node's (only) input, if any, is itself settled --
+            // an Inspect node has nothing further to compute, so settling is immediate.
+            if is_inspect {
+                settle_trivially(state, nh);
+            }
+            return;
+        }
     };
     if func.is_none() {
         return;
@@ -389,6 +413,15 @@ fn poll_results(state: &mut EditorState) {
                 }
                 if let Ok(mut err) = state.execution_error.try_borrow_mut() {
                     err[result.node] = Some(e.to_string());
+                }
+                // This node still "settled" (just with a fault) -- anything downstream that was
+                // waiting on it (e.g. an Inspect node, which only settles once its upstream
+                // does) needs a chance to notice and re-check readiness, same as a real success.
+                for oh in state.workflow.node_outputs(result.node).collect::<Vec<_>>() {
+                    state
+                        .exec
+                        .pending
+                        .extend(state.workflow.downstream_nodes(oh));
                 }
             }
         }

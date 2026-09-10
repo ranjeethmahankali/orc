@@ -195,13 +195,23 @@ fn create_constant_node(state: &mut EditorState, values: &[f64], screen_pos: Pos
         state.file_error = Some(format!("Failed to allocate constant: {e}"));
         return;
     }
-    let nh = match state.workflow.add_constant(handle) {
-        Ok((nh, _oh)) => nh,
+    // A constant's own value never goes through `exec`'s dispatch/settle machinery (nothing
+    // ever computes it), so nothing else would ever populate `computed_outputs` for it --
+    // without this, anything reading a constant directly (e.g. an Inspect node) would see the
+    // "not yet computed" sentinel forever. A cloned copy is stored here immediately, matching
+    // the clone `exec::dispatch` already makes when a constant feeds a function's input.
+    let cloned = crate::host_clone_orc_handle(handle.borrowed());
+    let (nh, oh) = match state.workflow.add_constant(handle) {
+        Ok(pair) => pair,
         Err(e) => {
             state.file_error = Some(format!("Failed to create node: {e}"));
             return;
         }
     };
+    if let (Ok(cloned), Ok(mut computed_outputs)) = (cloned, state.computed_outputs.try_borrow_mut())
+    {
+        computed_outputs[oh] = std::sync::Arc::new(cloned);
+    }
     finish_node_creation(state, nh, screen_pos);
 }
 
