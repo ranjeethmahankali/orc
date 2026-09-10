@@ -166,8 +166,23 @@ impl Workflow {
         Ok(())
     }
 
+    /// If `ih` was registered via `set_inputs` as workflow input `i`, returns `Some(i)`. `ih`
+    /// still being *dangling* (no `input_source`) is the caller's responsibility to check first --
+    /// this only reports the registration, regardless of whether a link has since been attached.
+    pub fn workflow_input_position(&self, ih: IH) -> Result<Option<usize>, DagError> {
+        let idx = self.workflow_input_index.try_borrow()?;
+        Ok(idx[ih])
+    }
+
     pub fn has_nested_workflow(&self, name: &str) -> bool {
         self.nested_workflows.contains_key(name)
+    }
+
+    /// Names of every nested workflow currently registered on this `Workflow`. Does not include
+    /// one that's been temporarily removed via `take_nested_workflow` (e.g. while its editor is
+    /// open) -- exactly the point of that call.
+    pub fn nested_workflow_names(&self) -> impl Iterator<Item = &str> {
+        self.nested_workflows.keys().map(String::as_str)
     }
 
     pub fn count_nested_calls(&self, name: &str) -> Result<usize, DagError> {
@@ -180,6 +195,24 @@ impl Workflow {
                 .filter(|ni| matches!(ni, NodeInfo::NestedCall { workflow_name } if workflow_name == name))
                 .count())
         }
+    }
+
+    /// Removes and returns the nested workflow registered under `name`, leaving this `Workflow`
+    /// with no entry for it until `put_nested_workflow` restores one. Used to let an editor take
+    /// real ownership of the nested `Workflow` (to edit it in place, with no cloning) without
+    /// this `Workflow` and that editor ever holding overlapping references to the same value --
+    /// while it's taken, any node calling `name` has nothing to resolve and must be treated as
+    /// not ready, not as an error.
+    pub fn take_nested_workflow(&mut self, name: &str) -> Option<Workflow> {
+        self.nested_workflows.remove(name)
+    }
+
+    /// Restores a nested workflow under `name`, overwriting whatever (if anything) is already
+    /// there. The counterpart to `take_nested_workflow`; unlike `push_nested_workflow`, this
+    /// performs no naming-conflict check against a `PluginSet`, since it's meant for putting back
+    /// a definition that was already valid (and already checked) when it was first registered.
+    pub fn put_nested_workflow(&mut self, name: String, workflow: Workflow) {
+        self.nested_workflows.insert(name, workflow);
     }
 
     pub fn add_nested_workflow_call(
@@ -953,5 +986,122 @@ mod test {
 
         assert_eq!(outer.count_nested_calls("alpha").unwrap(), 2);
         assert_eq!(outer.count_nested_calls("beta").unwrap(), 1);
+    }
+
+    #[test]
+    fn t_take_nested_workflow_removes_it() {
+        let mut outer = Workflow::default();
+        let ps = crate::PluginSet::default();
+        outer
+            .push_nested_workflow("inner".to_string(), Workflow::default(), &ps)
+            .unwrap();
+        assert!(outer.has_nested_workflow("inner"));
+
+        let taken = outer.take_nested_workflow("inner");
+        assert!(taken.is_some());
+        assert!(!outer.has_nested_workflow("inner"));
+        // Taking again finds nothing left to take.
+        assert!(outer.take_nested_workflow("inner").is_none());
+    }
+
+    #[test]
+    fn t_put_nested_workflow_restores_it() {
+        let mut outer = Workflow::default();
+        let ps = crate::PluginSet::default();
+        outer
+            .push_nested_workflow("inner".to_string(), Workflow::default(), &ps)
+            .unwrap();
+        let taken = outer.take_nested_workflow("inner").unwrap();
+
+        outer.put_nested_workflow("inner".to_string(), taken);
+        assert!(outer.has_nested_workflow("inner"));
+    }
+
+    #[test]
+    fn t_put_nested_workflow_overwrites_existing_entry() {
+        // put_nested_workflow is the "restore after edit" counterpart to take, not
+        // push_nested_workflow -- it must never fail just because a (stale) entry is already
+        // there, unlike push, which treats that as a naming conflict.
+        let mut outer = Workflow::default();
+        let ps = crate::PluginSet::default();
+        outer
+            .push_nested_workflow("inner".to_string(), Workflow::default(), &ps)
+            .unwrap();
+
+        let mut edited = Workflow::default();
+        let mut outs = [OH::default()];
+        edited
+            .add_function(make_func_info("marker"), &mut [], &mut outs)
+            .unwrap();
+        outer.put_nested_workflow("inner".to_string(), edited);
+
+        assert_eq!(outer.count_nested_calls("inner").unwrap(), 0);
+        // The replacement really landed: it now has the one node the original didn't.
+        let restored = outer.take_nested_workflow("inner").unwrap();
+        assert_eq!(restored.node_iter().count(), 1);
+    }
+
+    #[test]
+    fn t_nested_workflow_names_reflects_take_and_put() {
+        let mut outer = Workflow::default();
+        let ps = crate::PluginSet::default();
+        outer
+            .push_nested_workflow("alpha".to_string(), Workflow::default(), &ps)
+            .unwrap();
+        outer
+            .push_nested_workflow("beta".to_string(), Workflow::default(), &ps)
+            .unwrap();
+
+        let mut names: Vec<&str> = outer.nested_workflow_names().collect();
+        names.sort_unstable();
+        assert_eq!(names, ["alpha", "beta"]);
+
+        let taken = outer.take_nested_workflow("alpha").unwrap();
+        let names: Vec<&str> = outer.nested_workflow_names().collect();
+        assert_eq!(names, ["beta"], "checked-out name must not be listed");
+
+        outer.put_nested_workflow("alpha".to_string(), taken);
+        let mut names: Vec<&str> = outer.nested_workflow_names().collect();
+        names.sort_unstable();
+        assert_eq!(names, ["alpha", "beta"]);
+    }
+
+    #[test]
+    fn t_workflow_input_position_reports_registered_index() {
+        let mut w = Workflow::default();
+        let mut ins = [IH::default(); 2];
+        w.add_function(make_func_info("f"), &mut ins, &mut [])
+            .unwrap();
+        w.set_inputs(&[(ins[0], 0, "x"), (ins[1], 1, "y")]).unwrap();
+
+        assert_eq!(w.workflow_input_position(ins[0]).unwrap(), Some(0));
+        assert_eq!(w.workflow_input_position(ins[1]).unwrap(), Some(1));
+    }
+
+    #[test]
+    fn t_workflow_input_position_none_when_not_registered() {
+        let mut w = Workflow::default();
+        let mut ins = [IH::default(); 1];
+        w.add_function(make_func_info("f"), &mut ins, &mut [])
+            .unwrap();
+        assert_eq!(w.workflow_input_position(ins[0]).unwrap(), None);
+    }
+
+    #[test]
+    fn t_workflow_input_position_survives_a_link_being_attached() {
+        // Registration is independent of whether the pin is currently dangling -- callers must
+        // check `input_source` themselves if "still dangling" is what they actually care about.
+        let mut w = Workflow::default();
+        let mut a_out = [OH::default()];
+        w.add_function(make_func_info("src"), &mut [], &mut a_out)
+            .unwrap();
+        let mut b_in = [IH::default()];
+        w.add_function(make_func_info("dst"), &mut b_in, &mut [])
+            .unwrap();
+        w.set_inputs(&[(b_in[0], 0, "x")]).unwrap();
+        w.connect(a_out[0], b_in[0]).unwrap();
+
+        assert_eq!(w.workflow_input_position(b_in[0]).unwrap(), Some(0));
+        assert!(w.input_source(b_in[0]).is_some());
     }
 }
