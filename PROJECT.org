@@ -1079,7 +1079,7 @@
      - [ ] No discard-vs-save prompt -- closing the window is the commit.
 
      *Window tracking:*
-     - [X] Main window's own unsaved-changes close prompt (Discard / Save) -- already implemented
+     - [ ] Main window's own unsaved-changes close prompt (Discard / Save) -- already implemented
        (~file_menu::confirm_discard~), reused as-is, not new work for this phase.
      - [ ] DaggerApp tracks open nested editors by workflow name.
      - [ ] Opening a nested workflow already open in another window is disallowed. Flash the
