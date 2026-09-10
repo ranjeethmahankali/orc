@@ -63,7 +63,13 @@ impl eframe::App for DaggerApp {
                 if self.state.needs_measure {
                     self.state.measure(ui.ctx());
                 }
-                let (canvas_response, view_moved) = canvas::interact(ui, &mut self.state.view);
+                let over_inspect_content = ui
+                    .input(|i| i.pointer.hover_pos())
+                    .is_some_and(|pos| {
+                        interaction::pointer_over_inspect_content(&self.state, &self.state.view, pos)
+                    });
+                let (canvas_response, view_moved) =
+                    canvas::interact(ui, &mut self.state.view, !over_inspect_content);
                 let deleted = interaction::delete_selected(ui, &mut self.state);
 
                 // Drains completed jobs and dispatches whatever just became ready. Cheap when

@@ -94,6 +94,34 @@ fn update_box_select(
     Some((screen_rect, kind))
 }
 
+/// Whether screen-space `pos` falls inside any Inspect node's scrollable content area.
+///
+/// The canvas's own scroll-wheel-zooms-the-view behavior reads raw scroll input directly and
+/// runs before `render::draw` ever creates that content area's `ScrollArea` widget this frame, so
+/// nothing would otherwise stop both from reacting to the same wheel event — the canvas would
+/// zoom *and* the text would scroll. Checking this first and skipping the canvas zoom instead
+/// leaves the wheel input for the `ScrollArea` to consume on its own.
+pub(crate) fn pointer_over_inspect_content(state: &EditorState, view: &Transform, pos: Pos2) -> bool {
+    let Ok(positions) = state.node_positions.try_borrow() else {
+        return false;
+    };
+    let Ok(sizes) = state.node_sizes.try_borrow() else {
+        return false;
+    };
+    let node_info_prop = state.workflow.node_info_prop();
+    let Ok(node_infos) = node_info_prop.try_borrow() else {
+        return false;
+    };
+    state.workflow.node_iter().any(|nh| {
+        matches!(node_infos[nh], NodeInfo::Inspect { .. }) && {
+            let rect = render::node_rect(positions[nh], sizes[nh]);
+            let n_pins = state.workflow.node_inputs(nh).count().max(1);
+            view.rect_to_screen(render::inspect_content_rect(rect, n_pins))
+                .contains(pos)
+        }
+    })
+}
+
 /// Grows (or shrinks) `size` by a screen-space drag `delta`, converted to canvas units via
 /// `zoom`, clamped so an Inspect node can never be dragged smaller than `render::min_inspect_size`
 /// — below that, its pins and pop-out button would no longer fit.

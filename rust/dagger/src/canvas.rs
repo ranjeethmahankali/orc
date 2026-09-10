@@ -62,7 +62,12 @@ impl Transform {
 /// Grasshopper. Ctrl+scroll and a trackpad pinch zoom too. Returns the canvas
 /// response (later phases hit test against it) and whether the user moved the view
 /// this frame.
-pub fn interact(ui: &mut egui::Ui, view: &mut Transform) -> (egui::Response, bool) {
+///
+/// `allow_zoom` is `false` while the cursor is over something that wants the scroll wheel for
+/// itself (an Inspect node's scrollable content) — see
+/// `interaction::pointer_over_inspect_content`. Panning stays enabled either way: it's a
+/// different gesture (shift + right-drag), not one anything else competes for.
+pub fn interact(ui: &mut egui::Ui, view: &mut Transform, allow_zoom: bool) -> (egui::Response, bool) {
     let rect = ui.max_rect();
     let response = ui.allocate_rect(rect, egui::Sense::click_and_drag());
     let mut moved = false;
@@ -87,7 +92,7 @@ pub fn interact(ui: &mut egui::Ui, view: &mut Transform) -> (egui::Response, boo
         moved = true;
     }
 
-    if response.contains_pointer() {
+    if allow_zoom && response.contains_pointer() {
         let (scroll, pinch, cursor) = ui.input(|i| {
             (
                 i.smooth_scroll_delta.y,

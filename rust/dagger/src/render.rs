@@ -47,8 +47,10 @@ const CONTROL_POINT_OFFSET: f32 = 80.0;
 
 /// Indefinite-progress-bar style sweep drawn into an in-flight node's title bar. Purely
 /// cosmetic; the node is genuinely running on a worker thread regardless of what this looks
-/// like, since the app never blocks on execution.
-const PULSE_COLOR: Color32 = Color32::from_rgba_premultiplied(255, 255, 255, 65);
+/// like, since the app never blocks on execution. Tinted with the node's own body color (already
+/// a shade darker than the title bar) rather than a flat white overlay, so it reads as a subtle
+/// highlight instead of a jarring flash.
+const PULSE_ALPHA: u8 = 130;
 const PULSE_BAND_FRACTION: f32 = 0.35;
 /// Full sweeps per second.
 const PULSE_SPEED: f64 = 0.6;
@@ -140,6 +142,17 @@ pub fn popout_button_rect(rect: Rect) -> Rect {
 
 pub fn node_rect(pos: [f32; 2], size: [f32; 2]) -> Rect {
     Rect::from_min_size(Pos2::new(pos[0], pos[1]), Vec2::new(size[0], size[1]))
+}
+
+/// Canvas-space area below an Inspect node's pins where its scrollable text lives — shared by
+/// the actual drawing in `draw_nodes` and by `interaction::pointer_over_inspect_content`, which
+/// needs the exact same rect to know when the canvas's own scroll-to-zoom must back off and let
+/// the `ScrollArea` inside it have the wheel input instead.
+pub fn inspect_content_rect(rect: Rect, n_pins: usize) -> Rect {
+    Rect::from_min_max(
+        Pos2::new(rect.min.x, rect.min.y + PIN_TOP_OFFSET + n_pins as f32 * PIN_SPACING),
+        rect.max,
+    )
 }
 
 pub fn input_pin_pos(rect: Rect, pin_index: usize) -> Pos2 {
@@ -277,7 +290,7 @@ pub fn draw(ui: &mut egui::Ui, state: &EditorState) {
 /// Sweeps a soft highlight band left to right across `title_rect`, looping forever. The band
 /// travels from fully off the left edge to fully off the right edge so it fades in/out at the
 /// boundary instead of popping.
-fn draw_in_flight_pulse(painter: &egui::Painter, title_rect: Rect, time: f64) {
+fn draw_in_flight_pulse(painter: &egui::Painter, title_rect: Rect, time: f64, body_fill: Color32) {
     let phase = (time * PULSE_SPEED).rem_euclid(1.0) as f32;
     let band_width = title_rect.width() * PULSE_BAND_FRACTION;
     let travel = title_rect.width() + band_width;
@@ -288,7 +301,9 @@ fn draw_in_flight_pulse(painter: &egui::Painter, title_rect: Rect, time: f64) {
     );
     let clipped = band.intersect(title_rect);
     if clipped.width() > 0.0 && clipped.height() > 0.0 {
-        painter.rect_filled(clipped, 0.0, PULSE_COLOR);
+        let color =
+            Color32::from_rgba_unmultiplied(body_fill.r(), body_fill.g(), body_fill.b(), PULSE_ALPHA);
+        painter.rect_filled(clipped, 0.0, color);
     }
 }
 
@@ -476,7 +491,7 @@ fn draw_nodes(
             painter.rect_filled(patch, 0.0, title_fill);
         }
         if crate::exec::is_node_in_flight(state, nh) {
-            draw_in_flight_pulse(&painter, title_rect, time);
+            draw_in_flight_pulse(&painter, title_rect, time, body_fill);
         }
 
         // Title text.
@@ -547,12 +562,8 @@ fn draw_nodes(
                 && let Some(cache) = &inspect_cache
             {
                 let n_pins = state.workflow.node_inputs(nh).count().max(1);
-                let content_top = rect.min.y + PIN_TOP_OFFSET + n_pins as f32 * PIN_SPACING;
                 let content_rect = view
-                    .rect_to_screen(Rect::from_min_max(
-                        Pos2::new(rect.min.x, content_top),
-                        rect.max,
-                    ))
+                    .rect_to_screen(inspect_content_rect(rect, n_pins))
                     .shrink(view.scale(INSPECT_TEXT_PADDING));
 
                 // A real `ScrollArea`, not hand-rolled clipping — it needs egui's own

@@ -49,11 +49,14 @@ pub fn refresh_all(state: &mut EditorState) {
 
 /// Keeps every popped-out Inspect window alive for one more pass, or notices it was closed.
 ///
-/// `ctx.show_viewport_deferred` must be called every pass a deferred viewport should keep
-/// existing — not calling it is how it goes away — so this runs unconditionally every frame,
-/// same as `refresh_all`. Each node's viewport id is deterministic (hashed from its `NH`), so
-/// re-registering it here with a fresh snapshot of the cached text is exactly the documented way
-/// to push updated content into an already-open window.
+/// Uses `show_viewport_immediate`, not `show_viewport_deferred`: a deferred viewport is
+/// explicitly documented to repaint independently of the root ("...it may be called multiple
+/// times, for instance while the parent viewport is sleeping"), which means a root-only check
+/// for its close request can go a very long time without ever running again once the root goes
+/// idle -- from the user's side that reads as "I can't close this window". An immediate viewport
+/// pauses this same call until the child's own pass finishes, so its `close_requested` can be
+/// read (and acted on, with plain `&mut` access to `state`, no `Arc`/channel needed) synchronously
+/// right here, every single time this function runs.
 pub fn update_popouts(ctx: &egui::Context, state: &mut EditorState) {
     let nodes: Vec<NH> = state.workflow.node_iter().collect();
     for nh in nodes {
@@ -63,16 +66,6 @@ pub fn update_popouts(ctx: &egui::Context, state: &mut EditorState) {
             .map(|p| p[nh])
             .unwrap_or(false);
         if !is_open {
-            continue;
-        }
-
-        let viewport_id = egui::ViewportId::from_hash_of(("dagger-inspect-popout", nh));
-        // The close request lands in the *child* viewport's own input, observable from the root
-        // pass via `input_for` -- no shared flag or channel needed to hear about it.
-        if ctx.input_for(viewport_id, |i| i.viewport().close_requested()) {
-            if let Ok(mut popout) = state.inspect_popout.try_borrow_mut() {
-                popout[nh] = false;
-            }
             continue;
         }
 
@@ -89,20 +82,28 @@ pub fn update_popouts(ctx: &egui::Context, state: &mut EditorState) {
             .map(|c| c[nh].text.clone())
             .unwrap_or_default();
 
-        ctx.show_viewport_deferred(
+        let viewport_id = egui::ViewportId::from_hash_of(("dagger-inspect-popout", nh));
+        let mut close_requested = false;
+        ctx.show_viewport_immediate(
             viewport_id,
             egui::ViewportBuilder::default()
                 .with_title(title)
                 .with_inner_size([420.0, 320.0]),
-            move |ui, _class| {
+            |ui, _class| {
                 egui::ScrollArea::both().show(ui, |ui| {
                     ui.add(
                         egui::Label::new(egui::RichText::new(&text).monospace())
                             .wrap_mode(egui::TextWrapMode::Extend),
                     );
                 });
+                close_requested |= ui.ctx().input(|i| i.viewport().close_requested());
             },
         );
+        if close_requested
+            && let Ok(mut popout) = state.inspect_popout.try_borrow_mut()
+        {
+            popout[nh] = false;
+        }
     }
 }
 
