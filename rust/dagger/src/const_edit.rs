@@ -6,7 +6,8 @@
 
 use crate::state::EditorState;
 use orc_sdk::{
-    NH, NodeInfo, ORC_TYPE_F64, ORC_TYPE_I64, OrcHandle, OrcMark, TypeOwner, update_handle_from_deck,
+    NH, NodeInfo, ORC_TYPE_F64, ORC_TYPE_I64, OrcHandle, OrcMark, TypeOwner,
+    update_handle_from_deck,
 };
 
 const TAB_WIDTH: usize = 3;
@@ -42,7 +43,11 @@ fn ruler_for(dmax: u8, depth: u8) -> String {
 }
 
 fn continuation_ruler(dmax: u8) -> String {
-    format!("{:>indent$}   ┤", "", indent = (dmax as usize + 1) * TAB_WIDTH)
+    format!(
+        "{:>indent$}   ┤",
+        "",
+        indent = (dmax as usize + 1) * TAB_WIDTH
+    )
 }
 
 /// One row per item (plus one for a run with no items at all), in the same order `Deck`'s own
@@ -208,25 +213,26 @@ pub fn commit_row(state: &mut EditorState, nh: NH, item_index: usize) {
         return;
     }
 
-    let write_result = crate::REGISTRY.with_mut(&[handle.handle], |decks| -> Result<(), orc_sdk::Error> {
-        match type_id {
-            ORC_TYPE_I64 => {
-                let deck = decks[0]
-                    .downcast_mut::<orc_sdk::Deck<i64>>()
-                    .ok_or(orc_sdk::Error::DeckTypeMismatch)?;
-                deck.items_mut()[item_index] = text.trim().parse::<i64>().unwrap();
-                unsafe { update_handle_from_deck(deck, &mut *handle) };
+    let write_result =
+        crate::REGISTRY.with_mut(&[handle.handle], |decks| -> Result<(), orc_sdk::Error> {
+            match type_id {
+                ORC_TYPE_I64 => {
+                    let deck = decks[0]
+                        .downcast_mut::<orc_sdk::Deck<i64>>()
+                        .ok_or(orc_sdk::Error::DeckTypeMismatch)?;
+                    deck.items_mut()[item_index] = text.trim().parse::<i64>().unwrap();
+                    unsafe { update_handle_from_deck(deck, &mut *handle) };
+                }
+                _ => {
+                    let deck = decks[0]
+                        .downcast_mut::<orc_sdk::Deck<f64>>()
+                        .ok_or(orc_sdk::Error::DeckTypeMismatch)?;
+                    deck.items_mut()[item_index] = text.trim().parse::<f64>().unwrap();
+                    unsafe { update_handle_from_deck(deck, &mut *handle) };
+                }
             }
-            _ => {
-                let deck = decks[0]
-                    .downcast_mut::<orc_sdk::Deck<f64>>()
-                    .ok_or(orc_sdk::Error::DeckTypeMismatch)?;
-                deck.items_mut()[item_index] = text.trim().parse::<f64>().unwrap();
-                unsafe { update_handle_from_deck(deck, &mut *handle) };
-            }
-        }
-        Ok(())
-    });
+            Ok(())
+        });
     if write_result.is_err() {
         return;
     }
@@ -438,7 +444,8 @@ fn after_edit(state: &mut EditorState, nh: NH) {
         };
         (crate::host_clone_orc_handle(handle.borrowed()), oh)
     };
-    if let (Ok(cloned), Ok(mut computed_outputs)) = (cloned, state.computed_outputs.try_borrow_mut())
+    if let (Ok(cloned), Ok(mut computed_outputs)) =
+        (cloned, state.computed_outputs.try_borrow_mut())
     {
         computed_outputs[oh] = std::sync::Arc::new(cloned);
     }
@@ -525,7 +532,9 @@ mod test {
             handle: crate::HANDLE_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
             ..Default::default()
         };
-        crate::REGISTRY.alloc_with_value(Some(deck), &mut handle).unwrap();
+        crate::REGISTRY
+            .alloc_with_value(Some(deck), &mut handle)
+            .unwrap();
         let mut wf = orc_sdk::Workflow::default();
         let (nh, _oh) = wf.add_constant(handle).unwrap();
         (EditorState::from_workflow(wf), nh)
@@ -573,7 +582,10 @@ mod test {
             panic!("expected a constant node")
         };
         assert_eq!(handle.items::<f64>(), &[1.0, 42.5]);
-        assert!(state.dirty, "committing a value must mark the workflow dirty");
+        assert!(
+            state.dirty,
+            "committing a value must mark the workflow dirty"
+        );
     }
 
     /// Unparseable text must not corrupt the deck -- the buffer reverts to whatever the deck
@@ -582,7 +594,8 @@ mod test {
     fn t_commit_row_reverts_the_buffer_on_unparseable_text() {
         let (mut state, nh) = constant_node(Deck::from_value(7.0));
         refresh(&mut state, nh);
-        state.const_edit_cache.try_borrow_mut().unwrap()[nh].buffers[0] = "not a number".to_string();
+        state.const_edit_cache.try_borrow_mut().unwrap()[nh].buffers[0] =
+            "not a number".to_string();
 
         commit_row(&mut state, nh, 0);
 
@@ -592,7 +605,10 @@ mod test {
             panic!("expected a constant node")
         };
         assert_eq!(handle.items::<f64>(), &[7.0], "the deck must be unchanged");
-        assert_eq!(state.const_edit_cache.try_borrow().unwrap()[nh].buffers[0], "7");
+        assert_eq!(
+            state.const_edit_cache.try_borrow().unwrap()[nh].buffers[0],
+            "7"
+        );
     }
 
     fn items_of(state: &EditorState, nh: NH) -> Vec<f64> {
@@ -624,7 +640,11 @@ mod test {
         insert_after(&mut state, nh, 1);
 
         assert_eq!(items_of(&state, nh), vec![1.0, 2.0, 0.0]);
-        assert_eq!(n_marks_of(&state, nh), n_marks_before, "a depth-0 insertion adds no new mark");
+        assert_eq!(
+            n_marks_of(&state, nh),
+            n_marks_before,
+            "a depth-0 insertion adds no new mark"
+        );
         assert_eq!(state.pending_focus_row.get(), Some((nh, 2)));
     }
 
@@ -669,10 +689,7 @@ mod test {
         // it, not merged into the first.
         assert_eq!(
             handle.marks(),
-            &[
-                OrcMark { depth: 1, pos: 0 },
-                OrcMark { depth: 0, pos: 3 },
-            ]
+            &[OrcMark { depth: 1, pos: 0 }, OrcMark { depth: 0, pos: 3 },]
         );
     }
 

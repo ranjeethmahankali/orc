@@ -625,7 +625,13 @@ fn draw_nodes(
 /// memory (keyed by `nh` via `id_salt`) to give real scrollbars in both directions, which a plain
 /// clipped `painter.text()` call has no way to provide. Shared by Inspect's display and a
 /// non-editable Constant's (nothing to edit, but still worth seeing in full).
-fn draw_static_text_content(ui: &mut egui::Ui, nh: NH, text: &str, content_rect: Rect, font_size: f32) {
+fn draw_static_text_content(
+    ui: &mut egui::Ui,
+    nh: NH,
+    text: &str,
+    content_rect: Rect,
+    font_size: f32,
+) {
     let mut child = ui.new_child(
         egui::UiBuilder::new()
             .max_rect(content_rect)
