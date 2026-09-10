@@ -12,7 +12,6 @@ default-members = [
         "rust/orc_sdk",
         "rust/example_rust_plugin",
         "rust/kbb_cli_host",
-        "rust/pyorc",
         "rust/server_host",
         "rust/dagger",
 ]
