@@ -1018,8 +1018,9 @@
      <2026-09-09 Wed 21:25> First pass at editable constants is decent. Need to refine the UI a
      little bit before marking this phase as done.
 
-**** TODO Phase 5: Nested Workflow Editing
+**** NEXT Phase 5: Nested Workflow Editing
      :LOGBOOK:
+     - State "NEXT"       from "TODO"       [2026-09-09 Wed 21:43]
      - State "TODO"       from              [2026-09-07 Mon 23:11]
      :END:
 
