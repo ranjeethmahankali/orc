@@ -709,6 +709,10 @@ fn draw_editable_const_content(
                                 ui.memory_mut(|m| m.request_focus(id));
                                 state.pending_focus_row.set(None);
                             }
+                            // Captured before the widget applies this frame's keystroke, so a
+                            // Backspace that just emptied the buffer (still `false` here) reads
+                            // differently from one pressed while it was *already* empty.
+                            let was_empty_before = buf.is_empty();
                             let response = ui.add(
                                 egui::TextEdit::singleline(buf)
                                     .id(id)
@@ -729,6 +733,14 @@ fn draw_editable_const_content(
                                 if ui.input(|input| input.key_pressed(egui::Key::Enter)) {
                                     events.inserted_after.push((nh, i));
                                 }
+                            } else if response.has_focus()
+                                && was_empty_before
+                                && buf.is_empty()
+                                && ui.input(|input| input.key_pressed(egui::Key::Backspace))
+                            {
+                                // Backspace on an already-empty row: delete it outright, rather
+                                // than committing an empty value back into the deck.
+                                events.deleted_rows.push((nh, i));
                             }
                         });
                     }

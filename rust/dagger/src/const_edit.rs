@@ -316,6 +316,81 @@ pub fn insert_after(state: &mut EditorState, nh: NH, after_index: usize) {
     refresh(state, nh);
 }
 
+/// Same replay strategy as `rebuild_with_insertion`, just omitting `delete_index` instead of
+/// splicing a value in. `start_new_arr` for a run still runs unconditionally before that run's
+/// items are replayed, so deleting the only item in a run leaves behind a legitimate empty-group
+/// mark (the same bare-ruler-line state `deck_rows`/`Display` already know how to show) rather
+/// than silently discarding the group along with its one item.
+fn rebuild_with_deletion<T: Copy + Default>(
+    items: &[T],
+    marks: &[OrcMark],
+    delete_index: usize,
+) -> orc_sdk::Deck<T> {
+    let mut new_deck = orc_sdk::Deck::<T>::default();
+    let n_items = items.len() as u64;
+
+    let replay_run = |new_deck: &mut orc_sdk::Deck<T>, depth: u8, pos: u64, next_pos: u64| {
+        new_deck.start_new_arr(depth + 1);
+        for i in pos..next_pos.min(n_items) {
+            if i as usize != delete_index {
+                new_deck.push(items[i as usize], 0);
+            }
+        }
+    };
+
+    let mut tail_start = 0u64;
+    for w in marks.windows(2) {
+        replay_run(&mut new_deck, w[0].depth, w[0].pos, w[1].pos);
+        tail_start = w[1].pos;
+    }
+    if let Some(last) = marks.last() {
+        replay_run(&mut new_deck, last.depth, last.pos, n_items);
+        tail_start = n_items;
+    }
+    for i in tail_start..n_items {
+        if i as usize != delete_index {
+            new_deck.push(items[i as usize], 0);
+        }
+    }
+    new_deck
+}
+
+/// Removes the value at `delete_index` -- backspacing an already-empty row's gesture for
+/// deleting it outright. Focus moves to the previous row, if there is one, matching how deleting
+/// an empty line merges you back into the one above it in most text/list editors.
+pub fn delete_row(state: &mut EditorState, nh: NH, delete_index: usize) {
+    let mut node_info_prop = state.workflow.node_info_prop();
+    let Ok(mut node_infos) = node_info_prop.try_borrow_mut() else {
+        return;
+    };
+    let NodeInfo::Constant(handle) = &mut node_infos[nh] else {
+        return;
+    };
+    if !is_editable(handle) {
+        return;
+    }
+    let type_id = handle.type_id;
+    let marks = handle.marks().to_vec();
+    let alloc_result = if type_id == ORC_TYPE_I64 {
+        let items = handle.items::<i64>().to_vec();
+        let new_deck = rebuild_with_deletion(&items, &marks, delete_index);
+        crate::REGISTRY.alloc_with_value(Some(new_deck), handle)
+    } else {
+        let items = handle.items::<f64>().to_vec();
+        let new_deck = rebuild_with_deletion(&items, &marks, delete_index);
+        crate::REGISTRY.alloc_with_value(Some(new_deck), handle)
+    };
+    if alloc_result.is_err() {
+        return;
+    }
+    drop(node_infos);
+    if delete_index > 0 {
+        state.pending_focus_row.set(Some((nh, delete_index - 1)));
+    }
+    after_edit(state, nh);
+    refresh(state, nh);
+}
+
 /// What happened this frame in a Constant node's editable rows -- collected while `render.rs`
 /// only has `&EditorState` (mid-draw, inside a loop already holding other borrows a commit would
 /// conflict with), applied once rendering is done and those borrows are gone.
@@ -325,13 +400,20 @@ pub(crate) struct ConstEditEvents {
     /// `(node, index)`: insert a new row right after this item, requested by pressing Enter
     /// while editing it.
     pub(crate) inserted_after: Vec<(NH, usize)>,
+    /// `(node, index)`: delete this row outright, requested by pressing Backspace while it was
+    /// already empty.
+    pub(crate) deleted_rows: Vec<(NH, usize)>,
 }
 
 pub(crate) fn apply_events(state: &mut EditorState, events: ConstEditEvents) {
     // A row that both changed text and had Enter pressed in it must commit that text before the
-    // insertion shifts indices out from under it.
+    // insertion shifts indices out from under it. A row that triggers a deletion is always empty
+    // (nothing meaningful to commit), so ordering against `committed_rows` doesn't matter there.
     for (nh, item_index) in events.committed_rows {
         commit_row(state, nh, item_index);
+    }
+    for (nh, delete_index) in events.deleted_rows {
+        delete_row(state, nh, delete_index);
     }
     for (nh, after_index) in events.inserted_after {
         insert_after(state, nh, after_index);
@@ -591,6 +673,66 @@ mod test {
                 OrcMark { depth: 1, pos: 0 },
                 OrcMark { depth: 0, pos: 3 },
             ]
+        );
+    }
+
+    #[test]
+    fn t_delete_row_removes_the_value_and_shifts_later_ones_down() {
+        let mut deck = Deck::<f64>::default();
+        deck.push(1.0, 1);
+        deck.push(2.0, 0);
+        deck.push(3.0, 0);
+        let (mut state, nh) = constant_node(deck);
+
+        delete_row(&mut state, nh, 1); // remove "2.0"
+
+        assert_eq!(items_of(&state, nh), vec![1.0, 3.0]);
+    }
+
+    #[test]
+    fn t_delete_row_moves_focus_to_the_previous_row() {
+        let (mut state, nh) = constant_node(Deck::from_value(1.0));
+        insert_after(&mut state, nh, 0);
+        insert_after(&mut state, nh, 1);
+        // Deck is now [1.0, 0.0, 0.0].
+
+        delete_row(&mut state, nh, 2);
+        assert_eq!(state.pending_focus_row.get(), Some((nh, 1)));
+
+        // `pending_focus_row` is only ever cleared by `render.rs` consuming it (once per real
+        // frame) -- reset it here to test "deleting the first row" in isolation from the
+        // previous call's still-unread request.
+        state.pending_focus_row.set(None);
+        delete_row(&mut state, nh, 0);
+        assert_eq!(
+            state.pending_focus_row.get(),
+            None,
+            "deleting the first row has no previous row to focus"
+        );
+    }
+
+    /// Deleting the *only* item in a nested group must leave a legitimate empty-group marker
+    /// behind (the same bare-ruler-line state `Display`/`deck_rows` already render), rather than
+    /// silently deleting the group's own mark along with its one item.
+    #[test]
+    fn t_delete_row_leaves_an_empty_group_marker_when_it_was_the_only_item_in_its_group() {
+        let mut deck = Deck::<f64>::default();
+        deck.push(1.0, 1);
+        deck.push(2.0, 1);
+        let (mut state, nh) = constant_node(deck);
+
+        delete_row(&mut state, nh, 1); // "2.0" was the sole item of the second group
+
+        assert_eq!(items_of(&state, nh), vec![1.0]);
+        let node_info_prop = state.workflow.node_info_prop();
+        let node_infos = node_info_prop.try_borrow().unwrap();
+        let NodeInfo::Constant(handle) = &node_infos[nh] else {
+            panic!("expected a constant node")
+        };
+        assert_eq!(
+            handle.marks(),
+            &[OrcMark { depth: 0, pos: 0 }, OrcMark { depth: 0, pos: 1 }],
+            "the second group's mark must survive as an empty group, not vanish"
         );
     }
 
