@@ -29,6 +29,14 @@ pub struct EditorState {
     /// node) must not repeat it — a full re-layout would move every existing node, undoing
     /// anything the user dragged.
     layout_computed: bool,
+    /// One entry per distinct declared workflow input, positioned by `layout::compute_layout`
+    /// alongside everything else: the input's name, and `[right_edge_x, center_y]` -- the chip's
+    /// right edge, not its min corner, since that's the one point that needs to stay stable for
+    /// `render.rs` to anchor a link from regardless of how wide the label measures at draw time
+    /// (the chip itself is never resized/dragged, so nothing else needs the rect). See
+    /// `layout::compute_input_chip_positions` for why this doesn't just read
+    /// `Workflow::input_names()` directly.
+    pub(crate) input_chip_positions: Vec<(String, [f32; 2])>,
     /// Canvas to screen transform, driven by pan/zoom input.
     pub view: Transform,
     /// Screen-space rect and direction of an in-progress box-select drag, for rendering the
@@ -115,6 +123,7 @@ impl EditorState {
             selected,
             needs_measure: true,
             layout_computed: false,
+            input_chip_positions: Vec::new(),
             view: Transform::default(),
             select_box: None,
             pending_wire: None,

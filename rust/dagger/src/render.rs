@@ -46,6 +46,20 @@ const LINK_COLOR: Color32 = Color32::from_rgb(180, 180, 180);
 const LINK_WIDTH: f32 = 2.0;
 const CONTROL_POINT_OFFSET: f32 = 80.0;
 
+/// A workflow-input chip: an immutable pill showing just a declared input's name, with no pins
+/// and nothing to edit. Colored distinctly from every real node kind so it doesn't read as one.
+const CHIP_COLOR: Color32 = Color32::from_rgb(70, 70, 90);
+const CHIP_STROKE_COLOR: Color32 = Color32::from_gray(140);
+const CHIP_TEXT_COLOR: Color32 = Color32::from_gray(220);
+const CHIP_HEIGHT: f32 = 28.0;
+const CHIP_PADDING_X: f32 = 10.0;
+const CHIP_ROUNDING: f32 = 14.0;
+/// Dimmer and thinner than a real link's `LINK_COLOR`/`LINK_WIDTH`, so a chip's link reads as
+/// "this is where the value comes from" without looking like a deletable graph edge -- it isn't
+/// one; `Workflow` has no node for the chip at all, only the pin at the other end is real.
+const CHIP_LINK_COLOR: Color32 = Color32::from_rgba_premultiplied(150, 150, 160, 130);
+const CHIP_LINK_WIDTH: f32 = 1.5;
+
 /// Indefinite-progress-bar style sweep drawn into an in-flight node's title bar. Purely
 /// cosmetic; the node is genuinely running on a worker thread regardless of what this looks
 /// like, since the app never blocks on execution. Tinted with the node's own body color (already
@@ -298,10 +312,105 @@ pub fn draw(ui: &mut egui::Ui, state: &EditorState) -> ConstEditEvents {
     let wire_target = pending_wire_target(ui, state, &view);
     let time = ui.input(|i| i.time);
     draw_links(ui, state, &view);
+    draw_input_chip_links(ui, state, &view);
     let const_edit_events = draw_nodes(ui, state, &view, wire_target, time);
+    draw_input_chips(ui, state, &view);
     draw_pending_wire(ui, state, &view);
     draw_select_box(ui, state);
     const_edit_events
+}
+
+/// Canvas-space rect for the workflow-input chip named `name`, anchored on its *right* edge
+/// (`right_edge_x`, `center_y` — see `EditorState::input_chip_positions`) so the box grows
+/// leftward from a stable point regardless of the measured label width.
+fn chip_rect(ctx: &egui::Context, name: &str, right_edge_x: f32, center_y: f32) -> Rect {
+    let width = text_width(ctx, name, FONT_SIZE) + 2.0 * CHIP_PADDING_X;
+    Rect::from_min_size(
+        Pos2::new(right_edge_x - width, center_y - CHIP_HEIGHT / 2.0),
+        Vec2::new(width, CHIP_HEIGHT),
+    )
+}
+
+/// The bezier links from each workflow-input chip to every real, currently-dangling pin
+/// registered under it. Not part of the graph — there is no node for the chip itself, so this
+/// exists purely so the canvas shows where an internal pin's value actually comes from. Drawn
+/// distinctly from a real link (dimmer, thinner — see `CHIP_LINK_COLOR`/`CHIP_LINK_WIDTH`) so it
+/// never reads as one. A pin that's since been wired to something else internally no longer gets
+/// one, even though its `workflow_input_position` registration is untouched — see that method's
+/// own doc comment on why registration and "still dangling" are checked separately.
+fn draw_input_chip_links(ui: &mut egui::Ui, state: &EditorState, view: &Transform) {
+    if state.input_chip_positions.is_empty() {
+        return;
+    }
+    let Ok(workflow_inputs) = state.workflow.workflow_inputs() else {
+        return;
+    };
+    let (positions, sizes) = match (
+        state.node_positions.try_borrow(),
+        state.node_sizes.try_borrow(),
+    ) {
+        (Ok(p), Ok(s)) => (p, s),
+        _ => return,
+    };
+    let painter = ui.painter();
+    for (ih, idx, _name) in &workflow_inputs {
+        if state.workflow.input_source(*ih).is_some() {
+            continue;
+        }
+        let Some(&(_, [chip_x, chip_y])) = state.input_chip_positions.get(*idx) else {
+            continue;
+        };
+        let owner = state.workflow.node_from_input(*ih);
+        let rect = node_rect(positions[owner], sizes[owner]);
+        let pin_index = state
+            .workflow
+            .node_inputs(owner)
+            .position(|input| input == *ih)
+            .unwrap_or(0);
+        let end = input_pin_pos(rect, pin_index);
+        let points = bezier_control_points(Pos2::new(chip_x, chip_y), end, CONTROL_POINT_OFFSET)
+            .map(|p| view.canvas_to_screen(p));
+        painter.add(Shape::CubicBezier(CubicBezierShape::from_points_stroke(
+            points,
+            false,
+            Color32::TRANSPARENT,
+            PathStroke::new(view.scale(CHIP_LINK_WIDTH), CHIP_LINK_COLOR),
+        )));
+    }
+}
+
+/// The chip boxes themselves, one per declared workflow input — see
+/// `EditorState::input_chip_positions`. Immutable: no pins to wire from, no drag, nothing to
+/// edit, just the name.
+fn draw_input_chips(ui: &mut egui::Ui, state: &EditorState, view: &Transform) {
+    if state.input_chip_positions.is_empty() {
+        return;
+    }
+    let ctx = ui.ctx().clone();
+    let draw_text = view.zoom >= MIN_TEXT_ZOOM;
+    let font = FontId::new(view.scale(FONT_SIZE), FontFamily::Monospace);
+    let painter = ui.painter();
+    for (name, [right_edge_x, center_y]) in &state.input_chip_positions {
+        let rect = chip_rect(&ctx, name, *right_edge_x, *center_y);
+        let screen_rect = view.rect_to_screen(rect);
+        let rounding = view.scale(CHIP_ROUNDING);
+        painter.rect_filled(screen_rect, rounding, CHIP_COLOR);
+        painter.rect_stroke(
+            screen_rect,
+            rounding,
+            Stroke::new(view.scale(1.0), CHIP_STROKE_COLOR),
+            StrokeKind::Outside,
+        );
+        if draw_text {
+            painter.text(
+                screen_rect.center(),
+                egui::Align2::CENTER_CENTER,
+                name,
+                font.clone(),
+                CHIP_TEXT_COLOR,
+            );
+        }
+    }
 }
 
 /// Sweeps a soft highlight band left to right across `title_rect`, looping forever. The band

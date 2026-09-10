@@ -14,6 +14,10 @@ const LAYOUT_ROW_GAP: f32 = 30.0;
 /// resolved to real per-node spacing by the overlap-removal pass right after, so this only
 /// needs to be a reasonable rough guess, not an accurate one.
 const LAYOUT_INITIAL_ROW_STEP: f32 = 90.0;
+/// Nominal height used only to space workflow-input chips apart from each other -- like
+/// `LAYOUT_INITIAL_ROW_STEP`, a rough guess is fine since chips are small and few, not an exact
+/// match to `render.rs`'s actual drawn size.
+const LAYOUT_CHIP_HEIGHT: f32 = 28.0;
 
 /// The nodes feeding a node, via its connected inputs.
 fn predecessors(workflow: &Workflow, node: NH) -> impl Iterator<Item = NH> + '_ {
@@ -110,6 +114,9 @@ pub(crate) fn compute_depths(workflow: &Workflow) -> Depths {
 pub fn compute_layout(state: &mut EditorState) {
     let n_nodes = state.workflow.num_nodes();
     if n_nodes == 0 {
+        // Still worth computing: a nested workflow can declare inputs with nothing inside it yet
+        // to feed.
+        compute_input_chip_positions(state);
         return;
     }
 
@@ -195,6 +202,75 @@ pub fn compute_layout(state: &mut EditorState) {
             pos[nh] = [x, y + recenter];
         }
     }
+    drop(pos);
+    drop(sizes);
+
+    compute_input_chip_positions(state);
+}
+
+/// Positions one chip per declared workflow input (see `EditorState::input_chip_positions`),
+/// left of the whole layout, at the average y of whatever real pins are currently dangling and
+/// registered under that input's position -- the same barycenter idea the main layer loop uses,
+/// just against a fixed single column instead of a predecessor layer. An input with nothing
+/// currently dangling against it (every pin it once fed has since been wired to something else
+/// internally) still gets a chip, just with no particular y to aim for.
+fn compute_input_chip_positions(state: &mut EditorState) {
+    let n_inputs = state.workflow.input_names().len();
+    if n_inputs == 0 {
+        state.input_chip_positions.clear();
+        return;
+    }
+    let workflow_inputs = state.workflow.workflow_inputs().unwrap_or_default();
+    let pos = state.node_positions.try_borrow().unwrap();
+
+    let mut dangling_ys: Vec<Vec<f32>> = vec![Vec::new(); n_inputs];
+    for (ih, idx, _name) in &workflow_inputs {
+        if state.workflow.input_source(*ih).is_none() {
+            let owner = state.workflow.node_from_input(*ih);
+            dangling_ys[*idx].push(pos[owner][1]);
+        }
+    }
+    drop(pos);
+
+    let mut targets: Vec<(usize, f32)> = dangling_ys
+        .iter()
+        .enumerate()
+        .map(|(i, ys)| {
+            let y = if ys.is_empty() {
+                LAYOUT_ORIGIN_Y
+            } else {
+                ys.iter().sum::<f32>() / ys.len() as f32
+            };
+            (i, y)
+        })
+        .collect();
+
+    // Same overlap-avoidance idea as a real layer: sort by target y, then push each one down just
+    // far enough to clear the previous chip.
+    targets.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
+    let half_height = LAYOUT_CHIP_HEIGHT / 2.0;
+    let mut prev_bottom: Option<f32> = None;
+    for (_, y) in targets.iter_mut() {
+        if let Some(bottom) = prev_bottom {
+            let floor = bottom + LAYOUT_ROW_GAP + half_height;
+            if *y < floor {
+                *y = floor;
+            }
+        }
+        prev_bottom = Some(*y + half_height);
+    }
+
+    let right_edge_x = LAYOUT_ORIGIN_X - LAYOUT_LAYER_GAP;
+    let mut chip_positions: Vec<(String, [f32; 2])> = state
+        .workflow
+        .input_names()
+        .iter()
+        .map(|name| (name.clone(), [right_edge_x, LAYOUT_ORIGIN_Y]))
+        .collect();
+    for (i, y) in targets {
+        chip_positions[i].1 = [right_edge_x, y];
+    }
+    state.input_chip_positions = chip_positions;
 }
 
 #[cfg(test)]
@@ -337,6 +413,105 @@ mod test {
         assert!(
             !depths.in_cycle[feeder.index()],
             "the acyclic feeder must not be reported as part of the cycle"
+        );
+    }
+
+    #[test]
+    fn t_no_declared_inputs_yields_no_chips() {
+        let mut wf = Workflow::default();
+        node(&mut wf, 0, 1);
+        let mut state = EditorState::from_workflow(wf);
+        {
+            let mut sizes = state.node_sizes.try_borrow_mut().unwrap();
+            for nh in state.workflow.node_iter().collect::<Vec<_>>() {
+                sizes[nh] = [160.0, 80.0];
+            }
+        }
+        compute_layout(&mut state);
+        assert!(state.input_chip_positions.is_empty());
+    }
+
+    #[test]
+    fn t_input_chip_sits_left_of_the_node_it_feeds() {
+        let mut wf = Workflow::default();
+        let (a, a_in, _) = node(&mut wf, 1, 0);
+        wf.set_inputs(&[(a_in[0], 0, "x")]).unwrap();
+        let mut state = EditorState::from_workflow(wf);
+        {
+            let mut sizes = state.node_sizes.try_borrow_mut().unwrap();
+            sizes[a] = [160.0, 80.0];
+        }
+        compute_layout(&mut state);
+        let pos = state.node_positions.try_borrow().unwrap();
+        assert_eq!(state.input_chip_positions.len(), 1);
+        assert_eq!(state.input_chip_positions[0].0, "x");
+        assert!(
+            state.input_chip_positions[0].1[0] < pos[a][0],
+            "the chip must sit to the left of the node it feeds"
+        );
+        assert!(
+            (state.input_chip_positions[0].1[1] - pos[a][1]).abs() < 0.01,
+            "with only one pin to feed, the chip should align with that node"
+        );
+    }
+
+    /// `a` and `b` both declare index 0 -- a single workflow parameter feeding two internal pins
+    /// (e.g. `def f(x): return add(x, x)`). This must collapse to exactly one chip, not two: see
+    /// `compute_input_chip_positions`'s doc comment on why `Workflow::input_names().len()` can't
+    /// be trusted for the count here (it's inflated by exactly this fan-out).
+    #[test]
+    fn t_input_chip_averages_over_every_pin_it_feeds() {
+        let mut wf = Workflow::default();
+        let (a, a_in, _) = node(&mut wf, 1, 0);
+        let (b, b_in, _) = node(&mut wf, 1, 0);
+        wf.set_inputs(&[(a_in[0], 0, "x"), (b_in[0], 0, "x")])
+            .unwrap();
+        let mut state = EditorState::from_workflow(wf);
+        {
+            let mut sizes = state.node_sizes.try_borrow_mut().unwrap();
+            sizes[a] = [160.0, 80.0];
+            sizes[b] = [160.0, 80.0];
+        }
+        compute_layout(&mut state);
+        let pos = state.node_positions.try_borrow().unwrap();
+        let expected = (pos[a][1] + pos[b][1]) / 2.0;
+        assert_eq!(
+            state.input_chip_positions.len(),
+            1,
+            "one parameter feeding two pins must still be a single chip"
+        );
+        assert!(
+            (state.input_chip_positions[0].1[1] - expected).abs() < 0.01,
+            "chip y should be the average of every pin it feeds, got {} expected {expected}",
+            state.input_chip_positions[0].1[1]
+        );
+    }
+
+    /// A pin's `workflow_input_position` registration survives it later being wired to a real
+    /// upstream output internally, but the chip link only makes sense for a pin that's actually
+    /// still reading from the outside — so the chip's target position must only average over
+    /// still-dangling pins, ignoring one that's since been connected.
+    #[test]
+    fn t_input_chip_ignores_a_pin_that_has_since_been_connected() {
+        let mut wf = Workflow::default();
+        let (a, a_in, _) = node(&mut wf, 1, 0);
+        let (_b, b_in, _) = node(&mut wf, 1, 0);
+        let (_, _, src_out) = node(&mut wf, 0, 1);
+        wf.set_inputs(&[(a_in[0], 0, "x"), (b_in[0], 0, "x")])
+            .unwrap();
+        wf.connect(src_out[0], b_in[0]).unwrap();
+        let mut state = EditorState::from_workflow(wf);
+        {
+            let mut sizes = state.node_sizes.try_borrow_mut().unwrap();
+            for nh in state.workflow.node_iter().collect::<Vec<_>>() {
+                sizes[nh] = [160.0, 80.0];
+            }
+        }
+        compute_layout(&mut state);
+        let pos = state.node_positions.try_borrow().unwrap();
+        assert!(
+            (state.input_chip_positions[0].1[1] - pos[a][1]).abs() < 0.01,
+            "must align only with the still-dangling pin, ignoring the now-connected one"
         );
     }
 
