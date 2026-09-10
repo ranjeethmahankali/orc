@@ -25,10 +25,12 @@ fn predecessors(workflow: &Workflow, node: NH) -> impl Iterator<Item = NH> + '_ 
 }
 
 /// Longest-path depth of every node, plus which nodes take part in a cycle. Both are indexed
-/// by `NH::index()`. Only used within this module (by `compute_layout` and its own tests).
-struct Depths {
+/// by `NH::index()`. `in_cycle` is also reused by `exec` — cycles can't be executed, so the
+/// executor needs the same check `compute_layout` already does, kept fresh on every topology
+/// edit rather than the once-at-first-`measure` cadence `compute_layout` itself runs on.
+pub(crate) struct Depths {
     depth: Vec<u32>,
-    in_cycle: Vec<bool>,
+    pub(crate) in_cycle: Vec<bool>,
 }
 
 /// Walk the graph upstream and give each node a depth one past its deepest predecessor.
@@ -38,7 +40,7 @@ struct Depths {
 /// is not an error here. The traversal stops at the closing edge and the node keeps whatever
 /// depth its other predecessors gave it, so seeding still has an approximate position to work
 /// from, and the nodes making up the cycle are reported so they can be drawn as an error.
-fn compute_depths(workflow: &Workflow) -> Depths {
+pub(crate) fn compute_depths(workflow: &Workflow) -> Depths {
     let n_nodes = workflow.num_nodes();
     let mut depth = vec![0u32; n_nodes];
     let mut in_cycle = vec![false; n_nodes];
@@ -153,11 +155,7 @@ pub fn compute_layout(state: &mut EditorState) {
                     sum += pos[pred][1];
                     count += 1;
                 }
-                let y = if count > 0 {
-                    sum / count as f32
-                } else {
-                    0.0
-                };
+                let y = if count > 0 { sum / count as f32 } else { 0.0 };
                 (nh, y)
             })
             .collect();
@@ -252,7 +250,10 @@ mod test {
         assert_eq!(pos[b2][0], pos[b3][0]);
 
         let ys = [pos[b1][1], pos[b2][1], pos[b3][1]];
-        assert_ne!(ys[0], ys[1], "siblings must not be stacked on top of each other");
+        assert_ne!(
+            ys[0], ys[1],
+            "siblings must not be stacked on top of each other"
+        );
         assert_ne!(ys[1], ys[2]);
         let center = (ys[0] + ys[2]) / 2.0;
         assert!(
@@ -355,6 +356,4 @@ mod test {
         assert!(depths.in_cycle[a.index()]);
         assert!(depths.in_cycle[b.index()]);
     }
-
 }
-

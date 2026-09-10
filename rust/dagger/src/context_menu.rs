@@ -132,8 +132,9 @@ fn connect_from_menu(state: &mut EditorState, from: OH, to: IH) {
     if !crate::interaction::output_is_live(&state.workflow, from) {
         return;
     }
-    if let Err(e) = state.workflow.connect(from, to) {
-        state.file_error = Some(format!("Failed to connect new node: {e}"));
+    match state.workflow.connect(from, to) {
+        Ok(_) => crate::exec::mark_dirty(state, state.workflow.node_from_input(to)),
+        Err(e) => state.file_error = Some(format!("Failed to connect new node: {e}")),
     }
 }
 
@@ -157,6 +158,7 @@ fn create_function_node(
     if let (Some(from), Some(&first)) = (connect_from, inputs.first()) {
         connect_from_menu(state, from, first);
     }
+    crate::exec::mark_dirty(state, nh);
     finish_node_creation(state, nh, screen_pos);
 }
 
@@ -193,13 +195,24 @@ fn create_constant_node(state: &mut EditorState, values: &[f64], screen_pos: Pos
         state.file_error = Some(format!("Failed to allocate constant: {e}"));
         return;
     }
-    let nh = match state.workflow.add_constant(handle) {
-        Ok((nh, _oh)) => nh,
+    // A constant's own value never goes through `exec`'s dispatch/settle machinery (nothing
+    // ever computes it), so nothing else would ever populate `computed_outputs` for it --
+    // without this, anything reading a constant directly (e.g. an Inspect node) would see the
+    // "not yet computed" sentinel forever. A cloned copy is stored here immediately, matching
+    // the clone `exec::dispatch` already makes when a constant feeds a function's input.
+    let cloned = crate::host_clone_orc_handle(handle.borrowed());
+    let (nh, oh) = match state.workflow.add_constant(handle) {
+        Ok(pair) => pair,
         Err(e) => {
             state.file_error = Some(format!("Failed to create node: {e}"));
             return;
         }
     };
+    if let (Ok(cloned), Ok(mut computed_outputs)) =
+        (cloned, state.computed_outputs.try_borrow_mut())
+    {
+        computed_outputs[oh] = std::sync::Arc::new(cloned);
+    }
     finish_node_creation(state, nh, screen_pos);
 }
 
@@ -343,7 +356,7 @@ mod test {
 
     #[test]
     fn t_parses_a_bare_number() {
-        assert_eq!(parse_literal("3.14"), Some(vec![3.14]));
+        assert_eq!(parse_literal("3.123"), Some(vec![3.123]));
         assert_eq!(parse_literal("  -2  "), Some(vec![-2.0]));
     }
 

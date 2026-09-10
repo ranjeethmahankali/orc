@@ -83,12 +83,19 @@ pub(crate) fn open_workflow(path: &Path) -> Result<Workflow, String> {
 fn save_workflow(state: &mut EditorState, path: &Path) -> Result<(), String> {
     state.pending_wire = None;
     state.context_menu = None;
-    state.workflow.garbage_collection().map_err(|e| e.to_string())?;
+    state
+        .workflow
+        .garbage_collection()
+        .map_err(|e| e.to_string())?;
     let file = std::fs::File::create(path).map_err(|e| e.to_string())?;
     let mut writer = std::io::BufWriter::new(file);
     state
         .workflow
-        .write_to_msgpack(&crate::PLUGIN_SET, &crate::SERIAL_CONTEXT_ARENA, &mut writer)
+        .write_to_msgpack(
+            &crate::PLUGIN_SET,
+            &crate::SERIAL_CONTEXT_ARENA,
+            &mut writer,
+        )
         .map_err(|e| e.to_string())
 }
 
@@ -195,12 +202,18 @@ pub fn menu_bar(ui: &mut egui::Ui, state: &mut EditorState) {
 }
 
 /// Reflect the current file and dirty state in the OS window title, e.g. `Dagger - foo.orc*`.
-pub fn update_window_title(ctx: &egui::Context, state: &EditorState) {
+///
+/// Called unconditionally every frame, so this must not issue `ViewportCommand::Title` unless the
+/// title actually changed — winit's window-title setter is a real OS call (`SetWindowTextW` on
+/// Windows), and sending it on every single frame of a drag is enough overhead on its own to make
+/// dragging feel sluggish, independent of anything else this app does per frame.
+pub fn update_window_title(ctx: &egui::Context, state: &mut EditorState) {
     let dirty_mark = if state.dirty { "*" } else { "" };
-    ctx.send_viewport_cmd(egui::ViewportCommand::Title(format!(
-        "Dagger - {}{dirty_mark}",
-        display_name(state)
-    )));
+    let title = format!("Dagger - {}{dirty_mark}", display_name(state));
+    if title != state.last_window_title {
+        ctx.send_viewport_cmd(egui::ViewportCommand::Title(title.clone()));
+        state.last_window_title = title;
+    }
 }
 
 /// Popup reporting the last failed load/save, dismissed with its own close button or OK.
@@ -245,7 +258,10 @@ mod test {
     fn t_a_clean_workflow_does_not_need_confirmation_to_discard() {
         let mut state = EditorState::from_workflow(Workflow::default());
         assert!(!state.dirty);
-        assert!(confirm_discard(&mut state), "nothing to lose, nothing to ask");
+        assert!(
+            confirm_discard(&mut state),
+            "nothing to lose, nothing to ask"
+        );
     }
 
     #[test]

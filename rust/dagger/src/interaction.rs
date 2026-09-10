@@ -94,6 +94,51 @@ fn update_box_select(
     Some((screen_rect, kind))
 }
 
+/// Whether screen-space `pos` falls inside any Inspect or Constant node's scrollable content
+/// area.
+///
+/// The canvas's own scroll-wheel-zooms-the-view behavior reads raw scroll input directly and
+/// runs before `render::draw` ever creates that content area's `ScrollArea` widget this frame, so
+/// nothing would otherwise stop both from reacting to the same wheel event — the canvas would
+/// zoom *and* the text would scroll. Checking this first and skipping the canvas zoom instead
+/// leaves the wheel input for the `ScrollArea` to consume on its own.
+pub(crate) fn pointer_over_inspect_content(
+    state: &EditorState,
+    view: &Transform,
+    pos: Pos2,
+) -> bool {
+    let Ok(positions) = state.node_positions.try_borrow() else {
+        return false;
+    };
+    let Ok(sizes) = state.node_sizes.try_borrow() else {
+        return false;
+    };
+    let node_info_prop = state.workflow.node_info_prop();
+    let Ok(node_infos) = node_info_prop.try_borrow() else {
+        return false;
+    };
+    state.workflow.node_iter().any(|nh| {
+        render::has_expandable_content(&node_infos[nh]) && {
+            let rect = render::node_rect(positions[nh], sizes[nh]);
+            let n_pins = state.workflow.node_inputs(nh).count().max(1);
+            view.rect_to_screen(render::inspect_content_rect(rect, n_pins))
+                .contains(pos)
+        }
+    })
+}
+
+/// Grows (or shrinks) `size` by a screen-space drag `delta`, converted to canvas units via
+/// `zoom`, clamped so an Inspect node can never be dragged smaller than `render::min_inspect_size`
+/// — below that, its pins and pop-out button would no longer fit.
+fn apply_resize_delta(size: [f32; 2], delta: Vec2, zoom: f32) -> [f32; 2] {
+    let canvas_delta = delta / zoom;
+    let [min_w, min_h] = render::min_inspect_size();
+    [
+        (size[0] + canvas_delta.x).max(min_w),
+        (size[1] + canvas_delta.y).max(min_h),
+    ]
+}
+
 /// Whether adding an edge from `src` to `dst` would create a cycle, i.e. whether `dst` can
 /// already reach `src` through the graph's existing links. Rebuilt from scratch on every call
 /// since it only runs once per pin-drop gesture, not per frame.
@@ -184,7 +229,10 @@ fn update_pending_wire(ui: &mut egui::Ui, state: &mut EditorState, source: OH) -
         let src = state.workflow.node_from_output(source);
         if !creates_cycle(&state.workflow, src, dst) {
             match state.workflow.connect(source, target) {
-                Ok(_) => state.dirty = true,
+                Ok(_) => {
+                    state.dirty = true;
+                    crate::exec::mark_dirty(state, dst);
+                }
                 Err(e) => state.file_error = Some(format!("Failed to connect: {e}")),
             }
         }
@@ -218,10 +266,22 @@ pub fn update(
         (Ok(p), Ok(s)) => (p, s),
         _ => return events,
     };
+    let node_info_prop = state.workflow.node_info_prop();
+    let Ok(node_infos) = node_info_prop.try_borrow() else {
+        return events;
+    };
 
     let mut dragged_node: Option<(NH, Vec2)> = None;
     let mut wire_start: Option<OH> = None;
     let mut clicked_node: Option<NH> = None;
+    // The node whose input pin was just yanked off an upstream connection (rewire gesture),
+    // deferred until `positions`/`sizes` are dropped below since `mark_dirty` needs `&mut
+    // EditorState` and those `Ref`s borrow `state`'s fields for the whole loop.
+    let mut disconnected_input_owner: Option<NH> = None;
+    // Accumulated resize-handle drag, applied to `node_sizes` after `sizes` (borrowed
+    // immutably for the loop) is dropped below.
+    let mut resized_node: Option<(NH, Vec2)> = None;
+    let mut popout_clicked: Option<NH> = None;
 
     let nodes: Vec<NH> = state.workflow.node_iter().collect();
     for nh in nodes {
@@ -245,6 +305,7 @@ pub fn update(
             {
                 state.workflow.disconnect(upstream, ih);
                 wire_start = Some(upstream);
+                disconnected_input_owner = Some(nh);
                 events.changed = true;
                 state.dirty = true;
             }
@@ -266,6 +327,29 @@ pub fn update(
             }
         }
 
+        // Registered last, after the body and every pin, so a press on the small overlapping
+        // sliver of these controls is claimed by them rather than starting a node drag — same
+        // tie-breaking convention pins already rely on.
+        if render::has_expandable_content(&node_infos[nh]) {
+            let popout_response = ui.interact(
+                view.rect_to_screen(render::popout_button_rect(rect)),
+                Id::new(("dagger-inspect-popout", nh)),
+                Sense::click(),
+            );
+            if popout_response.clicked() {
+                popout_clicked = Some(nh);
+            }
+
+            let resize_response = ui.interact(
+                view.rect_to_screen(render::resize_handle_rect(rect)),
+                Id::new(("dagger-inspect-resize", nh)),
+                Sense::drag(),
+            );
+            if resize_response.dragged() {
+                resized_node = Some((nh, resize_response.drag_delta()));
+            }
+        }
+
         if body_response.dragged_by(PointerButton::Primary) {
             dragged_node = Some((nh, body_response.drag_delta()));
         } else if body_response.clicked() {
@@ -274,6 +358,11 @@ pub fn update(
     }
     drop(positions);
     drop(sizes);
+    drop(node_infos);
+
+    if let Some(nh) = disconnected_input_owner {
+        crate::exec::mark_dirty(state, nh);
+    }
 
     if let Some(nh) = clicked_node {
         select_node(state, nh, shift);
@@ -290,6 +379,20 @@ pub fn update(
             let canvas_delta = delta / view.zoom;
             positions[nh][0] += canvas_delta.x;
             positions[nh][1] += canvas_delta.y;
+        }
+        events.changed = true;
+    }
+
+    if let Some((nh, delta)) = resized_node {
+        if let Ok(mut sizes) = state.node_sizes.try_borrow_mut() {
+            sizes[nh] = apply_resize_delta(sizes[nh], delta, view.zoom);
+        }
+        events.changed = true;
+    }
+
+    if let Some(nh) = popout_clicked {
+        if let Ok(mut popout) = state.content_popout.try_borrow_mut() {
+            popout[nh] = true;
         }
         events.changed = true;
     }
@@ -342,7 +445,18 @@ pub fn delete_selected(ui: &mut egui::Ui, state: &mut EditorState) -> bool {
         return false;
     }
     for nh in selected_nodes {
+        // Captured before deleting: `Workflow::delete_node` disconnects the deleted node's own
+        // links as part of tombstoning it, so its downstream neighbors can't be discovered
+        // afterward -- by then there's nothing left to walk forward from.
+        let downstream: Vec<NH> = state
+            .workflow
+            .node_outputs(nh)
+            .flat_map(|oh| state.workflow.downstream_nodes(oh))
+            .collect();
         state.workflow.delete_node(nh);
+        for affected in downstream {
+            crate::exec::mark_dirty(state, affected);
+        }
     }
     // A wire drag started from one of these nodes' output pins would otherwise still try to
     // complete against a now-tombstoned pin on release — `update_pending_wire` guards against
@@ -370,6 +484,20 @@ mod test {
             .add_function(FuncInfo::default(), &mut ins, &mut outs)
             .unwrap();
         (nh, ins, outs)
+    }
+
+    #[test]
+    fn t_resize_delta_grows_the_size_by_the_canvas_space_delta() {
+        let grown = apply_resize_delta([300.0, 250.0], Vec2::new(20.0, 10.0), 2.0);
+        // Screen-space delta is halved by a 2x zoom before it's added.
+        assert_eq!(grown, [310.0, 255.0]);
+    }
+
+    #[test]
+    fn t_resize_delta_clamps_at_the_minimum_inspect_size() {
+        let shrunk =
+            apply_resize_delta(render::min_inspect_size(), Vec2::new(-1000.0, -1000.0), 1.0);
+        assert_eq!(shrunk, render::min_inspect_size());
     }
 
     #[test]

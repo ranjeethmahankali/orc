@@ -1,5 +1,6 @@
 mod app;
 mod canvas;
+mod const_edit;
 mod context_menu;
 mod exec;
 mod file_menu;
@@ -20,11 +21,18 @@ use orc_sdk::{
 };
 use std::alloc::{Layout, alloc, dealloc};
 use std::ffi::{CStr, c_void};
-use std::sync::{LazyLock, atomic::AtomicU64};
+use std::sync::{
+    LazyLock,
+    atomic::{AtomicU64, Ordering},
+};
 
 pub(crate) static REGISTRY: LazyLock<DeckRegistry> = LazyLock::new(DeckRegistry::new);
 pub static HANDLE_COUNTER: AtomicU64 = AtomicU64::new(0);
 static SERIAL_CONTEXT_ARENA: LazyLock<ContextArena<Vec<u8>>> = LazyLock::new(ContextArena::default);
+/// One slot per in-flight `exec::NodeJob`. `check_cancellation_callback` reads a slot; the
+/// scheduler flips it to `true` for exactly the job whose own node got invalidated while
+/// running — never for unrelated, still-valid in-flight work.
+pub(crate) static CANCEL_ARENA: LazyLock<ContextArena<bool>> = LazyLock::new(ContextArena::default);
 
 unsafe extern "C" fn host_alloc(size: u64, alignment: u64) -> *mut c_void {
     let layout = Layout::from_size_align(size as usize, alignment as usize).unwrap();
@@ -123,6 +131,9 @@ unsafe extern "C" fn host_create_proxy_deck(
     ORC_ERROR_NONE
 }
 
+/// # Safety
+///
+/// This is a FFI function. Needs to be unsafe.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn orc_deck_free(handle: *mut OrcHandle) -> OrcError {
     if handle.is_null() {
@@ -164,6 +175,15 @@ unsafe extern "C" fn report_message(
     );
 }
 
+/// Looks up the cancellation flag for one in-flight job. Whether a plugin function ever calls
+/// this at all is entirely up to whoever implemented it — the host imposes no policy here beyond
+/// exposing the flag.
+unsafe extern "C" fn check_cancellation_callback(ctx: u64) -> bool {
+    CANCEL_ARENA
+        .visit_mut(ctx, |cancelled| *cancelled)
+        .unwrap_or(false)
+}
+
 pub const HOST: OrcHost = OrcHost {
     abi_version: ORC_ABI_VERSION,
     memory_api: OrcHostMemoryAPI {
@@ -173,7 +193,7 @@ pub const HOST: OrcHost = OrcHost {
     callbacks: OrcHostCallbackAPI {
         report_progress: None,
         report_message: Some(report_message),
-        check_cancellation: None,
+        check_cancellation: Some(check_cancellation_callback),
         report_intermediate_output: None,
         serial_write: Some(serial_write_callback),
     },
@@ -192,7 +212,13 @@ pub static PLUGIN_SET: LazyLock<PluginSet> = LazyLock::new(|| {
 });
 
 pub fn host_clone_orc_handle(src: OrcHandleBorrowed) -> Result<OrcHandle, Error> {
-    let mut out = OrcHandle::default();
+    // `out.handle` is the key `DeckRegistry::alloc` inserts under -- leaving it at its
+    // `Default::default()` value (0) would collide with whatever already holds handle id 0 and
+    // silently clone into (mutating in place) that unrelated entry instead of a fresh one.
+    let mut out = OrcHandle {
+        handle: HANDLE_COUNTER.fetch_add(1, Ordering::Relaxed),
+        ..Default::default()
+    };
     let err = unsafe {
         host_create_proxy_deck(
             src.inner(),
@@ -203,6 +229,50 @@ pub fn host_clone_orc_handle(src: OrcHandleBorrowed) -> Result<OrcHandle, Error>
         )
     };
     Error::from_raw(err).map(|()| out)
+}
+
+/// Converts an arbitrary handle into a `Deck<u8>` handle via `deck_to_str` -- dispatching to the
+/// owning plugin for a plugin type, or calling `orc_sdk::to_str_deck` directly for a built-in
+/// one. Mirrors pyorc's `host_deck_to_str`.
+pub fn host_deck_to_str(input: &OrcHandle) -> Result<OrcHandle, Error> {
+    let mut out = OrcHandle {
+        handle: HANDLE_COUNTER.fetch_add(1, Ordering::Relaxed),
+        ..Default::default()
+    };
+    let plugin_set: &PluginSet = &PLUGIN_SET;
+    match plugin_set.get_type_owner(input.type_id) {
+        Some(TypeOwner::Plugin(plugin_index, _)) => {
+            let plugin = &plugin_set.plugins()[*plugin_index];
+            plugin.to_str_deck(input, &mut out)?;
+        }
+        Some(TypeOwner::BuiltIn(_)) => {
+            REGISTRY.alloc::<u8>(&mut out)?;
+            REGISTRY
+                .with_mut(&[out.handle], |decks| -> Result<(), Error> {
+                    let deck = decks[0]
+                        .downcast_mut::<orc_sdk::Deck<u8>>()
+                        .ok_or(Error::DeckTypeMismatch)?;
+                    match input.type_id {
+                        ORC_TYPE_U8 => orc_sdk::to_str_deck::<u8>(input, deck),
+                        ORC_TYPE_U16 => orc_sdk::to_str_deck::<u16>(input, deck),
+                        ORC_TYPE_U32 => orc_sdk::to_str_deck::<u32>(input, deck),
+                        ORC_TYPE_U64 => orc_sdk::to_str_deck::<u64>(input, deck),
+                        ORC_TYPE_I8 => orc_sdk::to_str_deck::<i8>(input, deck),
+                        ORC_TYPE_I16 => orc_sdk::to_str_deck::<i16>(input, deck),
+                        ORC_TYPE_I32 => orc_sdk::to_str_deck::<i32>(input, deck),
+                        ORC_TYPE_I64 => orc_sdk::to_str_deck::<i64>(input, deck),
+                        ORC_TYPE_F32 => orc_sdk::to_str_deck::<f32>(input, deck),
+                        ORC_TYPE_F64 => orc_sdk::to_str_deck::<f64>(input, deck),
+                        _ => Err(Error::DeckTypeMismatch),
+                    }?;
+                    unsafe { orc_sdk::update_handle_from_deck(deck, &mut out) };
+                    Ok(())
+                })
+                .flatten()?;
+        }
+        None => return Err(Error::InvalidProxy),
+    }
+    Ok(out)
 }
 
 fn main() -> eframe::Result {
@@ -233,6 +303,16 @@ fn main() -> eframe::Result {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default().with_inner_size([1280.0, 800.0]),
         renderer: eframe::Renderer::Wgpu,
+        // egui-wgpu's default (`SurfaceConfig::HIGH_THROUGHPUT`) lets the presentation engine
+        // queue up to 2 frames ahead, trading latency for smoothness — the wrong trade for a
+        // node editor, which has near-zero GPU work per frame and nothing to smooth over. That
+        // queueing is exactly why dragging a node visibly lags behind the cursor and only
+        // catches up once it stops: each frame is correct, just 1-2 frames stale by the time
+        // it's actually presented. `LOW_LATENCY` caps the queue at 1 frame instead.
+        wgpu_options: eframe::egui_wgpu::WgpuConfiguration {
+            surface: eframe::egui_wgpu::SurfaceConfig::LOW_LATENCY,
+            ..Default::default()
+        },
         ..Default::default()
     };
     eframe::run_native(

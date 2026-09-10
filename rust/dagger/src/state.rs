@@ -1,11 +1,16 @@
 use crate::canvas::Transform;
+use crate::const_edit;
 use crate::context_menu::ContextMenuState;
+use crate::exec;
+use crate::inspect;
 use crate::interaction::SelectBoxKind;
 use crate::layout;
 use crate::render;
 use eframe::egui::{self, Rect};
-use orc_sdk::{NodeProperty, OH, Workflow};
+use orc_sdk::{NH, NodeProperty, OH, OrcHandle, OutputProperty, Workflow};
+use std::cell::Cell;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 pub struct EditorState {
     pub workflow: Workflow,
@@ -44,6 +49,41 @@ pub struct EditorState {
     /// positions, selection, pan/zoom etc. don't count — none of that is persisted to disk, so
     /// none of it should mark the file dirty.
     pub dirty: bool,
+    /// The OS window title as of the last time it was actually set, so `update_window_title` can
+    /// skip `ViewportCommand::Title` on frames where nothing changed — sending it unconditionally
+    /// every frame (as plain dragging does, at whatever frame rate the drag repaints at) makes an
+    /// OS call for no reason on the overwhelming majority of frames.
+    pub(crate) last_window_title: String,
+    /// Cached execution result per output pin, `Arc`-wrapped so an in-flight job on another
+    /// thread can share a clone without copying the underlying deck — see "Handle lifetime
+    /// across threads" in PROJECT.org. The "not yet computed" sentinel is a handle whose
+    /// `free_fn` is `None` (the zeroed default), not a specific `handle` id.
+    pub computed_outputs: OutputProperty<Arc<OrcHandle>>,
+    /// Bumped (not just flagged) whenever a node is directly edited or something upstream of it
+    /// is. A node is settled once its cached result reflects its current `dirty_version`.
+    pub dirty_version: NodeProperty<u64>,
+    /// Set when a node's last execution attempt returned a real (non-cancellation) error.
+    /// Cleared the next time it computes successfully.
+    pub execution_error: NodeProperty<Option<String>>,
+    /// Scheduling bookkeeping private to `exec` (in-flight jobs, the dispatch worklist).
+    pub(crate) exec: exec::ExecState,
+    /// Cached `deck_to_str` text per Inspect node, refreshed lazily (only when the upstream
+    /// value actually changes) rather than reconverted every frame.
+    pub(crate) inspect_cache: NodeProperty<inspect::InspectCache>,
+    /// Whether an Inspect or Constant node's content is currently popped out into its own OS
+    /// window. Set by clicking its pop-out button; cleared once that window's close is observed
+    /// (see `inspect::update_popouts`) — there is no other way back to `false`, so a node whose
+    /// window the user just closed still shows `true` for one more frame before the check runs.
+    pub(crate) content_popout: NodeProperty<bool>,
+    /// Per-row edit buffers for a Constant node's editable ruler display, and whether its handle
+    /// is actually editable at all (see `const_edit::is_editable`).
+    pub(crate) const_edit_cache: NodeProperty<const_edit::ConstEditCache>,
+    /// Set by `const_edit::insert_after` for the row the new value landed at; read (and cleared)
+    /// by `render::draw_editable_const_content` the next time it draws that row, to steal
+    /// keyboard focus onto it -- matches the "press Enter, keep typing on the new row" feel of a
+    /// spreadsheet. A `Cell`, not a `NodeProperty`, since it's read from `render.rs` through only
+    /// `&EditorState` and needs no per-node storage or garbage collection, just one slot.
+    pub(crate) pending_focus_row: Cell<Option<(NH, usize)>>,
 }
 
 impl EditorState {
@@ -52,7 +92,14 @@ impl EditorState {
         let node_sizes = workflow.create_node_property();
         let node_in_cycle = workflow.create_node_property();
         let selected = workflow.create_node_property();
-        Self {
+        let computed_outputs = workflow.create_output_property();
+        let dirty_version = workflow.create_node_property();
+        let execution_error = workflow.create_node_property();
+        let inspect_cache = workflow.create_node_property();
+        let content_popout = workflow.create_node_property();
+        let const_edit_cache = workflow.create_node_property();
+        let exec_state = exec::ExecState::new(&mut workflow);
+        let mut state = Self {
             workflow,
             node_positions,
             node_sizes,
@@ -68,7 +115,18 @@ impl EditorState {
             current_path: None,
             file_error: None,
             dirty: false,
-        }
+            last_window_title: String::new(),
+            computed_outputs,
+            dirty_version,
+            execution_error,
+            exec: exec_state,
+            inspect_cache,
+            content_popout,
+            const_edit_cache,
+            pending_focus_row: Cell::new(None),
+        };
+        exec::mark_all_dirty(&mut state);
+        state
     }
 
     /// Re-measure node sizes from the current labels.
