@@ -297,6 +297,16 @@ fn main() -> eframe::Result {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default().with_inner_size([1280.0, 800.0]),
         renderer: eframe::Renderer::Wgpu,
+        // egui-wgpu's default (`SurfaceConfig::HIGH_THROUGHPUT`) lets the presentation engine
+        // queue up to 2 frames ahead, trading latency for smoothness — the wrong trade for a
+        // node editor, which has near-zero GPU work per frame and nothing to smooth over. That
+        // queueing is exactly why dragging a node visibly lags behind the cursor and only
+        // catches up once it stops: each frame is correct, just 1-2 frames stale by the time
+        // it's actually presented. `LOW_LATENCY` caps the queue at 1 frame instead.
+        wgpu_options: eframe::egui_wgpu::WgpuConfiguration {
+            surface: eframe::egui_wgpu::SurfaceConfig::LOW_LATENCY,
+            ..Default::default()
+        },
         ..Default::default()
     };
     eframe::run_native(

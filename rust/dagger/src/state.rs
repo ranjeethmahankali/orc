@@ -47,6 +47,11 @@ pub struct EditorState {
     /// positions, selection, pan/zoom etc. don't count — none of that is persisted to disk, so
     /// none of it should mark the file dirty.
     pub dirty: bool,
+    /// The OS window title as of the last time it was actually set, so `update_window_title` can
+    /// skip `ViewportCommand::Title` on frames where nothing changed — sending it unconditionally
+    /// every frame (as plain dragging does, at whatever frame rate the drag repaints at) makes an
+    /// OS call for no reason on the overwhelming majority of frames.
+    pub(crate) last_window_title: String,
     /// Cached execution result per output pin, `Arc`-wrapped so an in-flight job on another
     /// thread can share a clone without copying the underlying deck — see "Handle lifetime
     /// across threads" in PROJECT.org. The "not yet computed" sentinel is a handle whose
@@ -92,6 +97,7 @@ impl EditorState {
             current_path: None,
             file_error: None,
             dirty: false,
+            last_window_title: String::new(),
             computed_outputs,
             dirty_version,
             execution_error,

@@ -16,8 +16,8 @@ orc.load_plugins(search_dir)
 
 
 def test_pipeline():
-    x = orc.make_deck([1.23])
-    y = orc.make_deck([2.34])
+    x = orc.make_deck([1.23, 2.23, 3.23, 4.23])
+    y = orc.make_deck([2.34, 3.45])
     summed = orc.add(x, y)
     scale = orc.make_deck([2.0])
     scaled = orc.multiply(summed, scale)

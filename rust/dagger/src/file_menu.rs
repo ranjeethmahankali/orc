@@ -195,12 +195,18 @@ pub fn menu_bar(ui: &mut egui::Ui, state: &mut EditorState) {
 }
 
 /// Reflect the current file and dirty state in the OS window title, e.g. `Dagger - foo.orc*`.
-pub fn update_window_title(ctx: &egui::Context, state: &EditorState) {
+///
+/// Called unconditionally every frame, so this must not issue `ViewportCommand::Title` unless the
+/// title actually changed — winit's window-title setter is a real OS call (`SetWindowTextW` on
+/// Windows), and sending it on every single frame of a drag is enough overhead on its own to make
+/// dragging feel sluggish, independent of anything else this app does per frame.
+pub fn update_window_title(ctx: &egui::Context, state: &mut EditorState) {
     let dirty_mark = if state.dirty { "*" } else { "" };
-    ctx.send_viewport_cmd(egui::ViewportCommand::Title(format!(
-        "Dagger - {}{dirty_mark}",
-        display_name(state)
-    )));
+    let title = format!("Dagger - {}{dirty_mark}", display_name(state));
+    if title != state.last_window_title {
+        ctx.send_viewport_cmd(egui::ViewportCommand::Title(title.clone()));
+        state.last_window_title = title;
+    }
 }
 
 /// Popup reporting the last failed load/save, dismissed with its own close button or OK.

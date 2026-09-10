@@ -55,7 +55,7 @@ impl eframe::App for DaggerApp {
             file_menu::menu_bar(ui, &mut self.state);
         });
         file_menu::error_window(ui.ctx(), &mut self.state);
-        file_menu::update_window_title(ui.ctx(), &self.state);
+        file_menu::update_window_title(ui.ctx(), &mut self.state);
 
         egui::CentralPanel::default()
             .frame(egui::Frame::NONE)
