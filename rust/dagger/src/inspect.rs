@@ -90,11 +90,25 @@ pub fn update_popouts(ctx: &egui::Context, state: &mut EditorState) {
                 .with_title(title)
                 .with_inner_size([420.0, 320.0]),
             |ui, _class| {
-                egui::ScrollArea::both().show(ui, |ui| {
-                    ui.add(
-                        egui::Label::new(egui::RichText::new(&text).monospace())
-                            .wrap_mode(egui::TextWrapMode::Extend),
-                    );
+                // The `ui` handed to a viewport callback has no bounded `max_rect` of its own
+                // (nothing wraps it in a panel, unlike the root, which gets one from
+                // `egui::CentralPanel` in `app.rs`) -- so without this, `ScrollArea` measures
+                // "available height" as unbounded, never detects an overflow, and never shows a
+                // scrollbar or responds to the wheel at all. `CentralPanel` gives it the actual
+                // window size to measure against instead.
+                egui::CentralPanel::default().show(ui, |ui| {
+                    // Without `auto_shrink(false)` (the default is `true`), the scroll area
+                    // shrinks itself down to fit content shorter/narrower than the window,
+                    // instead of filling it -- which puts the scrollbar right next to the text
+                    // rather than pinned to the window's actual edge.
+                    egui::ScrollArea::both()
+                        .auto_shrink([false, false])
+                        .show(ui, |ui| {
+                            ui.add(
+                                egui::Label::new(egui::RichText::new(&text).monospace())
+                                    .wrap_mode(egui::TextWrapMode::Extend),
+                            );
+                        });
                 });
                 close_requested |= ui.ctx().input(|i| i.viewport().close_requested());
             },
