@@ -404,6 +404,9 @@ pub enum DagError {
     ReadError,
     VersionMismatch,
     SdkError(crate::Error),
+    /// A `Constant` node's handle is a type this crate doesn't own (a plugin-defined type), so
+    /// there is no generic way to spell its value as a Python literal. Carries the raw type id.
+    UnsupportedConstantType(u64),
 }
 
 impl std::fmt::Display for DagError {
@@ -428,6 +431,9 @@ impl std::fmt::Display for DagError {
             DagError::ReadError => write!(f, "Read error"),
             DagError::VersionMismatch => write!(f, "Version mismatch"),
             DagError::SdkError(e) => write!(f, "{}", e),
+            DagError::UnsupportedConstantType(type_id) => {
+                write!(f, "Unsupported constant type for codegen: {:#x}", type_id)
+            }
         }
     }
 }

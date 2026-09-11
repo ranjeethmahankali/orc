@@ -1355,6 +1355,66 @@ def t_workflow_save_load_multi_output():
 
 
 # ============================================================
+# to_python_script — workflow -> Python source round trip
+# ============================================================
+
+
+def t_to_python_script_matches_direct_execution():
+    """Generated Python code must compute the same thing as the original function it was
+    generated from, run directly (not re-traced) -- checked across several different inputs
+    since the workflow is parametric."""
+
+    def original(x, y):
+        s = orc.add(x, y)
+        return orc.add(s, s)
+
+    wf = orc.make_workflow(original)
+    script = wf.to_python_script()
+
+    namespace = {"orc": orc}
+    exec(script, namespace)
+    generated = namespace["generated_workflow"]
+
+    for a, b in [(1.0, 2.0), (-3.5, 10.0), (0.0, 0.0)]:
+        x = orc.make_deck([a])
+        y = orc.make_deck([b])
+        expected = orc.read_deck(original(x, y))
+        actual = orc.read_deck(generated(x, y))
+        assert expected == actual, f"mismatch for inputs {a}, {b}: {expected} vs {actual}"
+
+
+def t_to_python_script_nested_workflow_round_trips_through_make_workflow():
+    """A generated script for a workflow with a nested call must itself be a valid
+    `orc.make_workflow` source: re-tracing it must reconstruct the same nesting structure (the
+    nested function survives as its own named nested workflow) and the same numeric behavior,
+    across several different inputs."""
+
+    @orc.workflow_function
+    def double_add(a, b):
+        s = orc.add(a, b)
+        return orc.add(s, s)
+
+    def original(x, y):
+        return double_add(x, y)
+
+    wf = orc.make_workflow(original)
+    script = wf.to_python_script()
+
+    namespace = {"orc": orc}
+    exec(script, namespace)
+    generated_fn = namespace["generated_workflow"]
+    wf2 = orc.make_workflow(generated_fn)
+    assert wf2.has_nested_workflow("double_add")
+
+    for a, b in [(1.0, 2.0), (-3.5, 10.0)]:
+        x = orc.make_deck([a])
+        y = orc.make_deck([b])
+        expected = orc.read_deck(wf.run(x, y))
+        actual = orc.read_deck(wf2.run(x, y))
+        assert expected == actual, f"mismatch for inputs {a}, {b}: {expected} vs {actual}"
+
+
+# ============================================================
 # Interleaving immediate and deferred modes
 # ============================================================
 

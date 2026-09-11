@@ -187,6 +187,12 @@ impl PyWorkflow {
             .count_nested_calls(name)
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("{}", e)))
     }
+
+    fn to_python_script(&self) -> PyResult<String> {
+        self.workflow
+            .to_python_script()
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("{}", e)))
+    }
 }
 
 // =====================================================================
