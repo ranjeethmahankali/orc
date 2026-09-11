@@ -374,6 +374,10 @@ impl Workflow {
         }
         Ok(())
     }
+
+    pub fn to_python_script(&self) -> Result<String, DagError> {
+        todo!()
+    }
 }
 
 impl Graph {

@@ -152,13 +152,26 @@
   serialization story of the workflows throws a bit of a wrench into this. I've given this some
   thought in [[*tkwogf - Overhaul of workflow property serialization][this task]], but I don't yet know what the solution is. This requires more thought.
 
-* TODO Python code generation from a workflow
+* TODO Curve and Mesh related plugin functions
+  :PROPERTIES:
+  :CREATED:  2026-09-11 Fri 11:44
+  :END:
+
+* NEXT tl7i00 - Python code generation from a workflow
   :PROPERTIES:
   :CREATED:  2026-09-06 Sun 22:22
   :END:
+  :LOGBOOK:
+  - State "NEXT"       from "TODO"       [2026-09-11 Fri 11:41]
+  :END:
 
-  This should be easy to do. Need to think through the inspect nodes a little, but should be trivial
-  still.
+  This should be trivial. Walk the workflow in topological order, and emit lines of Python code that
+  calls the functions corresponding to the nodes. Inspect nodes should be ignored. Workflow inputs
+  should be mapped to arguments of the Python function generated. Labels should be turned into
+  variable names. Nested worflows should be emitted as Python functions, and the call nodes should
+  be calls to said functions. Generated Python functions should be decorated with
+  ~@orc.workflow_function~ so that the nested workflow survives the roundtrip conversion back to a
+  workflow.
 
 * DONE tkuzn6 - Node Editor UI App
   CLOSED: [2026-09-10 Thu 21:01]
