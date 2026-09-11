@@ -671,12 +671,25 @@ def t_functions_lists_expected():
 # download_workflow
 # ============================================================
 
+_pyorc_plugins_loaded = False
+
+
+def pyorc_with_plugins_loaded():
+    """Imports pyorc and loads plugins into it exactly once per process -- pyorc's plugin
+    registry is global and rejects a second `load_plugins` call, so every test that needs pyorc
+    to verify a downloaded artifact locally must share this instead of loading plugins itself."""
+    global _pyorc_plugins_loaded
+    import orc
+
+    if not _pyorc_plugins_loaded:
+        orc.load_plugins(build_dir)
+        _pyorc_plugins_loaded = True
+    return orc
+
 
 def t_download_workflow_add_mul():
     """Download a workflow and run it locally via pyorc."""
-    import orc
-
-    orc.load_plugins(build_dir)
+    orc = pyorc_with_plugins_loaded()
 
     sid = session_start()
     a = constant(sid, "f64", 1, 2, 3)
@@ -708,9 +721,7 @@ def t_download_python_script_add_mul():
     """Download a generated Python script and run it locally via pyorc, the same graph as
     t_download_workflow_add_mul -- the generated function's name comes from the requested output
     file's own stem, not from anything sent explicitly by the caller."""
-    import orc
-
-    orc.load_plugins(build_dir)
+    orc = pyorc_with_plugins_loaded()
 
     sid = session_start()
     a = constant(sid, "f64", 1, 2, 3)
