@@ -308,6 +308,9 @@ impl ServerInner {
             (Method::Post, "/download_workflow") => self
                 .download_workflow(&mut request, query)
                 .map(ApiResponse::Bytes),
+            (Method::Post, "/download_python_script") => self
+                .download_python_script(&mut request, query)
+                .map(ApiResponse::Bytes),
             _ => Err((404, "Not found".to_string())),
         };
         match result {
@@ -563,6 +566,35 @@ impl ServerInner {
         let mut buf = Vec::new();
         wf.write_to_msgpack(&PLUGIN_SET, &SERIAL_CONTEXT_ARENA, &mut buf)
             .map_err(|e| (500, format!("Failed to serialize workflow: {e}")))?;
+        Ok(buf)
+    }
+
+    // POST /download_python_script?session_id=N  body={"outputs": [id1, id2, ...], "name": "..."}
+    fn download_python_script(
+        &self,
+        request: &mut Request,
+        query: &str,
+    ) -> Result<Vec<u8>, (i32, String)> {
+        let params = parse_query(query);
+        let session_id = query_get_u64(&params, "session_id")?;
+        let body = Self::read_body(request)?;
+        let json = Self::parse_json(&body)?;
+        let obj = json_as_object(&json)?;
+        let output_ids = json_as_u64_array(
+            obj.get("outputs")
+                .ok_or((400, "Missing field: outputs".to_string()))?,
+        )?;
+        let name = Self::json_get_str(obj, "name")?;
+        let sessions = self.sessions.lock().unwrap();
+        let session = sessions
+            .get(&session_id)
+            .ok_or((404, "Session not found".to_string()))?;
+        let wf = session
+            .build_workflow(&output_ids)
+            .map_err(|e| (500, format!("Failed to build workflow: {e}")))?;
+        let mut buf = Vec::new();
+        wf.write_python_script(Some(name), &mut buf)
+            .map_err(|e| (500, format!("Failed to generate Python script: {e}")))?;
         Ok(buf)
     }
 

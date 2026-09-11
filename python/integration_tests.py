@@ -146,6 +146,12 @@ def download_workflow(sid, path, *output_ids):
     cli("download_workflow", sid, path, *[str(i) for i in output_ids])
 
 
+def download_python_script(sid, path, *output_ids):
+    """Download a generated Python script to the given path -- the generated function is named
+    after the file's own stem, e.g. "/tmp/foo.py" -> "def foo(...):"."""
+    cli("download_python_script", sid, path, *[str(i) for i in output_ids])
+
+
 # ============================================================
 # session — start / close
 # ============================================================
@@ -692,6 +698,45 @@ def t_download_workflow_add_mul():
     # Run the downloaded workflow locally with the same
     # constant values baked in — no inputs needed.
     results = graph.run()
+    if not isinstance(results, list):
+        results = [results]
+    vals = orc.read_deck(results[0])
+    assert vals == [22.0, 44.0, 66.0], f"Expected [22, 44, 66], got {vals}"
+
+
+def t_download_python_script_add_mul():
+    """Download a generated Python script and run it locally via pyorc, the same graph as
+    t_download_workflow_add_mul -- the generated function's name comes from the requested output
+    file's own stem, not from anything sent explicitly by the caller."""
+    import orc
+
+    orc.load_plugins(build_dir)
+
+    sid = session_start()
+    a = constant(sid, "f64", 1, 2, 3)
+    b = constant(sid, "f64", 10, 20, 30)
+    [s] = call(sid, "add", a, b)
+    c = constant(sid, "f64", 2)
+    [out] = call(sid, "multiply", s, c)
+    assert download_values(sid, out) == [22.0, 44.0, 66.0]
+
+    with tempfile.NamedTemporaryFile(suffix=".py", delete=False) as f:
+        script_path = f.name
+    try:
+        download_python_script(sid, script_path, out)
+        with open(script_path) as f:
+            source = f.read()
+    finally:
+        os.unlink(script_path)
+    session_close(sid)
+
+    fn_name = os.path.splitext(os.path.basename(script_path))[0]
+    assert f"def {fn_name}(" in source, f"expected def {fn_name}(...), got:\n{source}"
+
+    namespace = {"orc": orc}
+    exec(source, namespace)
+    wf = orc.make_workflow(namespace[fn_name])
+    results = wf.run()
     if not isinstance(results, list):
         results = [results]
     vals = orc.read_deck(results[0])

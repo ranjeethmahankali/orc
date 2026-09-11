@@ -11,6 +11,7 @@
  *   call <session_id> <func> <input_id>...     -> prints output_ids
  *   download <session_id> <handle_id>          -> prints type and values
  *   download_workflow <sid> <path> [output_ids...] -> writes .orc file
+ *   download_python_script <sid> <path> [output_ids...] -> writes .py file
  *
  * Supported types for 'constant': u8 u16 u32 u64 i8 i16 i32 i64 f32 f64
  */
@@ -540,6 +541,7 @@ static void usage(void)
     "  call <session_id> <func> <input_id>...     Print output handle_ids\n"
     "  download <session_id> <handle_id>          Print type and values\n"
     "  download_workflow <sid> <path> [ids...]     Write workflow to file\n"
+    "  download_python_script <sid> <path> [ids...] Write generated Python to file\n"
     "\n"
     "Types: u8 u16 u32 u64 i8 i16 i32 i64 f32 f64\n");
   exit(1);
@@ -769,6 +771,71 @@ static void cmd_download_workflow(char const *host,
   http_response_free(&resp);
 }
 
+/* Extracts the file name without its directory or extension from `path` (e.g. "/a/b/foo.py" ->
+ * "foo"), used to name the generated Python function after the requested output file -- no
+ * further validation; an unusual path just produces an unusual (or, per Python syntax, invalid)
+ * function name, the same as it would if a user typed one by hand. */
+static void path_stem(char const *path, char *out, size_t cap)
+{
+  char const *base = path;
+  for (char const *p = path; *p; p++) {
+    if (*p == '/' || *p == '\\') base = p + 1;
+  }
+  char const *dot = NULL;
+  for (char const *p = base; *p; p++) {
+    if (*p == '.') dot = p;
+  }
+  size_t len = dot ? (size_t)(dot - base) : strlen(base);
+  if (len >= cap) len = cap - 1;
+  memcpy(out, base, len);
+  out[len] = '\0';
+}
+
+static void cmd_download_python_script(char const *host,
+                                        uint16_t    port,
+                                        char const *sid_str,
+                                        char const *out_path,
+                                        int         n_outputs,
+                                        char      **output_strs)
+{
+  char name[256];
+  path_stem(out_path, name, sizeof(name));
+
+  char path[256];
+  snprintf(path, sizeof(path),
+           "/download_python_script?session_id=%s", sid_str);
+  Buf body;
+  buf_init(&body);
+  buf_append_str(&body, "{\"outputs\": [");
+  for (int i = 0; i < n_outputs; i++) {
+    if (i > 0) buf_append_str(&body, ", ");
+    buf_append_str(&body, output_strs[i]);
+  }
+  buf_append_str(&body, "], \"name\": \"");
+  buf_append_str(&body, name);
+  buf_append_str(&body, "\"}");
+  buf_append(&body, "\0", 1);
+  HttpResponse resp;
+  if (http_post_json(host, port, path, body.data, &resp) != 0) {
+    buf_free(&body);
+    die("POST /download_python_script failed");
+  }
+  buf_free(&body);
+  if (resp.status != 200) {
+    fprintf(stderr, "%s\n", resp.body);
+    http_response_free(&resp);
+    die("download_python_script failed");
+  }
+  FILE *f = fopen(out_path, "wb");
+  if (!f) {
+    http_response_free(&resp);
+    die("Failed to open output file");
+  }
+  fwrite(resp.body, 1, resp.body_len, f);
+  fclose(f);
+  http_response_free(&resp);
+}
+
 /* ==================== Main ==================== */
 
 int main(int argc, char **argv)
@@ -806,6 +873,9 @@ int main(int argc, char **argv)
   } else if (strcmp(cmd, "download_workflow") == 0) {
     if (argc < 6) usage();  /* host port download_workflow sid outpath [output_ids...] */
     cmd_download_workflow(host, port, argv[4], argv[5], argc - 6, &argv[6]);
+  } else if (strcmp(cmd, "download_python_script") == 0) {
+    if (argc < 6) usage();  /* host port download_python_script sid outpath [output_ids...] */
+    cmd_download_python_script(host, port, argv[4], argv[5], argc - 6, &argv[6]);
   } else {
     usage();
   }
