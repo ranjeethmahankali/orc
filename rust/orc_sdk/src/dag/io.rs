@@ -388,16 +388,31 @@ impl Workflow {
     /// is a faithful transcription of the graph as authored, not a dead-code-eliminating
     /// optimizer. Only `Inspect` nodes are skipped, since they have no outputs and nothing to
     /// compute. A cycle is reported the same way `run` reports one, via `DagError::CycleDetected`.
+    ///
+    /// A convenience wrapper around `write_python_script` for the common case of just wanting
+    /// the result as a `String` in memory; write directly to a file (or any other
+    /// `std::io::Write` sink) via `write_python_script` instead if that's not what's needed.
     pub fn to_python_script(&self, name: Option<&str>) -> Result<String, DagError> {
-        let mut out = String::new();
+        let mut buf = Vec::new();
+        self.write_python_script(name, &mut buf)?;
+        String::from_utf8(buf).map_err(|_| DagError::WriteError)
+    }
+
+    /// Same as `to_python_script`, but writes directly into `out` -- a file, a `Vec<u8>`,
+    /// anything implementing `std::io::Write` -- instead of building the whole script in memory
+    /// as a `String` first.
+    pub fn write_python_script(
+        &self,
+        name: Option<&str>,
+        out: &mut impl std::io::Write,
+    ) -> Result<(), DagError> {
         let mut emitted = HashSet::new();
         self.write_python_function(
-            &mut out,
+            out,
             name.unwrap_or("generated_workflow"),
             false,
             &mut emitted,
-        )?;
-        Ok(out)
+        )
     }
 
     /// Topological order over *every* node in the graph, not just ones reachable from
@@ -508,7 +523,7 @@ impl Workflow {
     /// it, so a nested function's own `def` always textually precedes its caller's.
     fn write_python_function(
         &self,
-        out: &mut impl std::fmt::Write,
+        out: &mut impl std::io::Write,
         fn_name: &str,
         decorate: bool,
         emitted: &mut HashSet<String>,
@@ -559,7 +574,8 @@ impl Workflow {
         if body.is_empty() && return_names.is_empty() {
             writeln!(out, "    pass").map_err(|_| DagError::WriteError)?;
         } else {
-            out.write_str(&body).map_err(|_| DagError::WriteError)?;
+            out.write_all(body.as_bytes())
+                .map_err(|_| DagError::WriteError)?;
             if !return_names.is_empty() {
                 writeln!(out, "    return {}", return_names.join(", "))
                     .map_err(|_| DagError::WriteError)?;
