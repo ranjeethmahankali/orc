@@ -415,44 +415,6 @@ impl Workflow {
         )
     }
 
-    /// Topological order over *every* node in the graph, not just ones reachable from
-    /// `workflow_outputs` (unlike `run`) -- a dead/unused branch still needs to be transcribed.
-    /// Otherwise mirrors `run`'s own Euler-tour cycle detection exactly: a node revisited while
-    /// still on the current path closes a cycle.
-    fn topological_order(&self) -> Result<Vec<NH>, DagError> {
-        let mut finished = HashSet::new();
-        let mut on_path = HashSet::new();
-        let mut order = Vec::new();
-        for root in self.node_iter() {
-            if finished.contains(&root) {
-                continue;
-            }
-            let mut stack = vec![(root, false)];
-            while let Some((node, visited_children)) = stack.pop() {
-                if finished.contains(&node) {
-                    continue;
-                }
-                if visited_children {
-                    order.push(node);
-                    finished.insert(node);
-                    on_path.remove(&node);
-                } else {
-                    if on_path.contains(&node) {
-                        return Err(DagError::CycleDetected);
-                    }
-                    stack.push((node, true));
-                    on_path.insert(node);
-                    for ih in self.node_inputs(node) {
-                        if let Some(oh) = self.input_source(ih) {
-                            stack.push((self.node_from_output(oh), false));
-                        }
-                    }
-                }
-            }
-        }
-        Ok(order)
-    }
-
     /// The Python variable name a node's output pin should be referred to by: its `output_label`
     /// when one has been set, otherwise a synthetic `r_{index}` (matching the register-naming
     /// convention of a typical flat-IR-to-source emitter). Pin labels are essentially never set
@@ -1566,6 +1528,34 @@ mod test {
             !script.contains("generated_workflow"),
             "the default name must not leak in when a name is given:\n{script}"
         );
+    }
+
+    /// `write_python_script` must work with a real `std::io::Write` sink, not just an in-memory
+    /// buffer -- this is the whole point of it being generic over `io::Write` rather than
+    /// `fmt::Write` (which `File` doesn't implement) or hardcoded to build a `String`.
+    #[test]
+    fn t_write_python_script_writes_directly_to_a_file() {
+        let mut wf = Workflow::default();
+        let mut outs = [OH::default()];
+        wf.add_function(make_func_info("source", 0, 1), &mut [], &mut outs)
+            .unwrap();
+        wf.set_outputs(&[(outs[0], String::new())]).unwrap();
+
+        let path = std::env::temp_dir().join(format!(
+            "orc_sdk_test_write_python_script_{}.py",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        {
+            let mut file = std::fs::File::create(&path).unwrap();
+            wf.write_python_script(None, &mut file).unwrap();
+        }
+        let written = std::fs::read_to_string(&path).unwrap();
+        std::fs::remove_file(&path).ok();
+
+        assert_eq!(written, wf.to_python_script(None).unwrap());
     }
 
     #[test]
