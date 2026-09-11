@@ -483,6 +483,14 @@ impl Workflow {
     /// A `NestedCall` node's referenced workflow is recursively emitted (memoized by name in
     /// `emitted`, shared across the whole recursion) immediately before the first line that calls
     /// it, so a nested function's own `def` always textually precedes its caller's.
+    ///
+    /// Walks every node in the graph via the same iterative Euler tour `Workflow::run` uses --
+    /// a node is pushed twice, and a line of code is emitted for it on the *second* visit, once
+    /// everything it depends on has already been emitted, which is exactly what makes the
+    /// emission order topological. Unlike `run`, every node is a starting point (not just ones
+    /// reachable from `workflow_outputs`), since a dead/unused branch still needs to be
+    /// transcribed, and a node revisited while still on the current path closes a cycle, reported
+    /// the same way `run` reports one.
     fn write_python_function(
         &self,
         out: &mut impl std::io::Write,
@@ -491,33 +499,59 @@ impl Workflow {
         emitted: &mut HashSet<String>,
     ) -> Result<(), DagError> {
         let node_infos = self.node_infos.try_borrow()?;
-        let order = self.topological_order()?;
         let mut body = String::new();
-        for nh in order {
-            match &node_infos[nh] {
-                NodeInfo::Inspect { .. } => continue,
-                NodeInfo::Constant(handle) => {
-                    let oh = self
-                        .node_outputs(nh)
-                        .next()
-                        .ok_or(DagError::InvalidOutputs)?;
-                    let name = self.output_var_name(oh)?;
-                    let literal = constant_literal(handle)?;
-                    writeln!(body, "    {name} = {literal}").map_err(|_| DagError::WriteError)?;
+        let mut finished = HashSet::new();
+        let mut on_path = HashSet::new();
+        for root in self.node_iter() {
+            if finished.contains(&root) {
+                continue;
+            }
+            let mut stack = vec![(root, false)];
+            while let Some((node, visited_children)) = stack.pop() {
+                if finished.contains(&node) {
+                    continue;
                 }
-                NodeInfo::Function(func_info) => {
-                    self.write_call(&mut body, nh, &format!("orc.{}", func_info.name))?;
-                }
-                NodeInfo::NestedCall { workflow_name } => {
-                    if !emitted.contains(workflow_name) {
-                        emitted.insert(workflow_name.clone());
-                        let nested = self
-                            .nested_workflows
-                            .get(workflow_name)
-                            .ok_or(DagError::InvalidFunction)?;
-                        nested.write_python_function(out, workflow_name, true, emitted)?;
+                if visited_children {
+                    match &node_infos[node] {
+                        NodeInfo::Inspect { .. } => {}
+                        NodeInfo::Constant(handle) => {
+                            let oh = self
+                                .node_outputs(node)
+                                .next()
+                                .ok_or(DagError::InvalidOutputs)?;
+                            let name = self.output_var_name(oh)?;
+                            let literal = constant_literal(handle)?;
+                            writeln!(body, "    {name} = {literal}")
+                                .map_err(|_| DagError::WriteError)?;
+                        }
+                        NodeInfo::Function(func_info) => {
+                            self.write_call(&mut body, node, &format!("orc.{}", func_info.name))?;
+                        }
+                        NodeInfo::NestedCall { workflow_name } => {
+                            if !emitted.contains(workflow_name) {
+                                emitted.insert(workflow_name.clone());
+                                let nested = self
+                                    .nested_workflows
+                                    .get(workflow_name)
+                                    .ok_or(DagError::InvalidFunction)?;
+                                nested.write_python_function(out, workflow_name, true, emitted)?;
+                            }
+                            self.write_call(&mut body, node, workflow_name)?;
+                        }
                     }
-                    self.write_call(&mut body, nh, workflow_name)?;
+                    finished.insert(node);
+                    on_path.remove(&node);
+                } else {
+                    if on_path.contains(&node) {
+                        return Err(DagError::CycleDetected);
+                    }
+                    stack.push((node, true));
+                    on_path.insert(node);
+                    for ih in self.node_inputs(node) {
+                        if let Some(oh) = self.input_source(ih) {
+                            stack.push((self.node_from_output(oh), false));
+                        }
+                    }
                 }
             }
         }
