@@ -1,9 +1,11 @@
-use super::{DagError, Graph, IH, NH, NodeInfo, OH, Workflow};
+use super::{DagError, Graph, Handle, IH, NH, NodeInfo, OH, Workflow};
 use crate::{OrcHandle, PluginSet, TypeOwner};
 use rmp::{
     decode::{RmpRead, RmpReadErr, ValueReadError},
     encode::{RmpWrite, RmpWriteErr, ValueWriteError},
 };
+use std::collections::HashSet;
+use std::fmt::Write as _;
 
 fn serialize_handle(
     handle: &OrcHandle,
@@ -374,6 +376,287 @@ impl Workflow {
         }
         Ok(())
     }
+
+    /// Generates a Python source script that reconstructs this workflow's computation, in the
+    /// `pyorc` dialect (`import orc`; plugin functions called as `orc.<name>(...)`; nested
+    /// workflows as `@orc.workflow_function`-decorated helper functions). The outermost function
+    /// is named `name`, or `generated_workflow` if `name` is `None`; either way it's undecorated,
+    /// ready to be handed to `orc.make_workflow(...)` by whoever uses the script -- matching how
+    /// a plain (non-nested) workflow is authored in `workflows/gen_test.py`.
+    ///
+    /// Every node in the graph is emitted, including ones no declared output depends on -- this
+    /// is a faithful transcription of the graph as authored, not a dead-code-eliminating
+    /// optimizer. Only `Inspect` nodes are skipped, since they have no outputs and nothing to
+    /// compute. A cycle is reported the same way `run` reports one, via `DagError::CycleDetected`.
+    ///
+    /// A convenience wrapper around `write_python_script` for the common case of just wanting
+    /// the result as a `String` in memory; write directly to a file (or any other
+    /// `std::io::Write` sink) via `write_python_script` instead if that's not what's needed.
+    pub fn to_python_script(&self, name: Option<&str>) -> Result<String, DagError> {
+        let mut buf = Vec::new();
+        self.write_python_script(name, &mut buf)?;
+        String::from_utf8(buf).map_err(|_| DagError::WriteError)
+    }
+
+    /// Same as `to_python_script`, but writes directly into `out` -- a file, a `Vec<u8>`,
+    /// anything implementing `std::io::Write` -- instead of building the whole script in memory
+    /// as a `String` first.
+    pub fn write_python_script(
+        &self,
+        name: Option<&str>,
+        out: &mut impl std::io::Write,
+    ) -> Result<(), DagError> {
+        let mut emitted = HashSet::new();
+        self.write_python_function(
+            out,
+            name.unwrap_or("generated_workflow"),
+            false,
+            &mut emitted,
+        )
+    }
+
+    /// The Python variable name a node's output pin should be referred to by: its `output_label`
+    /// when one has been set, otherwise a synthetic `r_{index}` (matching the register-naming
+    /// convention of a typical flat-IR-to-source emitter). Pin labels are essentially never set
+    /// on a plain plugin-function call today (pyorc's tracer never calls `set_output_label`), so
+    /// the synthetic fallback is the common case in practice, not just an edge case.
+    fn output_var_name(&self, oh: OH) -> Result<String, DagError> {
+        let label = self.output_label(oh)?;
+        Ok(if label.is_empty() {
+            format!("r_{}", oh.index())
+        } else {
+            label
+        })
+    }
+
+    /// The Python expression to use for `ih`'s current value: the upstream node's own output
+    /// variable if connected, the enclosing function's own parameter if `ih` is a dangling pin
+    /// registered as a workflow input, or `None` for a pin that's dangling and not registered
+    /// (there is nothing meaningful to reference).
+    fn input_value_expr(&self, ih: IH) -> Result<String, DagError> {
+        match self.input_source(ih) {
+            Some(oh) => self.output_var_name(oh),
+            None => match self.workflow_input_position(ih)? {
+                Some(i) => Ok(self
+                    .input_names()
+                    .get(i)
+                    .cloned()
+                    .unwrap_or_else(|| format!("arg_{i}"))),
+                None => Ok("None".to_string()),
+            },
+        }
+    }
+
+    /// Appends one call statement for `nh` (a `Function` or `NestedCall` node) to `body`:
+    /// `name0, name1 = callee(arg0, arg1)`, tuple-style for more than one output, or a bare
+    /// `callee(arg0)` expression statement if it has no outputs at all.
+    fn write_call(
+        &self,
+        body: &mut impl std::fmt::Write,
+        nh: NH,
+        callee: &str,
+    ) -> Result<(), DagError> {
+        let args = self
+            .node_inputs(nh)
+            .map(|ih| self.input_value_expr(ih))
+            .collect::<Result<Vec<_>, _>>()?;
+        let names = self
+            .node_outputs(nh)
+            .map(|oh| self.output_var_name(oh))
+            .collect::<Result<Vec<_>, _>>()?;
+        if names.is_empty() {
+            writeln!(body, "    {callee}({})", args.join(", "))
+        } else {
+            writeln!(
+                body,
+                "    {} = {callee}({})",
+                names.join(", "),
+                args.join(", ")
+            )
+        }
+        .map_err(|_| DagError::WriteError)
+    }
+
+    /// Emits `fn_name`'s own `def` into `out` -- decorated with `@orc.workflow_function` when
+    /// `decorate` is true, which every nested workflow needs so it survives a round trip back
+    /// through `orc.make_workflow`, but the outermost function does not (see `to_python_script`).
+    /// A `NestedCall` node's referenced workflow is recursively emitted (memoized by name in
+    /// `emitted`, shared across the whole recursion) immediately before the first line that calls
+    /// it, so a nested function's own `def` always textually precedes its caller's.
+    ///
+    /// Walks every node in the graph via the same iterative Euler tour `Workflow::run` uses --
+    /// a node is pushed twice, and a line of code is emitted for it on the *second* visit, once
+    /// everything it depends on has already been emitted, which is exactly what makes the
+    /// emission order topological. Unlike `run`, every node is a starting point (not just ones
+    /// reachable from `workflow_outputs`), since a dead/unused branch still needs to be
+    /// transcribed, and a node revisited while still on the current path closes a cycle, reported
+    /// the same way `run` reports one.
+    fn write_python_function(
+        &self,
+        out: &mut impl std::io::Write,
+        fn_name: &str,
+        decorate: bool,
+        emitted: &mut HashSet<String>,
+    ) -> Result<(), DagError> {
+        let node_infos = self.node_infos.try_borrow()?;
+        let mut body = String::new();
+        let mut finished = HashSet::new();
+        let mut on_path = HashSet::new();
+        for root in self.node_iter() {
+            if finished.contains(&root) {
+                continue;
+            }
+            let mut stack = vec![(root, false)];
+            while let Some((node, visited_children)) = stack.pop() {
+                if finished.contains(&node) {
+                    continue;
+                }
+                if visited_children {
+                    match &node_infos[node] {
+                        NodeInfo::Inspect { .. } => {}
+                        NodeInfo::Constant(handle) => {
+                            let oh = self
+                                .node_outputs(node)
+                                .next()
+                                .ok_or(DagError::InvalidOutputs)?;
+                            let name = self.output_var_name(oh)?;
+                            let literal = constant_literal(handle)?;
+                            writeln!(body, "    {name} = {literal}")
+                                .map_err(|_| DagError::WriteError)?;
+                        }
+                        NodeInfo::Function(func_info) => {
+                            self.write_call(&mut body, node, &format!("orc.{}", func_info.name))?;
+                        }
+                        NodeInfo::NestedCall { workflow_name } => {
+                            if !emitted.contains(workflow_name) {
+                                emitted.insert(workflow_name.clone());
+                                let nested = self
+                                    .nested_workflows
+                                    .get(workflow_name)
+                                    .ok_or(DagError::InvalidFunction)?;
+                                nested.write_python_function(out, workflow_name, true, emitted)?;
+                            }
+                            self.write_call(&mut body, node, workflow_name)?;
+                        }
+                    }
+                    finished.insert(node);
+                    on_path.remove(&node);
+                } else {
+                    if on_path.contains(&node) {
+                        return Err(DagError::CycleDetected);
+                    }
+                    stack.push((node, true));
+                    on_path.insert(node);
+                    for ih in self.node_inputs(node) {
+                        if let Some(oh) = self.input_source(ih) {
+                            stack.push((self.node_from_output(oh), false));
+                        }
+                    }
+                }
+            }
+        }
+
+        let return_names = self
+            .workflow_outputs()
+            .iter()
+            .map(|(oh, _name)| self.output_var_name(*oh))
+            .collect::<Result<Vec<_>, _>>()?;
+
+        if decorate {
+            writeln!(out, "@orc.workflow_function").map_err(|_| DagError::WriteError)?;
+        }
+        writeln!(out, "def {fn_name}({}):", self.input_names().join(", "))
+            .map_err(|_| DagError::WriteError)?;
+        if body.is_empty() && return_names.is_empty() {
+            writeln!(out, "    pass").map_err(|_| DagError::WriteError)?;
+        } else {
+            out.write_all(body.as_bytes())
+                .map_err(|_| DagError::WriteError)?;
+            if !return_names.is_empty() {
+                writeln!(out, "    return {}", return_names.join(", "))
+                    .map_err(|_| DagError::WriteError)?;
+            }
+        }
+        writeln!(out).map_err(|_| DagError::WriteError)?;
+        Ok(())
+    }
+}
+
+/// Formats one leaf item's value as Python source text. Integer types just use their `Display`
+/// output; floats always keep an explicit decimal point (`1` -> `1.0`) so the generated literal
+/// reads unambiguously as a float regardless of how `orc.make_deck`'s dtype-driven construction
+/// would otherwise coerce a bare integer literal.
+trait PythonLiteral {
+    fn python_literal(&self) -> String;
+}
+
+macro_rules! impl_int_python_literal {
+    ($($t:ty),*) => {
+        $(impl PythonLiteral for $t {
+            fn python_literal(&self) -> String {
+                self.to_string()
+            }
+        })*
+    };
+}
+impl_int_python_literal!(u8, u16, u32, u64, i8, i16, i32, i64);
+
+macro_rules! impl_float_python_literal {
+    ($($t:ty),*) => {
+        $(impl PythonLiteral for $t {
+            fn python_literal(&self) -> String {
+                let s = self.to_string();
+                if s.contains('.') || s.contains('e') || s.contains("inf") || s.contains("nan") {
+                    s
+                } else {
+                    format!("{s}.0")
+                }
+            }
+        })*
+    };
+}
+impl_float_python_literal!(f32, f64);
+
+/// Recursively renders one `DeckView` as nested Python list syntax -- `[1.0, 2.0]`,
+/// `[[1, 2], [3, 4]]`, or (at depth 0) a bare scalar with no brackets at all -- matching exactly
+/// the nesting depth `orc.make_deck` would need to reconstruct the same structure.
+fn deck_view_literal<T: Default + PythonLiteral>(view: crate::DeckView<'_, T>) -> String {
+    if view.depth() == 0 {
+        view.as_ref().python_literal()
+    } else {
+        let parts: Vec<String> = view.child().advance_iter().map(deck_view_literal).collect();
+        format!("[{}]", parts.join(", "))
+    }
+}
+
+fn deck_literal<T: crate::TOrcData + Default + PythonLiteral>(
+    handle: &OrcHandle,
+) -> Result<String, DagError> {
+    let view = crate::DeckView::<T>::from_handle(handle).map_err(DagError::SdkError)?;
+    Ok(deck_view_literal(view))
+}
+
+/// Renders a `Constant` node's handle as an `orc.make_deck(...)` call, preserving both its exact
+/// nested structure (via `deck_view_literal`) and its exact scalar type via an explicit `dtype`
+/// kwarg (never omitted, even for the `f64` default, to avoid depending on whatever `make_deck`
+/// would infer from a bare Python literal with no dtype hint). Errors on any type this crate
+/// doesn't own (a plugin-defined type), since there's no generic way to know how to spell an
+/// arbitrary plugin type as a Python literal.
+fn constant_literal(handle: &OrcHandle) -> Result<String, DagError> {
+    let (literal, dtype) = match handle.type_id {
+        crate::ORC_TYPE_U8 => (deck_literal::<u8>(handle)?, "u8"),
+        crate::ORC_TYPE_U16 => (deck_literal::<u16>(handle)?, "u16"),
+        crate::ORC_TYPE_U32 => (deck_literal::<u32>(handle)?, "u32"),
+        crate::ORC_TYPE_U64 => (deck_literal::<u64>(handle)?, "u64"),
+        crate::ORC_TYPE_I8 => (deck_literal::<i8>(handle)?, "i8"),
+        crate::ORC_TYPE_I16 => (deck_literal::<i16>(handle)?, "i16"),
+        crate::ORC_TYPE_I32 => (deck_literal::<i32>(handle)?, "i32"),
+        crate::ORC_TYPE_I64 => (deck_literal::<i64>(handle)?, "i64"),
+        crate::ORC_TYPE_F32 => (deck_literal::<f32>(handle)?, "f32"),
+        crate::ORC_TYPE_F64 => (deck_literal::<f64>(handle)?, "f64"),
+        other => return Err(DagError::UnsupportedConstantType(other)),
+    };
+    Ok(format!("orc.make_deck({literal}, dtype=\"{dtype}\")"))
 }
 
 impl Graph {
@@ -553,7 +836,8 @@ impl<E: RmpWriteErr> From<ValueWriteError<E>> for DagError {
 #[cfg(test)]
 mod test {
     use crate::{
-        DagError, NodeInfo, Workflow,
+        DagError, FuncInfo, IH, NodeInfo, OH, OrcHandle, PluginSet, Workflow,
+        dag::Handle,
         host::test_harness::{PLUGINS, TestHarness},
         orc_dag,
     };
@@ -1206,5 +1490,283 @@ mod test {
         // x feeds into add(x,x), mul(x,x) — 4 links from the same constant output
         let wf2 = h.roundtrip(&wf);
         assert_workflows_equal(&wf, &wf2);
+    }
+
+    // ==================== to_python_script ====================
+
+    fn make_func_info(name: &str, n_in: usize, n_out: usize) -> FuncInfo {
+        FuncInfo {
+            name: name.to_string(),
+            desc: String::new(),
+            n_inputs: Some(n_in),
+            n_outputs: Some(n_out),
+            input_args: Default::default(),
+            output_args: Default::default(),
+            func: None,
+        }
+    }
+
+    fn constant_handle<T>(h: &TestHarness, deck: crate::Deck<T>) -> OrcHandle
+    where
+        T: crate::TOrcData + Default + Send + Sync + 'static,
+    {
+        let mut handle = OrcHandle {
+            handle: h
+                .handle_counter
+                .fetch_add(1, std::sync::atomic::Ordering::Relaxed),
+            ..Default::default()
+        };
+        h.registry
+            .alloc_with_value(Some(deck), &mut handle)
+            .unwrap();
+        handle
+    }
+
+    #[test]
+    fn t_to_python_script_simple_function_chain() {
+        let h = TestHarness::new();
+        let mut wf = Workflow::default();
+        let lhs = constant_handle(&h, crate::Deck::from_value(3.0f64));
+        let rhs = constant_handle(&h, crate::Deck::from_value(4.0f64));
+        let (_, lhs_out) = wf.add_constant(lhs).unwrap();
+        let (_, rhs_out) = wf.add_constant(rhs).unwrap();
+        let mut ins = [IH::default(); 2];
+        let mut outs = [OH::default(); 1];
+        wf.add_function(make_func_info("add", 2, 1), &mut ins, &mut outs)
+            .unwrap();
+        wf.connect(lhs_out, ins[0]).unwrap();
+        wf.connect(rhs_out, ins[1]).unwrap();
+        wf.set_outputs(&[(outs[0], String::new())]).unwrap();
+
+        let script = wf.to_python_script(None).unwrap();
+        let expected = format!(
+            "def generated_workflow():\n    r_{a} = orc.make_deck(3.0, dtype=\"f64\")\n    r_{b} = orc.make_deck(4.0, dtype=\"f64\")\n    r_{c} = orc.add(r_{a}, r_{b})\n    return r_{c}\n\n",
+            a = lhs_out.index(),
+            b = rhs_out.index(),
+            c = outs[0].index(),
+        );
+        assert_eq!(script, expected);
+    }
+
+    #[test]
+    fn t_to_python_script_uses_the_given_name_when_provided() {
+        let mut wf = Workflow::default();
+        let mut outs = [OH::default()];
+        wf.add_function(make_func_info("source", 0, 1), &mut [], &mut outs)
+            .unwrap();
+        wf.set_outputs(&[(outs[0], String::new())]).unwrap();
+
+        let script = wf.to_python_script(Some("my_workflow")).unwrap();
+        assert!(script.starts_with("def my_workflow():\n"), "got:\n{script}");
+        assert!(
+            !script.contains("generated_workflow"),
+            "the default name must not leak in when a name is given:\n{script}"
+        );
+    }
+
+    /// `write_python_script` must work with a real `std::io::Write` sink, not just an in-memory
+    /// buffer -- this is the whole point of it being generic over `io::Write` rather than
+    /// `fmt::Write` (which `File` doesn't implement) or hardcoded to build a `String`.
+    #[test]
+    fn t_write_python_script_writes_directly_to_a_file() {
+        let mut wf = Workflow::default();
+        let mut outs = [OH::default()];
+        wf.add_function(make_func_info("source", 0, 1), &mut [], &mut outs)
+            .unwrap();
+        wf.set_outputs(&[(outs[0], String::new())]).unwrap();
+
+        let path = std::env::temp_dir().join(format!(
+            "orc_sdk_test_write_python_script_{}.py",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        {
+            let mut file = std::fs::File::create(&path).unwrap();
+            wf.write_python_script(None, &mut file).unwrap();
+        }
+        let written = std::fs::read_to_string(&path).unwrap();
+        std::fs::remove_file(&path).ok();
+
+        assert_eq!(written, wf.to_python_script(None).unwrap());
+    }
+
+    #[test]
+    fn t_to_python_script_uses_output_label_when_set() {
+        let mut wf = Workflow::default();
+        let mut outs = [OH::default()];
+        wf.add_function(make_func_info("source", 0, 1), &mut [], &mut outs)
+            .unwrap();
+        wf.set_output_label(outs[0], "my_value".to_string())
+            .unwrap();
+        wf.set_outputs(&[(outs[0], String::new())]).unwrap();
+
+        let script = wf.to_python_script(None).unwrap();
+        assert_eq!(
+            script,
+            "def generated_workflow():\n    my_value = orc.source()\n    return my_value\n\n"
+        );
+    }
+
+    #[test]
+    fn t_to_python_script_detects_a_cycle() {
+        let mut wf = Workflow::default();
+        let mut a_in = [IH::default()];
+        let mut a_out = [OH::default()];
+        wf.add_function(make_func_info("a", 1, 1), &mut a_in, &mut a_out)
+            .unwrap();
+        let mut b_in = [IH::default()];
+        let mut b_out = [OH::default()];
+        wf.add_function(make_func_info("b", 1, 1), &mut b_in, &mut b_out)
+            .unwrap();
+        wf.connect(a_out[0], b_in[0]).unwrap();
+        wf.connect(b_out[0], a_in[0]).unwrap();
+        assert!(matches!(
+            wf.to_python_script(None),
+            Err(DagError::CycleDetected)
+        ));
+    }
+
+    #[test]
+    fn t_to_python_script_emits_a_nested_workflow_function_before_its_caller() {
+        let h = TestHarness::new();
+        let mut inner = Workflow::default();
+        let mut inner_ins = [IH::default(); 2];
+        let mut inner_outs = [OH::default(); 1];
+        inner
+            .add_function(make_func_info("add", 2, 1), &mut inner_ins, &mut inner_outs)
+            .unwrap();
+        inner
+            .set_inputs(&[(inner_ins[0], 0, "a"), (inner_ins[1], 1, "b")])
+            .unwrap();
+        inner
+            .set_outputs(&[(inner_outs[0], String::new())])
+            .unwrap();
+
+        let mut outer = Workflow::default();
+        outer
+            .push_nested_workflow("double".to_string(), inner, &PluginSet::default())
+            .unwrap();
+        let x = constant_handle(&h, crate::Deck::from_value(1.0f64));
+        let y = constant_handle(&h, crate::Deck::from_value(2.0f64));
+        let (_, x_out) = outer.add_constant(x).unwrap();
+        let (_, y_out) = outer.add_constant(y).unwrap();
+        let mut call_ins = [IH::default(); 2];
+        let mut call_outs = [OH::default(); 1];
+        outer
+            .add_nested_workflow_call("double", &mut call_ins, &mut call_outs)
+            .unwrap();
+        outer.connect(x_out, call_ins[0]).unwrap();
+        outer.connect(y_out, call_ins[1]).unwrap();
+        outer.set_outputs(&[(call_outs[0], String::new())]).unwrap();
+
+        let script = outer.to_python_script(None).unwrap();
+        let decorator_pos = script
+            .find("@orc.workflow_function")
+            .expect("nested def must be decorated");
+        let nested_def_pos = script
+            .find("def double(a, b):")
+            .expect("nested def must be emitted");
+        let outer_def_pos = script
+            .find("def generated_workflow():")
+            .expect("outer def must be emitted");
+        assert!(
+            decorator_pos < nested_def_pos,
+            "decorator must precede the nested def:\n{script}"
+        );
+        assert!(
+            nested_def_pos < outer_def_pos,
+            "nested def must precede its caller:\n{script}"
+        );
+        assert!(
+            script.contains(&format!(
+                "= double(r_{}, r_{})",
+                x_out.index(),
+                y_out.index()
+            )),
+            "got:\n{script}"
+        );
+    }
+
+    #[test]
+    fn t_to_python_script_emits_nodes_unreachable_from_any_output() {
+        let mut wf = Workflow::default();
+        let mut outs = [OH::default()];
+        wf.add_function(make_func_info("dead_end", 0, 1), &mut [], &mut outs)
+            .unwrap();
+        // No workflow outputs declared at all -- this node feeds nothing.
+        let script = wf.to_python_script(None).unwrap();
+        assert!(
+            script.contains("orc.dead_end()"),
+            "an unreachable node must still be transcribed:\n{script}"
+        );
+    }
+
+    #[test]
+    fn t_to_python_script_errors_on_an_opaque_constant_type() {
+        let mut wf = Workflow::default();
+        let handle = OrcHandle {
+            type_id: 0xdead_beef,
+            ..Default::default()
+        };
+        wf.add_constant(handle).unwrap();
+        assert!(matches!(
+            wf.to_python_script(None),
+            Err(DagError::UnsupportedConstantType(0xdead_beef))
+        ));
+    }
+
+    #[test]
+    fn t_to_python_script_maps_workflow_inputs_to_parameters() {
+        let mut wf = Workflow::default();
+        let mut ins = [IH::default(); 1];
+        let mut outs = [OH::default(); 1];
+        wf.add_function(make_func_info("negate", 1, 1), &mut ins, &mut outs)
+            .unwrap();
+        wf.set_inputs(&[(ins[0], 0, "value")]).unwrap();
+        wf.set_outputs(&[(outs[0], String::new())]).unwrap();
+
+        let script = wf.to_python_script(None).unwrap();
+        assert!(
+            script.starts_with("def generated_workflow(value):\n"),
+            "got:\n{script}"
+        );
+        assert!(script.contains("orc.negate(value)"), "got:\n{script}");
+    }
+
+    #[test]
+    fn t_to_python_script_returns_a_tuple_for_multiple_workflow_outputs() {
+        let mut wf = Workflow::default();
+        let mut outs = [OH::default(); 2];
+        wf.add_function(make_func_info("two_outs", 0, 2), &mut [], &mut outs)
+            .unwrap();
+        wf.set_outputs(&[(outs[0], String::new()), (outs[1], String::new())])
+            .unwrap();
+
+        let script = wf.to_python_script(None).unwrap();
+        assert!(
+            script.contains(&format!(
+                "return r_{}, r_{}",
+                outs[0].index(),
+                outs[1].index()
+            )),
+            "got:\n{script}"
+        );
+    }
+
+    #[test]
+    fn t_to_python_script_renders_a_nested_list_constant() {
+        let h = TestHarness::new();
+        let mut wf = Workflow::default();
+        let handle = constant_handle(&h, crate::deck![[1.0f64, 2.0], [3.0]]);
+        let (_, oh) = wf.add_constant(handle).unwrap();
+        wf.set_outputs(&[(oh, String::new())]).unwrap();
+
+        let script = wf.to_python_script(None).unwrap();
+        assert!(
+            script.contains("orc.make_deck([[1.0, 2.0], [3.0]], dtype=\"f64\")"),
+            "got:\n{script}"
+        );
     }
 }

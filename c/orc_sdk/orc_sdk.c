@@ -1514,8 +1514,34 @@ static size_t _stride(OrcMark const  *marks,
       return out;
     }
   }
+  else if (n_marks == 0 && mark_idx == 0) {
+    // A genuinely empty marks array (a bare scalar being telescoped up to broadcast against a
+    // deeper sibling input) still has exactly one group -- the whole thing -- there is just no
+    // *next* group to stride to, same as a real single mark at depth 0 would report via the
+    // `depth == 0` branch above. Falling through to the `mark_idx >= n_marks` case below would
+    // instead treat this as "already exhausted", which is only correct for an index that ran
+    // past the end of a *non-empty* marks array.
+    return 1;
+  }
   else {
     return 0;
+  }
+}
+
+/* Position of the mark at `idx`, or the total item count if `idx` runs past the last real mark
+ * (matching the "no more marks, this group extends to the end" convention `_stride` also uses).
+ * A genuinely empty marks array is the one exception: index 0 there is not "past the end", it's
+ * the start of the array's one implicit group -- see `_stride`'s own comment on the same case. */
+static size_t _mark_pos(OrcMark const *marks, size_t n_marks, size_t n_items, size_t idx)
+{
+  if (idx < n_marks) {
+    return marks[idx].pos;
+  }
+  else if (n_marks == 0 && idx == 0) {
+    return 0;
+  }
+  else {
+    return n_items;
   }
 }
 
@@ -1555,14 +1581,11 @@ size_t orc_sdk_dv_len(OrcSdk_DeckView const *const v)
     return 1;
   }
   else {
-    size_t start_pos = v->n_items;
-    if (v->start < v->n_marks) {
-      start_pos = v->marks[v->start].pos;
-    }
+    size_t const start_pos = _mark_pos(v->marks, v->n_marks, v->n_items, v->start);
     size_t const next_mark =
       v->start +
       _stride(v->marks, v->stride_offset, v->n_marks, v->strides, v->start, v->depth - 1);
-    size_t const end_pos = next_mark < v->n_marks ? v->marks[next_mark].pos : v->n_items;
+    size_t const end_pos = _mark_pos(v->marks, v->n_marks, v->n_items, next_mark);
     return end_pos - start_pos;
   }
 }
@@ -1573,16 +1596,11 @@ OrcSdk_DeckView orc_sdk_dv_child(OrcSdk_DeckView const *const v)
     return *v;
   }
   else if (v->depth < 2) {  // Convert from mark indices to item indices.
-    size_t start_pos = v->n_items, end_pos = v->n_items;
-    if (v->start < v->n_marks) {
-      start_pos = v->marks[v->start].pos;
-    }
+    size_t const start_pos = _mark_pos(v->marks, v->n_marks, v->n_items, v->start);
     size_t const next_mark =
       v->start +
       _stride(v->marks, v->stride_offset, v->n_marks, v->strides, v->start, v->depth - 1);
-    if (next_mark < v->n_marks) {
-      end_pos = v->marks[next_mark].pos;
-    }
+    size_t const end_pos = _mark_pos(v->marks, v->n_marks, v->n_items, next_mark);
     return (OrcSdk_DeckView) {.items         = v->items,
                               .n_items       = v->n_items,
                               .item_size     = v->item_size,

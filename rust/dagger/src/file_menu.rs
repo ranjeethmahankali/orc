@@ -1,4 +1,6 @@
-//! File menu: New, Open, Save, Save As. Native OS dialogs via `rfd`, `.orc` files on disk.
+//! File menu: New, Open, Save, Save As, Export Python. Native OS dialogs via `rfd`, `.orc` files
+//! on disk (Python export writes a `.py` file alongside them, but is otherwise unrelated to the
+//! save/open/dirty machinery).
 
 use crate::state::EditorState;
 use eframe::egui::{self, KeyboardShortcut, Modifiers};
@@ -16,6 +18,41 @@ const SAVE_AS_SHORTCUT: KeyboardShortcut =
 
 fn dialog() -> rfd::FileDialog {
     rfd::FileDialog::new().add_filter("orc workflow", &["orc"])
+}
+
+fn python_dialog() -> rfd::FileDialog {
+    rfd::FileDialog::new().add_filter("Python script", &["py"])
+}
+
+/// Turns an arbitrary string (typically a file stem) into a valid Python identifier: any
+/// character that isn't `[A-Za-z0-9_]` becomes `_`, and the result is prefixed with `_` if it
+/// would otherwise start with a digit or be empty -- Python identifiers can't start with a
+/// digit, and an empty function name isn't useful. Doesn't check against Python's reserved
+/// keywords (e.g. a file literally named `class.orc`) -- a rare enough edge case not worth the
+/// extra bookkeeping here.
+fn sanitize_identifier(name: &str) -> String {
+    let mut out: String = name
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    if out.is_empty() || out.starts_with(|c: char| c.is_ascii_digit()) {
+        out.insert(0, '_');
+    }
+    out
+}
+
+/// The name to hand to `Workflow::write_python_script`: the current file's own name, sanitized
+/// into a valid Python identifier, or `None` (which defaults to `generated_workflow`) if the
+/// workflow has never been saved, or its path is somehow not valid UTF-8.
+fn export_python_name(state: &EditorState) -> Option<String> {
+    let stem = state.current_path.as_ref()?.file_stem()?.to_str()?;
+    Some(sanitize_identifier(stem))
 }
 
 fn display_name(state: &EditorState) -> String {
@@ -145,6 +182,27 @@ fn new_workflow(state: &mut EditorState) {
     *state = EditorState::from_workflow(Workflow::default());
 }
 
+/// Generates a Python script from `state`'s current workflow (named per `export_python_name`)
+/// and writes it to `path`. Purely a side artifact -- unlike `save_workflow`, this never touches
+/// `current_path` or `dirty`.
+fn export_python_script(state: &EditorState, path: &Path) -> Result<(), String> {
+    let file = std::fs::File::create(path).map_err(|e| e.to_string())?;
+    let mut writer = std::io::BufWriter::new(file);
+    state
+        .workflow
+        .write_python_script(export_python_name(state).as_deref(), &mut writer)
+        .map_err(|e| e.to_string())
+}
+
+fn export_python(state: &mut EditorState) {
+    let Some(path) = python_dialog().save_file() else {
+        return;
+    };
+    if let Err(e) = export_python_script(state, &path) {
+        state.last_error = Some(format!("Failed to export {}: {e}", path.display()));
+    }
+}
+
 /// Global keyboard shortcuts for the actions in the File menu. Independent of whether the menu
 /// is open, matching how every other app on earth treats Ctrl+S etc.
 pub fn handle_shortcuts(ctx: &egui::Context, state: &mut EditorState) {
@@ -160,8 +218,9 @@ pub fn handle_shortcuts(ctx: &egui::Context, state: &mut EditorState) {
     }
 }
 
-/// Top menu bar: File > New / Open / Save / Save As, each showing its shortcut right-aligned via
-/// egui's own `Button::shortcut_text`. Built entirely from egui's `MenuBar`/`menu_button`.
+/// Top menu bar: File > New / Open / Save / Save As / Export Python, each showing its shortcut
+/// right-aligned via egui's own `Button::shortcut_text` (Export Python has none). Built entirely
+/// from egui's `MenuBar`/`menu_button`.
 pub fn menu_bar(ui: &mut egui::Ui, state: &mut EditorState) {
     egui::MenuBar::new().ui(ui, |ui| {
         ui.menu_button("File", |ui| {
@@ -195,6 +254,11 @@ pub fn menu_bar(ui: &mut egui::Ui, state: &mut EditorState) {
                 .clicked()
             {
                 save_as(state);
+                ui.close();
+            }
+            ui.separator();
+            if ui.button("Export Python...").clicked() {
+                export_python(state);
                 ui.close();
             }
         });
@@ -252,6 +316,76 @@ mod test {
         let mut state = EditorState::from_workflow(Workflow::default());
         state.current_path = Some(std::path::PathBuf::from("/some/dir/graph.orc"));
         assert_eq!(display_name(&state), "graph.orc");
+    }
+
+    #[test]
+    fn t_sanitize_identifier_leaves_an_already_valid_name_alone() {
+        assert_eq!(sanitize_identifier("my_workflow"), "my_workflow");
+    }
+
+    #[test]
+    fn t_sanitize_identifier_replaces_non_identifier_characters() {
+        assert_eq!(sanitize_identifier("my-workflow 2"), "my_workflow_2");
+    }
+
+    #[test]
+    fn t_sanitize_identifier_prefixes_a_leading_digit() {
+        assert_eq!(sanitize_identifier("2nd_workflow"), "_2nd_workflow");
+    }
+
+    #[test]
+    fn t_sanitize_identifier_of_an_empty_string_is_not_empty() {
+        assert_eq!(sanitize_identifier(""), "_");
+    }
+
+    #[test]
+    fn t_export_python_name_is_none_for_an_unsaved_workflow() {
+        let state = EditorState::from_workflow(Workflow::default());
+        assert_eq!(export_python_name(&state), None);
+    }
+
+    #[test]
+    fn t_export_python_name_sanitizes_the_saved_files_stem() {
+        let mut state = EditorState::from_workflow(Workflow::default());
+        state.current_path = Some(std::path::PathBuf::from("/some/dir/my-workflow.orc"));
+        assert_eq!(export_python_name(&state), Some("my_workflow".to_string()));
+    }
+
+    #[test]
+    fn t_export_python_script_uses_the_sanitized_saved_name() {
+        let mut state = EditorState::from_workflow(Workflow::default());
+        state.current_path = Some(std::path::PathBuf::from("/some/dir/my-workflow.orc"));
+
+        let path = std::env::temp_dir().join(format!(
+            "dagger_test_export_{}.py",
+            crate::HANDLE_COUNTER.fetch_add(1, Ordering::Relaxed)
+        ));
+        export_python_script(&state, &path).expect("export should succeed");
+        let written = std::fs::read_to_string(&path).unwrap();
+        std::fs::remove_file(&path).ok();
+
+        assert!(
+            written.starts_with("def my_workflow():\n"),
+            "got:\n{written}"
+        );
+    }
+
+    #[test]
+    fn t_export_python_script_defaults_the_name_for_an_unsaved_workflow() {
+        let state = EditorState::from_workflow(Workflow::default());
+
+        let path = std::env::temp_dir().join(format!(
+            "dagger_test_export_{}.py",
+            crate::HANDLE_COUNTER.fetch_add(1, Ordering::Relaxed)
+        ));
+        export_python_script(&state, &path).expect("export should succeed");
+        let written = std::fs::read_to_string(&path).unwrap();
+        std::fs::remove_file(&path).ok();
+
+        assert!(
+            written.starts_with("def generated_workflow():\n"),
+            "got:\n{written}"
+        );
     }
 
     #[test]

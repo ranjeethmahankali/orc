@@ -11,6 +11,7 @@
  *   call <session_id> <func> <input_id>...     -> prints output_ids
  *   download <session_id> <handle_id>          -> prints type and values
  *   download_workflow <sid> <path> [output_ids...] -> writes .orc file
+ *   download_python_script <sid> <path> [output_ids...] -> writes .py file
  *
  * Supported types for 'constant': u8 u16 u32 u64 i8 i16 i32 i64 f32 f64
  */
@@ -25,8 +26,8 @@
 #include <ws2tcpip.h>
 #pragma comment(lib, "ws2_32.lib")
 typedef SOCKET sock_t;
-typedef int    sockio_len_t;  /* send/recv length param type */
-typedef int    sockio_ret_t;  /* send/recv return type */
+typedef int    sockio_len_t; /* send/recv length param type */
+typedef int    sockio_ret_t; /* send/recv return type */
 #define SOCK_INVALID INVALID_SOCKET
 #define sock_close closesocket
 static int sock_init(void)
@@ -44,11 +45,11 @@ static void sock_cleanup(void)
 #include <sys/socket.h>
 #include <unistd.h>
 typedef int     sock_t;
-typedef size_t  sockio_len_t;  /* send/recv length param type */
-typedef ssize_t sockio_ret_t;  /* send/recv return type */
+typedef size_t  sockio_len_t; /* send/recv length param type */
+typedef ssize_t sockio_ret_t; /* send/recv return type */
 #define SOCK_INVALID (-1)
 #define sock_close close
-static int  sock_init(void)
+static int      sock_init(void)
 {
   return 0;
 }
@@ -476,9 +477,15 @@ typedef struct
 } TypeEntry;
 
 static TypeEntry const TYPE_TABLE[] = {
-  {"u8",  ORC_TYPE_U8,  1}, {"u16", ORC_TYPE_U16, 2}, {"u32", ORC_TYPE_U32, 4},
-  {"u64", ORC_TYPE_U64, 8}, {"i8",  ORC_TYPE_I8,  1}, {"i16", ORC_TYPE_I16, 2},
-  {"i32", ORC_TYPE_I32, 4}, {"i64", ORC_TYPE_I64, 8}, {"f32", ORC_TYPE_F32, 4},
+  {"u8", ORC_TYPE_U8, 1},
+  {"u16", ORC_TYPE_U16, 2},
+  {"u32", ORC_TYPE_U32, 4},
+  {"u64", ORC_TYPE_U64, 8},
+  {"i8", ORC_TYPE_I8, 1},
+  {"i16", ORC_TYPE_I16, 2},
+  {"i32", ORC_TYPE_I32, 4},
+  {"i64", ORC_TYPE_I64, 8},
+  {"f32", ORC_TYPE_F32, 4},
   {"f64", ORC_TYPE_F64, 8},
 };
 #define N_TYPES (sizeof(TYPE_TABLE) / sizeof(TYPE_TABLE[0]))
@@ -509,18 +516,29 @@ static void print_handle_values(OrcHandle const *h)
     return;
   }
   for (uint64_t i = 0; i < h->n_items; i++) {
-    if (i > 0) printf(" ");
+    if (i > 0)
+      printf(" ");
     void const *p = (char const *)h->items + i * te->item_size;
-    if (te->type_id == ORC_TYPE_U8)  printf("%u",   (unsigned)*(uint8_t  *)p);
-    if (te->type_id == ORC_TYPE_U16) printf("%u",   (unsigned)*(uint16_t *)p);
-    if (te->type_id == ORC_TYPE_U32) printf("%u",   *(uint32_t *)p);
-    if (te->type_id == ORC_TYPE_U64) printf("%llu", (unsigned long long)*(uint64_t *)p);
-    if (te->type_id == ORC_TYPE_I8)  printf("%d",   (int)*(int8_t  *)p);
-    if (te->type_id == ORC_TYPE_I16) printf("%d",   (int)*(int16_t *)p);
-    if (te->type_id == ORC_TYPE_I32) printf("%d",   *(int32_t *)p);
-    if (te->type_id == ORC_TYPE_I64) printf("%lld", (long long)*(int64_t *)p);
-    if (te->type_id == ORC_TYPE_F32) printf("%g",   (double)*(float *)p);
-    if (te->type_id == ORC_TYPE_F64) printf("%g",   *(double *)p);
+    if (te->type_id == ORC_TYPE_U8)
+      printf("%u", (unsigned)*(uint8_t *)p);
+    if (te->type_id == ORC_TYPE_U16)
+      printf("%u", (unsigned)*(uint16_t *)p);
+    if (te->type_id == ORC_TYPE_U32)
+      printf("%u", *(uint32_t *)p);
+    if (te->type_id == ORC_TYPE_U64)
+      printf("%llu", (unsigned long long)*(uint64_t *)p);
+    if (te->type_id == ORC_TYPE_I8)
+      printf("%d", (int)*(int8_t *)p);
+    if (te->type_id == ORC_TYPE_I16)
+      printf("%d", (int)*(int16_t *)p);
+    if (te->type_id == ORC_TYPE_I32)
+      printf("%d", *(int32_t *)p);
+    if (te->type_id == ORC_TYPE_I64)
+      printf("%lld", (long long)*(int64_t *)p);
+    if (te->type_id == ORC_TYPE_F32)
+      printf("%g", (double)*(float *)p);
+    if (te->type_id == ORC_TYPE_F64)
+      printf("%g", *(double *)p);
   }
   printf("\n");
 }
@@ -529,7 +547,8 @@ static void print_handle_values(OrcHandle const *h)
 
 static void usage(void)
 {
-  fprintf(stderr,
+  fprintf(
+    stderr,
     "Usage: cli_client <host> <port> <command> [args...]\n"
     "\n"
     "Commands:\n"
@@ -540,6 +559,7 @@ static void usage(void)
     "  call <session_id> <func> <input_id>...     Print output handle_ids\n"
     "  download <session_id> <handle_id>          Print type and values\n"
     "  download_workflow <sid> <path> [ids...]     Write workflow to file\n"
+    "  download_python_script <sid> <path> [ids...] Write generated Python to file\n"
     "\n"
     "Types: u8 u16 u32 u64 i8 i16 i32 i64 f32 f64\n");
   exit(1);
@@ -595,11 +615,11 @@ static void cmd_functions(char const *host, uint16_t port)
 }
 
 static void cmd_constant(char const *host,
-                          uint16_t    port,
-                          char const *sid_str,
-                          char const *type_name,
-                          int         n_values,
-                          char      **value_strs)
+                         uint16_t    port,
+                         char const *sid_str,
+                         char const *type_name,
+                         int         n_values,
+                         char      **value_strs)
 {
   TypeEntry const *te = type_by_name(type_name);
   if (!te) {
@@ -608,30 +628,57 @@ static void cmd_constant(char const *host,
   }
   /* Parse values into a raw buffer. */
   void *items = malloc(te->item_size * (size_t)n_values);
-  if (!items) die("alloc failed");
+  if (!items)
+    die("alloc failed");
   for (int i = 0; i < n_values; i++) {
-    void *dst = (char *)items + (size_t)i * te->item_size;
-    double v  = strtod(value_strs[i], NULL);
+    void  *dst = (char *)items + (size_t)i * te->item_size;
+    double v   = strtod(value_strs[i], NULL);
     switch (te->type_id) {
-      case ORC_TYPE_U8:  *(uint8_t  *)dst = (uint8_t)v;  break;
-      case ORC_TYPE_U16: *(uint16_t *)dst = (uint16_t)v;  break;
-      case ORC_TYPE_U32: *(uint32_t *)dst = (uint32_t)v;  break;
-      case ORC_TYPE_U64: *(uint64_t *)dst = (uint64_t)v;  break;
-      case ORC_TYPE_I8:  *(int8_t   *)dst = (int8_t)v;   break;
-      case ORC_TYPE_I16: *(int16_t  *)dst = (int16_t)v;  break;
-      case ORC_TYPE_I32: *(int32_t  *)dst = (int32_t)v;  break;
-      case ORC_TYPE_I64: *(int64_t  *)dst = (int64_t)v;  break;
-      case ORC_TYPE_F32: *(float    *)dst = (float)v;    break;
-      case ORC_TYPE_F64: *(double   *)dst = v;           break;
-      default: break;
+    case ORC_TYPE_U8:
+      *(uint8_t *)dst = (uint8_t)v;
+      break;
+    case ORC_TYPE_U16:
+      *(uint16_t *)dst = (uint16_t)v;
+      break;
+    case ORC_TYPE_U32:
+      *(uint32_t *)dst = (uint32_t)v;
+      break;
+    case ORC_TYPE_U64:
+      *(uint64_t *)dst = (uint64_t)v;
+      break;
+    case ORC_TYPE_I8:
+      *(int8_t *)dst = (int8_t)v;
+      break;
+    case ORC_TYPE_I16:
+      *(int16_t *)dst = (int16_t)v;
+      break;
+    case ORC_TYPE_I32:
+      *(int32_t *)dst = (int32_t)v;
+      break;
+    case ORC_TYPE_I64:
+      *(int64_t *)dst = (int64_t)v;
+      break;
+    case ORC_TYPE_F32:
+      *(float *)dst = (float)v;
+      break;
+    case ORC_TYPE_F64:
+      *(double *)dst = v;
+      break;
+    default:
+      break;
     }
   }
+  OrcMark   single_mark = {.depth = 0, .pos = 0};
   OrcHandle handle;
   memset(&handle, 0, sizeof(handle));
   handle.type_id   = te->type_id;
   handle.n_items   = (uint64_t)n_values;
   handle.item_size = (uint64_t)te->item_size;
   handle.items     = items;
+  if (handle.n_items > 1) {
+    handle.marks   = &single_mark;
+    handle.n_marks = 1;
+  }
   Buf ser;
   buf_init(&ser);
   if (serialize_handle(&handle, &ser) != 0) {
@@ -660,11 +707,11 @@ static void cmd_constant(char const *host,
 }
 
 static void cmd_call(char const *host,
-                      uint16_t    port,
-                      char const *sid_str,
-                      char const *func_name,
-                      int         n_inputs,
-                      char      **input_strs)
+                     uint16_t    port,
+                     char const *sid_str,
+                     char const *func_name,
+                     int         n_inputs,
+                     char      **input_strs)
 {
   Buf body;
   buf_init(&body);
@@ -674,7 +721,8 @@ static void cmd_call(char const *host,
   buf_append_str(&body, func_name);
   buf_append_str(&body, "\", \"inputs\": [");
   for (int i = 0; i < n_inputs; i++) {
-    if (i > 0) buf_append_str(&body, ", ");
+    if (i > 0)
+      buf_append_str(&body, ", ");
     buf_append_str(&body, input_strs[i]);
   }
   buf_append_str(&body, "]}");
@@ -692,9 +740,10 @@ static void cmd_call(char const *host,
     die("call failed");
   }
   uint64_t output_ids[64];
-  int n_outputs = json_get_u64_arr(resp.body, "output_ids", output_ids, 64);
+  int      n_outputs = json_get_u64_arr(resp.body, "output_ids", output_ids, 64);
   for (int i = 0; i < n_outputs; i++) {
-    if (i > 0) printf(" ");
+    if (i > 0)
+      printf(" ");
     printf("%llu", (unsigned long long)output_ids[i]);
   }
   printf("\n");
@@ -702,9 +751,9 @@ static void cmd_call(char const *host,
 }
 
 static void cmd_download(char const *host,
-                          uint16_t    port,
-                          char const *sid_str,
-                          char const *hid_str)
+                         uint16_t    port,
+                         char const *sid_str,
+                         char const *hid_str)
 {
   char path[256];
   snprintf(path, sizeof(path), "/download?session_id=%s&handle_id=%s", sid_str, hid_str);
@@ -730,20 +779,20 @@ static void cmd_download(char const *host,
 }
 
 static void cmd_download_workflow(char const *host,
-                                   uint16_t    port,
-                                   char const *sid_str,
-                                   char const *out_path,
-                                   int         n_outputs,
-                                   char      **output_strs)
+                                  uint16_t    port,
+                                  char const *sid_str,
+                                  char const *out_path,
+                                  int         n_outputs,
+                                  char      **output_strs)
 {
   char path[256];
-  snprintf(path, sizeof(path),
-           "/download_workflow?session_id=%s", sid_str);
+  snprintf(path, sizeof(path), "/download_workflow?session_id=%s", sid_str);
   Buf body;
   buf_init(&body);
   buf_append_str(&body, "{\"outputs\": [");
   for (int i = 0; i < n_outputs; i++) {
-    if (i > 0) buf_append_str(&body, ", ");
+    if (i > 0)
+      buf_append_str(&body, ", ");
     buf_append_str(&body, output_strs[i]);
   }
   buf_append_str(&body, "]}");
@@ -769,11 +818,81 @@ static void cmd_download_workflow(char const *host,
   http_response_free(&resp);
 }
 
+/* Extracts the file name without its directory or extension from `path` (e.g.
+ * "/a/b/foo.py" -> "foo"), used to name the generated Python function after the requested
+ * output file -- no further validation; an unusual path just produces an unusual (or, per
+ * Python syntax, invalid) function name, the same as it would if a user typed one by
+ * hand. */
+static void path_stem(char const *path, char *out, size_t cap)
+{
+  char const *base = path;
+  for (char const *p = path; *p; p++) {
+    if (*p == '/' || *p == '\\')
+      base = p + 1;
+  }
+  char const *dot = NULL;
+  for (char const *p = base; *p; p++) {
+    if (*p == '.')
+      dot = p;
+  }
+  size_t len = dot ? (size_t)(dot - base) : strlen(base);
+  if (len >= cap)
+    len = cap - 1;
+  memcpy(out, base, len);
+  out[len] = '\0';
+}
+
+static void cmd_download_python_script(char const *host,
+                                       uint16_t    port,
+                                       char const *sid_str,
+                                       char const *out_path,
+                                       int         n_outputs,
+                                       char      **output_strs)
+{
+  char name[256];
+  path_stem(out_path, name, sizeof(name));
+
+  char path[256];
+  snprintf(path, sizeof(path), "/download_python_script?session_id=%s", sid_str);
+  Buf body;
+  buf_init(&body);
+  buf_append_str(&body, "{\"outputs\": [");
+  for (int i = 0; i < n_outputs; i++) {
+    if (i > 0)
+      buf_append_str(&body, ", ");
+    buf_append_str(&body, output_strs[i]);
+  }
+  buf_append_str(&body, "], \"name\": \"");
+  buf_append_str(&body, name);
+  buf_append_str(&body, "\"}");
+  buf_append(&body, "\0", 1);
+  HttpResponse resp;
+  if (http_post_json(host, port, path, body.data, &resp) != 0) {
+    buf_free(&body);
+    die("POST /download_python_script failed");
+  }
+  buf_free(&body);
+  if (resp.status != 200) {
+    fprintf(stderr, "%s\n", resp.body);
+    http_response_free(&resp);
+    die("download_python_script failed");
+  }
+  FILE *f = fopen(out_path, "wb");
+  if (!f) {
+    http_response_free(&resp);
+    die("Failed to open output file");
+  }
+  fwrite(resp.body, 1, resp.body_len, f);
+  fclose(f);
+  http_response_free(&resp);
+}
+
 /* ==================== Main ==================== */
 
 int main(int argc, char **argv)
 {
-  if (argc < 4) usage();
+  if (argc < 4)
+    usage();
   char const *host = argv[1];
   uint16_t    port = (uint16_t)atoi(argv[2]);
   char const *cmd  = argv[3];
@@ -783,30 +902,49 @@ int main(int argc, char **argv)
     die("Failed to initialize sockets");
 
   if (strcmp(cmd, "session") == 0) {
-    if (argc < 5) usage();
+    if (argc < 5)
+      usage();
     if (strcmp(argv[4], "start") == 0) {
       cmd_session_start(host, port);
-    } else if (strcmp(argv[4], "close") == 0) {
-      if (argc < 6) usage();
+    }
+    else if (strcmp(argv[4], "close") == 0) {
+      if (argc < 6)
+        usage();
       cmd_session_close(host, port, argv[5]);
-    } else {
+    }
+    else {
       usage();
     }
-  } else if (strcmp(cmd, "functions") == 0) {
+  }
+  else if (strcmp(cmd, "functions") == 0) {
     cmd_functions(host, port);
-  } else if (strcmp(cmd, "constant") == 0) {
-    if (argc < 7) usage();  /* host port constant sid type val... */
+  }
+  else if (strcmp(cmd, "constant") == 0) {
+    if (argc < 7)
+      usage(); /* host port constant sid type val... */
     cmd_constant(host, port, argv[4], argv[5], argc - 6, &argv[6]);
-  } else if (strcmp(cmd, "call") == 0) {
-    if (argc < 6) usage();  /* host port call sid func [inputs...] */
+  }
+  else if (strcmp(cmd, "call") == 0) {
+    if (argc < 6)
+      usage(); /* host port call sid func [inputs...] */
     cmd_call(host, port, argv[4], argv[5], argc - 6, &argv[6]);
-  } else if (strcmp(cmd, "download") == 0) {
-    if (argc < 6) usage();  /* host port download sid hid */
+  }
+  else if (strcmp(cmd, "download") == 0) {
+    if (argc < 6)
+      usage(); /* host port download sid hid */
     cmd_download(host, port, argv[4], argv[5]);
-  } else if (strcmp(cmd, "download_workflow") == 0) {
-    if (argc < 6) usage();  /* host port download_workflow sid outpath [output_ids...] */
+  }
+  else if (strcmp(cmd, "download_workflow") == 0) {
+    if (argc < 6)
+      usage(); /* host port download_workflow sid outpath [output_ids...] */
     cmd_download_workflow(host, port, argv[4], argv[5], argc - 6, &argv[6]);
-  } else {
+  }
+  else if (strcmp(cmd, "download_python_script") == 0) {
+    if (argc < 6)
+      usage(); /* host port download_python_script sid outpath [output_ids...] */
+    cmd_download_python_script(host, port, argv[4], argv[5], argc - 6, &argv[6]);
+  }
+  else {
     usage();
   }
 
