@@ -502,6 +502,13 @@ fn stride(
     match marks.get(mark_idx) {
         Some(_) if depth == 0 => 1,
         Some(m) if depth > m.depth => marks.len() - mark_idx,
+        // A genuinely empty marks array (a bare scalar, or an empty deck) has no real mark at
+        // any index -- but at index 0 specifically, that's not "exhausted", it's the one and
+        // only (implicit) group every item belongs to. `Combinations` needs to treat that
+        // exactly like a real single mark spanning everything, or a shallower operand (a scalar)
+        // telescoped up to match a deeper sibling reads past its own bounds instead of
+        // broadcasting -- see `t_test_scalar_broadcast_combinations`.
+        None if marks.is_empty() && mark_idx == 0 => 1,
         None => 0usize,
         _ => strides[(stride_offset[mark_idx] + (depth - 1) as u64) as usize]
             .min((marks.len() - mark_idx) as u64) as usize,
@@ -509,7 +516,13 @@ fn stride(
 }
 
 fn mark_pos(marks: &[OrcMark], n_items: usize, idx: usize) -> usize {
-    marks.get(idx).map(|m| m.pos as usize).unwrap_or(n_items)
+    match marks.get(idx) {
+        Some(m) => m.pos as usize,
+        // Same reasoning as `stride` above: index 0 of a genuinely empty marks array is the
+        // start of its one implicit group (position 0), not "past the end".
+        None if marks.is_empty() && idx == 0 => 0,
+        None => n_items,
+    }
 }
 
 #[derive(Clone, Debug)]
