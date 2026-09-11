@@ -2523,6 +2523,52 @@ mod test {
         }
     }
 
+    /// Regression test for a real crash: broadcasting a multi-item list against a genuine bare
+    /// scalar (zero marks -- `Deck::from_value`, not a one-item *list* like `deck![2.0]`, which
+    /// still carries one real mark) used to panic with an out-of-bounds index instead of
+    /// broadcasting the scalar across every list element. `Deck::from_value` and `orc.make_deck`
+    /// on a bare (non-list) Python value both produce exactly this zero-mark shape, so this isn't
+    /// a hypothetical: any `#[orc_fn]` binary function (e.g. `add`, `multiply`) hits it the first
+    /// time it's called with one list argument and one truly scalar argument.
+    #[test]
+    fn t_test_scalar_broadcast_combinations() {
+        let list: Deck<f64> = deck![1.0, 2.0, 3.0];
+        let scalar: Deck<f64> = Deck::from_value(10.0);
+        assert!(
+            scalar.marks().is_empty(),
+            "a bare scalar must carry no marks at all"
+        );
+        let mut out: Deck<f64> = Deck::default();
+        {
+            let mut list_handle = OrcHandle {
+                handle: 0,
+                ..Default::default()
+            };
+            unsafe { update_handle_from_deck(&list, &mut list_handle) };
+            let mut scalar_handle = OrcHandle {
+                handle: 1,
+                ..Default::default()
+            };
+            unsafe { update_handle_from_deck(&scalar, &mut scalar_handle) };
+            let mut comb = Combinations::from_handles(&[list_handle, scalar_handle], &[0, 0], &[0])
+                .expect("Failed to create combinations helper struct");
+            loop {
+                let list_view = comb.get_input(&list.items, 0);
+                let scalar_view = comb.get_input(&scalar.items, 1);
+                let mut out_view = comb.get_output(&mut out, 0);
+                assert_eq!(list_view.depth(), 0);
+                assert_eq!(scalar_view.depth(), 0);
+                assert_eq!(out_view.depth(), 0);
+                let item = out_view.push_default_mut();
+                *item = *list_view.as_ref() + *scalar_view.as_ref();
+                if !comb.advance() {
+                    break;
+                }
+            }
+        }
+        assert_eq!(out.items(), &[11.0, 12.0, 13.0]);
+    }
+
     #[test]
     fn t_test_list_length_combinations() {
         {
