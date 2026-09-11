@@ -10,25 +10,25 @@ pub trait Handle: From<usize> + Copy + Clone + 'static {
 }
 
 #[repr(transparent)]
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Default, Ord, PartialOrd)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Default, Ord, PartialOrd, Hash)]
 pub struct IH {
     pub(crate) idx: usize,
 }
 
 #[repr(transparent)]
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Default, Ord, PartialOrd)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Default, Ord, PartialOrd, Hash)]
 pub struct OH {
     pub(crate) idx: usize,
 }
 
 #[repr(transparent)]
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Default, Ord, PartialOrd)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Default, Ord, PartialOrd, Hash)]
 pub struct LH {
     pub(crate) idx: usize,
 }
 
 #[repr(transparent)]
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Default, Ord, PartialOrd)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Default, Ord, PartialOrd, Hash)]
 pub struct NH {
     pub(crate) idx: usize,
 }
@@ -272,32 +272,32 @@ impl Graph {
         self.link_props.push_value()
     }
 
-    pub fn create_input_property<T>(&mut self, default: T) -> InputProperty<T>
+    pub fn create_input_property<T>(&mut self) -> InputProperty<T>
     where
-        T: Clone + 'static,
+        T: Default + 'static,
     {
-        InputProperty::new(&mut self.input_props, default)
+        InputProperty::new(&mut self.input_props)
     }
 
-    pub fn create_output_property<T>(&mut self, default: T) -> OutputProperty<T>
+    pub fn create_output_property<T>(&mut self) -> OutputProperty<T>
     where
-        T: Clone + 'static,
+        T: Default + 'static,
     {
-        OutputProperty::new(&mut self.output_props, default)
+        OutputProperty::new(&mut self.output_props)
     }
 
-    pub fn create_link_property<T>(&mut self, default: T) -> LinkProperty<T>
+    pub fn create_link_property<T>(&mut self) -> LinkProperty<T>
     where
-        T: Clone + 'static,
+        T: Default + 'static,
     {
-        LinkProperty::new(&mut self.link_props, default)
+        LinkProperty::new(&mut self.link_props)
     }
 
-    pub fn create_node_property<T>(&mut self, default: T) -> NodeProperty<T>
+    pub fn create_node_property<T>(&mut self) -> NodeProperty<T>
     where
-        T: Clone + 'static,
+        T: Default + 'static,
     {
-        NodeProperty::new(&mut self.node_props, default)
+        NodeProperty::new(&mut self.node_props)
     }
 
     fn link_consecutive_inputs(&mut self, prev: IH, next: IH) {
@@ -499,6 +499,26 @@ impl Graph {
         Ok(())
     }
 
+    pub fn node_iter(&self) -> impl Iterator<Item = NH> {
+        (0..self.nodes.len()).filter_map(|ni| {
+            if self.nodes[ni].deleted {
+                None
+            } else {
+                Some(NH { idx: ni })
+            }
+        })
+    }
+
+    pub fn link_iter(&self) -> impl Iterator<Item = LH> {
+        (0..self.links.len()).filter_map(|li| {
+            if self.links[li].deleted {
+                None
+            } else {
+                Some(LH { idx: li })
+            }
+        })
+    }
+
     pub fn node_inputs(&self, n: NH) -> impl Iterator<Item = IH> {
         std::iter::successors(self.nodes[n.idx].input, |i| self.inputs[i.idx].next)
     }
@@ -507,12 +527,43 @@ impl Graph {
         std::iter::successors(self.nodes[n.idx].output, |o| self.outputs[o.idx].next)
     }
 
+    pub fn output_links(&self, o: OH) -> impl Iterator<Item = LH> {
+        std::iter::successors(self.outputs[o.idx].link, |l| self.links[l.idx].next)
+    }
+
     pub fn input_source(&self, i: IH) -> Option<OH> {
         self.inputs[i.idx].link.map(|l| self.links[l.idx].start)
     }
 
     pub fn is_valid_output(&self, output: OH) -> bool {
         output.idx < self.outputs.len()
+    }
+
+    pub fn delete_node(&mut self, n: NH) {
+        // First collect all the handles, because that required immutable borrow.
+        let inputs: Vec<_> = self.node_inputs(n).collect();
+        let outputs: Vec<_> = self.node_outputs(n).collect();
+        let downstream_inputs: Vec<_> = outputs
+            .iter()
+            .flat_map(|o| self.output_links(*o))
+            .map(|l| self.links[l.idx].end)
+            .collect();
+        // Disconnect inputs.
+        for i in inputs.iter() {
+            self.disconnect_input(*i);
+        }
+        // Disconnect from downstream.
+        for i in downstream_inputs.iter() {
+            self.disconnect_input(*i);
+        }
+        // Mark everything deleted.
+        for i in inputs {
+            self.inputs[i.idx].deleted = true;
+        }
+        for o in outputs {
+            self.outputs[o.idx].deleted = true;
+        }
+        self.nodes[n.idx].deleted = true;
     }
 }
 

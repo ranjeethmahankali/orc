@@ -63,11 +63,11 @@ pub struct Workflow {
 impl Default for Workflow {
     fn default() -> Self {
         let mut graph = Graph::default();
-        let node_infos = graph.create_node_property(NodeInfo::default());
-        let input_labels = graph.create_input_property(String::default());
-        let output_labels = graph.create_output_property(String::default());
-        let node_comments = graph.create_node_property(String::default());
-        let workflow_input_index = graph.create_input_property(None);
+        let node_infos = graph.create_node_property();
+        let input_labels = graph.create_input_property();
+        let output_labels = graph.create_output_property();
+        let node_comments = graph.create_node_property();
+        let workflow_input_index = graph.create_input_property();
         Self {
             graph,
             node_infos,
@@ -90,12 +90,11 @@ impl Workflow {
         n_nodes: usize,
     ) -> Self {
         let mut graph = Graph::with_capacity(n_inputs, n_outputs, n_links, n_nodes);
-        let node_infos =
-            Property::with_capacity(n_nodes, &mut graph.node_props, NodeInfo::default());
-        let input_labels = graph.create_input_property(String::default());
-        let output_labels = graph.create_output_property(String::default());
-        let node_comments = graph.create_node_property(String::default());
-        let workflow_input_index = graph.create_input_property(None);
+        let node_infos = Property::with_capacity(n_nodes, &mut graph.node_props);
+        let input_labels = graph.create_input_property();
+        let output_labels = graph.create_output_property();
+        let node_comments = graph.create_node_property();
+        let workflow_input_index = graph.create_input_property();
         Workflow {
             graph,
             node_infos,
@@ -144,31 +143,52 @@ impl Workflow {
     }
 
     pub fn set_inputs(&mut self, inputs: &[(IH, usize, &str)]) -> Result<(), DagError> {
-        {
-            // Validate the input indices. They must be sequential, and start from zero.
-            let mut unique_indices = inputs
-                .iter()
-                .map(|(_input, idx, _name)| *idx)
-                .collect::<Vec<_>>();
-            unique_indices.sort();
-            unique_indices.dedup();
-            if unique_indices.iter().enumerate().any(|(i, val)| i != *val) {
-                return Err(DagError::InvalidInputs);
-            }
+        // Validate the *distinct* indices. They must be sequential, starting from zero -- but a
+        // single declared input legitimately feeds more than one pin (e.g. a parameter used
+        // twice in the same expression), so the same index can appear more than once in `inputs`
+        // and that alone is not an error. Deduping first is what makes that distinction: without
+        // it, a repeated index shifts every later entry's enumerated position away from its real
+        // index and this would reject valid input, not just genuinely invalid input.
+        let mut unique_indices: Vec<usize> = inputs.iter().map(|(_, idx, _)| *idx).collect();
+        unique_indices.sort_unstable();
+        unique_indices.dedup();
+        if unique_indices.iter().enumerate().any(|(i, val)| i != *val) {
+            return Err(DagError::InvalidInputs);
         }
+
         let mut input_idx = self.workflow_input_index.try_borrow_mut()?;
         let input_idx: &mut InputPropBuf<_> = &mut input_idx;
         input_idx.fill(None);
+        // Written positionally (`names[idx] = ...`), not appended in call order -- appending once
+        // per *pin* rather than once per distinct index is exactly what let a repeated index
+        // inflate this past the true input count and shift every later name out of place.
         self.workflow_input_names.clear();
+        self.workflow_input_names
+            .resize(unique_indices.len(), String::new());
         for (input, idx, name) in inputs.iter() {
             input_idx[*input] = Some(*idx);
-            self.workflow_input_names.push(name.to_string());
+            self.workflow_input_names[*idx] = name.to_string();
         }
         Ok(())
     }
 
+    /// If `ih` was registered via `set_inputs` as workflow input `i`, returns `Some(i)`. `ih`
+    /// still being *dangling* (no `input_source`) is the caller's responsibility to check first --
+    /// this only reports the registration, regardless of whether a link has since been attached.
+    pub fn workflow_input_position(&self, ih: IH) -> Result<Option<usize>, DagError> {
+        let idx = self.workflow_input_index.try_borrow()?;
+        Ok(idx[ih])
+    }
+
     pub fn has_nested_workflow(&self, name: &str) -> bool {
         self.nested_workflows.contains_key(name)
+    }
+
+    /// Names of every nested workflow currently registered on this `Workflow`. Does not include
+    /// one that's been temporarily removed via `take_nested_workflow` (e.g. while its editor is
+    /// open) -- exactly the point of that call.
+    pub fn nested_workflow_names(&self) -> impl Iterator<Item = &str> {
+        self.nested_workflows.keys().map(String::as_str)
     }
 
     pub fn count_nested_calls(&self, name: &str) -> Result<usize, DagError> {
@@ -181,6 +201,24 @@ impl Workflow {
                 .filter(|ni| matches!(ni, NodeInfo::NestedCall { workflow_name } if workflow_name == name))
                 .count())
         }
+    }
+
+    /// Removes and returns the nested workflow registered under `name`, leaving this `Workflow`
+    /// with no entry for it until `put_nested_workflow` restores one. Used to let an editor take
+    /// real ownership of the nested `Workflow` (to edit it in place, with no cloning) without
+    /// this `Workflow` and that editor ever holding overlapping references to the same value --
+    /// while it's taken, any node calling `name` has nothing to resolve and must be treated as
+    /// not ready, not as an error.
+    pub fn take_nested_workflow(&mut self, name: &str) -> Option<Workflow> {
+        self.nested_workflows.remove(name)
+    }
+
+    /// Restores a nested workflow under `name`, overwriting whatever (if anything) is already
+    /// there. The counterpart to `take_nested_workflow`; unlike `push_nested_workflow`, this
+    /// performs no naming-conflict check against a `PluginSet`, since it's meant for putting back
+    /// a definition that was already valid (and already checked) when it was first registered.
+    pub fn put_nested_workflow(&mut self, name: String, workflow: Workflow) {
+        self.nested_workflows.insert(name, workflow);
     }
 
     pub fn add_nested_workflow_call(
@@ -197,6 +235,10 @@ impl Workflow {
             };
         }
         Ok(n)
+    }
+
+    pub fn delete_node(&mut self, n: NH) {
+        self.graph.delete_node(n);
     }
 
     pub fn add_function(
@@ -223,6 +265,20 @@ impl Workflow {
             node_infos[n] = NodeInfo::Constant(data);
         }
         Ok((n, output_handle))
+    }
+
+    pub fn add_inspect_node(
+        &mut self,
+        label: String,
+        input_handles: &mut [IH],
+    ) -> Result<NH, DagError> {
+        // Adding an inspect node is almost the same as adding a function node, with no outputs.
+        let n = self.graph.push_node(input_handles, &mut [])?;
+        {
+            let mut node_infos = self.node_infos.try_borrow_mut()?;
+            node_infos[n] = NodeInfo::Inspect { label };
+        }
+        Ok(n)
     }
 
     pub fn connect(&mut self, from: OH, to: IH) -> Result<LH, DagError> {
@@ -255,39 +311,39 @@ impl Workflow {
         self.graph.clear()
     }
 
-    pub fn create_input_property<T>(&mut self, default: T) -> InputProperty<T>
+    pub fn create_input_property<T>(&mut self) -> InputProperty<T>
     where
-        T: Clone + 'static,
+        T: Default + 'static,
     {
-        self.graph.create_input_property(default)
+        self.graph.create_input_property()
     }
 
-    pub fn create_output_property<T>(&mut self, default: T) -> OutputProperty<T>
+    pub fn create_output_property<T>(&mut self) -> OutputProperty<T>
     where
-        T: Clone + 'static,
+        T: Default + 'static,
     {
-        self.graph.create_output_property(default)
+        self.graph.create_output_property()
     }
 
-    pub fn create_link_property<T>(&mut self, default: T) -> LinkProperty<T>
+    pub fn create_link_property<T>(&mut self) -> LinkProperty<T>
     where
-        T: Clone + 'static,
+        T: Default + 'static,
     {
-        self.graph.create_link_property(default)
+        self.graph.create_link_property()
     }
 
-    pub fn create_node_property<T>(&mut self, default: T) -> NodeProperty<T>
+    pub fn create_node_property<T>(&mut self) -> NodeProperty<T>
     where
-        T: Clone + 'static,
+        T: Default + 'static,
     {
-        self.graph.create_node_property(default)
+        self.graph.create_node_property()
     }
 
     pub fn garbage_collection(&mut self) -> Result<(), DagError> {
         // Cache the workflow outputs in properties first. This will preserve them through the
         // shuffling that happens in garbage collection.
         let mut output_prop: OutputProperty<Option<(usize, String)>> =
-            self.create_output_property(None);
+            self.create_output_property();
         {
             let mut temp = output_prop.try_borrow_mut()?;
             for (i, (output, name)) in self.workflow_outputs.drain(..).enumerate() {
@@ -310,29 +366,68 @@ impl Workflow {
         Ok(())
     }
 
-    pub fn duplicate_node(&mut self, old: NH) -> Result<NH, DagError> {
-        let src_inputs = self.graph.node_inputs(old).collect::<Box<[_]>>();
-        let mut input_handles = vec![IH::default(); src_inputs.len()];
-        let src_outputs = self.graph.node_outputs(old).collect::<Box<[_]>>();
-        let mut output_handles = vec![OH::default(); src_outputs.len()];
-        let new = self
-            .graph
-            .push_node(&mut input_handles, &mut output_handles)?;
-        self.graph.node_props.copy(old, new)?;
-        for (&new, &old) in input_handles.iter().zip(src_inputs.iter()) {
-            self.graph.input_props.copy(old, new)?;
-        }
-        for (&new, &old) in output_handles.iter().zip(src_outputs.iter()) {
-            self.graph.output_props.copy(old, new)?;
-        }
-        Ok(new)
-    }
-
     pub fn get_terminal_outputs(&self) -> impl Iterator<Item = OH> {
         (0usize..self.graph.outputs.len()).filter_map(|i| match self.graph.outputs[i].link {
             Some(_) => None,
             None => Some(OH { idx: i }),
         })
+    }
+
+    pub fn node_iter(&self) -> impl Iterator<Item = NH> {
+        self.graph.node_iter()
+    }
+
+    pub fn link_iter(&self) -> impl Iterator<Item = LH> {
+        self.graph.link_iter()
+    }
+
+    pub fn node_inputs(&self, n: NH) -> impl Iterator<Item = IH> {
+        self.graph.node_inputs(n)
+    }
+
+    pub fn node_outputs(&self, n: NH) -> impl Iterator<Item = OH> {
+        self.graph.node_outputs(n)
+    }
+
+    pub fn node_info_prop(&self) -> NodeProperty<NodeInfo> {
+        self.node_infos.clone()
+    }
+
+    pub fn input_labels_prop(&self) -> InputProperty<String> {
+        self.input_labels.clone()
+    }
+
+    pub fn output_labels_prop(&self) -> OutputProperty<String> {
+        self.output_labels.clone()
+    }
+
+    pub fn node_from_input(&self, i: IH) -> NH {
+        self.graph.inputs[i.idx].node
+    }
+
+    pub fn node_from_output(&self, o: OH) -> NH {
+        self.graph.outputs[o.idx].node
+    }
+
+    /// Every link fanning out from the given output, i.e. the forward adjacency `input_source`
+    /// doesn't give you. Backed by the same intrusive linked list `Graph::node_outputs` etc.
+    /// already walk, so this is O(fan-out), not a scan over the whole graph.
+    pub fn output_links(&self, o: OH) -> impl Iterator<Item = LH> {
+        self.graph.output_links(o)
+    }
+
+    /// The input pin a link connects into.
+    pub fn link_end(&self, l: LH) -> IH {
+        self.graph.links[l.idx].end
+    }
+
+    /// The nodes fed directly by the given output, i.e. the downstream neighbors reached by
+    /// walking `output_links`. Convenience wrapper around `output_links` + `link_end` +
+    /// `node_from_input`, since that's the query staleness propagation and worklist scheduling
+    /// actually need.
+    pub fn downstream_nodes(&self, o: OH) -> impl Iterator<Item = NH> + '_ {
+        self.output_links(o)
+            .map(|l| self.node_from_input(self.link_end(l)))
     }
 
     /// This will run the DAG, and return an iterator over the required outputs. This is super
@@ -579,7 +674,7 @@ impl Workflow {
 
 #[cfg(test)]
 mod test {
-    use crate::{FuncInfo, IH, OH, Workflow, dag::Handle};
+    use crate::{FuncInfo, IH, NH, OH, Workflow, dag::Handle};
 
     fn make_func_info(name: &str) -> FuncInfo {
         FuncInfo {
@@ -587,6 +682,8 @@ mod test {
             desc: String::new(),
             n_inputs: Some(0usize),  // good enough for these tests.
             n_outputs: Some(0usize), // good enough for these tests.
+            input_args: Default::default(),
+            output_args: Default::default(),
             func: None,
         }
     }
@@ -620,34 +717,39 @@ mod test {
     }
 
     #[test]
-    fn t_workflow_duplicate_node() {
+    fn t_downstream_nodes_follows_fan_out() {
+        // A fans out to both B and C.
         let mut w = Workflow::default();
-        let mut input_labels = w.create_input_property("default_in".to_string());
-        let mut ins = [IH::default(); 2];
-        let mut outs = [OH::default(); 1];
-        let orig = w
-            .add_function(make_func_info("mul"), &mut ins, &mut outs)
+        let mut a_out = [OH::default()];
+        let na = w
+            .add_function(make_func_info("A"), &mut [], &mut a_out)
             .unwrap();
-        input_labels.set(ins[0], "x".into()).unwrap();
-        input_labels.set(ins[1], "y".into()).unwrap();
-        let dup = w.duplicate_node(orig).unwrap();
-        assert_ne!(orig, dup);
-        // Duplicated node has same func info.
-        let orig_info = w.node_infos.get_cloned(orig).unwrap();
-        let dup_info = w.node_infos.get_cloned(dup).unwrap();
-        assert_eq!(orig_info.name(), dup_info.name());
-        // Duplicated node has same number of inputs/outputs.
-        assert_eq!(w.graph.node_inputs(dup).count(), 2);
-        assert_eq!(w.graph.node_outputs(dup).count(), 1);
-        // Input properties are copied.
-        let mut dup_ins = w.graph.node_inputs(dup);
-        assert_eq!(*input_labels.get(dup_ins.next().unwrap()).unwrap(), "x");
-        assert_eq!(*input_labels.get(dup_ins.next().unwrap()).unwrap(), "y");
-        assert!(dup_ins.next().is_none());
-        // Duplicated node is disconnected.
-        for ih in w.graph.node_inputs(dup) {
-            assert!(w.graph.inputs[ih.index()].link.is_none());
-        }
+        let mut b_in = [IH::default()];
+        let nb = w
+            .add_function(make_func_info("B"), &mut b_in, &mut [])
+            .unwrap();
+        let mut c_in = [IH::default()];
+        let nc = w
+            .add_function(make_func_info("C"), &mut c_in, &mut [])
+            .unwrap();
+        w.connect(a_out[0], b_in[0]).unwrap();
+        w.connect(a_out[0], c_in[0]).unwrap();
+
+        let mut downstream: Vec<NH> = w.downstream_nodes(a_out[0]).collect();
+        downstream.sort_by_key(|n| n.index());
+        let mut expected = vec![nb, nc];
+        expected.sort_by_key(|n| n.index());
+        assert_eq!(downstream, expected);
+        let _ = na;
+    }
+
+    #[test]
+    fn t_downstream_nodes_empty_for_unconnected_output() {
+        let mut w = Workflow::default();
+        let mut a_out = [OH::default()];
+        w.add_function(make_func_info("A"), &mut [], &mut a_out)
+            .unwrap();
+        assert_eq!(w.downstream_nodes(a_out[0]).count(), 0);
     }
 
     #[test]
@@ -767,8 +869,8 @@ mod test {
     #[test]
     fn t_workflow_with_custom_properties() {
         let mut w = Workflow::default();
-        let mut dirty = w.create_node_property(false);
-        let mut input_vals = w.create_input_property(0.0f64);
+        let mut dirty = w.create_node_property::<bool>();
+        let mut input_vals = w.create_input_property::<f64>();
 
         let mut a_out = [OH::default()];
         let na = w
@@ -890,5 +992,165 @@ mod test {
 
         assert_eq!(outer.count_nested_calls("alpha").unwrap(), 2);
         assert_eq!(outer.count_nested_calls("beta").unwrap(), 1);
+    }
+
+    #[test]
+    fn t_take_nested_workflow_removes_it() {
+        let mut outer = Workflow::default();
+        let ps = crate::PluginSet::default();
+        outer
+            .push_nested_workflow("inner".to_string(), Workflow::default(), &ps)
+            .unwrap();
+        assert!(outer.has_nested_workflow("inner"));
+
+        let taken = outer.take_nested_workflow("inner");
+        assert!(taken.is_some());
+        assert!(!outer.has_nested_workflow("inner"));
+        // Taking again finds nothing left to take.
+        assert!(outer.take_nested_workflow("inner").is_none());
+    }
+
+    #[test]
+    fn t_put_nested_workflow_restores_it() {
+        let mut outer = Workflow::default();
+        let ps = crate::PluginSet::default();
+        outer
+            .push_nested_workflow("inner".to_string(), Workflow::default(), &ps)
+            .unwrap();
+        let taken = outer.take_nested_workflow("inner").unwrap();
+
+        outer.put_nested_workflow("inner".to_string(), taken);
+        assert!(outer.has_nested_workflow("inner"));
+    }
+
+    #[test]
+    fn t_put_nested_workflow_overwrites_existing_entry() {
+        // put_nested_workflow is the "restore after edit" counterpart to take, not
+        // push_nested_workflow -- it must never fail just because a (stale) entry is already
+        // there, unlike push, which treats that as a naming conflict.
+        let mut outer = Workflow::default();
+        let ps = crate::PluginSet::default();
+        outer
+            .push_nested_workflow("inner".to_string(), Workflow::default(), &ps)
+            .unwrap();
+
+        let mut edited = Workflow::default();
+        let mut outs = [OH::default()];
+        edited
+            .add_function(make_func_info("marker"), &mut [], &mut outs)
+            .unwrap();
+        outer.put_nested_workflow("inner".to_string(), edited);
+
+        assert_eq!(outer.count_nested_calls("inner").unwrap(), 0);
+        // The replacement really landed: it now has the one node the original didn't.
+        let restored = outer.take_nested_workflow("inner").unwrap();
+        assert_eq!(restored.node_iter().count(), 1);
+    }
+
+    #[test]
+    fn t_nested_workflow_names_reflects_take_and_put() {
+        let mut outer = Workflow::default();
+        let ps = crate::PluginSet::default();
+        outer
+            .push_nested_workflow("alpha".to_string(), Workflow::default(), &ps)
+            .unwrap();
+        outer
+            .push_nested_workflow("beta".to_string(), Workflow::default(), &ps)
+            .unwrap();
+
+        let mut names: Vec<&str> = outer.nested_workflow_names().collect();
+        names.sort_unstable();
+        assert_eq!(names, ["alpha", "beta"]);
+
+        let taken = outer.take_nested_workflow("alpha").unwrap();
+        let names: Vec<&str> = outer.nested_workflow_names().collect();
+        assert_eq!(names, ["beta"], "checked-out name must not be listed");
+
+        outer.put_nested_workflow("alpha".to_string(), taken);
+        let mut names: Vec<&str> = outer.nested_workflow_names().collect();
+        names.sort_unstable();
+        assert_eq!(names, ["alpha", "beta"]);
+    }
+
+    #[test]
+    fn t_workflow_input_position_reports_registered_index() {
+        let mut w = Workflow::default();
+        let mut ins = [IH::default(); 2];
+        w.add_function(make_func_info("f"), &mut ins, &mut [])
+            .unwrap();
+        w.set_inputs(&[(ins[0], 0, "x"), (ins[1], 1, "y")]).unwrap();
+
+        assert_eq!(w.workflow_input_position(ins[0]).unwrap(), Some(0));
+        assert_eq!(w.workflow_input_position(ins[1]).unwrap(), Some(1));
+    }
+
+    #[test]
+    fn t_workflow_input_position_none_when_not_registered() {
+        let mut w = Workflow::default();
+        let mut ins = [IH::default(); 1];
+        w.add_function(make_func_info("f"), &mut ins, &mut [])
+            .unwrap();
+        assert_eq!(w.workflow_input_position(ins[0]).unwrap(), None);
+    }
+
+    #[test]
+    fn t_workflow_input_position_survives_a_link_being_attached() {
+        // Registration is independent of whether the pin is currently dangling -- callers must
+        // check `input_source` themselves if "still dangling" is what they actually care about.
+        let mut w = Workflow::default();
+        let mut a_out = [OH::default()];
+        w.add_function(make_func_info("src"), &mut [], &mut a_out)
+            .unwrap();
+        let mut b_in = [IH::default()];
+        w.add_function(make_func_info("dst"), &mut b_in, &mut [])
+            .unwrap();
+        w.set_inputs(&[(b_in[0], 0, "x")]).unwrap();
+        w.connect(a_out[0], b_in[0]).unwrap();
+
+        assert_eq!(w.workflow_input_position(b_in[0]).unwrap(), Some(0));
+        assert!(w.input_source(b_in[0]).is_some());
+    }
+
+    /// A single declared input legitimately feeds more than one pin (e.g. `def f(x): return
+    /// add(x, x)`), which means the same index can appear more than once in the slice passed to
+    /// `set_inputs`. That must not be rejected, must not inflate `input_names()` past the true
+    /// number of distinct inputs, and every pin sharing that index must report the same name.
+    #[test]
+    fn t_set_inputs_accepts_one_index_feeding_multiple_pins() {
+        let mut w = Workflow::default();
+        let mut ins = [IH::default(); 2];
+        w.add_function(make_func_info("add"), &mut ins, &mut [])
+            .unwrap();
+        w.set_inputs(&[(ins[0], 0, "x"), (ins[1], 0, "x")]).unwrap();
+
+        assert_eq!(w.input_names(), ["x"]);
+        assert_eq!(w.workflow_input_position(ins[0]).unwrap(), Some(0));
+        assert_eq!(w.workflow_input_position(ins[1]).unwrap(), Some(0));
+    }
+
+    /// The regression this guards: a repeated index for one parameter must not shift a *later*,
+    /// genuinely distinct parameter's name out of place.
+    #[test]
+    fn t_set_inputs_keeps_later_names_correct_despite_an_earlier_repeat() {
+        let mut w = Workflow::default();
+        let mut ins = [IH::default(); 3];
+        w.add_function(make_func_info("f"), &mut ins, &mut [])
+            .unwrap();
+        w.set_inputs(&[(ins[0], 0, "x"), (ins[1], 0, "x"), (ins[2], 1, "y")])
+            .unwrap();
+
+        assert_eq!(w.input_names(), ["x", "y"]);
+        assert_eq!(w.workflow_input_position(ins[2]).unwrap(), Some(1));
+    }
+
+    #[test]
+    fn t_set_inputs_still_rejects_a_genuine_gap() {
+        let mut w = Workflow::default();
+        let mut ins = [IH::default(); 1];
+        w.add_function(make_func_info("f"), &mut ins, &mut [])
+            .unwrap();
+        // Index 1 with nothing declared at 0 is not a repeat -- it's a real gap.
+        let err = w.set_inputs(&[(ins[0], 1, "y")]).unwrap_err();
+        assert!(matches!(err, crate::dag::DagError::InvalidInputs));
     }
 }

@@ -1,0 +1,205 @@
+//! Pan/zoom canvas: the affine transform between canvas space and screen space,
+//! and the input handling that drives it.
+
+use eframe::egui::{self, Pos2, Rect, Vec2};
+
+/// Zoom limits.
+pub const MIN_ZOOM: f32 = 0.1;
+pub const MAX_ZOOM: f32 = 5.0;
+/// Scroll wheel points to e-folds of zoom.
+const ZOOM_SENSITIVITY: f32 = 0.002;
+
+/// Affine map from canvas space to screen space: `screen = canvas * zoom + pan`.
+///
+/// Node positions, sizes and pin offsets are all in canvas space. They are mapped
+/// through this transform at draw time, and cursor positions are mapped back
+/// through it for hit testing.
+#[derive(Clone, Copy, Debug)]
+pub struct Transform {
+    pub pan: Vec2,
+    pub zoom: f32,
+}
+
+impl Default for Transform {
+    fn default() -> Self {
+        Self {
+            pan: Vec2::ZERO,
+            zoom: 1.0,
+        }
+    }
+}
+
+impl Transform {
+    pub fn canvas_to_screen(&self, p: Pos2) -> Pos2 {
+        (p.to_vec2() * self.zoom + self.pan).to_pos2()
+    }
+
+    pub fn screen_to_canvas(&self, p: Pos2) -> Pos2 {
+        ((p.to_vec2() - self.pan) / self.zoom).to_pos2()
+    }
+
+    pub fn rect_to_screen(&self, r: Rect) -> Rect {
+        Rect::from_min_max(self.canvas_to_screen(r.min), self.canvas_to_screen(r.max))
+    }
+
+    /// Canvas length to screen length.
+    pub fn scale(&self, length: f32) -> f32 {
+        length * self.zoom
+    }
+
+    /// Canvas-space rect currently visible on screen, given the screen-space rect the canvas
+    /// claims (typically `ui.max_rect()`) -- the inverse of `rect_to_screen`. Lets rendering skip
+    /// nodes and links entirely outside the current pan/zoom, so per-frame painting cost tracks
+    /// what's actually on screen rather than total graph size.
+    pub fn visible_canvas_rect(&self, screen_rect: Rect) -> Rect {
+        Rect::from_min_max(
+            self.screen_to_canvas(screen_rect.min),
+            self.screen_to_canvas(screen_rect.max),
+        )
+    }
+
+    /// Multiply the zoom by `factor`, keeping the canvas point currently under
+    /// `anchor` (screen space) pinned to `anchor`.
+    pub fn zoom_about(&mut self, anchor: Pos2, factor: f32) {
+        let pivot = self.screen_to_canvas(anchor);
+        self.zoom = (self.zoom * factor).clamp(MIN_ZOOM, MAX_ZOOM);
+        self.pan = anchor.to_vec2() - pivot.to_vec2() * self.zoom;
+    }
+}
+
+/// Claim the whole available area as the canvas and apply pan/zoom input to `view`.
+///
+/// Shift + right-drag pans and the scroll wheel zooms about the cursor, matching
+/// Grasshopper. Ctrl+scroll and a trackpad pinch zoom too. Returns the canvas
+/// response (later phases hit test against it) and whether the user moved the view
+/// this frame.
+///
+/// `allow_zoom` is `false` while the cursor is over something that wants the scroll wheel for
+/// itself (an Inspect node's scrollable content) — see
+/// `interaction::pointer_over_inspect_content`. Panning stays enabled either way: it's a
+/// different gesture (shift + right-drag), not one anything else competes for.
+pub fn interact(
+    ui: &mut egui::Ui,
+    view: &mut Transform,
+    allow_zoom: bool,
+) -> (egui::Response, bool) {
+    let rect = ui.max_rect();
+    let response = ui.allocate_rect(rect, egui::Sense::click_and_drag());
+    let mut moved = false;
+
+    // Polled straight off raw pointer state rather than `response.dragged_by(..)`. Once
+    // nodes and pins get their own interactive rects on top of this one, a shift+right-drag
+    // that starts on top of one of them would claim drag ownership for its own `Response`
+    // regardless of which button was pressed, so panning would silently stop working
+    // wherever a node happens to be. Reading the raw button/modifier state instead makes
+    // panning independent of whatever else is drawn on top.
+    //
+    // Shift is checked every frame rather than latched at drag start, so letting go of
+    // shift mid-gesture parks the canvas until it is pressed again.
+    let pan_delta = ui.input(|i| {
+        (i.modifiers.shift && i.pointer.button_down(egui::PointerButton::Secondary))
+            .then(|| i.pointer.delta())
+    });
+    if let Some(delta) = pan_delta
+        && delta != Vec2::ZERO
+    {
+        view.pan += delta;
+        moved = true;
+    }
+
+    if allow_zoom && response.contains_pointer() {
+        let (scroll, pinch, cursor) = ui.input(|i| {
+            (
+                i.smooth_scroll_delta.y,
+                i.zoom_delta(),
+                i.pointer.hover_pos(),
+            )
+        });
+        let factor = (scroll * ZOOM_SENSITIVITY).exp() * pinch;
+        if factor != 1.0 {
+            view.zoom_about(cursor.unwrap_or_else(|| rect.center()), factor);
+            moved = true;
+        }
+    }
+
+    (response, moved)
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    fn assert_close(a: Pos2, b: Pos2) {
+        assert!(
+            (a - b).length() < 1e-3,
+            "expected {a:?} to be close to {b:?}"
+        );
+    }
+
+    #[test]
+    fn t_canvas_screen_round_trip() {
+        let view = Transform {
+            pan: Vec2::new(37.0, -12.0),
+            zoom: 2.5,
+        };
+        let p = Pos2::new(123.0, 456.0);
+        assert_close(view.screen_to_canvas(view.canvas_to_screen(p)), p);
+        assert_close(view.canvas_to_screen(view.screen_to_canvas(p)), p);
+    }
+
+    #[test]
+    fn t_zoom_pins_the_point_under_the_anchor() {
+        let mut view = Transform::default();
+        let anchor = Pos2::new(640.0, 400.0);
+        let pivot = view.screen_to_canvas(anchor);
+        for factor in [1.1, 1.1, 0.8, 3.0, 0.5] {
+            view.zoom_about(anchor, factor);
+            assert_close(view.canvas_to_screen(pivot), anchor);
+        }
+    }
+
+    #[test]
+    fn t_zoom_is_clamped() {
+        let anchor = Pos2::new(100.0, 100.0);
+
+        let mut view = Transform::default();
+        for _ in 0..100 {
+            view.zoom_about(anchor, 2.0);
+        }
+        assert_eq!(view.zoom, MAX_ZOOM);
+        // The anchor stays pinned even when the zoom saturates.
+        assert_close(view.canvas_to_screen(view.screen_to_canvas(anchor)), anchor);
+
+        let mut view = Transform::default();
+        for _ in 0..100 {
+            view.zoom_about(anchor, 0.5);
+        }
+        assert_eq!(view.zoom, MIN_ZOOM);
+    }
+
+    #[test]
+    fn t_visible_canvas_rect_round_trips_through_the_screen_rect() {
+        let view = Transform {
+            pan: Vec2::new(50.0, -30.0),
+            zoom: 2.0,
+        };
+        let screen_rect = Rect::from_min_max(Pos2::new(0.0, 0.0), Pos2::new(800.0, 600.0));
+        let visible = view.visible_canvas_rect(screen_rect);
+        // Mapping back through `rect_to_screen` must recover the original screen rect exactly.
+        assert_close(view.rect_to_screen(visible).min, screen_rect.min);
+        assert_close(view.rect_to_screen(visible).max, screen_rect.max);
+    }
+
+    #[test]
+    fn t_pan_translates_without_scaling() {
+        let mut view = Transform {
+            pan: Vec2::ZERO,
+            zoom: 0.5,
+        };
+        let before = view.canvas_to_screen(Pos2::new(10.0, 20.0));
+        view.pan += Vec2::new(15.0, -5.0);
+        let after = view.canvas_to_screen(Pos2::new(10.0, 20.0));
+        assert_close(after, before + Vec2::new(15.0, -5.0));
+        assert_eq!(view.zoom, 0.5);
+    }
+}

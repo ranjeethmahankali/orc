@@ -152,6 +152,994 @@
   serialization story of the workflows throws a bit of a wrench into this. I've given this some
   thought in [[*tkwogf - Overhaul of workflow property serialization][this task]], but I don't yet know what the solution is. This requires more thought.
 
+* TODO Python code generation from a workflow
+  :PROPERTIES:
+  :CREATED:  2026-09-06 Sun 22:22
+  :END:
+
+  This should be easy to do. Need to think through the inspect nodes a little, but should be trivial
+  still.
+
+* DONE tkuzn6 - Node Editor UI App
+  CLOSED: [2026-09-10 Thu 21:01]
+  :PROPERTIES:
+  :CREATED:  2026-08-26 Wed 10:47
+  :END:
+  :LOGBOOK:
+  - State "DONE"       from "NEXT"       [2026-09-10 Thu 21:01]
+  - State "NEXT"       from "TODO"       [2026-09-06 Sun 22:31]
+  :END:
+
+  To lower the scope of the node editor demo app, I think it should not have a dedicated viewer,
+  that stays in sync with the node graph. Instead the node graph should have a set of no-op
+  "inspect" nodes, that visualize the data as either text or graphics, potentially with an
+  interactive camera. Maybe they support a maximize / minimize option to temporarily fill the
+  screen, and explore. Maybe there is a button that pops this view out into a separate window if
+  the user wants to keep it around as they move around the canvas. This is still much simpler than
+  a general viewer, since it only displays a single output, with no need for concepts such as
+  selection.
+
+  <2026-09-04 Fri 18:49> I need a way to display the decks. So I decided to do [[*tkv3ek - Deck to String Conversion for Display][this task]] first.
+
+  <2026-09-05 Sat 15:22> Also need to do [[*tkwogf - Overhaul of workflow property serialization][this task]] first.
+
+  <2026-09-06 Sun 22:33> I added 'Inspect' nodes in a task I just merged. These nodes should be used
+  by the node editor UI app to display the data they're connected to. Depending on the label of the
+  inspect node, the UI app should either display the tree as text, or display 3d geometry, if the
+  data actually represents geometry.
+
+  <2026-09-06 Sun 23:33> Brainstormed some details and created a detailed plan for implementing the
+  node editor.
+
+  <2026-09-10 Thu 19:55> Finished implementing it. Only tested it a little bit. Doesn't make sense
+  to try and test this too much now. I would rather implement some useful plugin functions, and
+  start making some workflows, and this implementation will get tested organically in that
+  process. This is good enough for now, to mark this task done after some final review, and clean
+  up.
+
+  <2026-09-10 Thu 21:00> Did a final review and a set of improvements.
+
+** DONE Detailed Plan
+   CLOSED: [2026-09-10 Thu 19:55]
+   :PROPERTIES:
+   :CREATED:  2026-09-06 Sun 23:03
+   :END:
+   :LOGBOOK:
+   - State "DONE"       from "NEXT"       [2026-09-10 Thu 19:55]
+   - State "NEXT"       from "TODO"       [2026-09-07 Mon 23:39]
+   - State "TODO"       from              [2026-09-07 Mon 22:28]
+   :END:
+
+*** Custom Rendering (not egui-snarl or egui-graph-edit)
+
+    Existing egui node editor crates (egui-snarl, egui-graph-edit) maintain their own internal graph
+    model with their own ID types. Using them would require keeping two parallel graph representations
+    in sync -- a constant source of bugs. Instead, render nodes directly from the orc Workflow using
+    egui's Painter API:
+
+    - ~Painter::rect_filled~ / ~rect_stroke~ for node bodies (rounded rectangles)
+    - ~Painter::circle_filled~ / ~circle_stroke~ for input/output pins
+    - ~Painter::text~ for all labels (monospace font throughout the entire UI)
+    - ~Painter::add(Shape::CubicBezier { .. })~ for connection curves between pins
+
+    All coordinates are transformed through a pan/zoom affine matrix before drawing.
+
+*** Force-Directed Layout with DAG Flow Constraint
+
+    Nodes are NOT draggable. The layout is computed automatically by a force-directed simulation
+    that respects left-to-right DAG flow. Nodes are axis-aligned rectangles with variable sizes
+    (inspect nodes are resizable). The layout updates incrementally when topology changes or nodes
+    are resized. Positions and sizes are not persisted to disk for now -- they are recomputed from
+    scratch when the app opens, and updated in-place during the session.
+
+**** Forces
+
+     - *Bounding-box repulsion:* All node pairs repel each other based on their bounding boxes
+       (not point-to-point). Larger inspect nodes push neighbors further away. This prevents
+       overlap and maintains readable spacing.
+     - *Spring attraction along edges:* Connected nodes (output pin -> input pin) are pulled
+       toward each other. Spring rest length is proportional to the sum of the two nodes' widths
+       plus a gap.
+     - *Vertical centering:* Each node is gently pulled toward the vertical median of its
+       connected neighbors, reducing unnecessary vertical spread.
+
+**** DAG Flow Constraint (hard constraint)
+
+     After each simulation step, enforce left-to-right ordering: for every edge (A -> B), ensure
+     ~B.x >= A.x + A.width + gap~. If violated, push B rightward. This is applied in topological
+     order so that corrections propagate downstream in a single pass.
+
+     Workflow input chips are pinned to x = 0. Workflow output chips are free to settle at whatever
+     x the simulation produces (they will naturally end up rightmost since they have no downstream
+     nodes pulling them left).
+
+**** Initial Seeding (app startup, no stored positions)
+
+     1. Topological sort gives each node a depth (longest path from any root).
+     2. Depth determines initial x position (depth * (typical_node_width + gap)).
+     3. Nodes at the same depth are spread evenly along y.
+     4. Run full simulation to convergence (iterate until max force magnitude drops below a
+        threshold, or a fixed max iteration count is reached).
+
+**** Incremental Updates (topology change, node resize)
+
+     When a node is added, removed, connected, disconnected, or resized:
+     1. Keep all existing node positions as-is.
+     2. New nodes are seeded near their connected neighbors (or at the center of the viewport if
+        disconnected).
+     3. Re-run the simulation from current positions for a few iterations until convergence.
+     4. Because the simulation is continuous (small perturbation -> small output change), the layout
+        shifts smoothly without large jumps.
+
+**** Convergence and Repaint
+
+     The simulation runs as part of the update loop. While forces are above the convergence
+     threshold, ~ctx.request_repaint()~ is called each frame to animate the layout settling. Once
+     converged, repaints stop (zero CPU). This gives a smooth animation of nodes settling into
+     place after a topology change.
+
+*** Hit Testing via Spatial Hash Grid
+
+    Nodes have variable sizes (resizable inspect nodes) and are not in strict layers, so a general
+    spatial index is needed. A spatial hash grid provides O(1) average-case point queries.
+
+**** Structure
+
+     A uniform grid where each cell is roughly the size of a typical node (~200x200 canvas units).
+     Each node is inserted into all grid cells its bounding box overlaps. A large resized inspect
+     node may span several cells -- this is fine.
+
+**** Queries
+
+     To find what is under the cursor:
+     1. Transform cursor to canvas coordinates.
+     2. Compute grid cell from canvas position.
+     3. Test only nodes in that cell (and possibly immediate neighbors for edge cases).
+     4. If the cursor is on a node, test its pins linearly (few pins per node).
+
+**** Rebuild
+
+     The grid is rebuilt whenever the layout changes (topology change, resize, or simulation step).
+     Rebuild cost is O(n) -- iterate all nodes, insert into cells. This is cheap even for thousands
+     of nodes.
+
+*** EditorState
+
+    Uses orc's existing property system (~NodeProperty<T>~, ~OutputProperty<T>~) instead of
+    HashMaps. Properties are attached to the workflow's graph and automatically resize when nodes
+    are added/removed or garbage collection runs.
+
+    Positions and sizes are transient -- not persisted to disk. They are computed by the layout
+    simulation on app startup and updated in-place during the session. Persistence of UI state is
+    a future concern.
+
+    #+begin_src rust
+    struct EditorState {
+        workflow: Workflow,
+        // Properties (attached to workflow graph, auto-resize with topology)
+        node_positions: NodeProperty<[f32; 2]>,
+        node_sizes: NodeProperty<[f32; 2]>,              // for resizable inspect nodes
+        computed_outputs: OutputProperty<Option<OrcHandle>>,   // cached execution results
+        nested_exec_state: NodeProperty<Option<NestedExecState>>,  // per-call internal state
+        // Spatial index (rebuilt on layout change)
+        spatial_grid: SpatialHashGrid,
+        // Layout simulation
+        layout_converged: bool,                        // false while simulation is settling
+        // UI transients (not persisted)
+        pan_offset: Vec2,
+        zoom: f32,
+        selected_nodes: HashSet<usize>,               // NH indices
+        connecting: Option<ConnectState>,              // active wire drag from a pin
+    }
+    #+end_src
+
+*** Incremental Execution
+
+    <2026-09-09 Wed> Brainstormed the execution engine and threading model in detail. Nesting is
+    out of scope for now -- see Phase 5, which is where ~NestedExecState~ (below) actually
+    belongs; this section only covers a flat, non-nested workflow. Dagger gets its own executor,
+    separate from ~Workflow::run~ -- that function is a live public API other hosts depend on
+    (pyorc's ~run_workflow~, ~kbb_cli_host~'s tests both call it with its current
+    signature/behavior), so it stays as-is rather than growing incremental/threading concerns
+    bolted on.
+
+**** Why every node is a root
+
+     ~Workflow::run~'s traversal starts only from ~self.workflow_outputs~ (the explicit named
+     terminal outputs set via ~set_outputs~). Dagger never calls ~set_outputs~/~set_inputs~, so
+     that list is always empty here, and Inspect nodes -- dead ends, no outputs -- would never be
+     reached by that traversal at all. Dagger's own executor instead walks every node
+     (~workflow.node_iter()~ as roots, same shape as ~layout::compute_depths~), so Inspect dead
+     ends and anything else get evaluated regardless of whether they feed a declared output.
+     Nodes flagged as part of a cycle are skipped -- but the executor does its own cycle check
+     each time it walks, rather than trusting ~state.node_in_cycle~, which ~layout::compute_layout~
+     only ever computes once (the first ~measure~ call) and does not update after later
+     topology edits.
+
+**** Staleness tracking
+
+     - ~computed_outputs: OutputProperty<Arc<OrcHandle>>~ in ~EditorState~, cached per output
+       pin (~Arc~-wrapped -- see "Handle lifetime across threads" below). The "not yet computed"
+       sentinel is ~free_fn.is_none()~ on the wrapped handle (the zeroed default) -- *not*
+       equality against a zeroed ~handle~ id, since ~HANDLE_COUNTER~ starts at 0 and a
+       legitimately computed value could be assigned handle id 0. Only ~free_fn~ tells "no
+       backing deck" apart from "really is handle 0", matching the pattern already used
+       elsewhere in the crate (e.g. the constant-deletion regression test in ~interaction.rs~).
+     - ~dirty_version: NodeProperty<u64>~ per node, bumped (not just set to a bool) on a direct
+       edit -- connect, disconnect, add, delete, a constant's value changing -- and propagated
+       forward to every downstream node. This requires a small addition to ~orc_sdk~: a public
+       forward-adjacency accessor on ~Workflow~ (e.g. ~output_links(OH)~), thinly wrapping the
+       ~Graph::output_links~ machinery that already exists internally (an intrusive linked list
+       per output, walked in O(fan-out)) but isn't reachable from outside the crate today --
+       ~Workflow~ only exposes the backward lookup (~input_source~).
+     - Dispatch readiness is tracked via a small worklist of "candidate" nodes -- anything just
+       touched by a staleness-propagation pass, or whose upstream just finished computing -- each
+       checked locally against its own (small) fan-in when popped. This is deliberately not a
+       fully precise per-edge in-degree counter (more bookkeeping than it is worth at typical
+       node arity) and not a per-frame full-graph scan either -- work stays proportional to
+       whatever actually changed, not to graph size.
+
+**** Thread pool
+
+     A fixed-size pool of ~max(available_parallelism() - 1, 1)~ long-lived worker threads,
+     spawned once and blocking on a shared ~Arc<Mutex<Receiver<NodeJob>>>~ -- no thread creation
+     or teardown during interactive use, and independent branches genuinely run in parallel
+     (whichever worker is free picks up the next ready job), which is the whole reason for a pool
+     over a single background thread. A single-background-thread design was considered and
+     rejected: it's simpler and sidesteps the handle-lifetime issue below, but gives up true
+     cross-branch parallelism, which is a hard requirement here, not a nice-to-have.
+
+     Results come back over a second ~mpsc~ channel, drained via ~try_recv()~ on the UI thread
+     once per frame -- the UI thread never blocks on execution, matching or exceeding the
+     original 100ms-poll idea.
+
+     ~NodeJob~ carries everything a worker needs without ever touching the live ~Workflow~ (whose
+     ~Rc~/~RefCell~-based properties are not ~Send~): the node handle, the plugin function
+     pointer, its inputs as cloned ~Arc<OrcHandle>~ (see "Handle lifetime across threads" below),
+     the output count, a cancellation ~ctx~ id, and the ~dirty_version~ it was launched for.
+     ~NodeResult~ carries the node handle, that same ~ctx~/launched version, and the outcome:
+     ~Ok(outputs)~, ~Err(OperationCancelled)~, or ~Err(other)~.
+
+**** Cancellation is per node job, not per pass or global
+
+     One ~ContextArena<bool>~ slot per dispatched job (mirrors the existing
+     ~SERIAL_CONTEXT_ARENA~ pattern already used for ~serial_write_callback~). The plugin's
+     ~check_cancellation(ctx)~ callback reads it; whether a plugin checks it at all is entirely
+     up to whoever implemented that node -- the host impose no policy here. Only the specific job
+     whose own node gets invalidated has its flag flipped: editing an unrelated, independent
+     branch must never disturb a node that is currently running, since its output is still
+     perfectly valid. This relies on ~ORC_ERROR_OPERATION_CANCELLED~ (added in commit e1b1320) to
+     tell a cooperative abort apart from a real failure returned by the same call.
+
+**** Handle lifetime across threads: ~Arc<OrcHandle>~
+
+     ~OrcHandle~ already has ~impl Drop { fn drop(&mut self) { self.free(); } }~ (~ffi.rs:212~) --
+     dropping an owning handle calls ~.free()~, dropping a borrowed one (~free_fn: None~, as
+     produced by ~.borrowed()~) is already a safe no-op. It's a move-only, RAII-owning type
+     already (why ~Workflow::run~ has to ~std::mem::take~ out of ~computed_outputs[o.idx]~
+     instead of just reading it). So sharing one across an in-flight job needs nothing more than
+     the standard tool for shared ownership: ~computed_outputs: OutputProperty<Arc<OrcHandle>>~.
+
+     Dispatching a job clones the ~Arc~ for each borrowed input and stores the clones directly in
+     ~NodeJob~. On the worker, right before the actual plugin call, an ~OrcHandleBorrowed<'_>~ is
+     derived locally from each ~Arc<OrcHandle>~ (~arc.borrowed()~) into a short-lived stack
+     buffer -- an ordinary, fully compiler-checked borrow, since the owning ~Arc~ clones are
+     sitting on the same stack frame the whole time. ~OrcHandleBorrowed~ never has to cross the
+     channel or have its lifetime unsafely asserted away; only the ~Arc~ travels, and it's
+     ordinarily ~Send~.
+
+     Committing a fresh result is just ~computed_outputs[oh] = Arc::new(new_handle)~. If the UI
+     thread held the only reference, the old ~Arc~ drops immediately and ~.free()~ runs right
+     there, via ~OrcHandle~'s own ~Drop~ -- nothing in dagger calls ~.free()~ explicitly anywhere.
+     If some worker still holds a clone (an in-flight downstream job that captured the old
+     value), the old ~Arc~ simply lives on until that worker drops its copy, whereupon ~.free()~
+     runs automatically -- on whichever thread happens to drop last, which is why a plugin's
+     ~free_fn~ must be safe to call from any thread (the same expectation the whole design
+     already places on plugin code called concurrently in general). No reader-count bookkeeping,
+     no pending-commit staging slot, no ~orc_sdk~ changes at all -- this works uniformly for
+     built-in and plugin-owned handles alike, since it never needs to look behind the handle at
+     what's managing the actual backing memory (which, for a plugin-owned type, may not even be
+     Rust).
+
+     Relies on one existing invariant: the executor always allocates a *fresh* handle id per
+     computed output (never reuses one), matching how ~Workflow::run~ already works via
+     ~handle_counter.fetch_add~. ~DeckRegistry::alloc_with_value~ has a same-id-reuse path
+     (~util.rs:134~) that mutates a built-in deck's contents in place under a write lock when the
+     id is already occupied with a matching type -- irrelevant as long as the executor never
+     reuses an id, but worth remembering if that ever changes.
+
+**** Commit policy on job completion
+
+     - ~Ok(outputs)~ is always committed immediately (replacing the ~Arc<OrcHandle>~ in
+       ~computed_outputs~ -- no staging needed), even if the node was invalidated again after
+       this job launched -- a stale-but-real value beats showing
+       nothing, and this is exactly what makes continuously dragging a slider feel alive while a
+       slow, non-cooperative node is mid-flight. The node is still redispatched afterward if it's
+       still marked dirty.
+     - ~Err(OperationCancelled)~ commits nothing; the node is simply eligible for redispatch again
+       right away.
+     - Any other ~Err~ is a genuine fault: shown on the node, and the node settles rather than
+       retrying every time the scheduler looks for ready work -- it only becomes a candidate
+       again once a future edit actually touches it or its inputs.
+
+**** In-progress indicator
+
+     A node with an in-flight job gets a looping left-to-right pulse/sweep drawn into its title
+     bar fill (indefinite-progress-bar style), driven by wall-clock time. Continuous repaint is
+     requested every frame while any node is in-flight -- gated on "something is actually
+     running", so it costs nothing the rest of the time, but needed for the sweep to animate
+     smoothly (a 100ms poll interval, as originally planned, would make it stutter).
+
+*** Nested Workflow Execution & Editing (superseded sketch)
+
+    <2026-09-09 Wed> First pass at this (recursive ~NestedExecState~, cloning the nested workflow
+    on open, ~show_viewport_deferred~, a 3-way close prompt) turned out more complicated than it
+    needed to be.
+
+    <2026-09-10 Thu> Simplified: no cloning at all. Opening a NestedCall node *moves* the actual
+    ~Workflow~ out of ~nested_workflows[name]~ into a new ~EditorState~ pushed onto a stack, so
+    the pop-out edits the real object in place; closing moves it back. See "Phase 5: Nested
+    Workflow Editing" under Implementation Phases for the current, authoritative design and
+    checklist -- this section is kept only as a pointer, the detail now lives there.
+
+*** Workflow Inputs/Outputs Display
+
+    - Workflow inputs are rendered as minimal "chip" pill-shaped nodes at layer 0 (the leftmost
+      layer). They have only an output pin and a label showing the input name. They are roots -- no
+      input pins. Distinct styling (different color/outline) to visually distinguish from function
+      nodes.
+
+    - Workflow outputs are rendered as chip nodes at the last layer (rightmost). They have only an
+      input pin and a label showing the output name. They are dead ends -- no output pins. Same
+      distinct styling as input chips.
+
+    - NestedCall nodes are displayed as regular function nodes with the nested workflow name as the
+      title bar text. Double-click to open the nested editor.
+
+*** Right-Click Context Menu
+
+    The menu opens on a plain right-click, without shift -- shift + right-drag is the pan
+    gesture, so the two share the button and are told apart by the modifier.
+
+    Two trigger points with slightly different behavior:
+
+**** Right-click on empty canvas
+
+     Adds a disconnected node at the click position.
+
+**** Right-click on an output pin
+
+     Adds a node AND connects its first input to the clicked output pin. The node is placed at the
+     position determined by the layout recomputation after the connection is made.
+
+**** Menu UI (same for both triggers)
+
+     1. A popup appears. The top element is a *text field that is immediately focused* so the user
+        can start typing without clicking.
+     2. Below the text field is a list of options.
+     3. *If the user types into the text field:* the option list is replaced by search results
+        filtered from all available functions in the loaded PluginSet. The initial filtering
+        implementation is ~name.starts_with(query)~. The filtering logic is behind a trait so it
+        can be replaced with levenshtein distance, fuzzy matching, or other strategies later:
+        #+begin_src rust
+        trait FunctionFilter {
+            fn filter(&self, query: &str, functions: &[FuncInfo]) -> Vec<usize>; // indices into functions
+        }
+        #+end_src
+     4. *If the user does NOT type and instead uses arrow keys:* they navigate the default options:
+        - "Add Constant Node"
+        - "Add Inspect Node"
+        - "Session Info..." (opens a separate window showing loaded plugins, their functions, and
+          their types -- the information that would otherwise go in a sidebar palette)
+     5. Selecting a function from the search results or an option from the default list creates the
+        appropriate node. If the menu was triggered from an output pin, the new node's first input
+        is also connected to that pin.
+     6. After node creation, the layout recomputes.
+
+*** Inspect Node Display
+
+    Inspect nodes are dead-end visualization nodes with 1 input, 0 outputs, and a label string.
+    The label determines the display mode.
+
+    - *Text display:* Render the ~deck_to_str()~ output of the connected upstream data in a
+      scrollable monospace text area embedded in the node body.
+    - *Resizable:* Inspect nodes can be resized by the user (stored in ~node_sizes~ property).
+    - *Maximize/minimize:* A toggle to expand the inspect node to fill the viewport, or shrink it
+      back to its normal size.
+    - *Pop-out:* A button to pop the inspect view into a separate OS window via
+      ~ctx.show_viewport_deferred()~. The user can keep this window open as they navigate the
+      canvas.
+    - *Future 2D/3D viewports:* When the label indicates geometry data, the inspect node will
+      embed a wgpu render pass via egui's ~PaintCallback~ and support pan/zoom/orbit within that
+      embedded viewport. (Out of scope for initial implementation.)
+
+*** Repaint Strategy
+
+    Reactive mode -- zero CPU when fully idle. ~ctx.request_repaint()~ is called only when needed:
+
+    - Canvas interaction: pan, zoom, box select
+    - Pin connection wire drag (drawing the in-progress Bezier to the cursor)
+    - Inspect node interaction: scrolling text content, resizing the inspect viewport, future
+      pan/zoom/orbit within an embedded 2D/3D viewport
+    - Layout settling: stale -- Phase 3b removed the force-directed simulation entirely, so this
+      no longer applies. Layout is now a one-shot computation (see "Force-Directed Layout with
+      DAG Flow Constraint" above, itself written before that removal).
+    - Execution: continuous repaint every frame while any node has an in-flight job (both to
+      drain the results channel and to animate the in-progress sweep on that node's title bar --
+      see "In-progress indicator" under "Incremental Execution"). Replaces the original
+      100ms-poll idea, which would make the sweep stutter. Stops the instant nothing is running.
+
+    When no interaction is active, no layout is settling, and no execution is running, the app
+    sleeps completely and consumes zero CPU.
+
+*** main.rs: Host Setup
+
+    The host setup (OrcHost, PluginSet loading, DeckRegistry, handle counter, host callbacks) lives
+    directly in ~main.rs~, following the same pattern as ~rust/kbb_cli_host/src/main.rs~. No
+    separate host.rs file.
+
+    Key elements to replicate from kbb_cli_host:
+    - ~static REGISTRY: LazyLock<DeckRegistry>~
+    - ~static HANDLE_COUNTER: AtomicU64~
+    - ~static SERIAL_CONTEXT_ARENA: LazyLock<ContextArena<Vec<u8>>>~
+    - ~static PLUGIN_SET: LazyLock<PluginSet>~
+    - Host callbacks: ~host_alloc~, ~host_dealloc~, ~serial_write_callback~,
+      ~host_create_proxy_deck~, ~report_message~
+    - ~HOST: OrcHost~ constant with the callback table
+    - ~host_clone_orc_handle~ helper
+
+*** Implementation Phases
+
+**** DONE Phase 1: Host Setup + Render + Layout
+     CLOSED: [2026-09-08 Tue 15:34]
+     :LOGBOOK:
+     - State "DONE"       from "NEXT"       [2026-09-08 Tue 15:34]
+     - State "NEXT"       from "TODO"       [2026-09-07 Mon 23:12]
+     - State "TODO"       from              [2026-09-07 Mon 23:11]
+     :END:
+
+     - [X] Host setup in main.rs: replicate kbb_cli_host pattern (OrcHost, PluginSet, DeckRegistry,
+       handle counter, host callbacks). Load plugins at startup.
+     - [X] EditorState struct with Workflow, NodeProperty for positions/sizes, layout state.
+     - [X] Create a test workflow via a Python script (using pyorc API), save it to
+       ~workflows/test.orc~ in the project root. Load that file in dagger at startup.
+     - [X] Node rendering: rounded rect body (color by NodeInfo variant), monospace title bar,
+       input pins (circles on left edge with labels), output pins (circles on right edge with
+       labels). Workflow input/output chips as pill-shaped nodes with distinct styling.
+     - [X] Link rendering: cubic Bezier curves from output pin center to input pin center, control
+       points extending horizontally.
+     - [X] Force-directed layout: bounding-box repulsion, spring attraction along edges, vertical
+       centering, DAG flow constraint (hard). Topological seeding on startup, convergence
+       animation.
+     - [X] Pan/zoom canvas: shift + right-drag to pan, scroll wheel to zoom about the cursor
+       (clamped 0.1..5.0). Screen-to-canvas coordinate transform.
+
+       <2026-09-08 Tue 15:34> Pan was originally specified as middle-drag. Changed to shift +
+       right-drag to match Grasshopper. Requiring shift leaves a plain right-click free for the
+       context menu, so the two gestures can share the button.
+
+**** DONE Phase 1B: Misc clean up after phase 1
+     CLOSED: [2026-09-08 Tue 17:08]
+     :PROPERTIES:
+     :CREATED:  2026-09-08 Tue 15:44
+     :END:
+     :LOGBOOK:
+     - State "DONE"       from "NEXT"       [2026-09-08 Tue 17:08]
+     - State "NEXT"       from "TODO"       [2026-09-08 Tue 16:51]
+     :END:
+
+     - [X] The app should respect the argument names provided by the plugin via the ABI. Just added
+       that stuff to the SDK. Check it and use it in the rendering. The rendered blocks should show
+       the names, and should be appropriately sized based on the largest input / output names. This
+       also addresses your concerns about pin labels.
+     - [X] ~push_link~ is not responsible for checking for cycles. The graph is allowed to exist
+       with cycles. It should be shown as an error state. For now, just make the nodes in a cycle
+       red to indicate a problem. [[file:rust/orc_sdk/src/dag/workflow.rs::pub fn run(][This function]] shows how to detect cycles when walking the
+       graph. Use that approach when computing the layout too. But you still need to seed the layout
+       with something, just stop the traversal and use an approximate position based on what you
+       know at that point, and render the block in an error state.
+
+**** DONE Phase 2: Hit Testing + Interaction + Context Menu
+     CLOSED: [2026-09-08 Tue 19:00]
+     :PROPERTIES:
+     :CREATED:  2026-09-08 Tue 18:21
+     :END:
+     :LOGBOOK:
+     - State "DONE"       from "NEXT"       [2026-09-08 Tue 19:00]
+     - State "NEXT"       from "TODO"       [2026-09-08 Tue 17:51]
+     - State "TODO"       from              [2026-09-07 Mon 23:11]
+     :END:
+
+     *Hit testing:*
+     - [X] No spatial index. Each node's body and each pin get their own
+       ~ui.interact(rect, id, Sense::click_and_drag())~ call every frame, in
+       ~interaction::update~. egui's own hit test is itself a linear scan and already resolves
+       overlaps by paint order (pins are interacted after the body, so they win ties over the
+       sliver of themselves that overlaps the node's edge), so this scales the same way and
+       needs no index to rebuild every time the layout moves. Matches Qt's own guidance
+       (~QGraphicsScene::NoIndex~ for small, frequently-animated scenes) and how existing egui
+       node-graph crates (egui_snarl, egui_node_graph) do it.
+     - [X] Point query: no separate function. The ~Response~ returned by each node/pin's
+       ~ui.interact~ answers hover/click/drag directly (~.dragged()~, ~.clicked()~,
+       ~.drag_started()~, ...), keyed by stable ~Id~s derived from ~NH~/~IH~/~OH~.
+     - [X] No ~HitTarget~ enum. Each node exposes two kinds of hit target instead: its pins
+       (drag to start or rewire a connection) and the rest of its body (drag to move the node).
+       Pin positions are still computed from the owning node's position + fixed offsets per pin
+       index (~render::input_pin_pos~/~output_pin_pos~).
+
+     *Dragging and Connecting pins:*
+
+     If the dragging starts on the title of a node, it should drag the node along, but the force
+     directed graph should still try to revert to it's equilibrium. If the drag starts at a pin, it
+     should create a link.
+
+     - [X] Implement dragging for nodes. This is meant to just make the graph rendering feel
+       alive. Not meant to actually move nodes, because the force-directed-graphs will restore the
+       nodes to their equilibrium, position, which may not be the same as their position before
+       dragging, same as obsidian graph rendering.
+
+     - [X] Click output pin -> enter connecting state, draw in-progress Bezier from pin to cursor.
+     - [X] Release on input pin -> call ~workflow.connect()~, trigger layout recompute.
+     - [X] Release on empty canvas or invalid target -> cancel, no connection made.
+     - [X] Dragging from an already-connected input pin disconnects it first, then enters connecting
+       state from the upstream output (rewire gesture).
+
+     *Selection:*
+     - [X] Click node -> select it, deselect all others.
+     - [X] Shift+click node -> toggle that node's selection without affecting others.
+     - [X] Click empty canvas -> deselect all.
+     - [X] Click+drag on empty canvas -> draw a selection rectangle, select all nodes whose bounding
+       boxes intersect it.
+
+     *Delete:*
+     - [X] Delete key removes all selected nodes (~workflow.delete_node()~ for each).
+     - [X] Triggers layout recompute and staleness propagation for incremental execution.
+
+     *Right-click context menu:*
+     - [X] Right-click (no shift) on empty canvas -> popup at click position, creates
+       disconnected node.
+     - [X] Right-click (no shift) on output pin -> popup, creates node AND connects its first
+       input to that pin.
+     - [X] Popup UI: focused text field at top. Typing filters available functions via FunctionFilter
+       trait (~starts_with~ initially, swappable for fuzzy/levenshtein later). Arrow keys without
+       typing navigate default options: "Add Constant Node", "Add Inspect Node",
+       "Session Info...".
+     - [X] Selecting an entry creates the node, closes the popup, triggers layout recompute.
+
+     *Session info window:*
+     - [X] Opened from context menu "Session Info..." option.
+     - [X] Separate ~egui::Window~ showing loaded plugins, their functions (name, n_inputs, n_outputs,
+       description), and their registered types.
+
+     <2026-09-08 Tue 18:20> Tweaks to the UX after testing:
+
+     - [X] When I am about to release a cable connection (drag) at an input pin, I get no visual
+       feedback. I would like the emtpy circle of the receiving pin to thicken up (without fill). Do
+       this in immediate mode style.
+     - [X] In the right click menu, I want the entire row to actively select that entry, and not
+       just the bounds of the text. Smaller targets are harder to hit with the mouse.
+     - [X] Nuanced selection rectangles. Dragging to the right should create a selection rectangle
+       that only selects nodes that are fully inside it. This rectangle should have a solid stroke
+       line. Dragging to the left creates a selection rectangle that selects all nodes that overlap
+       with it. This selection rectangle should have a dashed line stroke if egui supports this
+       efficiently, otherwise leave it as solid too.
+     - [X] Make the fill colors of both selection rectangles more transparent, maybe half as opaque
+       as they are now.
+     - [X] Inspect nodes should have the title "inspect" instead of "a", as it is now.
+     - [X] Use case insensitive substring check to filter node names.
+
+     <2026-09-08 Tue 18:53> Some more bug fixing and testing, almost done.
+
+**** DONE Phase 3: File I/O
+     CLOSED: [2026-09-08 Tue 19:26]
+     :LOGBOOK:
+     - State "DONE"       from "NEXT"       [2026-09-08 Tue 19:26]
+     - State "NEXT"       from "TODO"       [2026-09-08 Tue 19:14]
+     - State "TODO"       from              [2026-09-07 Mon 23:11]
+     :END:
+
+     - [X] File menu in the top bar: Save, Save As, Open.
+     - [X] Save: serialize workflow via ~workflow.write_to_msgpack()~, write to file path.
+     - [X] Open: read file, deserialize via ~Workflow::read_from_msgpack()~, build new EditorState,
+       run layout from scratch (topological seeding + convergence).
+     - [X] Track current file path for subsequent saves. Prompt for path on first save (Save As).
+     - [X] Dirty flag: track whether workflow has been modified since last save. Show indicator in
+       title bar (e.g. asterisk).
+
+     <2026-09-08 Tue 19:18> Some tweaks after testing:
+
+     - [X] Enable use of keyboard shortcuts: Ctrl-n to open a new empty workflow, Ctrl-o to open
+       one, Ctrl-s to save, and Ctrl-Shift-s to save-as. Also before throwing away unsaved data,
+       (when opening another file or a new workflow), the user should be prompted to optionally save
+       their work. This is the same as any other app on earth.
+     - [X] Show these shortcuts next to the menu options, with righ alignment. Again very
+       conventional UI.
+
+**** CLOSED Phase 3b: Try out Barnes-Hut method to speed up the force directed graph.
+     CLOSED: [2026-09-09 Wed 10:19]
+     :PROPERTIES:
+     :CREATED:  2026-09-08 Tue 23:33
+     :END:
+     :LOGBOOK:
+     - State "CLOSED"     from "NEXT"       [2026-09-09 Wed 10:19]
+     :END:
+
+     The performance of the force directed graph updates is O(n^2), with this method we can bring it
+     down to O(n * log(n)).
+
+     <2026-09-09 Wed 00:07> Large notebooks display strange behavior. I think the seed positions
+     computed before the force directed graph takes over, are very bad.
+
+     <2026-09-09 Wed 00:25> Force directed graph was a wrong move. Getting rid of it
+     altogether. More important things need attention right now.
+
+**** DONE Phase 4: Execution + Inspect Display
+     CLOSED: [2026-09-09 Wed 21:39]
+     :PROPERTIES:
+     :CREATED:  2026-09-07 Mon 23:11
+     :END:
+     :LOGBOOK:
+     - State "DONE"       from "NEXT"       [2026-09-09 Wed 21:39]
+     - State "NEXT"       from "TODO"       [2026-09-08 Tue 19:31]
+     - State "TODO"       from              [2026-09-07 Mon 23:11]
+     :END:
+
+     <2026-09-09 Wed 15:55> Added a new error code for cancellation.
+
+     <2026-09-09 Wed> Brainstormed the execution engine and threading model to a concrete design
+     (see "Incremental Execution" under the Detailed Plan above for the full rationale). Nesting
+     is out of scope for this phase — moved to Phase 5. Dagger gets its own executor; the
+     existing ~Workflow::run~ is left untouched, since pyorc and ~kbb_cli_host~ already depend on
+     its current signature and behavior.
+
+     *orc_sdk prerequisite:*
+     - [X] Add a public forward-adjacency accessor on ~Workflow~ (e.g. ~output_links(OH)~),
+       wrapping the ~Graph::output_links~ machinery that already exists internally but isn't
+       reachable from outside the crate. Needed for downstream staleness propagation and
+       worklist scheduling without full-graph scans. (No other ~orc_sdk~ changes needed —
+       handle-lifetime safety below is built entirely out of types that already exist.)
+
+     *Staleness tracking:*
+     - [X] ~computed_outputs: OutputProperty<Arc<OrcHandle>>~ in EditorState, cached per output
+       pin — see "Handle lifetime across threads" below for why it's ~Arc~-wrapped.
+       "Not yet computed" sentinel is ~free_fn.is_none()~, not equality on the raw ~handle~ id
+       (id 0 is a legitimate value once ~HANDLE_COUNTER~ has issued it).
+     - [X] ~dirty_version: NodeProperty<u64>~, bumped (not just set true) on a direct edit and
+       propagated forward to every downstream node via the new adjacency accessor.
+     - [X] Dispatch readiness via a small worklist of touched/just-resolved candidate nodes, each
+       checked against its own (small) fan-in when popped — not a full per-frame graph scan, and
+       not a fully precise per-edge in-degree counter either.
+
+     *Own executor (not ~Workflow::run~):*
+     - [X] Walks every node (~workflow.node_iter()~ as roots), not just declared
+       ~workflow_outputs~ (which dagger never sets), so Inspect node dead ends are reached.
+     - [X] Skips nodes whose ~dirty_version~ already matches what their cached output was
+       computed for; only stale nodes are dispatched.
+     - [X] Nodes flagged ~in_cycle~ are skipped, via the executor's own cycle check each walk —
+       layout's cached ~node_in_cycle~ is only computed once (first ~measure~) and goes stale
+       after later topology edits.
+     - [X] ~NodeInfo::NestedCall~ is left unimplemented in this executor (no UI path creates one
+       yet); revisit alongside Phase 5.
+
+     *Thread pool:*
+     - [X] Fixed-size pool, ~max(available_parallelism() - 1, 1)~ long-lived worker threads,
+       spawned once, blocking on a shared ~Arc<Mutex<Receiver<NodeJob>>>~ — no thread
+       creation/teardown during interactive use, independent branches run genuinely in parallel.
+     - [X] Results delivered over a second ~mpsc~ channel, drained via ~try_recv()~ on the UI
+       thread once per frame — the UI thread never blocks.
+     - [X] ~NodeJob~: node handle, plugin function pointer, inputs as cloned ~Arc<OrcHandle>~
+       (an ~OrcHandleBorrowed<'_>~ is derived from each, locally on the worker, right before the
+       actual call — same zero-copy pattern as ~Workflow::run~'s ~.borrowed()~, just constructed
+       just-in-time instead of shipped across the channel), output count, a cancellation ~ctx~
+       id, and the ~dirty_version~ it was launched for.
+     - [X] ~NodeResult~: node handle, that same ~ctx~/launched version, and the outcome —
+       ~Ok(outputs)~, ~Err(OperationCancelled)~, or ~Err(other)~.
+
+     *Cancellation — per node job, not per pass or global:*
+     - [X] One ~ContextArena<bool>~ slot per dispatched job (mirrors ~SERIAL_CONTEXT_ARENA~).
+       ~check_cancellation(ctx)~ reads it; whether a plugin checks it at all is entirely up to
+       whoever implemented that node.
+     - [X] Only the specific job whose own node gets invalidated has its flag flipped — editing
+       an unrelated, independent branch must never disturb a node that's currently running.
+     - [X] Relies on ~ORC_ERROR_OPERATION_CANCELLED~ (added in commit e1b1320) to tell a
+       cooperative abort apart from a real failure.
+
+     *Handle lifetime across threads (~Arc<OrcHandle>~, no wrapper type):*
+     - [X] Don't reach into ~DeckRegistry~'s own internal ~Arc~ (~util.rs:96~) — it only exists
+       for ~TypeOwner::BuiltIn~ handles; a plugin-owned handle's storage lives entirely on the
+       other side of the FFI boundary (possibly not even Rust), with no such ~Arc~ to acquire.
+     - [X] No guard/wrapper type needed either — ~OrcHandle~ already has ~impl Drop { fn
+       drop(&mut self) { self.free(); } }~ (~ffi.rs:212~), so plain ~Arc<OrcHandle>~ is enough:
+       cloning it for each borrowed input and holding the clone in the ~NodeJob~ keeps the
+       handle alive exactly as long as the job needs it, uniformly regardless of whether the
+       handle is built-in or plugin-owned.
+     - [X] Committing a result is just ~computed_outputs[oh] = Arc::new(new_handle)~ — the old
+       ~Arc~ drops (and, via ~OrcHandle~'s own ~Drop~, frees) immediately if nothing else holds
+       a clone, or lingers until whichever in-flight job does drop its clone. No explicit
+       ~.free()~ call anywhere in dagger's own code, no reader-count bookkeeping, no
+       pending-commit staging slot.
+     - [X] Relies on the executor always allocating a fresh handle id per computed output (never
+       reusing one), matching ~Workflow::run~'s existing convention.
+
+     *Commit policy on job completion:*
+     - [X] ~Ok(outputs)~ is always committed immediately (~computed_outputs[oh] = Arc::new(...)~,
+       no staging needed), even if the node was invalidated again after this job launched. The
+       node is still redispatched afterward if still marked dirty.
+     - [X] ~Err(OperationCancelled)~ commits nothing; the node is simply eligible for redispatch
+       right away.
+     - [X] Any other ~Err~ is a genuine fault: shown on the node, and the node settles (does not
+       retry every time the scheduler looks for ready work) until a future edit touches it again.
+
+     *In-progress UI indicator:*
+     - [X] A node with an in-flight job gets a looping left-to-right pulse/sweep drawn into its
+       title bar fill (indefinite-progress-bar style), driven by wall-clock time.
+     - [X] Continuous repaint requested every frame while any node is in-flight (replaces the
+       original 100ms-poll idea, which would make the sweep stutter).
+
+     *Inspect node display:*
+     - [X] Render ~deck_to_str()~ output of connected upstream data in a scrollable monospace text
+       area embedded in the node body. ~DeckView~'s recursive ~child()~/~advance_iter()~ (already
+       exercised by ~kbb_cli_host~'s ~to_str_groups~ test helper) is the reference for turning
+       the resulting ~Deck<u8>~ handle into readable strings. This needs to be done in a particular
+       way. The way deck<u8> is displayed should resemble how decks are displayed now. It resembles
+       an ascii ruler structure indicated with box drawing characters of hyphens. Except we don't
+       want to render individual characters along this ruler. Instead we should collapse it by one
+       level, and render first level (list) as a single string item. Ruler structure still holds for
+       lists of strings, and lists of lists of strings etc.
+
+       Here's an example. This is the original deck of numbers:
+
+       Original deck:
+
+         2 ─────┤ 10
+                ┤ 20
+            1 ──┤ 30
+
+       If I display the string deck (Deck<u8>) directly, it will look like:
+
+         3 ────────┤ 49
+                   ┤ 48
+               1 ──┤ 50
+                   ┤ 48
+            2 ─────┤ 51
+                   ┤ 48
+
+       Displaying in this form is not useful. The second deck should instead be interpreted and
+       displayed in the form:
+
+           2 ─────┤ 10
+                  ┤ 20
+              1 ──┤ 30
+
+       Just so happens it looks identical to the orignal deck because these are integers, but for
+       complex numbers, it will make them readable. This is because the ascii letters 48 and 49
+       represent the first value "10".
+
+     - [X] Inspect nodes are resizable by the user (drag bottom-right corner), size stored in
+       ~node_sizes~. No layout simulation reacts to the new size anymore (Phase 3b removed it) —
+       resizing just grows the node in place; neighbors don't move.
+     - [X] Pop-out button: open inspect view in a separate OS window via
+       ~ctx.show_viewport_deferred()~.
+     - [X] In all states, the inspect window displays text, and will have scroll bars in horizontal
+       and vertical directions as needed.
+
+     <2026-09-09 Wed 21:25> Inspect node display is decent. Can iterate and refine later as I use
+     the app more.
+
+     *Const node display:*
+     - [X] The display story for most const nodes and inpsect nodes is the same. The only difference is
+       that const owns the data that is displayed, whereas inspect nodes display data they receive
+       from upstream, data that they do not own.
+     - [X] The second difference is editability. Since the const nodes own the data, and they're the
+       'generators' of the DAG, we can make them editable. This will require making them text boxes,
+       that display the values. Structure cannot be edited, at least not right now. For now, I want
+       each value in the deck, displayed with this ruler structure, to be editable like a text
+       box. That means the UI element should parse those strings into either f64 or i64 deck
+       depending on the type of data the constant node holds.
+
+     <2026-09-09 Wed 21:25> First pass at editable constants is decent. Need to refine the UI a
+     little bit before marking this phase as done.
+
+**** DONE Phase 5: Nested Workflow Editing
+     CLOSED: [2026-09-10 Thu]
+     :PROPERTIES:
+     :CREATED:  2026-09-09 Wed 22:09
+     :END:
+     :LOGBOOK:
+     - State "DONE"       from "NEXT"       [2026-09-10 Thu]
+     - State "NEXT"       from "TODO"       [2026-09-09 Wed 21:43]
+     - State "TODO"       from              [2026-09-07 Mon 23:11]
+     :END:
+
+     <2026-09-10 Thu> Revised after more thought -- dropped cloning entirely in favor of moving
+     the real ~Workflow~ in and out of a stack of editors. See the rationale inline below.
+
+     <2026-09-10 Thu> Implemented. One deliberate scope-down from the plan below: background
+     execution of a NestedCall node runs the whole nested workflow synchronously, on the UI
+     thread, via the existing (already correct, already tested) ~Workflow::run~ -- not the
+     compound-key incremental/parallel scheduler this section originally sketched. ~Workflow~
+     can never be ~Send~, so a nested workflow's own nodes can't be shipped onto the background
+     pool the way a plain Function's can; doing that properly means teaching this scheduler to
+     walk a second ~Workflow~'s handle space with its own per-call-instance staleness tracking,
+     which is a substantially bigger undertaking than the rest of this phase combined. What's
+     implemented is fully correct -- verified end to end against a real generated fixture calling
+     a nested workflow, see ~nested.rs~'s ignored ~t_real_fixture_opens_edits_and_recomputes_end_to_end~
+     -- but a slow nested workflow blocks the UI for its own duration and gets no incremental
+     caching between runs, unlike every other node kind. Left as a follow-up if it ever matters in
+     practice (~exec::dispatch_nested_call~ has the full rationale).
+
+     *Background execution of NestedCall nodes:*
+     - [X] ~Workflow~ stays single-threaded/UI-thread-only, exactly as today -- no SDK-level
+       thread-safety changes. A ~Workflow~ can never be ~Send~ (it embeds ~Property<H, T>~, which
+       is ~Rc<RefCell<...>>~-backed), and that's fine: it never needs to cross a thread boundary.
+     - [X] A NestedCall node dispatches by taking real ownership of its nested ~Workflow~ (via
+       ~take_nested_workflow~/~put_nested_workflow~, new orc_sdk accessors) and running it
+       synchronously to completion with ~Workflow::run~ -- see the scope-down note above; this
+       replaces the compound-key scheduler generalization originally planned here.
+     - [X] A NestedCall's own input values are gathered the same way a Function node's inputs
+       already are (constant -> ~host_clone_orc_handle~, upstream output -> existing ~Arc~ clone),
+       then handed to the nested workflow's dangling workflow-input pins directly as
+       ~Workflow::run~'s own ~inputs~ slice -- never by wiring or writing anything into the shared,
+       canonical ~nested_workflows[name]~ ~Workflow~ itself. A popped-open nested editor uses the
+       same gathering logic (~exec::gather_inputs~) via ~EditorState::simulated_inputs~ to preview
+       argument values interactively (see below).
+     - [X] A call site whose ~workflow_name~ is currently checked out (its editor is pushed on the
+       stack -- see below) is simply treated as not-ready and skipped, not as an error; it becomes
+       dispatchable again the moment that editor is popped and the definition moved back
+       (~nested::close~ marks every such call site dirty).
+     - [X] Individual node dispatch (calling a plugin function) still goes through the existing
+       global thread pool exactly as today -- only ~Arc<OrcHandle>~ ever crosses a thread
+       boundary, same as always.
+
+     *Opening a nested workflow (double-click a NestedCall node):*
+     - [X] No cloning. ~DaggerApp~ holds a ~Vec<StackEntry>~ (a stack of ~EditorState~, each
+       tagged with the name it was opened under) instead of a single ~EditorState~. Opening a call
+       node *moves* the real ~Workflow~ out of the current top level's ~nested_workflows~ map via
+       the new ~take_nested_workflow~ accessor into a fresh ~EditorState::from_workflow(taken)~
+       pushed onto the stack -- genuine ownership transfer, not a copy.
+     - [X] Because the entry is actually removed from the map while checked out, opening it a
+       second time from a different NestedCall node referencing the same name is structurally
+       impossible -- "already open elsewhere is disallowed" falls out for free, no separate
+       tracking-by-name needed.
+     - [X] Opens in a separate OS window via ~ctx.show_viewport_immediate~ (matches the Inspect
+       and Constant pop-outs already built).
+     - [X] The current argument values feeding the NestedCall node's own input pins (in the level
+       below) are gathered once, into ~EditorState::simulated_inputs~ (positionally matching
+       ~Workflow::workflow_input_position~, a new orc_sdk accessor). The pushed editor's own
+       executor resolves a dangling, workflow-input-flagged pin from this side table instead of
+       treating it as empty. Nothing is ever written into the graph, so there is nothing to bake in
+       and nothing to revert.
+     - [X] The pushed ~EditorState~ is fully ordinary -- same rendering, layout, interaction,
+       context menu, and execution engine as any other level, full feature parity, including
+       opening a NestedCall node inside it (same move, one level deeper).
+     - [X] Adding/removing/reordering the nested workflow's own inputs or outputs is out of scope
+       for this pass -- the pushed editor only edits internal wiring/nodes, not its own parameter
+       list. A new right-click menu entry ("<name> (nested)") creates a ~NestedCall~ node against
+       an *existing* nested workflow, sized/labeled from its declared inputs/outputs -- there is
+       still no UI to author a nested workflow's own interface from scratch (fixtures come from
+       pyorc, e.g. ~workflows/gen_test.py~'s ~nested_demo_workflow~).
+
+     *While a nested editor is open (everything below it is frozen):*
+     - [X] Every ~EditorState~ below the top of the stack renders read-only (~render::draw~ inside
+       ~ui.disable()~) every frame -- no ~interaction::update~, ~context_menu::update~, ~measure~,
+       or ~exec::tick~ -- so it stays visible (not blank) but processes no input and runs nothing.
+     - [X] A click-catcher over each frozen level's canvas sends ~ViewportCommand::Focus~ to the
+       current top-of-stack's viewport id, so clicking, dragging, or double-clicking anywhere in a
+       buried ancestor window (including the root) just brings the active editor forward. The
+       root's own OS close button gets the same redirect while frozen.
+     - [X] Because everything below the top is fully paused, none of it is running its own
+       background executor while a descendant has a nested workflow checked out -- the
+       temporarily-missing ~nested_workflows~ entry is never observed by anything that's actually
+       ticking.
+
+     *Closing the pop-out:*
+     - [X] No cloning means no separate commit step. Closing pops the stack and moves the
+       (possibly edited) ~Workflow~ straight back via ~put_nested_workflow~. The edit already
+       happened in place; there is nothing to save at this point and no discard-vs-save prompt for
+       the pop-out itself -- save stays a single, top-level-only decision.
+     - [X] The popped editor's own ~dirty~ flag ORs into the level below on pop, all the way to
+       root, so the existing title-bar asterisk and ~file_menu::confirm_discard~/save flow (already
+       built for the main window) cover the whole stack without any new save branch.
+     - [X] ~mark_dirty~ every ~NestedCall~ node in the level below that references the closed name
+       (not just the one originally double-clicked, since the definition is shared by every
+       caller), so background execution reruns them against the (possibly changed) definition. The
+       "skip the rerun if already settled" optimization mentioned here previously was not built --
+       still a reasonable future nice-to-have, not a correctness gap.
+
+     *Window tracking:*
+     - [X] ~DaggerApp~ holds the ~Vec<StackEntry>~ stack described above; the last element is the
+       active/interactive one, everything before it is frozen per above.
+     - [X] Main window's own unsaved-changes close prompt (Discard / Save) -- already implemented
+       (~file_menu::confirm_discard~), reused as-is against the root's ~dirty~ flag, which now
+       reflects the whole stack.
+
+     *orc_sdk additions (~rust/orc_sdk/src/dag/workflow.rs~):* small, additive, no behavior change
+     to any existing method --
+     - [X] ~take_nested_workflow(&mut self, name) -> Option<Workflow>~ / ~put_nested_workflow(&mut
+       self, name, workflow)~ -- the move-in/move-out pair everything above is built on.
+     - [X] ~nested_workflow_names(&self) -> impl Iterator<Item = &str>~ -- for the context menu's
+       "call an existing nested workflow" entries.
+     - [X] ~workflow_input_position(&self, ih) -> Result<Option<usize>, DagError>~ -- lets the
+       executor recognize a dangling pin as "workflow input i" and feed it a simulated/real value
+       instead of nothing.
+
+**** Future (out of scope for now)
+
+     - 3D geometry inspect via wgpu PaintCallback
+     - Undo/redo (approach TBD -- possibly reversible user actions / diffs, not decided yet)
+
+*** DONE Crate: rust/dagger/
+    CLOSED: [2026-09-07 Mon 23:06]
+    :LOGBOOK:
+    - State "DONE"       from "NEXT"       [2026-09-07 Mon 23:06]
+    - State "NEXT"       from "TODO"       [2026-09-07 Mon 23:06]
+    - State "TODO"       from              [2026-09-07 Mon 22:28]
+    :END:
+
+    New workspace member. Dependencies: eframe 0.31, egui 0.31, orc_sdk.
+
+    #+begin_src
+    rust/dagger/
+      Cargo.toml
+      src/
+        main.rs             -- eframe entry, host setup (OrcHost, PluginSet, DeckRegistry, handle counter)
+        app.rs              -- DaggerApp: eframe::App, top-level layout, window management
+        canvas.rs           -- Pan/zoom canvas, coordinate transforms (screen <-> canvas)
+        render.rs           -- Draw node bodies, title bars, pins, labels, cubic Bezier links
+        interaction.rs      -- Pin connect/disconnect, select, delete, box-select
+        state.rs            -- EditorState: Workflow + properties + computed outputs + layout
+        layout.rs           -- Force-directed layout with DAG flow constraint, spatial hash grid
+        context_menu.rs     -- Right-click menu with search field, pluggable FunctionFilter trait
+        inspect.rs          -- Inspect node display: scrollable text, resizable viewport, pop-out
+        exec.rs             -- Background thread execution via mpsc channels
+    #+end_src
+
+    <2026-09-07 Mon 23:06> Created a stub crate, not implemented anything yet.
+
+*** DONE Changes to orc_sdk
+    CLOSED: [2026-09-07 Mon 22:58]
+    :PROPERTIES:
+    :CREATED:  2026-09-07 Mon 22:58
+    :END:
+    :LOGBOOK:
+    - State "DONE"       from "NEXT"       [2026-09-07 Mon 22:58]
+    - State "NEXT"       from "TODO"       [2026-09-07 Mon 22:28]
+    - State "TODO"       from              [2026-09-07 Mon 22:28]
+    :END:
+
+    Add public accessors to Workflow (workflow.rs) since fields are pub(crate):
+    - [X] ~nodes() -> impl Iterator<Item = NH>~ -- iterate non-deleted nodes
+    - [X] ~node_inputs(NH) -> impl Iterator<Item = IH>~ -- delegate to graph
+    - [X] ~node_outputs(NH) -> impl Iterator<Item = OH>~ -- delegate to graph
+    - [X] ~node_info(NH) -> Result<Ref<NodeInfo>>~ -- borrow node info - I changed my mind about
+      this one. It felt very awkward to return a ref. Cannot return a reference because the borrow
+      won't live long enough. I think the caller should decide how long the borrow should
+      live. E.g. if they want to read many node infos back to back, they can do that with one borrow
+      rather than many repeated borrows. So instead, I added ~node_info_prop~ that returns the
+      property (cheap to clone).
+
+    - [X] ~node_from_input(IH) -> NH~ -- which node owns this input pin
+    - [X] ~node_from_output(OH) -> NH~ -- which node owns this output pin
+    - [X] ~links() -> impl Iterator<Item = (OH, IH)>~ -- iterate non-deleted links
+    - [X] ~add_inspect(label) -> Result<(NH, IH)>~ -- create inspect node (1 input, 0 outputs)
+    - [X] ~delete_node(NH)~ -- disconnect all pins, mark node and its pins as
+    - [X] Add ~Hash~ derive to NH, IH, OH, LH in graph.rs.
+
+    <2026-09-07 Mon 22:54> Did all the above. Marking as done, after a review.
+
+** Vague sketch using egui + eframe + wgpu
+   :PROPERTIES:
+   :CREATED:  2026-08-26 Wed 11:22
+   :END:
+
+   Rust app using eframe (windowing + event loop), egui (immediate-mode UI), and wgpu (GPU
+   rendering). The node canvas and all widgets are egui. Inspect nodes embed custom wgpu render
+   passes for 2D/3D viewports via egui's PaintCallback. Inspect views can be maximized as a
+   floating egui::Window panel, or on native, popped out into a real OS window. On WASM the same
+   code runs in a browser tab — the only difference is that pop-out becomes a floating panel
+   instead of an OS window. The whole stack compiles to both native and WASM without forking the
+   codebase.
+
 * DONE tl68t6 - Fix the Pyorc build system
   CLOSED: [2026-09-10 Thu 19:23]
   :PROPERTIES:
@@ -180,45 +1168,6 @@
   =cdylib= can't be linked as a library dependency, which =cargo test= needs for integration
   tests, doc-tests, etc. Wired =cargo test --no-default-features -p pyorc= into the CI workflow
   for all three platforms so this stays covered going forward.
-
-* TODO Python code generation from a workflow
-  :PROPERTIES:
-  :CREATED:  2026-09-06 Sun 22:22
-  :END:
-
-  This should be easy to do. Need to think through the inspect nodes a little, but should be trivial
-  still.
-
-* TODO tkuzn6 - Node Editor UI App
-  :PROPERTIES:
-  :CREATED:  2026-08-26 Wed 10:47
-  :END:
-
-  To lower the scope of the node editor demo app, I think it should not have a dedicated viewer,
-  that stays in sync with the node graph. Instead the node graph should have a set of no-op
-  "inspect" nodes, that visualize the data as either text or graphics, potentially with an
-  interactive camera. Maybe they support a maximize / minimize option to temporarily fill the
-  screen, and explore. Maybe there is a button that pops this view out into a separate window if
-  the user wants to keep it around as they move around the canvas. This is still much simpler than
-  a general viewer, since it only displays a single output, with no need for concepts such as
-  selection.
-
-  <2026-09-04 Fri 18:49> I need a way to display the decks. So I decided to do [[*tkv3ek - Deck to String Conversion for Display][this task]] first.
-
-  <2026-09-05 Sat 15:22> Also need to do [[*tkwogf - Overhaul of workflow property serialization][this task]] first.
-
-** Vague sketch using egui + eframe + wgpu
-   :PROPERTIES:
-   :CREATED:  2026-08-26 Wed 11:22
-   :END:
-
-   Rust app using eframe (windowing + event loop), egui (immediate-mode UI), and wgpu (GPU
-   rendering). The node canvas and all widgets are egui. Inspect nodes embed custom wgpu render
-   passes for 2D/3D viewports via egui's PaintCallback. Inspect views can be maximized as a
-   floating egui::Window panel, or on native, popped out into a real OS window. On WASM the same
-   code runs in a browser tab — the only difference is that pop-out becomes a floating panel
-   instead of an OS window. The whole stack compiles to both native and WASM without forking the
-   codebase.
 
 * DONE tkyeb2 - Support 'Inspect' nodes in a workflow
   CLOSED: [2026-09-06 Sun 22:21]

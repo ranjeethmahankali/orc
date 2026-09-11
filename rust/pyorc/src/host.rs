@@ -107,7 +107,7 @@ unsafe extern "C" fn host_create_proxy_deck(
                     }
                     _ => return orc_sdk::ORC_ERROR_INVALID_PROXY,
                 };
-                if let Ok(_) = result {
+                if result.is_ok() {
                     out.free_fn = Some(orc_deck_free);
                 }
                 result

@@ -19,8 +19,8 @@ pub use orc_sdk_derive::{orc_fn, orc_fn_info, orc_map_fn};
 
 mod util;
 pub use util::{
-    ContextArena, DeckRegistry, FuncInfo, HandleDisplayWrapper, HostCallbacks, PRIMITIVE_TYPES,
-    PluginAllocator, SerialWrite, TypeInfo, deck_from_proxy, ptr_from_slice,
+    ArgInfo, ContextArena, DeckRegistry, FuncInfo, HandleDisplayWrapper, HostCallbacks,
+    PRIMITIVE_TYPES, PluginAllocator, SerialWrite, TypeInfo, deck_from_proxy, ptr_from_slice,
     read_orc_handle_header, reset_handle, slice_from_ptr, slice_from_ptr_mut, to_str_deck,
     try_deserialize_handle, try_serialize_handle, update_handle_from_deck, write_orc_handle_header,
 };
