@@ -186,6 +186,8 @@
     a download_workflow end point. Add a download_python_script end point that sends the string over
     to client, which saves that to .py file, similar to how it saves a .orc file today.
 
+  <2026-09-11 Fri 13:42> Found and fixed a bug in Rust SDK's implementation of Combinations.
+
 * DONE tkuzn6 - Node Editor UI App
   CLOSED: [2026-09-10 Thu 21:01]
   :PROPERTIES:
