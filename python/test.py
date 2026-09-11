@@ -1383,6 +1383,26 @@ def t_to_python_script_matches_direct_execution():
         assert expected == actual, f"mismatch for inputs {a}, {b}: {expected} vs {actual}"
 
 
+def t_to_python_script_uses_the_given_name():
+    """An explicit name replaces the default `generated_workflow`, and the resulting script is
+    still a valid `orc.make_workflow` source under that name."""
+    wf = orc.make_workflow(lambda x, y: orc.add(x, y))
+
+    default_script = wf.to_python_script()
+    assert "def generated_workflow(" in default_script
+
+    named_script = wf.to_python_script("my_custom_name")
+    assert "def my_custom_name(" in named_script
+    assert "generated_workflow" not in named_script
+
+    namespace = {"orc": orc}
+    exec(named_script, namespace)
+    wf2 = orc.make_workflow(namespace["my_custom_name"])
+    a = orc.make_deck([3.0])
+    b = orc.make_deck([4.0])
+    assert orc.read_deck(wf.run(a, b)) == orc.read_deck(wf2.run(a, b))
+
+
 def t_to_python_script_nested_workflow_round_trips_through_make_workflow():
     """A generated script for a workflow with a nested call must itself be a valid
     `orc.make_workflow` source: re-tracing it must reconstruct the same nesting structure (the

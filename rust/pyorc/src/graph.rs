@@ -188,9 +188,10 @@ impl PyWorkflow {
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("{}", e)))
     }
 
-    fn to_python_script(&self) -> PyResult<String> {
+    #[pyo3(signature = (name=None))]
+    fn to_python_script(&self, name: Option<&str>) -> PyResult<String> {
         self.workflow
-            .to_python_script()
+            .to_python_script(name)
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("{}", e)))
     }
 }

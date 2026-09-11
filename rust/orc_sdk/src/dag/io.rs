@@ -380,18 +380,23 @@ impl Workflow {
     /// Generates a Python source script that reconstructs this workflow's computation, in the
     /// `pyorc` dialect (`import orc`; plugin functions called as `orc.<name>(...)`; nested
     /// workflows as `@orc.workflow_function`-decorated helper functions). The outermost function
-    /// is named `generated_workflow`, undecorated, ready to be handed to `orc.make_workflow(...)`
-    /// by whoever uses the script -- matching how a plain (non-nested) workflow is authored in
-    /// `workflows/gen_test.py`.
+    /// is named `name`, or `generated_workflow` if `name` is `None`; either way it's undecorated,
+    /// ready to be handed to `orc.make_workflow(...)` by whoever uses the script -- matching how
+    /// a plain (non-nested) workflow is authored in `workflows/gen_test.py`.
     ///
     /// Every node in the graph is emitted, including ones no declared output depends on -- this
     /// is a faithful transcription of the graph as authored, not a dead-code-eliminating
     /// optimizer. Only `Inspect` nodes are skipped, since they have no outputs and nothing to
     /// compute. A cycle is reported the same way `run` reports one, via `DagError::CycleDetected`.
-    pub fn to_python_script(&self) -> Result<String, DagError> {
+    pub fn to_python_script(&self, name: Option<&str>) -> Result<String, DagError> {
         let mut out = String::new();
         let mut emitted = HashSet::new();
-        self.write_python_function(&mut out, "generated_workflow", false, &mut emitted)?;
+        self.write_python_function(
+            &mut out,
+            name.unwrap_or("generated_workflow"),
+            false,
+            &mut emitted,
+        )?;
         Ok(out)
     }
 
@@ -468,7 +473,12 @@ impl Workflow {
     /// Appends one call statement for `nh` (a `Function` or `NestedCall` node) to `body`:
     /// `name0, name1 = callee(arg0, arg1)`, tuple-style for more than one output, or a bare
     /// `callee(arg0)` expression statement if it has no outputs at all.
-    fn write_call(&self, body: &mut String, nh: NH, callee: &str) -> Result<(), DagError> {
+    fn write_call(
+        &self,
+        body: &mut impl std::fmt::Write,
+        nh: NH,
+        callee: &str,
+    ) -> Result<(), DagError> {
         let args = self
             .node_inputs(nh)
             .map(|ih| self.input_value_expr(ih))
@@ -498,7 +508,7 @@ impl Workflow {
     /// it, so a nested function's own `def` always textually precedes its caller's.
     fn write_python_function(
         &self,
-        out: &mut String,
+        out: &mut impl std::fmt::Write,
         fn_name: &str,
         decorate: bool,
         emitted: &mut HashSet<String>,
@@ -542,20 +552,20 @@ impl Workflow {
             .collect::<Result<Vec<_>, _>>()?;
 
         if decorate {
-            out.push_str("@orc.workflow_function\n");
+            writeln!(out, "@orc.workflow_function").map_err(|_| DagError::WriteError)?;
         }
         writeln!(out, "def {fn_name}({}):", self.input_names().join(", "))
             .map_err(|_| DagError::WriteError)?;
         if body.is_empty() && return_names.is_empty() {
-            out.push_str("    pass\n");
+            writeln!(out, "    pass").map_err(|_| DagError::WriteError)?;
         } else {
-            out.push_str(&body);
+            out.write_str(&body).map_err(|_| DagError::WriteError)?;
             if !return_names.is_empty() {
                 writeln!(out, "    return {}", return_names.join(", "))
                     .map_err(|_| DagError::WriteError)?;
             }
         }
-        out.push('\n');
+        writeln!(out).map_err(|_| DagError::WriteError)?;
         Ok(())
     }
 }
@@ -1516,7 +1526,7 @@ mod test {
         wf.connect(rhs_out, ins[1]).unwrap();
         wf.set_outputs(&[(outs[0], String::new())]).unwrap();
 
-        let script = wf.to_python_script().unwrap();
+        let script = wf.to_python_script(None).unwrap();
         let expected = format!(
             "def generated_workflow():\n    r_{a} = orc.make_deck(3.0, dtype=\"f64\")\n    r_{b} = orc.make_deck(4.0, dtype=\"f64\")\n    r_{c} = orc.add(r_{a}, r_{b})\n    return r_{c}\n\n",
             a = lhs_out.index(),
@@ -1524,6 +1534,22 @@ mod test {
             c = outs[0].index(),
         );
         assert_eq!(script, expected);
+    }
+
+    #[test]
+    fn t_to_python_script_uses_the_given_name_when_provided() {
+        let mut wf = Workflow::default();
+        let mut outs = [OH::default()];
+        wf.add_function(make_func_info("source", 0, 1), &mut [], &mut outs)
+            .unwrap();
+        wf.set_outputs(&[(outs[0], String::new())]).unwrap();
+
+        let script = wf.to_python_script(Some("my_workflow")).unwrap();
+        assert!(script.starts_with("def my_workflow():\n"), "got:\n{script}");
+        assert!(
+            !script.contains("generated_workflow"),
+            "the default name must not leak in when a name is given:\n{script}"
+        );
     }
 
     #[test]
@@ -1536,7 +1562,7 @@ mod test {
             .unwrap();
         wf.set_outputs(&[(outs[0], String::new())]).unwrap();
 
-        let script = wf.to_python_script().unwrap();
+        let script = wf.to_python_script(None).unwrap();
         assert_eq!(
             script,
             "def generated_workflow():\n    my_value = orc.source()\n    return my_value\n\n"
@@ -1557,7 +1583,7 @@ mod test {
         wf.connect(a_out[0], b_in[0]).unwrap();
         wf.connect(b_out[0], a_in[0]).unwrap();
         assert!(matches!(
-            wf.to_python_script(),
+            wf.to_python_script(None),
             Err(DagError::CycleDetected)
         ));
     }
@@ -1595,7 +1621,7 @@ mod test {
         outer.connect(y_out, call_ins[1]).unwrap();
         outer.set_outputs(&[(call_outs[0], String::new())]).unwrap();
 
-        let script = outer.to_python_script().unwrap();
+        let script = outer.to_python_script(None).unwrap();
         let decorator_pos = script
             .find("@orc.workflow_function")
             .expect("nested def must be decorated");
@@ -1630,7 +1656,7 @@ mod test {
         wf.add_function(make_func_info("dead_end", 0, 1), &mut [], &mut outs)
             .unwrap();
         // No workflow outputs declared at all -- this node feeds nothing.
-        let script = wf.to_python_script().unwrap();
+        let script = wf.to_python_script(None).unwrap();
         assert!(
             script.contains("orc.dead_end()"),
             "an unreachable node must still be transcribed:\n{script}"
@@ -1646,7 +1672,7 @@ mod test {
         };
         wf.add_constant(handle).unwrap();
         assert!(matches!(
-            wf.to_python_script(),
+            wf.to_python_script(None),
             Err(DagError::UnsupportedConstantType(0xdead_beef))
         ));
     }
@@ -1661,7 +1687,7 @@ mod test {
         wf.set_inputs(&[(ins[0], 0, "value")]).unwrap();
         wf.set_outputs(&[(outs[0], String::new())]).unwrap();
 
-        let script = wf.to_python_script().unwrap();
+        let script = wf.to_python_script(None).unwrap();
         assert!(
             script.starts_with("def generated_workflow(value):\n"),
             "got:\n{script}"
@@ -1678,7 +1704,7 @@ mod test {
         wf.set_outputs(&[(outs[0], String::new()), (outs[1], String::new())])
             .unwrap();
 
-        let script = wf.to_python_script().unwrap();
+        let script = wf.to_python_script(None).unwrap();
         assert!(
             script.contains(&format!(
                 "return r_{}, r_{}",
@@ -1697,7 +1723,7 @@ mod test {
         let (_, oh) = wf.add_constant(handle).unwrap();
         wf.set_outputs(&[(oh, String::new())]).unwrap();
 
-        let script = wf.to_python_script().unwrap();
+        let script = wf.to_python_script(None).unwrap();
         assert!(
             script.contains("orc.make_deck([[1.0, 2.0], [3.0]], dtype=\"f64\")"),
             "got:\n{script}"
