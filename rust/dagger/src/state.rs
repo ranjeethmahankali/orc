@@ -7,7 +7,7 @@ use crate::interaction::SelectBoxKind;
 use crate::layout;
 use crate::render;
 use eframe::egui::{self, Rect};
-use orc_sdk::{NH, NodeProperty, OH, OrcHandle, OutputProperty, Workflow};
+use orc_sdk::{NH, NodeInfo, NodeProperty, OH, OrcHandle, OutputProperty, Workflow};
 use std::cell::Cell;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -103,8 +103,34 @@ pub struct EditorState {
     pub(crate) simulated_inputs: Vec<Arc<OrcHandle>>,
 }
 
+/// Copies every `NestedCall` node's declared input/output names from its referenced nested
+/// workflow onto its own pins, wherever they're missing -- needed for a node loaded from a file
+/// authored outside dagger's own context menu (e.g. directly via pyorc), which has no reason to
+/// have called `set_input_label`/`set_output_label` itself even though the names the labels
+/// would show are already right there in the nested workflow's own declared interface. Run once,
+/// right after construction, same cadence as `mark_all_dirty` below.
+fn backfill_nested_call_labels(workflow: &mut Workflow) {
+    let node_info_prop = workflow.node_info_prop();
+    let calls: Vec<(NH, String)> = {
+        let Ok(node_infos) = node_info_prop.try_borrow() else {
+            return;
+        };
+        workflow
+            .node_iter()
+            .filter_map(|nh| match &node_infos[nh] {
+                NodeInfo::NestedCall { workflow_name } => Some((nh, workflow_name.clone())),
+                _ => None,
+            })
+            .collect()
+    };
+    for (nh, name) in calls {
+        crate::context_menu::label_nested_call_pins(workflow, nh, &name);
+    }
+}
+
 impl EditorState {
     pub fn from_workflow(mut workflow: Workflow) -> Self {
+        backfill_nested_call_labels(&mut workflow);
         let node_positions = workflow.create_node_property();
         let node_sizes = workflow.create_node_property();
         let node_in_cycle = workflow.create_node_property();
@@ -214,5 +240,47 @@ mod test {
             dragged_to,
             "a second measure must not re-run the layout and discard the drag"
         );
+    }
+
+    /// Regression test: a `NestedCall` node loaded from a file authored outside dagger's own
+    /// context menu (e.g. directly via pyorc) never has `set_input_label`/`set_output_label`
+    /// called on its behalf, even though the names are already declared on the nested workflow
+    /// it references -- `from_workflow` must backfill them so the pins show real labels instead
+    /// of bare circles.
+    #[test]
+    fn t_from_workflow_backfills_nested_call_pin_labels_for_a_node_loaded_without_them() {
+        let mut inner = Workflow::default();
+        let mut inner_ins = vec![orc_sdk::IH::default(); 2];
+        let mut inner_outs = vec![OH::default(); 1];
+        inner
+            .add_function(FuncInfo::default(), &mut inner_ins, &mut inner_outs)
+            .unwrap();
+        inner
+            .set_inputs(&[(inner_ins[0], 0, "a"), (inner_ins[1], 1, "b")])
+            .unwrap();
+        inner
+            .set_outputs(&[(inner_outs[0], "sum".to_string())])
+            .unwrap();
+
+        let mut outer = Workflow::default();
+        outer
+            .push_nested_workflow("inner".to_string(), inner, &orc_sdk::PluginSet::default())
+            .unwrap();
+        let mut call_ins = vec![orc_sdk::IH::default(); 2];
+        let mut call_outs = vec![OH::default(); 1];
+        let call_nh = outer
+            .add_nested_workflow_call("inner", &mut call_ins, &mut call_outs)
+            .unwrap();
+        // Deliberately never calls set_input_label/set_output_label here, simulating a node
+        // that arrived from outside dagger's own node-creation path.
+
+        let state = EditorState::from_workflow(outer);
+        let input_labels = state.workflow.input_labels_prop();
+        let output_labels = state.workflow.output_labels_prop();
+        let synced_ins: Vec<_> = state.workflow.node_inputs(call_nh).collect();
+        let synced_outs: Vec<_> = state.workflow.node_outputs(call_nh).collect();
+        assert_eq!(input_labels.try_borrow().unwrap()[synced_ins[0]], "a");
+        assert_eq!(input_labels.try_borrow().unwrap()[synced_ins[1]], "b");
+        assert_eq!(output_labels.try_borrow().unwrap()[synced_outs[0]], "sum");
     }
 }

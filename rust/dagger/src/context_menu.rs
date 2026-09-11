@@ -217,6 +217,35 @@ fn create_constant_node(state: &mut EditorState, values: &[f64], screen_pos: Pos
 /// `Workflow::take_nested_workflow` (there's no borrowing accessor -- see PROJECT.org), which is
 /// fine here: it's two `BTreeMap` operations, not a clone of the nested workflow's contents, and
 /// this only runs once per node creation, not on any hot path.
+/// Copies `name`'s declared input/output names onto `nh`'s own pins in `workflow`, so a
+/// `NestedCall` node shows real labels instead of bare circles. `nh` must already have exactly as
+/// many pins as `name` currently declares -- true right after `add_nested_workflow_call`, and
+/// true for a node loaded from disk too, since the pin count is part of the saved graph. A no-op
+/// if `name` is currently checked out for editing elsewhere (nothing to read labels from until
+/// it's closed) -- there is no UI to rename a nested workflow's own declared inputs once set, so
+/// this can never actually drift once it's synced.
+pub(crate) fn label_nested_call_pins(workflow: &mut Workflow, nh: orc_sdk::NH, name: &str) {
+    let Some(nested) = workflow.take_nested_workflow(name) else {
+        return;
+    };
+    let in_names = nested.input_names().to_vec();
+    let out_names: Vec<String> = nested
+        .workflow_outputs()
+        .iter()
+        .map(|(_, n)| n.clone())
+        .collect();
+    workflow.put_nested_workflow(name.to_string(), nested);
+
+    let inputs: Vec<IH> = workflow.node_inputs(nh).collect();
+    let outputs: Vec<OH> = workflow.node_outputs(nh).collect();
+    for (ih, label) in inputs.into_iter().zip(in_names) {
+        let _ = workflow.set_input_label(ih, label);
+    }
+    for (oh, label) in outputs.into_iter().zip(out_names) {
+        let _ = workflow.set_output_label(oh, label);
+    }
+}
+
 fn create_nested_call_node(
     state: &mut EditorState,
     name: &str,
@@ -228,16 +257,12 @@ fn create_nested_call_node(
         // listing it and the user selecting it -- nothing sensible to create in that case.
         return;
     };
-    let in_names = nested.input_names().to_vec();
-    let out_names: Vec<String> = nested
-        .workflow_outputs()
-        .iter()
-        .map(|(_, n)| n.clone())
-        .collect();
+    let n_inputs = nested.input_names().len();
+    let n_outputs = nested.workflow_outputs().len();
     state.workflow.put_nested_workflow(name.to_string(), nested);
 
-    let mut inputs = vec![IH::default(); in_names.len()];
-    let mut outputs = vec![OH::default(); out_names.len()];
+    let mut inputs = vec![IH::default(); n_inputs];
+    let mut outputs = vec![OH::default(); n_outputs];
     let nh = match state
         .workflow
         .add_nested_workflow_call(name, &mut inputs, &mut outputs)
@@ -248,12 +273,7 @@ fn create_nested_call_node(
             return;
         }
     };
-    for (&ih, label) in inputs.iter().zip(in_names) {
-        let _ = state.workflow.set_input_label(ih, label);
-    }
-    for (&oh, label) in outputs.iter().zip(out_names) {
-        let _ = state.workflow.set_output_label(oh, label);
-    }
+    label_nested_call_pins(&mut state.workflow, nh, name);
     if let (Some(from), Some(&first)) = (connect_from, inputs.first()) {
         crate::interaction::connect_pins(state, from, first);
     }
