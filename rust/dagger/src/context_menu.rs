@@ -1,4 +1,4 @@
-//! Right-click menu with search field, pluggable FunctionFilter trait.
+//! Right-click menu with search field and case-insensitive substring filtering.
 
 use crate::interaction::ContextMenuRequest;
 use crate::state::EditorState;
@@ -20,18 +20,12 @@ pub struct ContextMenuState {
     focus_requested: bool,
 }
 
-/// Filters the menu's entries as the user types. Case-insensitive substring match today;
-/// swappable later for fuzzy/Levenshtein matching without touching the menu itself.
-trait FunctionFilter {
-    fn matches(&self, query: &str, name: &str) -> bool;
-}
-
-struct SubstringFilter;
-
-impl FunctionFilter for SubstringFilter {
-    fn matches(&self, query: &str, name: &str) -> bool {
-        query.is_empty() || name.to_lowercase().contains(&query.to_lowercase())
-    }
+/// Whether `name` matches the user's typed query -- case-insensitive substring match. `query`
+/// is passed already lowercased, since a single `menu_entries` call checks it against every
+/// plugin function and nested workflow name; lowercasing it once there instead of once per
+/// candidate here is the whole reason it's a parameter instead of computed inline.
+fn matches_query(query_lower: &str, name: &str) -> bool {
+    query_lower.is_empty() || name.to_lowercase().contains(query_lower)
 }
 
 enum MenuAction {
@@ -73,31 +67,31 @@ fn menu_entries(query: &str, workflow: &Workflow) -> Vec<(String, MenuAction)> {
         return vec![(SESSION_INFO.to_string(), MenuAction::SessionInfo)];
     }
 
-    let filter = SubstringFilter;
+    let query_lower = query.to_lowercase();
     let mut entries = Vec::new();
     match parse_literal(query) {
         Some(values) => entries.push((
             format!("{ADD_CONSTANT}: {values:?}"),
             MenuAction::Constant(values),
         )),
-        None if filter.matches(query, ADD_CONSTANT) => {
+        None if matches_query(&query_lower, ADD_CONSTANT) => {
             entries.push((ADD_CONSTANT.to_string(), MenuAction::Constant(vec![0.0])));
         }
         None => {}
     }
-    if filter.matches(query, ADD_INSPECT) {
+    if matches_query(&query_lower, ADD_INSPECT) {
         entries.push((ADD_INSPECT.to_string(), MenuAction::Inspect));
     }
     let plugin_set: &PluginSet = &crate::PLUGIN_SET;
     for plugin in plugin_set.plugins() {
         for func in plugin.functions() {
-            if filter.matches(query, &func.name) {
+            if matches_query(&query_lower, &func.name) {
                 entries.push((func.name.clone(), MenuAction::Function(func.clone())));
             }
         }
     }
     for name in workflow.nested_workflow_names() {
-        if filter.matches(query, name) {
+        if matches_query(&query_lower, name) {
             entries.push((
                 format!("{name} (nested)"),
                 MenuAction::NestedCall(name.to_string()),
@@ -133,23 +127,6 @@ fn finish_node_creation(state: &mut EditorState, nh: orc_sdk::NH, screen_pos: Po
     state.dirty = true;
 }
 
-/// Connect `from` to `first`, but only if `from`'s owning node is still live. A `connect_from`
-/// carried in `ContextMenuState` is just as vulnerable as `EditorState::pending_wire` to being
-/// invalidated by a node deletion that happens while the menu is open, even though today the
-/// menu's own text field holds keyboard focus for its whole lifetime (which already blocks
-/// Delete via `delete_selected`'s focus guard) — this is a second line of defense against that
-/// assumption ever changing. Any real connect failure is surfaced the same way file I/O errors
-/// are, via `state.file_error`.
-fn connect_from_menu(state: &mut EditorState, from: OH, to: IH) {
-    if !crate::interaction::output_is_live(&state.workflow, from) {
-        return;
-    }
-    match state.workflow.connect(from, to) {
-        Ok(_) => crate::exec::mark_dirty(state, state.workflow.node_from_input(to)),
-        Err(e) => state.file_error = Some(format!("Failed to connect new node: {e}")),
-    }
-}
-
 fn create_function_node(
     state: &mut EditorState,
     info: FuncInfo,
@@ -163,12 +140,12 @@ fn create_function_node(
     let nh = match state.workflow.add_function(info, &mut inputs, &mut outputs) {
         Ok(nh) => nh,
         Err(e) => {
-            state.file_error = Some(format!("Failed to create node: {e}"));
+            state.last_error = Some(format!("Failed to create node: {e}"));
             return;
         }
     };
     if let (Some(from), Some(&first)) = (connect_from, inputs.first()) {
-        connect_from_menu(state, from, first);
+        crate::interaction::connect_pins(state, from, first);
     }
     crate::exec::mark_dirty(state, nh);
     finish_node_creation(state, nh, screen_pos);
@@ -184,13 +161,18 @@ fn create_inspect_node(
     let nh = match state.workflow.add_inspect_node(label, &mut inputs) {
         Ok(nh) => nh,
         Err(e) => {
-            state.file_error = Some(format!("Failed to create node: {e}"));
+            state.last_error = Some(format!("Failed to create node: {e}"));
             return;
         }
     };
     if let Some(from) = connect_from {
-        connect_from_menu(state, from, inputs[0]);
+        crate::interaction::connect_pins(state, from, inputs[0]);
     }
+    // Nothing to compute for an Inspect node itself, but it still needs to enter `pending` so
+    // `exec::settle_trivially` actually runs for it -- otherwise it never explicitly settles,
+    // relying only on `dirty_version`/`computed_version` coincidentally sharing a default of 0
+    // (see review notes on this being harmless today only by chance).
+    crate::exec::mark_dirty(state, nh);
     finish_node_creation(state, nh, screen_pos);
 }
 
@@ -204,7 +186,7 @@ fn create_constant_node(state: &mut EditorState, values: &[f64], screen_pos: Pos
         deck.push(v, if values.len() > 1 && i == 0 { 1 } else { 0 });
     }
     if let Err(e) = crate::REGISTRY.alloc_with_value(Some(deck), &mut handle) {
-        state.file_error = Some(format!("Failed to allocate constant: {e}"));
+        state.last_error = Some(format!("Failed to allocate constant: {e}"));
         return;
     }
     // A constant's own value never goes through `exec`'s dispatch/settle machinery (nothing
@@ -216,7 +198,7 @@ fn create_constant_node(state: &mut EditorState, values: &[f64], screen_pos: Pos
     let (nh, oh) = match state.workflow.add_constant(handle) {
         Ok(pair) => pair,
         Err(e) => {
-            state.file_error = Some(format!("Failed to create node: {e}"));
+            state.last_error = Some(format!("Failed to create node: {e}"));
             return;
         }
     };
@@ -262,7 +244,7 @@ fn create_nested_call_node(
     {
         Ok(nh) => nh,
         Err(e) => {
-            state.file_error = Some(format!("Failed to create node: {e}"));
+            state.last_error = Some(format!("Failed to create node: {e}"));
             return;
         }
     };
@@ -273,7 +255,7 @@ fn create_nested_call_node(
         let _ = state.workflow.set_output_label(oh, label);
     }
     if let (Some(from), Some(&first)) = (connect_from, inputs.first()) {
-        connect_from_menu(state, from, first);
+        crate::interaction::connect_pins(state, from, first);
     }
     crate::exec::mark_dirty(state, nh);
     finish_node_creation(state, nh, screen_pos);
@@ -454,5 +436,105 @@ mod test {
         assert!(!state.dirty);
         create_constant_node(&mut state, &[1.0], Pos2::ZERO);
         assert!(state.dirty, "adding a node changes the saved file");
+    }
+
+    #[test]
+    fn t_creating_an_inspect_node_marks_it_dirty_for_execution_too() {
+        // Regression test: `create_inspect_node` used to skip `exec::mark_dirty` entirely,
+        // relying on an Inspect node's `dirty_version`/`computed_version` coincidentally both
+        // starting at 0 to read as "settled" without ever actually going through the scheduler.
+        // Calling `mark_dirty` bumps `dirty_version` past that shared default, so the node is
+        // genuinely unsettled until a tick's `dispatch_ready` -> `settle_trivially` catches it up
+        // -- pinning the real path instead of the coincidence.
+        let mut state = EditorState::from_workflow(orc_sdk::Workflow::default());
+        create_inspect_node(&mut state, "inspect".to_string(), Pos2::ZERO, None);
+        let nh = state.workflow.node_iter().next().unwrap();
+        assert!(
+            !crate::exec::is_settled(&state, nh),
+            "unsettled until a tick catches it up"
+        );
+        crate::exec::tick(&mut state);
+        assert!(crate::exec::is_settled(&state, nh));
+    }
+
+    #[test]
+    fn t_menu_entries_before_typing_only_offers_session_info() {
+        let wf = orc_sdk::Workflow::default();
+        let entries = menu_entries("", &wf);
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].0, SESSION_INFO);
+    }
+
+    #[test]
+    fn t_menu_entries_filters_case_insensitively() {
+        let wf = orc_sdk::Workflow::default();
+        assert!(
+            menu_entries("inspect", &wf)
+                .iter()
+                .any(|(label, _)| label == ADD_INSPECT)
+        );
+        assert!(
+            menu_entries("INSPECT", &wf)
+                .iter()
+                .any(|(label, _)| label == ADD_INSPECT)
+        );
+    }
+
+    #[test]
+    fn t_menu_entries_lists_a_nested_workflow_with_a_suffix() {
+        let mut wf = orc_sdk::Workflow::default();
+        wf.push_nested_workflow(
+            "inner".to_string(),
+            orc_sdk::Workflow::default(),
+            &PluginSet::default(),
+        )
+        .unwrap();
+        let entries = menu_entries("inner", &wf);
+        assert!(
+            entries.iter().any(|(label, _)| label == "inner (nested)"),
+            "got: {:?}",
+            entries.iter().map(|(l, _)| l).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn t_menu_entries_a_bare_number_only_offers_add_constant() {
+        let wf = orc_sdk::Workflow::default();
+        let entries = menu_entries("3.14", &wf);
+        assert_eq!(entries.len(), 1);
+        assert!(entries[0].0.starts_with(ADD_CONSTANT));
+    }
+
+    /// Regression guard for the fan-in/fan-out-index-sensitive part of node creation: a
+    /// mismatched zip between the nested workflow's declared pin names and the new node's actual
+    /// pins would silently mislabel every pin, with nothing else in the crate to catch it.
+    #[test]
+    fn t_create_nested_call_node_copies_the_nested_workflows_pin_labels() {
+        let mut state = EditorState::from_workflow(orc_sdk::Workflow::default());
+        let mut inner = orc_sdk::Workflow::default();
+        let mut ins = [IH::default(); 2];
+        let mut outs = [OH::default(); 1];
+        inner
+            .add_function(FuncInfo::default(), &mut ins, &mut outs)
+            .unwrap();
+        inner
+            .set_inputs(&[(ins[0], 0, "a"), (ins[1], 1, "b")])
+            .unwrap();
+        inner.set_outputs(&[(outs[0], "sum".to_string())]).unwrap();
+        state
+            .workflow
+            .push_nested_workflow("inner".to_string(), inner, &PluginSet::default())
+            .unwrap();
+
+        create_nested_call_node(&mut state, "inner", Pos2::ZERO, None);
+
+        let call_nh = state.workflow.node_iter().next().unwrap();
+        let call_ins: Vec<IH> = state.workflow.node_inputs(call_nh).collect();
+        let call_outs: Vec<OH> = state.workflow.node_outputs(call_nh).collect();
+        let input_labels = state.workflow.input_labels_prop();
+        let output_labels = state.workflow.output_labels_prop();
+        assert_eq!(input_labels.try_borrow().unwrap()[call_ins[0]], "a");
+        assert_eq!(input_labels.try_borrow().unwrap()[call_ins[1]], "b");
+        assert_eq!(output_labels.try_borrow().unwrap()[call_outs[0]], "sum");
     }
 }

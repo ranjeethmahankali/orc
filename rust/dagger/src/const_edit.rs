@@ -31,13 +31,13 @@ pub(crate) struct Row {
 }
 
 fn ruler_for(dmax: u8, depth: u8) -> String {
-    let d_current = depth + 1;
+    let d_current = depth.saturating_add(1);
     format!(
         "{:>indent$}{:>3} {:─>bw$}",
         "",
         d_current,
         "┤",
-        indent = (dmax - depth) as usize * TAB_WIDTH,
+        indent = dmax.saturating_sub(depth) as usize * TAB_WIDTH,
         bw = d_current as usize * TAB_WIDTH,
     )
 }
@@ -50,6 +50,43 @@ fn continuation_ruler(dmax: u8) -> String {
     )
 }
 
+/// One "event" produced while walking a deck's structure: either a run (a mark, paired with
+/// wherever the next one starts, or `n_items` for the last), or an item that comes after every
+/// mark has been walked (there's no run covering it -- `Deck` only ever gets a mark when
+/// `start_new_arr`/an explicit push depth introduces one).
+enum RunEvent {
+    Run { depth: u8, pos: u64, next_pos: u64 },
+    TailItem(u64),
+}
+
+/// Walks `marks` (plus whatever plain items trail the last one) as a sequence of `RunEvent`s, in
+/// the same order `Deck`'s own `Display` prints them. Shared by every function here that needs to
+/// walk a deck's structure this way: `deck_rows` (emitting display rows), and
+/// `rebuild_with_insertion`/`rebuild_with_deletion` (replaying into a fresh deck) -- all three
+/// used to independently re-derive this exact traversal.
+fn walk_runs(n_items: u64, marks: &[OrcMark], mut on_event: impl FnMut(RunEvent)) {
+    let mut tail_start = 0u64;
+    for w in marks.windows(2) {
+        on_event(RunEvent::Run {
+            depth: w[0].depth,
+            pos: w[0].pos,
+            next_pos: w[1].pos,
+        });
+        tail_start = w[1].pos;
+    }
+    if let Some(last) = marks.last() {
+        on_event(RunEvent::Run {
+            depth: last.depth,
+            pos: last.pos,
+            next_pos: n_items,
+        });
+        tail_start = n_items;
+    }
+    for i in tail_start..n_items {
+        on_event(RunEvent::TailItem(i));
+    }
+}
+
 /// One row per item (plus one for a run with no items at all), in the same order `Deck`'s own
 /// `Display` prints them. A direct port of `fmt_raw_deck`'s walk over `marks`/`items`, just
 /// emitting rows for a caller to turn into widgets instead of writing formatted text.
@@ -58,49 +95,45 @@ pub(crate) fn deck_rows(n_items: usize, marks: &[OrcMark]) -> Vec<Row> {
         return Vec::new();
     }
     let n_items = n_items as u64;
-    let dmax = marks.first().map(|m| m.depth + 1).unwrap_or(0);
+    let dmax = marks
+        .first()
+        .map(|m| m.depth.saturating_add(1))
+        .unwrap_or(0);
     let mut rows = Vec::new();
 
-    let push_run = |rows: &mut Vec<Row>, depth: u8, pos: u64, next_pos: u64| {
-        if pos < next_pos {
-            let end = next_pos.min(n_items);
-            let mut iter = pos..end;
-            if let Some(i) = iter.next() {
+    walk_runs(n_items, marks, |event| match event {
+        RunEvent::Run {
+            depth,
+            pos,
+            next_pos,
+        } => {
+            if pos < next_pos {
+                let end = next_pos.min(n_items);
+                let mut iter = pos..end;
+                if let Some(i) = iter.next() {
+                    rows.push(Row {
+                        ruler: ruler_for(dmax, depth),
+                        value: RowValue::Item(i as usize),
+                    });
+                }
+                for i in iter {
+                    rows.push(Row {
+                        ruler: continuation_ruler(dmax),
+                        value: RowValue::Item(i as usize),
+                    });
+                }
+            } else {
                 rows.push(Row {
                     ruler: ruler_for(dmax, depth),
-                    value: RowValue::Item(i as usize),
+                    value: RowValue::EmptyGroup,
                 });
             }
-            for i in iter {
-                rows.push(Row {
-                    ruler: continuation_ruler(dmax),
-                    value: RowValue::Item(i as usize),
-                });
-            }
-        } else {
-            rows.push(Row {
-                ruler: ruler_for(dmax, depth),
-                value: RowValue::EmptyGroup,
-            });
         }
-    };
-
-    let mut tail_start = 0u64;
-    for w in marks.windows(2) {
-        let (m, next_pos) = (&w[0], w[1].pos);
-        push_run(&mut rows, m.depth, m.pos, next_pos);
-        tail_start = next_pos;
-    }
-    if let Some(last) = marks.last() {
-        push_run(&mut rows, last.depth, last.pos, n_items);
-        tail_start = n_items;
-    }
-    for i in tail_start..n_items {
-        rows.push(Row {
+        RunEvent::TailItem(i) => rows.push(Row {
             ruler: continuation_ruler(dmax),
             value: RowValue::Item(i as usize),
-        });
-    }
+        }),
+    });
     rows
 }
 
@@ -204,39 +237,40 @@ pub fn commit_row(state: &mut EditorState, nh: NH, item_index: usize) {
     };
 
     let type_id = handle.type_id;
-    let parsed = matches!(type_id, ORC_TYPE_I64)
-        .then(|| text.trim().parse::<i64>().is_ok())
-        .unwrap_or_else(|| text.trim().parse::<f64>().is_ok());
-    if !parsed {
-        // Revert: put back whatever the deck actually holds, discarding the unparseable text.
-        cache[nh].buffers[item_index] = format_item(handle, item_index);
-        return;
-    }
-
-    let write_result =
+    let write_result = if type_id == ORC_TYPE_I64 {
+        let Ok(value) = text.trim().parse::<i64>() else {
+            cache[nh].buffers[item_index] = format_item(handle, item_index);
+            return;
+        };
         crate::REGISTRY.with_mut(&[handle.handle], |decks| -> Result<(), orc_sdk::Error> {
-            match type_id {
-                ORC_TYPE_I64 => {
-                    let deck = decks[0]
-                        .downcast_mut::<orc_sdk::Deck<i64>>()
-                        .ok_or(orc_sdk::Error::DeckTypeMismatch)?;
-                    deck.items_mut()[item_index] = text.trim().parse::<i64>().unwrap();
-                    unsafe { update_handle_from_deck(deck, &mut *handle) };
-                }
-                _ => {
-                    let deck = decks[0]
-                        .downcast_mut::<orc_sdk::Deck<f64>>()
-                        .ok_or(orc_sdk::Error::DeckTypeMismatch)?;
-                    deck.items_mut()[item_index] = text.trim().parse::<f64>().unwrap();
-                    unsafe { update_handle_from_deck(deck, &mut *handle) };
-                }
-            }
+            let deck = decks[0]
+                .downcast_mut::<orc_sdk::Deck<i64>>()
+                .ok_or(orc_sdk::Error::DeckTypeMismatch)?;
+            deck.items_mut()[item_index] = value;
+            unsafe { update_handle_from_deck(deck, &mut *handle) };
             Ok(())
-        });
+        })
+    } else {
+        let Ok(value) = text.trim().parse::<f64>() else {
+            cache[nh].buffers[item_index] = format_item(handle, item_index);
+            return;
+        };
+        crate::REGISTRY.with_mut(&[handle.handle], |decks| -> Result<(), orc_sdk::Error> {
+            let deck = decks[0]
+                .downcast_mut::<orc_sdk::Deck<f64>>()
+                .ok_or(orc_sdk::Error::DeckTypeMismatch)?;
+            deck.items_mut()[item_index] = value;
+            unsafe { update_handle_from_deck(deck, &mut *handle) };
+            Ok(())
+        })
+    };
+    // Whether the write succeeded or the registry rejected it (unreachable in practice --
+    // `is_editable` already gated the type against what's actually stored), the buffer always
+    // ends up showing whatever the deck actually holds now, never leftover unsynced text.
+    cache[nh].buffers[item_index] = format_item(handle, item_index);
     if write_result.is_err() {
         return;
     }
-    cache[nh].buffers[item_index] = format_item(handle, item_index);
     drop(cache);
     drop(node_infos);
     after_edit(state, nh);
@@ -259,31 +293,25 @@ fn rebuild_with_insertion<T: Copy + Default>(
     let mut new_deck = orc_sdk::Deck::<T>::default();
     let n_items = items.len() as u64;
 
-    let replay_run = |new_deck: &mut orc_sdk::Deck<T>, depth: u8, pos: u64, next_pos: u64| {
-        new_deck.start_new_arr(depth + 1);
-        for i in pos..next_pos.min(n_items) {
-            new_deck.push(items[i as usize], 0);
-            if i as usize == after_index {
-                new_deck.push(new_value, 0);
-            }
-        }
-    };
-
-    let mut tail_start = 0u64;
-    for w in marks.windows(2) {
-        replay_run(&mut new_deck, w[0].depth, w[0].pos, w[1].pos);
-        tail_start = w[1].pos;
-    }
-    if let Some(last) = marks.last() {
-        replay_run(&mut new_deck, last.depth, last.pos, n_items);
-        tail_start = n_items;
-    }
-    for i in tail_start..n_items {
+    let push_item = |new_deck: &mut orc_sdk::Deck<T>, i: u64| {
         new_deck.push(items[i as usize], 0);
         if i as usize == after_index {
             new_deck.push(new_value, 0);
         }
-    }
+    };
+    walk_runs(n_items, marks, |event| match event {
+        RunEvent::Run {
+            depth,
+            pos,
+            next_pos,
+        } => {
+            new_deck.start_new_arr(depth.saturating_add(1));
+            for i in pos..next_pos.min(n_items) {
+                push_item(&mut new_deck, i);
+            }
+        }
+        RunEvent::TailItem(i) => push_item(&mut new_deck, i),
+    });
     new_deck
 }
 
@@ -335,29 +363,24 @@ fn rebuild_with_deletion<T: Copy + Default>(
     let mut new_deck = orc_sdk::Deck::<T>::default();
     let n_items = items.len() as u64;
 
-    let replay_run = |new_deck: &mut orc_sdk::Deck<T>, depth: u8, pos: u64, next_pos: u64| {
-        new_deck.start_new_arr(depth + 1);
-        for i in pos..next_pos.min(n_items) {
-            if i as usize != delete_index {
-                new_deck.push(items[i as usize], 0);
-            }
-        }
-    };
-
-    let mut tail_start = 0u64;
-    for w in marks.windows(2) {
-        replay_run(&mut new_deck, w[0].depth, w[0].pos, w[1].pos);
-        tail_start = w[1].pos;
-    }
-    if let Some(last) = marks.last() {
-        replay_run(&mut new_deck, last.depth, last.pos, n_items);
-        tail_start = n_items;
-    }
-    for i in tail_start..n_items {
+    let push_item = |new_deck: &mut orc_sdk::Deck<T>, i: u64| {
         if i as usize != delete_index {
             new_deck.push(items[i as usize], 0);
         }
-    }
+    };
+    walk_runs(n_items, marks, |event| match event {
+        RunEvent::Run {
+            depth,
+            pos,
+            next_pos,
+        } => {
+            new_deck.start_new_arr(depth.saturating_add(1));
+            for i in pos..next_pos.min(n_items) {
+                push_item(&mut new_deck, i);
+            }
+        }
+        RunEvent::TailItem(i) => push_item(&mut new_deck, i),
+    });
     new_deck
 }
 
@@ -449,8 +472,7 @@ fn after_edit(state: &mut EditorState, nh: NH) {
     {
         computed_outputs[oh] = std::sync::Arc::new(cloned);
     }
-    state.dirty = true;
-    crate::exec::mark_dirty(state, nh);
+    crate::exec::mark_edited(state, nh);
 }
 
 #[cfg(test)]
@@ -609,6 +631,89 @@ mod test {
             state.const_edit_cache.try_borrow().unwrap()[nh].buffers[0],
             "7"
         );
+    }
+
+    fn constant_node_i64(deck: Deck<i64>) -> (EditorState, NH) {
+        let mut handle = OrcHandle {
+            handle: crate::HANDLE_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
+            ..Default::default()
+        };
+        crate::REGISTRY
+            .alloc_with_value(Some(deck), &mut handle)
+            .unwrap();
+        let mut wf = orc_sdk::Workflow::default();
+        let (nh, _oh) = wf.add_constant(handle).unwrap();
+        (EditorState::from_workflow(wf), nh)
+    }
+
+    fn items_of_i64(state: &EditorState, nh: NH) -> Vec<i64> {
+        let node_info_prop = state.workflow.node_info_prop();
+        let node_infos = node_info_prop.try_borrow().unwrap();
+        let NodeInfo::Constant(handle) = &node_infos[nh] else {
+            panic!("expected a constant node")
+        };
+        handle.items::<i64>().to_vec()
+    }
+
+    /// The `ORC_TYPE_I64` branch is a distinct code path in `commit_row`/`insert_after`/
+    /// `delete_row` from the `f64` one every other test here exercises -- these three guard it
+    /// directly rather than trusting it's a faithful mirror of the float branch.
+    #[test]
+    fn t_commit_row_parses_and_writes_an_i64_value() {
+        let mut deck = Deck::<i64>::default();
+        deck.push(1, 1);
+        deck.push(2, 0);
+        let (mut state, nh) = constant_node_i64(deck);
+        refresh(&mut state, nh);
+        state.const_edit_cache.try_borrow_mut().unwrap()[nh].buffers[1] = "42".to_string();
+
+        commit_row(&mut state, nh, 1);
+
+        assert_eq!(items_of_i64(&state, nh), vec![1, 42]);
+        assert!(state.dirty);
+    }
+
+    #[test]
+    fn t_commit_row_reverts_an_i64_buffer_on_unparseable_text() {
+        let (mut state, nh) = constant_node_i64(Deck::from_value(7i64));
+        refresh(&mut state, nh);
+        state.const_edit_cache.try_borrow_mut().unwrap()[nh].buffers[0] =
+            "not a number".to_string();
+
+        commit_row(&mut state, nh, 0);
+
+        assert_eq!(items_of_i64(&state, nh), vec![7]);
+        assert_eq!(
+            state.const_edit_cache.try_borrow().unwrap()[nh].buffers[0],
+            "7"
+        );
+    }
+
+    #[test]
+    fn t_insert_after_grows_an_i64_deck_without_a_new_mark() {
+        let mut deck = Deck::<i64>::default();
+        deck.push(1, 1);
+        deck.push(2, 0);
+        let (mut state, nh) = constant_node_i64(deck);
+        let n_marks_before = n_marks_of(&state, nh);
+
+        insert_after(&mut state, nh, 1);
+
+        assert_eq!(items_of_i64(&state, nh), vec![1, 2, 0]);
+        assert_eq!(n_marks_of(&state, nh), n_marks_before);
+    }
+
+    #[test]
+    fn t_delete_row_removes_an_i64_value() {
+        let mut deck = Deck::<i64>::default();
+        deck.push(1, 1);
+        deck.push(2, 0);
+        deck.push(3, 0);
+        let (mut state, nh) = constant_node_i64(deck);
+
+        delete_row(&mut state, nh, 1);
+
+        assert_eq!(items_of_i64(&state, nh), vec![1, 3]);
     }
 
     fn items_of(state: &EditorState, nh: NH) -> Vec<f64> {

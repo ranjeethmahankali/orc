@@ -33,9 +33,7 @@ pub struct EditorState {
     /// alongside everything else: the input's name, and `[right_edge_x, center_y]` -- the chip's
     /// right edge, not its min corner, since that's the one point that needs to stay stable for
     /// `render.rs` to anchor a link from regardless of how wide the label measures at draw time
-    /// (the chip itself is never resized/dragged, so nothing else needs the rect). See
-    /// `layout::compute_input_chip_positions` for why this doesn't just read
-    /// `Workflow::input_names()` directly.
+    /// (the chip itself is never resized/dragged, so nothing else needs the rect).
     pub(crate) input_chip_positions: Vec<(String, [f32; 2])>,
     /// Canvas to screen transform, driven by pan/zoom input.
     pub view: Transform,
@@ -51,8 +49,11 @@ pub struct EditorState {
     /// Path last opened or saved to, if any. `Save` writes here directly; with no path yet it
     /// falls back to `Save As`.
     pub current_path: Option<PathBuf>,
-    /// Message from the last failed load/save, shown in a popup until dismissed.
-    pub file_error: Option<String>,
+    /// Message from the last failed operation -- file load/save, a rejected connection, a failed
+    /// node creation -- shown in a popup until dismissed. Named generically (not `file_error`)
+    /// since it long ago grew into the crate's one generic user-facing error channel, not just a
+    /// file-I/O one.
+    pub last_error: Option<String>,
     /// Whether the workflow has changed since the last save (or since it was opened). Node
     /// positions, selection, pan/zoom etc. don't count — none of that is persisted to disk, so
     /// none of it should mark the file dirty.
@@ -130,7 +131,7 @@ impl EditorState {
             context_menu: None,
             session_info_open: false,
             current_path: None,
-            file_error: None,
+            last_error: None,
             dirty: false,
             last_window_title: String::new(),
             computed_outputs,
@@ -163,5 +164,55 @@ impl EditorState {
             layout::compute_layout(self);
             self.layout_computed = true;
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use orc_sdk::FuncInfo;
+
+    fn node(wf: &mut Workflow, n_in: usize, n_out: usize) -> NH {
+        let mut ins = vec![orc_sdk::IH::default(); n_in];
+        let mut outs = vec![OH::default(); n_out];
+        wf.add_function(FuncInfo::default(), &mut ins, &mut outs)
+            .unwrap()
+    }
+
+    /// `measure`'s own doc comment calls out exactly this regression: a later call must only
+    /// remeasure sizes, never repeat the layout -- otherwise a node the user just dragged would
+    /// snap back to its computed position the next time anything (e.g. a new node created
+    /// elsewhere, which sets `needs_measure` again) triggers a remeasure.
+    #[test]
+    fn t_measure_only_computes_the_layout_once() {
+        let mut wf = Workflow::default();
+        let a = node(&mut wf, 0, 1);
+        let mut state = EditorState::from_workflow(wf);
+
+        let ctx = egui::Context::default();
+        let output = ctx.run_ui(egui::RawInput::default(), |ui| {
+            state.measure(ui.ctx());
+        });
+        output.drop_without_applying_deltas();
+        assert!(state.layout_computed);
+
+        // Simulate a drag, then trigger a second `measure` as if an unrelated edit (e.g. a new
+        // node created elsewhere) had just set `needs_measure` again without touching
+        // `layout_computed`.
+        let dragged_to = [999.0, 888.0];
+        state.node_positions.try_borrow_mut().unwrap()[a] = dragged_to;
+        state.needs_measure = true;
+
+        let ctx = egui::Context::default();
+        let output = ctx.run_ui(egui::RawInput::default(), |ui| {
+            state.measure(ui.ctx());
+        });
+        output.drop_without_applying_deltas();
+
+        assert_eq!(
+            state.node_positions.try_borrow().unwrap()[a],
+            dragged_to,
+            "a second measure must not re-run the layout and discard the drag"
+        );
     }
 }

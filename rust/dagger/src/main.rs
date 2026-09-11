@@ -36,13 +36,20 @@ static SERIAL_CONTEXT_ARENA: LazyLock<ContextArena<Vec<u8>>> = LazyLock::new(Con
 pub(crate) static CANCEL_ARENA: LazyLock<ContextArena<bool>> = LazyLock::new(ContextArena::default);
 
 unsafe extern "C" fn host_alloc(size: u64, alignment: u64) -> *mut c_void {
-    let layout = Layout::from_size_align(size as usize, alignment as usize).unwrap();
-    unsafe { alloc(layout) as *mut c_void }
+    // An invalid size/alignment pair here means a misbehaving plugin, not a normal allocation
+    // failure -- but crashing the whole host over it is still worse than reporting the same
+    // "allocation failed" signal a real out-of-memory condition would (a null pointer), which
+    // every caller across this ABI already has to check for.
+    match Layout::from_size_align(size as usize, alignment as usize) {
+        Ok(layout) => unsafe { alloc(layout) as *mut c_void },
+        Err(_) => std::ptr::null_mut(),
+    }
 }
 
 unsafe extern "C" fn host_dealloc(ptr: *mut c_void, size: u64, alignment: u64) {
-    let layout = Layout::from_size_align(size as usize, alignment as usize).unwrap();
-    unsafe { dealloc(ptr as *mut u8, layout) }
+    if let Ok(layout) = Layout::from_size_align(size as usize, alignment as usize) {
+        unsafe { dealloc(ptr as *mut u8, layout) }
+    }
 }
 
 unsafe extern "C" fn serial_write_callback(ctx: u64, data: *const c_void, len: u64) -> OrcError {
@@ -201,15 +208,31 @@ pub const HOST: OrcHost = OrcHost {
     create_deck_from_proxy: Some(host_create_proxy_deck),
 };
 
+/// A `LazyLock`, so this is initialized lazily, on whatever thread and at whatever point first
+/// touches it during the session -- not necessarily at startup. A hard failure here must not
+/// panic mid-session; falling back to an empty `PluginSet` degrades to "no plugin functions
+/// available" (already a supported, tested state throughout this crate -- see e.g.
+/// `context_menu`'s menu simply listing none) rather than crashing the whole app.
 pub static PLUGIN_SET: LazyLock<PluginSet> = LazyLock::new(|| {
-    let exe = std::env::current_exe().expect("Cannot determine executable path");
-    let exe_dir = exe.parent().expect("Executable has no parent directory");
-    let plugin_dir = if exe_dir.ends_with("deps") {
-        exe_dir.parent().unwrap()
-    } else {
-        exe_dir
+    let plugin_dir = std::env::current_exe().ok().and_then(|exe| {
+        let exe_dir = exe.parent()?;
+        Some(if exe_dir.ends_with("deps") {
+            exe_dir.parent().unwrap_or(exe_dir).to_path_buf()
+        } else {
+            exe_dir.to_path_buf()
+        })
+    });
+    let Some(plugin_dir) = plugin_dir else {
+        eprintln!("Could not determine the executable's directory; no plugins loaded");
+        return PluginSet::default();
     };
-    PluginSet::load_from_dir(plugin_dir, &HOST).expect("Failed to load plugins")
+    match PluginSet::load_from_dir(&plugin_dir, &HOST) {
+        Ok(set) => set,
+        Err(e) => {
+            eprintln!("Failed to load plugins from {}: {e}", plugin_dir.display());
+            PluginSet::default()
+        }
+    }
 });
 
 pub fn host_clone_orc_handle(src: OrcHandleBorrowed) -> Result<OrcHandle, Error> {
@@ -291,9 +314,13 @@ fn main() -> eframe::Result {
     let (workflow, path) = match std::env::args().nth(1) {
         Some(path) => {
             eprintln!("Loading workflow from: {path}");
-            let workflow = file_menu::open_workflow(std::path::Path::new(&path))
-                .expect("Failed to load workflow");
-            (workflow, Some(std::path::PathBuf::from(path)))
+            match file_menu::open_workflow(std::path::Path::new(&path)) {
+                Ok(workflow) => (workflow, Some(std::path::PathBuf::from(path))),
+                Err(e) => {
+                    eprintln!("Failed to load workflow from {path}: {e}");
+                    std::process::exit(1);
+                }
+            }
         }
         None => {
             eprintln!("No workflow file specified, starting with empty workflow");

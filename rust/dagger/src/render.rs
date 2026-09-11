@@ -37,6 +37,13 @@ const MIN_TEXT_ZOOM: f32 = 0.35;
 const ERROR_BODY_COLOR: Color32 = Color32::from_rgb(120, 45, 45);
 const ERROR_TITLE_COLOR: Color32 = Color32::from_rgb(165, 60, 60);
 const ERROR_STROKE_COLOR: Color32 = Color32::from_rgb(235, 95, 95);
+/// A node whose last real execution attempt faulted (`EditorState::execution_error`), distinct
+/// from a cycle: the graph shape itself is fine, the plugin function it called returned an error.
+/// Colored differently from the cycle error (amber vs. red) so the two causes read as visually
+/// distinct rather than "something red is wrong here" either way.
+const FAULT_BODY_COLOR: Color32 = Color32::from_rgb(120, 90, 30);
+const FAULT_TITLE_COLOR: Color32 = Color32::from_rgb(165, 125, 45);
+const FAULT_STROKE_COLOR: Color32 = Color32::from_rgb(235, 175, 70);
 const NODE_STROKE_COLOR: Color32 = Color32::from_gray(40);
 const SELECTION_COLOR: Color32 = Color32::from_rgb(230, 180, 60);
 const SELECT_BOX_STROKE_COLOR: Color32 = Color32::from_rgb(120, 170, 230);
@@ -51,7 +58,7 @@ const CONTROL_POINT_OFFSET: f32 = 80.0;
 const CHIP_COLOR: Color32 = Color32::from_rgb(70, 70, 90);
 const CHIP_STROKE_COLOR: Color32 = Color32::from_gray(140);
 const CHIP_TEXT_COLOR: Color32 = Color32::from_gray(220);
-const CHIP_HEIGHT: f32 = 28.0;
+pub(crate) const CHIP_HEIGHT: f32 = 28.0;
 const CHIP_PADDING_X: f32 = 10.0;
 const CHIP_ROUNDING: f32 = 14.0;
 /// Dimmer and thinner than a real link's `LINK_COLOR`/`LINK_WIDTH`, so a chip's link reads as
@@ -107,6 +114,27 @@ fn title_color(info: &NodeInfo) -> Color32 {
         NodeInfo::Function(_) => Color32::from_rgb(80, 115, 170),
         NodeInfo::NestedCall { .. } => Color32::from_rgb(150, 100, 150),
         NodeInfo::Inspect { .. } => Color32::from_rgb(170, 125, 65),
+    }
+}
+
+/// Picks a node's body/title/outline colors and outline width for this frame, in priority order:
+/// a cycle (a graph-shape problem) outranks a execution fault (a runtime problem), which outranks
+/// mere selection, which outranks the node's own ordinary kind-based color. Factored out of
+/// `draw_nodes` so this precedence is unit-testable without a live `Ui`.
+fn node_style(
+    info: &NodeInfo,
+    in_cycle: bool,
+    has_fault: bool,
+    selected: bool,
+) -> (Color32, Color32, Color32, f32) {
+    if in_cycle {
+        (ERROR_BODY_COLOR, ERROR_TITLE_COLOR, ERROR_STROKE_COLOR, 1.0)
+    } else if has_fault {
+        (FAULT_BODY_COLOR, FAULT_TITLE_COLOR, FAULT_STROKE_COLOR, 1.0)
+    } else if selected {
+        (node_color(info), title_color(info), SELECTION_COLOR, 2.0)
+    } else {
+        (node_color(info), title_color(info), NODE_STROKE_COLOR, 1.0)
     }
 }
 
@@ -309,11 +337,12 @@ pub fn measure_nodes(ctx: &egui::Context, workflow: &Workflow, sizes: &mut NodeP
 
 pub fn draw(ui: &mut egui::Ui, state: &EditorState) -> ConstEditEvents {
     let view = state.view;
+    let visible = view.visible_canvas_rect(ui.max_rect());
     let wire_target = pending_wire_target(ui, state, &view);
     let time = ui.input(|i| i.time);
-    draw_links(ui, state, &view);
+    draw_links(ui, state, &view, visible);
     draw_input_chip_links(ui, state, &view);
-    let const_edit_events = draw_nodes(ui, state, &view, wire_target, time);
+    let const_edit_events = draw_nodes(ui, state, &view, wire_target, time, visible);
     draw_input_chips(ui, state, &view);
     draw_pending_wire(ui, state, &view);
     draw_select_box(ui, state);
@@ -504,7 +533,7 @@ fn draw_select_box(ui: &mut egui::Ui, state: &EditorState) {
     }
 }
 
-fn draw_links(ui: &mut egui::Ui, state: &EditorState, view: &Transform) {
+fn draw_links(ui: &mut egui::Ui, state: &EditorState, view: &Transform, visible: Rect) {
     let painter = ui.painter();
     let (positions, sizes) = match (
         state.node_positions.try_borrow(),
@@ -516,6 +545,7 @@ fn draw_links(ui: &mut egui::Ui, state: &EditorState, view: &Transform) {
 
     for nh in state.workflow.node_iter() {
         let dst_rect = node_rect(positions[nh], sizes[nh]);
+        let dst_visible = dst_rect.intersects(visible);
 
         for (input_idx, ih) in state.workflow.node_inputs(nh).enumerate() {
             let src_oh = match state.workflow.input_source(ih) {
@@ -525,6 +555,14 @@ fn draw_links(ui: &mut egui::Ui, state: &EditorState, view: &Transform) {
 
             let src_nh = state.workflow.node_from_output(src_oh);
             let src_rect = node_rect(positions[src_nh], sizes[src_nh]);
+            // A link between two nodes that are both off screen essentially never crosses the
+            // visible viewport in normal use -- skipping it (rather than laying out its bezier
+            // and submitting it to the painter) is the same kind of visual approximation the
+            // layout already makes elsewhere, and keeps per-frame link-drawing cost tracking
+            // what's on screen instead of total graph size.
+            if !dst_visible && !src_rect.intersects(visible) {
+                continue;
+            }
 
             let output_idx = state
                 .workflow
@@ -550,6 +588,7 @@ fn draw_nodes(
     view: &Transform,
     wire_target: Option<IH>,
     time: f64,
+    visible: Rect,
 ) -> ConstEditEvents {
     // Cloned (cheap — `Painter` is just a layer id + clip rect + context handle) rather than
     // held as `&ui.painter()`, since the Inspect content area below needs a mutable borrow of
@@ -572,29 +611,32 @@ fn draw_nodes(
         (Ok(n), Ok(i), Ok(o)) => (n, i, o),
         _ => return const_edit_events,
     };
-    let (positions, sizes, in_cycle, selected) = match (
+    let (positions, sizes, in_cycle, selected, execution_error) = match (
         state.node_positions.try_borrow(),
         state.node_sizes.try_borrow(),
         state.node_in_cycle.try_borrow(),
         state.selected.try_borrow(),
+        state.execution_error.try_borrow(),
     ) {
-        (Ok(p), Ok(s), Ok(c), Ok(sel)) => (p, s, c, sel),
+        (Ok(p), Ok(s), Ok(c), Ok(sel), Ok(err)) => (p, s, c, sel, err),
         _ => return const_edit_events,
     };
     let inspect_cache = state.inspect_cache.try_borrow().ok();
     let inspect_font = FontId::new(view.scale(INSPECT_TEXT_FONT_SIZE), FontFamily::Monospace);
 
     for nh in state.workflow.node_iter() {
+        let rect = node_rect(positions[nh], sizes[nh]);
+        if !rect.intersects(visible) {
+            continue;
+        }
         let info = &node_infos[nh];
         let (in_args, out_args) = declared_args(info);
-        let rect = node_rect(positions[nh], sizes[nh]);
-        let (body_fill, title_fill, outline, outline_width) = if in_cycle[nh] {
-            (ERROR_BODY_COLOR, ERROR_TITLE_COLOR, ERROR_STROKE_COLOR, 1.0)
-        } else if selected[nh] {
-            (node_color(info), title_color(info), SELECTION_COLOR, 2.0)
-        } else {
-            (node_color(info), title_color(info), NODE_STROKE_COLOR, 1.0)
-        };
+        let (body_fill, title_fill, outline, outline_width) = node_style(
+            info,
+            in_cycle[nh],
+            execution_error[nh].is_some(),
+            selected[nh],
+        );
 
         let rounding = view.scale(NODE_ROUNDING);
         let body_rect = view.rect_to_screen(rect);
@@ -1019,6 +1061,39 @@ mod test {
     /// A reversed condition here (returning `declared` whenever it exists, regardless of
     /// `explicit`) would silently discard every user-set pin label; nothing else in the crate
     /// would catch it since labels are just cosmetic text.
+    #[test]
+    fn t_node_style_precedence_cycle_beats_fault_beats_selection() {
+        let info = NodeInfo::Function(orc_sdk::FuncInfo::default());
+        let (cycle_body, ..) = node_style(&info, true, true, true);
+        assert_eq!(
+            cycle_body, ERROR_BODY_COLOR,
+            "a cycle outranks everything else"
+        );
+
+        let (fault_body, ..) = node_style(&info, false, true, true);
+        assert_eq!(
+            fault_body, FAULT_BODY_COLOR,
+            "a fault outranks mere selection"
+        );
+        assert_ne!(
+            fault_body, ERROR_BODY_COLOR,
+            "a fault must not read as a cycle"
+        );
+
+        let (selected_body, _, selected_outline, selected_width) =
+            node_style(&info, false, false, true);
+        assert_eq!(selected_body, node_color(&info));
+        assert_eq!(selected_outline, SELECTION_COLOR);
+        assert_eq!(selected_width, 2.0);
+
+        let (plain_body, plain_title, plain_outline, plain_width) =
+            node_style(&info, false, false, false);
+        assert_eq!(plain_body, node_color(&info));
+        assert_eq!(plain_title, title_color(&info));
+        assert_eq!(plain_outline, NODE_STROKE_COLOR);
+        assert_eq!(plain_width, 1.0);
+    }
+
     #[test]
     fn t_pin_label_prefers_explicit_over_declared() {
         assert_eq!(pin_label("custom", Some("declared")), "custom");

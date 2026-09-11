@@ -41,6 +41,10 @@ pub(crate) struct InspectCache {
 /// Refreshes every Inspect node's cached text. Called once per frame; cheap when nothing has
 /// changed, since `refresh` bails out immediately once it sees the cached source still matches.
 pub fn refresh_all(state: &mut EditorState) {
+    // Collected first, not iterated in place: `node_iter()` borrows `state.workflow` for the
+    // loop's duration, which conflicts with `refresh` needing `&mut state` on every iteration --
+    // this isn't a missed optimization, it's required by the borrow checker as `refresh` is
+    // shaped today.
     let nodes: Vec<NH> = state.workflow.node_iter().collect();
     for nh in nodes {
         refresh(state, nh);
@@ -282,7 +286,10 @@ fn render_str_deck_raw(items: &[u8], marks: &[OrcMark], out: &mut String) {
                 indent = continuation_indent
             );
         } else {
-            let indent = (dmax - m.depth) as usize * TAB_WIDTH + TAB_WIDTH;
+            // `dmax` is meant to be every mark's ceiling (the shallowest, i.e. numerically
+            // largest, depth in the deck), so `m.depth` should never exceed it -- `saturating_sub`
+            // is just cheap insurance against a hand-built or corrupted deck violating that.
+            let indent = dmax.saturating_sub(m.depth) as usize * TAB_WIDTH + TAB_WIDTH;
             let bracket_width = m.depth as usize * TAB_WIDTH;
             let _ = writeln!(
                 out,

@@ -52,12 +52,13 @@ fn gather_current_inputs(caller: &EditorState, nh: NH) -> Vec<Arc<OrcHandle>> {
         .workflow
         .node_inputs(nh)
         .map(|ih| match caller.workflow.input_source(ih) {
-            Some(oh) => match &node_infos[caller.workflow.node_from_output(oh)] {
-                NodeInfo::Constant(handle) => crate::host_clone_orc_handle(handle.borrowed())
-                    .map(Arc::new)
-                    .unwrap_or_else(|_| Arc::clone(&empty)),
-                _ => Arc::clone(&computed_outputs[oh]),
-            },
+            Some(oh) => exec::resolve_connected_value(
+                &*node_infos,
+                &*computed_outputs,
+                &caller.workflow,
+                oh,
+            )
+            .unwrap_or_else(|| Arc::clone(&empty)),
             None => Arc::clone(&empty),
         })
         .collect()

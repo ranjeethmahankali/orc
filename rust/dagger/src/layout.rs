@@ -14,10 +14,6 @@ const LAYOUT_ROW_GAP: f32 = 30.0;
 /// resolved to real per-node spacing by the overlap-removal pass right after, so this only
 /// needs to be a reasonable rough guess, not an accurate one.
 const LAYOUT_INITIAL_ROW_STEP: f32 = 90.0;
-/// Nominal height used only to space workflow-input chips apart from each other -- like
-/// `LAYOUT_INITIAL_ROW_STEP`, a rough guess is fine since chips are small and few, not an exact
-/// match to `render.rs`'s actual drawn size.
-const LAYOUT_CHIP_HEIGHT: f32 = 28.0;
 
 /// The nodes feeding a node, via its connected inputs.
 fn predecessors(workflow: &Workflow, node: NH) -> impl Iterator<Item = NH> + '_ {
@@ -95,6 +91,28 @@ pub(crate) fn compute_depths(workflow: &Workflow) -> Depths {
     Depths { depth, in_cycle }
 }
 
+/// Sorts `targets` by their target y and pushes each one down just far enough to clear the
+/// previous entry, using `half_height` to size the gap around each individual entry -- the same
+/// overlap-avoidance idea used both for a real layer of node siblings (per-node height) and for
+/// the workflow-input chip column (one fixed height per chip). Never moves an entry up, only
+/// down, so entries keep their relative order. `total_cmp` (not `partial_cmp`) since a target y
+/// is never actually expected to be NaN, but a total order still has to exist for `sort_by` to
+/// have something well-defined to do rather than panic if one ever were.
+fn resolve_overlaps<T>(targets: &mut [(T, f32)], half_height: impl Fn(&T) -> f32) {
+    targets.sort_by(|a, b| a.1.total_cmp(&b.1));
+    let mut prev_bottom: Option<f32> = None;
+    for (item, y) in targets.iter_mut() {
+        let half_height = half_height(item);
+        if let Some(bottom) = prev_bottom {
+            let floor = bottom + LAYOUT_ROW_GAP + half_height;
+            if *y < floor {
+                *y = floor;
+            }
+        }
+        prev_bottom = Some(*y + half_height);
+    }
+}
+
 /// Compute the entire node layout: a static, one-shot Sugiyama-style layered placement. Nodes
 /// are grouped into depth layers left to right, and within a layer each node's y is the
 /// average y of its already-placed predecessors (its "barycenter"), so it lands close to
@@ -135,8 +153,12 @@ pub fn compute_layout(state: &mut EditorState) {
         layers[depth[nh.index()] as usize].push(nh);
     }
 
-    let sizes = state.node_sizes.try_borrow().unwrap();
-    let mut pos = state.node_positions.try_borrow_mut().unwrap();
+    let Ok(sizes) = state.node_sizes.try_borrow() else {
+        return;
+    };
+    let Ok(mut pos) = state.node_positions.try_borrow_mut() else {
+        return;
+    };
     let mut x = LAYOUT_ORIGIN_X;
     let mut prev_half_width = 0.0f32;
     for (d, layer) in layers.iter().enumerate() {
@@ -179,18 +201,7 @@ pub fn compute_layout(state: &mut EditorState) {
         // without this pass they'd be seeded exactly on top of each other. Sorting by the
         // barycenter and pushing each node just far enough below the previous one keeps
         // siblings in their natural relative order while guaranteeing real separation.
-        targets.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
-        let mut prev_bottom: Option<f32> = None;
-        for (nh, y) in targets.iter_mut() {
-            let half_height = sizes[*nh][1] / 2.0;
-            if let Some(bottom) = prev_bottom {
-                let floor = bottom + LAYOUT_ROW_GAP + half_height;
-                if *y < floor {
-                    *y = floor;
-                }
-            }
-            prev_bottom = Some(*y + half_height);
-        }
+        resolve_overlaps(&mut targets, |&nh| sizes[nh][1] / 2.0);
         // The push-down pass only ever moves nodes later (down), which drifts the whole
         // layer away from where its parents actually pointed. Re-center on the original
         // barycenter mean so relative spacing (just established above) is preserved but the
@@ -221,7 +232,9 @@ fn compute_input_chip_positions(state: &mut EditorState) {
         return;
     }
     let workflow_inputs = state.workflow.workflow_inputs().unwrap_or_default();
-    let pos = state.node_positions.try_borrow().unwrap();
+    let Ok(pos) = state.node_positions.try_borrow() else {
+        return;
+    };
 
     let mut dangling_ys: Vec<Vec<f32>> = vec![Vec::new(); n_inputs];
     for (ih, idx, _name) in &workflow_inputs {
@@ -245,20 +258,9 @@ fn compute_input_chip_positions(state: &mut EditorState) {
         })
         .collect();
 
-    // Same overlap-avoidance idea as a real layer: sort by target y, then push each one down just
-    // far enough to clear the previous chip.
-    targets.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
-    let half_height = LAYOUT_CHIP_HEIGHT / 2.0;
-    let mut prev_bottom: Option<f32> = None;
-    for (_, y) in targets.iter_mut() {
-        if let Some(bottom) = prev_bottom {
-            let floor = bottom + LAYOUT_ROW_GAP + half_height;
-            if *y < floor {
-                *y = floor;
-            }
-        }
-        prev_bottom = Some(*y + half_height);
-    }
+    // Same overlap-avoidance idea as a real layer, just against one fixed chip height instead of
+    // each node's own measured size.
+    resolve_overlaps(&mut targets, |_| crate::render::CHIP_HEIGHT / 2.0);
 
     let right_edge_x = LAYOUT_ORIGIN_X - LAYOUT_LAYER_GAP;
     let mut chip_positions: Vec<(String, [f32; 2])> = state
@@ -417,6 +419,45 @@ mod test {
     }
 
     #[test]
+    fn t_compute_layout_on_an_empty_workflow_does_not_panic() {
+        let wf = Workflow::default();
+        let mut state = EditorState::from_workflow(wf);
+        compute_layout(&mut state);
+        assert!(state.input_chip_positions.is_empty());
+    }
+
+    /// Regression guard for the exact bug the review flagged as untestable before
+    /// `resolve_overlaps` existed: the push-down gap between two siblings must be sized off each
+    /// node's *own* half-height, not a shared/first one -- otherwise a much taller second sibling
+    /// would overlap the one above it.
+    #[test]
+    fn t_overlap_resolution_uses_each_nodes_own_height_not_a_shared_one() {
+        let mut wf = Workflow::default();
+        let (a, _, a_out) = node(&mut wf, 0, 2);
+        let (b1, b1_in, _) = node(&mut wf, 1, 0);
+        let (b2, b2_in, _) = node(&mut wf, 1, 0);
+        wf.connect(a_out[0], b1_in[0]).unwrap();
+        wf.connect(a_out[1], b2_in[0]).unwrap();
+
+        let mut state = EditorState::from_workflow(wf);
+        {
+            let mut sizes = state.node_sizes.try_borrow_mut().unwrap();
+            sizes[a] = [160.0, 80.0];
+            sizes[b1] = [160.0, 20.0];
+            sizes[b2] = [160.0, 300.0];
+        }
+        compute_layout(&mut state);
+        let pos = state.node_positions.try_borrow().unwrap();
+
+        let gap = (pos[b2][1] - pos[b1][1]).abs();
+        let expected_gap = 20.0 / 2.0 + super::LAYOUT_ROW_GAP + 300.0 / 2.0;
+        assert!(
+            (gap - expected_gap).abs() < 0.01,
+            "expected a gap of {expected_gap} accounting for each node's own height, got {gap}"
+        );
+    }
+
+    #[test]
     fn t_no_declared_inputs_yields_no_chips() {
         let mut wf = Workflow::default();
         node(&mut wf, 0, 1);
@@ -456,9 +497,9 @@ mod test {
     }
 
     /// `a` and `b` both declare index 0 -- a single workflow parameter feeding two internal pins
-    /// (e.g. `def f(x): return add(x, x)`). This must collapse to exactly one chip, not two: see
-    /// `compute_input_chip_positions`'s doc comment on why `Workflow::input_names().len()` can't
-    /// be trusted for the count here (it's inflated by exactly this fan-out).
+    /// (e.g. `def f(x): return add(x, x)`). This must collapse to exactly one chip, not two,
+    /// since `Workflow::input_names()` already reports one name per distinct declared input
+    /// regardless of how many pins share it.
     #[test]
     fn t_input_chip_averages_over_every_pin_it_feeds() {
         let mut wf = Workflow::default();

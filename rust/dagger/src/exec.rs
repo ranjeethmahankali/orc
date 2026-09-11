@@ -73,7 +73,10 @@ fn pool() -> &'static Pool {
 fn worker_loop(job_rx: &Arc<Mutex<mpsc::Receiver<NodeJob>>>, result_tx: &mpsc::Sender<NodeResult>) {
     loop {
         let job = {
-            let rx = job_rx.lock().unwrap();
+            // A poisoned lock only means some other thread panicked while holding it -- the
+            // channel itself is still perfectly usable, so recovering the guard (rather than
+            // propagating the panic to every worker thread in turn) is the right call here.
+            let rx = job_rx.lock().unwrap_or_else(|e| e.into_inner());
             match rx.recv() {
                 Ok(job) => job,
                 // The sending half (the pool itself) only ever drops at process exit.
@@ -146,6 +149,10 @@ pub(crate) struct ExecState {
     /// Settled (nothing to do) iff this matches `dirty_version`.
     computed_version: NodeProperty<u64>,
     in_flight: NodeProperty<Option<InFlightJob>>,
+    /// How many `in_flight` slots are currently `Some`, kept in lockstep with every write to
+    /// `in_flight` so `any_in_flight` can answer in O(1) instead of scanning every node every
+    /// frame just to animate the in-progress pulse and decide whether to keep repainting.
+    in_flight_count: usize,
     /// Nodes to (re)check for dispatch readiness. Populated by edits and by job completions —
     /// never scanned from a full pass over every node.
     pending: VecDeque<NH>,
@@ -156,6 +163,7 @@ impl ExecState {
         Self {
             computed_version: workflow.create_node_property(),
             in_flight: workflow.create_node_property(),
+            in_flight_count: 0,
             pending: VecDeque::new(),
         }
     }
@@ -196,8 +204,11 @@ pub fn mark_all_dirty(state: &mut EditorState) {
 /// Call this *before* deleting a node whose removal is what's invalidating its downstream
 /// neighbors — `Workflow::delete_node` disconnects those links as part of deleting, so downstream
 /// adjacency has to be captured first (see `interaction::delete_selected`).
-pub fn mark_dirty(state: &mut EditorState, nh: NH) {
-    recompute_cycles(state);
+/// Propagates dirty version downstream from `nh`, same walk `mark_dirty` does, but without
+/// recomputing cycles -- split out so a batch caller marking several nodes from the same edit
+/// (see `mark_dirty_batch`) can recompute cycles once for the whole batch instead of once per
+/// node.
+fn propagate_dirty(state: &mut EditorState, nh: NH) {
     let mut visited = HashSet::new();
     let mut stack = vec![nh];
     while let Some(n) = stack.pop() {
@@ -215,14 +226,50 @@ pub fn mark_dirty(state: &mut EditorState, nh: NH) {
     }
 }
 
-pub fn is_settled(state: &EditorState, nh: NH) -> bool {
+pub fn mark_dirty(state: &mut EditorState, nh: NH) {
+    recompute_cycles(state);
+    propagate_dirty(state, nh);
+}
+
+/// Same effect as calling `mark_dirty` once for every node in `nodes`, but recomputes cycles
+/// exactly once for the whole batch instead of once per node -- O(n) instead of O(k*n) for a
+/// batch of k affected nodes. Use this instead of looping `mark_dirty` whenever more than one
+/// node needs marking as part of the same edit (e.g. `interaction::delete_selected`'s downstream
+/// fan-out across every deleted node).
+pub fn mark_dirty_batch(state: &mut EditorState, nodes: impl IntoIterator<Item = NH>) {
+    recompute_cycles(state);
+    for nh in nodes {
+        propagate_dirty(state, nh);
+    }
+}
+
+/// `state.dirty` (needs saving) and a node's `dirty_version` (needs recomputing) are two
+/// independent kinds of "changed", but almost every real edit wants both set together -- calling
+/// this instead of setting `state.dirty = true` next to a separate `mark_dirty` call keeps that
+/// pairing from silently drifting apart at a call site that only remembers one of the two.
+pub fn mark_edited(state: &mut EditorState, nh: NH) {
+    state.dirty = true;
+    mark_dirty(state, nh);
+}
+
+/// Tri-state outcome of checking whether a node is settled, distinguishing "genuinely not
+/// settled yet" from "couldn't check right now" (a transient borrow conflict). Used internally by
+/// `dispatch_ready`, which must retry the latter rather than silently dropping the node from
+/// `pending` forever. `is_settled` (below) is the simpler bool version every other caller wants,
+/// which collapses both "not settled" and "couldn't check" to `false` since those callers only
+/// ever want a snapshot for display, never a dispatch decision.
+fn settled_checked(state: &EditorState, nh: NH) -> Option<bool> {
     match (
         state.dirty_version.try_borrow(),
         state.exec.computed_version.try_borrow(),
     ) {
-        (Ok(dv), Ok(cv)) => dv[nh] == cv[nh],
-        _ => false,
+        (Ok(dv), Ok(cv)) => Some(dv[nh] == cv[nh]),
+        _ => None,
     }
+}
+
+pub fn is_settled(state: &EditorState, nh: NH) -> bool {
+    settled_checked(state, nh).unwrap_or(false)
 }
 
 /// A node is ready to dispatch once every input it actually has a source for is fully resolved:
@@ -231,29 +278,22 @@ pub fn is_settled(state: &EditorState, nh: NH) -> bool {
 /// anyway would just be wasted work redone a moment later). This is what makes a fast, cheap
 /// chain recompute continuously while nothing blocks it, and a chain behind a slow node wait for
 /// that node to actually finish rather than restarting redundantly every frame.
-fn is_ready(state: &EditorState, nh: NH) -> bool {
-    let in_flight = match state.exec.in_flight.try_borrow() {
-        Ok(f) => f,
-        Err(_) => return false,
-    };
+/// Tri-state counterpart of `is_ready` used by `dispatch_ready` -- see `settled_checked`'s doc
+/// comment for why a borrow conflict has to be distinguishable from "genuinely not ready" here.
+fn ready_checked(state: &EditorState, nh: NH) -> Option<bool> {
+    let in_flight = state.exec.in_flight.try_borrow().ok()?;
     if in_flight[nh].is_some() {
-        return false;
+        return Some(false);
     }
-    let in_cycle = match state.node_in_cycle.try_borrow() {
-        Ok(c) => c,
-        Err(_) => return false,
-    };
+    let in_cycle = state.node_in_cycle.try_borrow().ok()?;
     if in_cycle[nh] {
-        return false;
+        return Some(false);
     }
     drop(in_flight);
     drop(in_cycle);
 
     let node_infos = state.workflow.node_info_prop();
-    let node_infos = match node_infos.try_borrow() {
-        Ok(n) => n,
-        Err(_) => return false,
-    };
+    let node_infos = node_infos.try_borrow().ok()?;
     for ih in state.workflow.node_inputs(nh) {
         let Some(oh) = state.workflow.input_source(ih) else {
             continue;
@@ -262,17 +302,24 @@ fn is_ready(state: &EditorState, nh: NH) -> bool {
         match &node_infos[upstream] {
             NodeInfo::Constant(_) => {}
             NodeInfo::Function(_) | NodeInfo::NestedCall { .. } => {
-                if !is_settled(state, upstream) {
-                    return false;
+                match settled_checked(state, upstream) {
+                    Some(true) => {}
+                    Some(false) => return Some(false),
+                    None => return None,
                 }
             }
             // An upstream Inspect node is invalid (Inspect has no outputs, so this shouldn't be
             // reachable) -- there's nothing for this input to ever resolve to, so never call it
             // ready.
-            NodeInfo::Inspect { .. } => return false,
+            NodeInfo::Inspect { .. } => return Some(false),
         }
     }
-    true
+    Some(true)
+}
+
+#[cfg(test)]
+fn is_ready(state: &EditorState, nh: NH) -> bool {
+    ready_checked(state, nh).unwrap_or(false)
 }
 
 /// Marks `nh` settled with no job at all -- used for node kinds that have nothing to compute
@@ -297,6 +344,32 @@ fn settle_trivially(state: &mut EditorState, nh: NH) {
 /// at read time. Shared by `dispatch_function` (which ships the result across the thread pool)
 /// and `dispatch_nested_call` (which stays on this thread and only needs a short-lived borrow of
 /// each).
+/// Resolves one connected input pin's current value: a real clone for a `Constant` upstream
+/// (never shared -- see `gather_inputs`'s own doc comment), or an `Arc` share of a computed
+/// upstream's cached output. Shared by `gather_inputs` (a node's own dispatch) and
+/// `nested::gather_current_inputs` (snapshotting a `NestedCall`'s current inputs before opening
+/// its definition for editing) -- both need exactly this resolution, differing only in what they
+/// do for a *dangling* pin or a failed clone, which stays each caller's own concern. Generic over
+/// the borrowed property-buffer types rather than named to their concrete types, since the two
+/// callers borrow from different `EditorState`s (an active node's own state vs. a caller's).
+pub(crate) fn resolve_connected_value<N, C>(
+    node_infos: &N,
+    computed_outputs: &C,
+    workflow: &Workflow,
+    oh: orc_sdk::OH,
+) -> Option<Arc<OrcHandle>>
+where
+    N: std::ops::Index<NH, Output = NodeInfo>,
+    C: std::ops::Index<orc_sdk::OH, Output = Arc<OrcHandle>>,
+{
+    match &node_infos[workflow.node_from_output(oh)] {
+        NodeInfo::Constant(handle) => crate::host_clone_orc_handle(handle.borrowed())
+            .ok()
+            .map(Arc::new),
+        _ => Some(Arc::clone(&computed_outputs[oh])),
+    }
+}
+
 fn gather_inputs(state: &EditorState, nh: NH) -> Option<Vec<Arc<OrcHandle>>> {
     let node_info_prop = state.workflow.node_info_prop();
     let node_infos = node_info_prop.try_borrow().ok()?;
@@ -308,14 +381,9 @@ fn gather_inputs(state: &EditorState, nh: NH) -> Option<Vec<Arc<OrcHandle>>> {
             // A Constant's value never goes through `computed_outputs` (nothing ever dispatches
             // a job for it), so it's cloned fresh for this job -- a real copy, unlike the
             // zero-copy `Arc` share used for a Function/NestedCall upstream's cached output.
-            Some(oh) => match &node_infos[state.workflow.node_from_output(oh)] {
-                NodeInfo::Constant(handle) => match crate::host_clone_orc_handle(handle.borrowed())
-                {
-                    Ok(cloned) => Arc::new(cloned),
-                    Err(_) => return None,
-                },
-                _ => Arc::clone(&computed_outputs[oh]),
-            },
+            Some(oh) => {
+                resolve_connected_value(&*node_infos, &*computed_outputs, &state.workflow, oh)?
+            }
             None => match state.workflow.workflow_input_position(ih) {
                 Ok(Some(i)) => state
                     .simulated_inputs
@@ -383,6 +451,7 @@ fn dispatch_function(state: &mut EditorState, nh: NH, func: OrcPluginFunction) {
             ctx,
             launched_version,
         });
+        state.exec.in_flight_count += 1;
     } else {
         return;
     }
@@ -480,21 +549,33 @@ fn dispatch_nested_call(state: &mut EditorState, nh: NH, workflow_name: &str) {
 }
 
 fn poll_results(state: &mut EditorState) {
-    let results: Vec<NodeResult> =
-        std::iter::from_fn(|| pool().result_rx.lock().unwrap().try_recv().ok()).collect();
+    // Locked once for the whole drain, not once per item -- cheap either way when uncontended,
+    // but avoids needlessly reacquiring the lock under a burst of simultaneous completions.
+    let results: Vec<NodeResult> = {
+        let rx = pool().result_rx.lock().unwrap_or_else(|e| e.into_inner());
+        std::iter::from_fn(|| rx.try_recv().ok()).collect()
+    };
     for result in results {
         let _ = CANCEL_ARENA.consume(result.ctx, |_| {});
         if let Ok(mut in_flight) = state.exec.in_flight.try_borrow_mut() {
             // Only one job per node is ever in flight (`is_ready` won't dispatch a second one
             // until this slot clears), so a result should always match the job this node is
-            // currently tracked as running.
-            debug_assert!(
-                in_flight[result.node]
-                    .is_none_or(|job| job.ctx == result.ctx
-                        && job.launched_version == result.launched_version),
-                "a result arrived that doesn't match this node's tracked in-flight job"
-            );
+            // currently tracked as running. If that invariant is ever actually broken by a
+            // future change, trusting and committing this result anyway risks a double-dispatch
+            // or clobbering a still-running job's own eventual result -- safer to drop this one
+            // result and leave the tracked job's slot alone than to silently misattribute it,
+            // even though this can't happen with the scheduler as it stands today.
+            let matches_tracked_job = in_flight[result.node].is_none_or(|job| {
+                job.ctx == result.ctx && job.launched_version == result.launched_version
+            });
+            if !matches_tracked_job {
+                eprintln!(
+                    "dagger: internal scheduling error -- a result arrived for a node that doesn't match its tracked in-flight job; dropping it"
+                );
+                continue;
+            }
             in_flight[result.node] = None;
+            state.exec.in_flight_count = state.exec.in_flight_count.saturating_sub(1);
         }
 
         match result.outcome {
@@ -544,26 +625,36 @@ fn poll_results(state: &mut EditorState) {
 }
 
 fn dispatch_ready(state: &mut EditorState) {
+    // Nodes whose readiness couldn't be checked this pass (a transient borrow conflict, not a
+    // real "not ready yet") are collected here rather than redriven immediately -- retrying them
+    // in the same `while` loop risks spinning forever if the conflict doesn't clear within this
+    // call, whereas appending them back to `pending` after the drain picks them up cleanly on the
+    // next `tick`.
+    let mut retry = Vec::new();
     while let Some(nh) = state.exec.pending.pop_front() {
-        if is_settled(state, nh) {
-            continue;
+        match settled_checked(state, nh) {
+            Some(true) => continue,
+            Some(false) => {}
+            None => {
+                retry.push(nh);
+                continue;
+            }
         }
-        if !is_ready(state, nh) {
-            continue;
+        match ready_checked(state, nh) {
+            Some(true) => dispatch(state, nh),
+            Some(false) => {}
+            None => retry.push(nh),
         }
-        dispatch(state, nh);
     }
+    state.exec.pending.extend(retry);
 }
 
 /// True while any node has a job in flight -- gates the "in-progress" pulse in `render.rs` and
-/// the continuous repaint that animates it and drains the results channel.
+/// the continuous repaint that animates it and drains the results channel. O(1): backed by a
+/// running count kept in lockstep with every `in_flight` write, not a per-frame scan over every
+/// node.
 pub fn any_in_flight(state: &EditorState) -> bool {
-    state
-        .exec
-        .in_flight
-        .try_borrow()
-        .map(|f| f.iter().any(|slot| slot.is_some()))
-        .unwrap_or(false)
+    state.exec.in_flight_count > 0
 }
 
 pub fn is_node_in_flight(state: &EditorState, nh: NH) -> bool {
@@ -709,6 +800,48 @@ mod test {
         assert!(!is_ready(&state, b));
     }
 
+    /// A -> B, A -> C, B -> D, C -> D. D must wait for *both* B and C, not just whichever input
+    /// happens to be checked first -- an off-by-one that only checked one upstream would still
+    /// pass every single-predecessor test elsewhere in this module.
+    #[test]
+    fn t_is_ready_waits_for_every_upstream_in_a_diamond_not_just_the_first() {
+        let mut wf = Workflow::default();
+        let (a, _, a_out) = node(&mut wf, 0, 2);
+        let (b, b_in, b_out) = node(&mut wf, 1, 1);
+        let (c, c_in, c_out) = node(&mut wf, 1, 1);
+        let (d, d_in, _) = node(&mut wf, 2, 0);
+        wf.connect(a_out[0], b_in[0]).unwrap();
+        wf.connect(a_out[1], c_in[0]).unwrap();
+        wf.connect(b_out[0], d_in[0]).unwrap();
+        wf.connect(c_out[0], d_in[1]).unwrap();
+        let mut state = EditorState::from_workflow(wf);
+
+        // Settle everything upstream of D except C.
+        {
+            let dv = state.dirty_version.try_borrow().unwrap();
+            let (dv_a, dv_b) = (dv[a], dv[b]);
+            drop(dv);
+            let mut cv = state.exec.computed_version.try_borrow_mut().unwrap();
+            cv[a] = dv_a;
+            cv[b] = dv_b;
+        }
+        assert!(is_settled(&state, b));
+        assert!(!is_settled(&state, c));
+        assert!(!is_ready(&state, d), "D must wait for C too, not just B");
+
+        {
+            let dv = state.dirty_version.try_borrow().unwrap();
+            let dv_c = dv[c];
+            drop(dv);
+            let mut cv = state.exec.computed_version.try_borrow_mut().unwrap();
+            cv[c] = dv_c;
+        }
+        assert!(
+            is_ready(&state, d),
+            "D is ready once both B and C have settled"
+        );
+    }
+
     /// End to end: dispatches a real plugin function (`add`, if a plugin providing it is loaded
     /// next to the test binary -- see the identical skip in `main.rs`'s own ABI tests) across
     /// the real worker pool, and polls `tick` until it settles.
@@ -743,5 +876,110 @@ mod test {
         let result = &computed[outs[0]];
         assert!(result.free_fn.is_some(), "a real value should be committed");
         assert_eq!(result.items::<f64>(), [7.0].as_slice());
+    }
+
+    /// A `Failed` job's downstream must still get re-queued and eventually re-settle -- this was
+    /// a real past bug (a failed job used to leave anything waiting on it, e.g. an Inspect node,
+    /// permanently pending). Forces a genuine failure the same way a rewire-away gesture would:
+    /// disconnecting one of `add`'s two required inputs.
+    #[test]
+    fn t_a_failed_jobs_downstream_gets_requeued_and_resettles() {
+        let _guard = POOL_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let Some(add) = crate::PLUGIN_SET.get_function("add").cloned() else {
+            println!("skipping: no plugin providing `add` was loaded");
+            return;
+        };
+        let mut wf = Workflow::default();
+        let (lhs, lhs_out) = constant(&mut wf, 3.0);
+        let (rhs, rhs_out) = constant(&mut wf, 4.0);
+        let mut ins = vec![IH::default(); 2];
+        let mut outs = vec![OH::default()];
+        let sum = wf.add_function(add, &mut ins, &mut outs).unwrap();
+        wf.connect(lhs_out, ins[0]).unwrap();
+        wf.connect(rhs_out, ins[1]).unwrap();
+        let mut inspect_ins = vec![IH::default()];
+        let inspect_nh = wf
+            .add_inspect_node("inspect".to_string(), &mut inspect_ins)
+            .unwrap();
+        wf.connect(outs[0], inspect_ins[0]).unwrap();
+        let _ = (lhs, rhs);
+
+        let mut state = EditorState::from_workflow(wf);
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            tick(&mut state);
+            if is_settled(&state, inspect_nh) {
+                break;
+            }
+            assert!(Instant::now() < deadline, "never settled the first time");
+            std::thread::sleep(Duration::from_millis(1));
+        }
+
+        // Leaves `add` with a genuinely empty input -- its next dispatch must fail.
+        state.workflow.disconnect(lhs_out, ins[0]);
+        mark_dirty(&mut state, sum);
+
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            tick(&mut state);
+            let has_error = state
+                .execution_error
+                .try_borrow()
+                .map(|e| e[sum].is_some())
+                .unwrap_or(false);
+            if has_error && is_settled(&state, inspect_nh) {
+                break;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "sum's failure never propagated to the inspect node re-settling"
+            );
+            std::thread::sleep(Duration::from_millis(1));
+        }
+    }
+
+    /// Dispatches two independent function nodes through the real pool at the same time and
+    /// confirms neither's `in_flight`/`computed_version` bookkeeping cross-talks with the
+    /// other's -- the one place a thread-pool-specific bug (misattributing one node's result to
+    /// another) would actually show up; every other test here only ever dispatches one node.
+    #[test]
+    fn t_two_independent_nodes_dispatch_concurrently_without_cross_talk() {
+        let _guard = POOL_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let Some(add) = crate::PLUGIN_SET.get_function("add").cloned() else {
+            println!("skipping: no plugin providing `add` was loaded");
+            return;
+        };
+        let mut wf = Workflow::default();
+        let (_, a_lhs_out) = constant(&mut wf, 1.0);
+        let (_, a_rhs_out) = constant(&mut wf, 2.0);
+        let mut a_ins = vec![IH::default(); 2];
+        let mut a_outs = vec![OH::default()];
+        let sum_a = wf
+            .add_function(add.clone(), &mut a_ins, &mut a_outs)
+            .unwrap();
+        wf.connect(a_lhs_out, a_ins[0]).unwrap();
+        wf.connect(a_rhs_out, a_ins[1]).unwrap();
+
+        let (_, b_lhs_out) = constant(&mut wf, 10.0);
+        let (_, b_rhs_out) = constant(&mut wf, 20.0);
+        let mut b_ins = vec![IH::default(); 2];
+        let mut b_outs = vec![OH::default()];
+        let sum_b = wf.add_function(add, &mut b_ins, &mut b_outs).unwrap();
+        wf.connect(b_lhs_out, b_ins[0]).unwrap();
+        wf.connect(b_rhs_out, b_ins[1]).unwrap();
+
+        let mut state = EditorState::from_workflow(wf);
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            tick(&mut state);
+            if is_settled(&state, sum_a) && is_settled(&state, sum_b) {
+                break;
+            }
+            assert!(Instant::now() < deadline, "never settled");
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        let computed = state.computed_outputs.try_borrow().unwrap();
+        assert_eq!(computed[a_outs[0]].items::<f64>(), [3.0].as_slice());
+        assert_eq!(computed[b_outs[0]].items::<f64>(), [30.0].as_slice());
     }
 }

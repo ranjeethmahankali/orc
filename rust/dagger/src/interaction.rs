@@ -56,7 +56,7 @@ fn deselect_all(state: &mut EditorState) {
 /// A window-select (dragged left-to-right) only picks up nodes fully enclosed by the rectangle;
 /// a crossing-select (dragged right-to-left) picks up anything the rectangle touches — the
 /// AutoCAD/Revit convention for the two drag directions.
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum SelectBoxKind {
     Window,
     Crossing,
@@ -207,6 +207,22 @@ pub(crate) fn find_input_pin_at(
     None
 }
 
+/// Connects `from` to `to`, first checking that `from`'s owning node is still live (it may have
+/// been tombstoned by a delete since whatever UI gesture captured this `OH` across a frame -- see
+/// `output_is_live`'s own doc comment). On success marks the destination dirty for recompute and
+/// the whole file as needing a save; on failure surfaces it the same way a failed file operation
+/// is. Shared by a pin-drag rewire (`update_pending_wire`, below) and the context menu's
+/// connect-on-create (`context_menu`'s node-creation functions) -- both need exactly this.
+pub(crate) fn connect_pins(state: &mut EditorState, from: OH, to: IH) {
+    if !output_is_live(&state.workflow, from) {
+        return;
+    }
+    match state.workflow.connect(from, to) {
+        Ok(_) => crate::exec::mark_edited(state, state.workflow.node_from_input(to)),
+        Err(e) => state.last_error = Some(format!("Failed to connect: {e}")),
+    }
+}
+
 /// Finish a wire drag on release: connect to whatever input pin is under the cursor, or drop
 /// the wire if it lands on empty canvas, a node body, or a connection that would close a cycle.
 fn update_pending_wire(ui: &mut egui::Ui, state: &mut EditorState, source: OH) -> bool {
@@ -231,13 +247,7 @@ fn update_pending_wire(ui: &mut egui::Ui, state: &mut EditorState, source: OH) -
         let dst = state.workflow.node_from_input(target);
         let src = state.workflow.node_from_output(source);
         if !creates_cycle(&state.workflow, src, dst) {
-            match state.workflow.connect(source, target) {
-                Ok(_) => {
-                    state.dirty = true;
-                    crate::exec::mark_dirty(state, dst);
-                }
-                Err(e) => state.file_error = Some(format!("Failed to connect: {e}")),
-            }
+            connect_pins(state, source, target);
         }
     }
     true
@@ -278,9 +288,15 @@ pub fn update(
     let mut wire_start: Option<OH> = None;
     let mut clicked_node: Option<NH> = None;
     // The node whose input pin was just yanked off an upstream connection (rewire gesture),
-    // deferred until `positions`/`sizes` are dropped below since `mark_dirty` needs `&mut
+    // deferred until `positions`/`sizes` are dropped below since `mark_edited` needs `&mut
     // EditorState` and those `Ref`s borrow `state`'s fields for the whole loop.
     let mut disconnected_input_owner: Option<NH> = None;
+    // The actual disconnect is deferred alongside it (not applied inline the moment the drag
+    // starts): `state.workflow.node_inputs(nh)` below borrows `state.workflow` for its own loop,
+    // so mutating it via `disconnect` inside that same loop would conflict with that borrow --
+    // deferring here is also what lets that loop iterate `node_inputs` directly instead of
+    // collecting it into a `Vec` first purely to end the borrow early.
+    let mut pending_disconnect: Option<(OH, IH)> = None;
     // Accumulated resize-handle drag, applied to `node_sizes` after `sizes` (borrowed
     // immutably for the loop) is dropped below.
     let mut resized_node: Option<(NH, Vec2)> = None;
@@ -296,8 +312,7 @@ pub fn update(
             Sense::click_and_drag(),
         );
 
-        let inputs: Vec<IH> = state.workflow.node_inputs(nh).collect();
-        for (i, ih) in inputs.into_iter().enumerate() {
+        for (i, ih) in state.workflow.node_inputs(nh).enumerate() {
             let center = view.canvas_to_screen(render::input_pin_pos(rect, i));
             let response = ui.interact(
                 pin_rect(center, &view),
@@ -307,15 +322,13 @@ pub fn update(
             if response.drag_started()
                 && let Some(upstream) = state.workflow.input_source(ih)
             {
-                state.workflow.disconnect(upstream, ih);
+                pending_disconnect = Some((upstream, ih));
                 wire_start = Some(upstream);
                 disconnected_input_owner = Some(nh);
                 events.changed = true;
-                state.dirty = true;
             }
         }
-        let outputs: Vec<OH> = state.workflow.node_outputs(nh).collect();
-        for (i, oh) in outputs.into_iter().enumerate() {
+        for (i, oh) in state.workflow.node_outputs(nh).enumerate() {
             let center = view.canvas_to_screen(render::output_pin_pos(rect, i));
             let response = ui.interact(
                 pin_rect(center, &view),
@@ -366,8 +379,11 @@ pub fn update(
     drop(sizes);
     drop(node_infos);
 
+    if let Some((upstream, ih)) = pending_disconnect {
+        state.workflow.disconnect(upstream, ih);
+    }
     if let Some(nh) = disconnected_input_owner {
-        crate::exec::mark_dirty(state, nh);
+        crate::exec::mark_edited(state, nh);
     }
 
     if let Some(nh) = clicked_node {
@@ -452,20 +468,24 @@ pub fn delete_selected(ui: &mut egui::Ui, state: &mut EditorState) -> bool {
     if selected_nodes.is_empty() {
         return false;
     }
+    // Downstream neighbors are gathered for the whole batch before marking any of it dirty, and
+    // marked via `mark_dirty_batch` (one cycle recompute for everything deleted this gesture)
+    // rather than a `mark_dirty` call per deleted node, which would recompute cycles from
+    // scratch once per node -- O(k * n) for a box-select delete of k nodes instead of O(n).
+    let mut all_downstream = Vec::new();
     for nh in selected_nodes {
         // Captured before deleting: `Workflow::delete_node` disconnects the deleted node's own
         // links as part of tombstoning it, so its downstream neighbors can't be discovered
         // afterward -- by then there's nothing left to walk forward from.
-        let downstream: Vec<NH> = state
-            .workflow
-            .node_outputs(nh)
-            .flat_map(|oh| state.workflow.downstream_nodes(oh))
-            .collect();
+        all_downstream.extend(
+            state
+                .workflow
+                .node_outputs(nh)
+                .flat_map(|oh| state.workflow.downstream_nodes(oh)),
+        );
         state.workflow.delete_node(nh);
-        for affected in downstream {
-            crate::exec::mark_dirty(state, affected);
-        }
     }
+    crate::exec::mark_dirty_batch(state, all_downstream);
     // A wire drag started from one of these nodes' output pins would otherwise still try to
     // complete against a now-tombstoned pin on release — `update_pending_wire` guards against
     // that too, but clearing it here cancels the drag visually right away instead of leaving a
@@ -492,6 +512,63 @@ mod test {
             .add_function(FuncInfo::default(), &mut ins, &mut outs)
             .unwrap();
         (nh, ins, outs)
+    }
+
+    /// A left-to-right drag ("window select") only picks up nodes fully enclosed by the box; a
+    /// right-to-left drag ("crossing select") picks up anything the box merely touches -- an
+    /// inverted condition here would silently swap the two, which nothing else would catch since
+    /// both still produce *a* selection, just the wrong rule.
+    #[test]
+    fn t_update_box_select_direction_determines_window_vs_crossing() {
+        let mut wf = Workflow::default();
+        let (a, ..) = node(&mut wf, 0, 1);
+        let mut state = EditorState::from_workflow(wf);
+        {
+            let mut sizes = state.node_sizes.try_borrow_mut().unwrap();
+            let mut positions = state.node_positions.try_borrow_mut().unwrap();
+            sizes[a] = [100.0, 50.0];
+            positions[a] = [0.0, 0.0];
+        }
+        let view = Transform::default();
+
+        let ctx = egui::Context::default();
+        ctx.set_fonts(egui::FontDefinitions::empty());
+
+        // Dragged left-to-right (start.x < current.x): a Window select.
+        let mut raw_input = egui::RawInput::default();
+        raw_input.events.push(egui::Event::PointerButton {
+            pos: Pos2::new(-10.0, -10.0),
+            button: PointerButton::Primary,
+            pressed: true,
+            modifiers: egui::Modifiers::NONE,
+        });
+        raw_input
+            .events
+            .push(egui::Event::PointerMoved(Pos2::new(200.0, 100.0)));
+        let mut kind = None;
+        let output = ctx.run_ui(raw_input, |ui| {
+            kind = update_box_select(ui, &mut state, &view).map(|(_, k)| k);
+        });
+        output.drop_without_applying_deltas();
+        assert_eq!(kind, Some(SelectBoxKind::Window));
+
+        // Dragged right-to-left (start.x > current.x): a Crossing select.
+        let mut raw_input = egui::RawInput::default();
+        raw_input.events.push(egui::Event::PointerButton {
+            pos: Pos2::new(200.0, -10.0),
+            button: PointerButton::Primary,
+            pressed: true,
+            modifiers: egui::Modifiers::NONE,
+        });
+        raw_input
+            .events
+            .push(egui::Event::PointerMoved(Pos2::new(-10.0, 100.0)));
+        let mut kind = None;
+        let output = ctx.run_ui(raw_input, |ui| {
+            kind = update_box_select(ui, &mut state, &view).map(|(_, k)| k);
+        });
+        output.drop_without_applying_deltas();
+        assert_eq!(kind, Some(SelectBoxKind::Crossing));
     }
 
     #[test]

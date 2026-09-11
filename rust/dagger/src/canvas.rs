@@ -47,6 +47,17 @@ impl Transform {
         length * self.zoom
     }
 
+    /// Canvas-space rect currently visible on screen, given the screen-space rect the canvas
+    /// claims (typically `ui.max_rect()`) -- the inverse of `rect_to_screen`. Lets rendering skip
+    /// nodes and links entirely outside the current pan/zoom, so per-frame painting cost tracks
+    /// what's actually on screen rather than total graph size.
+    pub fn visible_canvas_rect(&self, screen_rect: Rect) -> Rect {
+        Rect::from_min_max(
+            self.screen_to_canvas(screen_rect.min),
+            self.screen_to_canvas(screen_rect.max),
+        )
+    }
+
     /// Multiply the zoom by `factor`, keeping the canvas point currently under
     /// `anchor` (screen space) pinned to `anchor`.
     pub fn zoom_about(&mut self, anchor: Pos2, factor: f32) {
@@ -164,6 +175,19 @@ mod test {
             view.zoom_about(anchor, 0.5);
         }
         assert_eq!(view.zoom, MIN_ZOOM);
+    }
+
+    #[test]
+    fn t_visible_canvas_rect_round_trips_through_the_screen_rect() {
+        let view = Transform {
+            pan: Vec2::new(50.0, -30.0),
+            zoom: 2.0,
+        };
+        let screen_rect = Rect::from_min_max(Pos2::new(0.0, 0.0), Pos2::new(800.0, 600.0));
+        let visible = view.visible_canvas_rect(screen_rect);
+        // Mapping back through `rect_to_screen` must recover the original screen rect exactly.
+        assert_close(view.rect_to_screen(visible).min, screen_rect.min);
+        assert_close(view.rect_to_screen(visible).max, screen_rect.max);
     }
 
     #[test]

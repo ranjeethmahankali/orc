@@ -108,7 +108,7 @@ fn save_as(state: &mut EditorState) {
             state.current_path = Some(path);
             state.dirty = false;
         }
-        Err(e) => state.file_error = Some(format!("Failed to save {}: {e}", path.display())),
+        Err(e) => state.last_error = Some(format!("Failed to save {}: {e}", path.display())),
     }
 }
 
@@ -118,7 +118,7 @@ fn save(state: &mut EditorState) {
     };
     match save_workflow(state, &path) {
         Ok(()) => state.dirty = false,
-        Err(e) => state.file_error = Some(format!("Failed to save {}: {e}", path.display())),
+        Err(e) => state.last_error = Some(format!("Failed to save {}: {e}", path.display())),
     }
 }
 
@@ -134,7 +134,7 @@ fn open(state: &mut EditorState) {
             *state = EditorState::from_workflow(workflow);
             state.current_path = Some(path);
         }
-        Err(e) => state.file_error = Some(format!("Failed to open {}: {e}", path.display())),
+        Err(e) => state.last_error = Some(format!("Failed to open {}: {e}", path.display())),
     }
 }
 
@@ -218,7 +218,7 @@ pub fn update_window_title(ctx: &egui::Context, state: &mut EditorState) {
 
 /// Popup reporting the last failed load/save, dismissed with its own close button or OK.
 pub fn error_window(ctx: &egui::Context, state: &mut EditorState) {
-    let Some(message) = state.file_error.clone() else {
+    let Some(message) = state.last_error.clone() else {
         return;
     };
     let mut open = true;
@@ -233,7 +233,7 @@ pub fn error_window(ctx: &egui::Context, state: &mut EditorState) {
             }
         });
     if !open || dismissed {
-        state.file_error = None;
+        state.last_error = None;
     }
 }
 

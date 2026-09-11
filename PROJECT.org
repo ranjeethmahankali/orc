@@ -160,11 +160,13 @@
   This should be easy to do. Need to think through the inspect nodes a little, but should be trivial
   still.
 
-* NEXT tkuzn6 - Node Editor UI App
+* DONE tkuzn6 - Node Editor UI App
+  CLOSED: [2026-09-10 Thu 21:01]
   :PROPERTIES:
   :CREATED:  2026-08-26 Wed 10:47
   :END:
   :LOGBOOK:
+  - State "DONE"       from "NEXT"       [2026-09-10 Thu 21:01]
   - State "NEXT"       from "TODO"       [2026-09-06 Sun 22:31]
   :END:
 
@@ -194,6 +196,8 @@
   start making some workflows, and this implementation will get tested organically in that
   process. This is good enough for now, to mark this task done after some final review, and clean
   up.
+
+  <2026-09-10 Thu 21:00> Did a final review and a set of improvements.
 
 ** DONE Detailed Plan
    CLOSED: [2026-09-10 Thu 19:55]

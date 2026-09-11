@@ -178,9 +178,13 @@ impl DaggerApp {
         if self.stack.len() <= 1 {
             return;
         }
-        let popped = self.stack.pop().expect("checked len() > 1 above");
+        let Some(popped) = self.stack.pop() else {
+            return;
+        };
         if let Some(workflow_name) = popped.workflow_name {
-            let parent = self.stack.last_mut().expect("checked len() > 1 above");
+            let Some(parent) = self.stack.last_mut() else {
+                return;
+            };
             nested::close(&mut parent.state, workflow_name, popped.state);
         }
     }
@@ -283,5 +287,115 @@ impl eframe::App for DaggerApp {
         if pending_close {
             self.pop_nested();
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use orc_sdk::{IH, NodeInfo, OH, PluginSet};
+
+    /// Builds a two-level call chain: the root calls "outer", which itself calls "inner" -- so
+    /// `push_nested` twice in a row (root -> outer -> inner) exercises genuinely nested-within-
+    /// nested editing, not just a single push/pop.
+    fn two_level_call_chain() -> (DaggerApp, NH) {
+        let ps = PluginSet::default();
+        let mut outer = Workflow::default();
+        outer
+            .push_nested_workflow("inner".to_string(), Workflow::default(), &ps)
+            .unwrap();
+        let mut outer_ihs: [IH; 0] = [];
+        let mut outer_ohs: [OH; 0] = [];
+        outer
+            .add_nested_workflow_call("inner", &mut outer_ihs, &mut outer_ohs)
+            .unwrap();
+
+        let mut root = Workflow::default();
+        root.push_nested_workflow("outer".to_string(), outer, &ps)
+            .unwrap();
+        let mut root_ihs: [IH; 0] = [];
+        let mut root_ohs: [OH; 0] = [];
+        let root_call_nh = root
+            .add_nested_workflow_call("outer", &mut root_ihs, &mut root_ohs)
+            .unwrap();
+
+        let state = EditorState::from_workflow(root);
+        (
+            DaggerApp {
+                stack: vec![StackEntry {
+                    state,
+                    workflow_name: None,
+                }],
+            },
+            root_call_nh,
+        )
+    }
+
+    #[test]
+    fn t_push_nested_is_a_noop_for_a_non_nested_call_node() {
+        let mut wf = Workflow::default();
+        let mut outs = [OH::default()];
+        let nh = wf
+            .add_function(orc_sdk::FuncInfo::default(), &mut [], &mut outs)
+            .unwrap();
+        let state = EditorState::from_workflow(wf);
+        let mut app = DaggerApp {
+            stack: vec![StackEntry {
+                state,
+                workflow_name: None,
+            }],
+        };
+        app.push_nested(nh);
+        assert_eq!(app.stack.len(), 1, "nothing to open, nothing should push");
+    }
+
+    #[test]
+    fn t_pop_nested_is_a_noop_at_the_root() {
+        let state = EditorState::from_workflow(Workflow::default());
+        let mut app = DaggerApp {
+            stack: vec![StackEntry {
+                state,
+                workflow_name: None,
+            }],
+        };
+        app.pop_nested();
+        assert_eq!(app.stack.len(), 1, "the root alone must never pop");
+    }
+
+    #[test]
+    fn t_push_then_push_again_reaches_two_levels_of_nesting() {
+        let (mut app, root_call_nh) = two_level_call_chain();
+        app.push_nested(root_call_nh);
+        assert_eq!(app.stack.len(), 2, "opened \"outer\" on top of the root");
+
+        let outer_call_nh = app.stack[1]
+            .state
+            .workflow
+            .node_iter()
+            .find(|&nh| {
+                let node_info_prop = app.stack[1].state.workflow.node_info_prop();
+                let node_infos = node_info_prop.try_borrow().unwrap();
+                matches!(&node_infos[nh], NodeInfo::NestedCall { workflow_name } if workflow_name == "inner")
+            })
+            .expect("outer calls inner");
+        app.push_nested(outer_call_nh);
+        assert_eq!(
+            app.stack.len(),
+            3,
+            "opened \"inner\" on top of \"outer\" on top of the root"
+        );
+
+        app.pop_nested();
+        assert_eq!(
+            app.stack.len(),
+            2,
+            "closed \"inner\", back down to \"outer\""
+        );
+        app.pop_nested();
+        assert_eq!(
+            app.stack.len(),
+            1,
+            "closed \"outer\", back down to the root"
+        );
     }
 }
