@@ -157,11 +157,13 @@
   :CREATED:  2026-09-11 Fri 11:44
   :END:
 
-* NEXT tl7i00 - Python code generation from a workflow
+* DONE tl7i00 - Python code generation from a workflow
+  CLOSED: [2026-09-11 Fri 14:10]
   :PROPERTIES:
   :CREATED:  2026-09-06 Sun 22:22
   :END:
   :LOGBOOK:
+  - State "DONE"       from "NEXT"       [2026-09-11 Fri 14:10]
   - State "NEXT"       from "TODO"       [2026-09-11 Fri 11:41]
   :END:
 
@@ -182,7 +184,7 @@
     file). Otherwise it expects a non empty name from the user. Then opens a save dialog and writes
     the file to disk. Use the same save dialog machiner that is already used to save the workflow.
 
-  - [ ] Also wire up the Python code generation to the server / client apps. The server already has
+  - [X] Also wire up the Python code generation to the server / client apps. The server already has
     a download_workflow end point. Add a download_python_script end point that sends the string over
     to client, which saves that to .py file, similar to how it saves a .orc file today.
 
