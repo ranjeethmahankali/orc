@@ -5912,6 +5912,48 @@ static void test_add_f64_combinations(void)
   TEST_ASSERT_TRUE(ORC_ERROR_NONE == orc_sdk_handle_free(&out));
 }
 
+static void test_scalar_broadcast_combinations(void)
+{
+  /*=== Regression test: broadcasting a bare scalar (zero marks, not a length-1 list)
+   * against a list must not read past the end of the scalar's single-item buffer. ===*/
+  OrcHandle list = {0}, scalar = {0}, out = {0};
+  list.handle   = 1;
+  scalar.handle = 2;
+  out.handle    = 3;
+  orc_sdk_handle_alloc(ORC_TYPE_F64, &list);
+  orc_sdk_handle_alloc(ORC_TYPE_F64, &scalar);
+  orc_sdk_handle_alloc(ORC_TYPE_F64, &out);
+  TEST_ASSERT_TRUE_MESSAGE(list.items != NULL && scalar.items != NULL && out.items != NULL,
+                           "Unable to allocate decks");
+
+  ORC_SDK_DECK_INIT(list.items, double, (1.0, 2.0, 3.0));
+  orc_sdk_oh_update(&list);
+
+  // Push a single item at depth 0: this deck ends up with zero marks, unlike a length-1
+  // list (which would have exactly one mark at depth 0). It is the true bare-scalar case.
+  double scalar_value = 10.0;
+  scalar.items =
+    _orc_sdk_deck_push_impl((void *)scalar.items, &scalar_value, sizeof(double), 0);
+  orc_sdk_oh_update(&scalar);
+  TEST_ASSERT_TRUE(orc_sdk_arr_len(_orc_sdk_deck_header(scalar.items)->marks) == 0);
+
+  _plugin_function_add_f64(&list, &scalar, &out);
+  orc_sdk_oh_update(&out);
+
+  size_t const count = orc_sdk_deck_len(out.items);
+  TEST_ASSERT_TRUE(count == 3);
+  TEST_ASSERT_TRUE(orc_sdk_deck_max_depth(out.items) == 1);
+  double const  expected[] = {11.0, 12.0, 13.0};
+  double *const actual     = (double *)out.items;
+  for (size_t i = 0; i < count; ++i) {
+    TEST_ASSERT_TRUE(actual[i] == expected[i]);
+  }
+
+  TEST_ASSERT_TRUE(ORC_ERROR_NONE == orc_sdk_handle_free(&list));
+  TEST_ASSERT_TRUE(ORC_ERROR_NONE == orc_sdk_handle_free(&scalar));
+  TEST_ASSERT_TRUE(ORC_ERROR_NONE == orc_sdk_handle_free(&out));
+}
+
 // This simulates a function that takes depth=1 lists of F64 and outputs the length of
 // each list as U64.
 void _plugin_function_list_length(OrcHandle const *in_handle, OrcHandle *out_handle)
@@ -7170,6 +7212,7 @@ int main(void)
   RUN_TEST(test_orc_sdk_dims_pow);
   RUN_TEST(test_list_item_combinations);
   RUN_TEST(test_add_f64_combinations);
+  RUN_TEST(test_scalar_broadcast_combinations);
   RUN_TEST(test_list_length_combinations);
   RUN_TEST(test_two_output_combinations);
   RUN_TEST(test_first_add_combinations);
