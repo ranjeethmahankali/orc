@@ -176,7 +176,7 @@
   <2026-09-11 Fri 12:58> First pass implemented. Seems to work. It will get tested more as I make
   more plugin functions and start using this stuff.
 
-  - [ ] This should be exposed through the UI of ~dagger~. The file menu should have an 'Export
+  - [X] This should be exposed through the UI of ~dagger~. The file menu should have an 'Export
     Python' option. It should open a dialog that asks for the name of the function. The field should
     be prepopulated with the name of the file, if the name of the file is available (saved
     file). Otherwise it expects a non empty name from the user. Then opens a save dialog and writes
