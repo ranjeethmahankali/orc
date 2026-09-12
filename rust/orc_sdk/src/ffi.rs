@@ -299,7 +299,6 @@ pub enum ProxyType {
 pub trait TOrcPluginAdaptor {
     fn host_callbacks() -> &'static OrcHostCallbackAPI;
     fn plugin_init(host: &OrcHost, out: &mut OrcPlugin) -> Result<(), Error>;
-    fn deck_alloc(id: OrcTypeId, handle: &mut OrcHandle) -> Result<(), Error>;
     fn deck_free(handle: &mut OrcHandle) -> Result<(), Error>;
     fn deck_from_proxy(
         inputs: &[OrcHandle],
