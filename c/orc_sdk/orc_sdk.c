@@ -2189,6 +2189,9 @@ OrcError orc_sdk_handle_alloc(OrcTypeId const  id,
   if (out == NULL) {
     return ORC_ERROR_INVALID_HANDLE;
   }
+  if (item_size == 0) {
+    return ORC_ERROR_INVALID_HANDLE;
+  }
   {
     void *found = _orc_sdk_registry_get(out->handle);
     if (found != NULL) {
@@ -2402,15 +2405,15 @@ OrcError orc_sdk_deck_from_proxy(OrcHandle const   *inputs,
     // Invalid proxy deck
     return ORC_ERROR_INVALID_PROXY;
   }
-  OrcTypeId const id        = inputs[0].type_id;
+  OrcTypeId const type_id   = inputs[0].type_id;
   size_t const    item_size = inputs[0].item_size;
   for (size_t i = 1; i < n_inputs; ++i) {
-    if (id != inputs[i].type_id) {
+    if (type_id != inputs[i].type_id || item_size != inputs[i].item_size) {
       // All input decks must be of the same type
       return ORC_ERROR_TYPE_MISMATCH;
     }
   }
-  OrcError const err = orc_sdk_handle_alloc(id, item_size, out);
+  OrcError const err = orc_sdk_handle_alloc(type_id, item_size, out);
   if (err != ORC_ERROR_NONE) {
     return err;
   }
@@ -2430,10 +2433,10 @@ OrcError orc_sdk_deck_from_proxy(OrcHandle const   *inputs,
     _OrcSdk_DeckHeader *h = _orc_sdk_deck_header(deck);
     h->item_size          = item_size;
     memcpy(out->dims, proxy->dims, sizeof(OrcDims));
-    out->type_id = id;
+    out->type_id = type_id;
     {  // Copy the data.
       memset(deck, 0, item_size * n_items);
-      OrcError const e = _copy_items(id, inputs[0].items, deck, n_items);
+      OrcError const e = _copy_items(type_id, inputs[0].items, deck, n_items);
       if (e) {
         orc_sdk_handle_free(out);
         return e;
@@ -2464,10 +2467,10 @@ OrcError orc_sdk_deck_from_proxy(OrcHandle const   *inputs,
     _OrcSdk_DeckHeader *h = _orc_sdk_deck_header(deck);
     h->item_size          = item_size;
     memcpy(out->dims, proxy->dims, sizeof(OrcDims));
-    out->type_id = id;
+    out->type_id = type_id;
     {  // Copy the data.
       memset(deck, 0, item_size * n_items);
-      OrcError const e = _copy_items(id, inputs[0].items, deck, n_items);
+      OrcError const e = _copy_items(type_id, inputs[0].items, deck, n_items);
       if (e) {
         orc_sdk_handle_free(out);
         return e;
@@ -2493,7 +2496,7 @@ OrcError orc_sdk_deck_from_proxy(OrcHandle const   *inputs,
     _OrcSdk_DeckHeader *h = _orc_sdk_deck_header(deck);
     h->item_size          = item_size;
     memcpy(out->dims, proxy->dims, sizeof(OrcDims));
-    out->type_id = id;
+    out->type_id = type_id;
     // Copy the data one at a time from by iterating over the proxy.
     OrcItemProxy *proxies = (OrcItemProxy *)proxy->items;
     while (h->count < n_items) {
@@ -2503,7 +2506,7 @@ OrcError orc_sdk_deck_from_proxy(OrcHandle const   *inputs,
       void *src =
         (char *)inputs[proxies[h->count].tree].items + item_size * proxies[h->count].item;
       void          *dst = (char *)deck + item_size * h->count;
-      OrcError const e   = _copy_items(id, src, dst, 1);
+      OrcError const e   = _copy_items(type_id, src, dst, 1);
       if (e) {
         orc_sdk_handle_free(out);
         return e;
