@@ -7,6 +7,7 @@ members = [
         "rust/server_host",
         "rust/dagger",
         "rust/bindings_generator",
+        "rust/curve_plugin",
 ]
 default-members = [
         "rust/orc_sdk",
@@ -14,5 +15,6 @@ default-members = [
         "rust/kbb_cli_host",
         "rust/server_host",
         "rust/dagger",
+        "rust/curve_plugin",
 ]
 resolver = "3"
