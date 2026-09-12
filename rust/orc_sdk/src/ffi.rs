@@ -21,26 +21,6 @@ macro_rules! orc_plugin {
         }
 
         #[unsafe(no_mangle)]
-        pub unsafe extern "C" fn orc_deck_alloc(
-            type_id: orc_sdk::OrcTypeId,
-            out: *mut orc_sdk::OrcHandle,
-        ) -> orc_sdk::OrcError {
-            if out.is_null() {
-                return orc_sdk::ORC_ERROR_INVALID_HANDLE;
-            }
-            let out = unsafe { &mut *out };
-            match <$plugin as orc_sdk::TOrcPluginAdaptor>::deck_alloc(type_id, out) {
-                Ok(()) => {
-                    unsafe {
-                        out.free_fn = Some(orc_deck_free);
-                    }
-                    orc_sdk::ORC_ERROR_NONE
-                }
-                Err(e) => e.into(),
-            }
-        }
-
-        #[unsafe(no_mangle)]
         pub unsafe extern "C" fn orc_deck_free(
             handle: *mut orc_sdk::OrcHandle,
         ) -> orc_sdk::OrcError {
@@ -284,7 +264,6 @@ impl<'a> OrcHandleBorrowed<'a> {
 }
 
 pub type PluginInitFn = unsafe extern "C" fn(*const OrcHost, *mut OrcPlugin) -> OrcError;
-pub type DeckAllocFn = unsafe extern "C" fn(OrcTypeId, *mut OrcHandle) -> OrcError;
 pub type DeckFreeFn = unsafe extern "C" fn(*mut OrcHandle) -> OrcError;
 pub type DeckFromProxyFn = unsafe extern "C" fn(
     inputs: *const OrcHandle,
@@ -305,7 +284,6 @@ pub type DeckToStringFn =
 
 // Compile-time checks to keep these type aliases in sync with the bindings.
 const _: PluginInitFn = orc_plugin_init;
-const _: DeckAllocFn = orc_deck_alloc;
 const _: DeckFreeFn = orc_deck_free;
 const _: DeckFromProxyFn = orc_deck_from_proxy;
 const _: DeckSerializeFn = orc_deck_serialize;

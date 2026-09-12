@@ -896,7 +896,7 @@ static void test_serialize_round_trip_all_primitive_types(void)
 }
 
 /* ============================================================
-   orc_deck_alloc / orc_deck_free
+   orc_sdk_handle_alloc / orc_deck_free
    ============================================================ */
 
 static void test_deck_alloc_f64(void)
@@ -904,7 +904,7 @@ static void test_deck_alloc_f64(void)
   orc_sdk_init(NULL, NULL);
   OrcHandle h  = {0};
   h.handle     = 1;
-  OrcError err = orc_deck_alloc(ORC_TYPE_F64, sizeof(double), &h);
+  OrcError err = orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(double), &h);
   TEST_ASSERT_EQUAL_UINT64(ORC_ERROR_NONE, err);
   TEST_ASSERT_EQUAL_UINT64(ORC_TYPE_F64, h.type_id);
   TEST_ASSERT_EQUAL_UINT64(sizeof(double), h.item_size);
@@ -918,7 +918,7 @@ static void test_deck_alloc_i32(void)
   orc_sdk_init(NULL, NULL);
   OrcHandle h  = {0};
   h.handle     = 1;
-  OrcError err = orc_deck_alloc(ORC_TYPE_I32, sizeof(int32_t), &h);
+  OrcError err = orc_sdk_handle_alloc(ORC_TYPE_I32, sizeof(int32_t), &h);
   TEST_ASSERT_EQUAL_UINT64(ORC_ERROR_NONE, err);
   TEST_ASSERT_EQUAL_UINT64(ORC_TYPE_I32, h.type_id);
   TEST_ASSERT_EQUAL_UINT64(sizeof(int32_t), h.item_size);
@@ -930,7 +930,7 @@ static void test_deck_alloc_preserves_handle_id(void)
   orc_sdk_init(NULL, NULL);
   OrcHandle h = {0};
   h.handle    = 99;
-  orc_deck_alloc(ORC_TYPE_F64, sizeof(double), &h);
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(double), &h);
   TEST_ASSERT_EQUAL_UINT64(99, h.handle);
   orc_sdk_handle_free(&h);
 }
@@ -940,7 +940,7 @@ static void test_deck_free_resets_handle(void)
   orc_sdk_init(NULL, NULL);
   OrcHandle h = {0};
   h.handle    = 1;
-  orc_deck_alloc(ORC_TYPE_F32, sizeof(float), &h);
+  orc_sdk_handle_alloc(ORC_TYPE_F32, sizeof(float), &h);
   TEST_ASSERT_NOT_NULL(h.free_fn);
   orc_deck_free(&h);
   TEST_ASSERT_NULL(h.items);
@@ -953,9 +953,9 @@ static void test_deck_alloc_reuse_same_type(void)
   orc_sdk_init(NULL, NULL);
   OrcHandle h = {0};
   h.handle    = 1;
-  orc_deck_alloc(ORC_TYPE_F64, sizeof(double), &h);
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(double), &h);
   void const *ptr1 = h.items;
-  orc_deck_alloc(ORC_TYPE_F64, sizeof(double), &h);
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(double), &h);
   TEST_ASSERT_EQUAL_PTR(ptr1, h.items);
   TEST_ASSERT_EQUAL_UINT64(ORC_TYPE_F64, h.type_id);
   orc_sdk_handle_free(&h);
@@ -966,9 +966,9 @@ static void test_deck_alloc_type_change(void)
   orc_sdk_init(NULL, NULL);
   OrcHandle h = {0};
   h.handle    = 1;
-  orc_deck_alloc(ORC_TYPE_F64, sizeof(double), &h);
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(double), &h);
   TEST_ASSERT_EQUAL_UINT64(ORC_TYPE_F64, h.type_id);
-  orc_deck_alloc(ORC_TYPE_I32, sizeof(int32_t), &h);
+  orc_sdk_handle_alloc(ORC_TYPE_I32, sizeof(int32_t), &h);
   TEST_ASSERT_EQUAL_UINT64(ORC_TYPE_I32, h.type_id);
   TEST_ASSERT_EQUAL_UINT64(sizeof(int32_t), h.item_size);
   orc_sdk_handle_free(&h);
