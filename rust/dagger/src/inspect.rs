@@ -8,7 +8,7 @@
 
 use crate::state::EditorState;
 use eframe::egui;
-use orc_sdk::{NH, NodeInfo, OrcHandle, OrcMark};
+use orc_sdk::{NH, NodeInfo, OrcHandle, OrcMark, TOrcData};
 use std::fmt::Write as _;
 
 const TAB_WIDTH: usize = 3;
@@ -308,7 +308,8 @@ fn render_str_deck_raw(items: &[u8], marks: &[OrcMark], out: &mut String) {
 /// Renders a `deck_to_str()` result handle -- reads `items`/`marks` straight off the raw
 /// pointers, same as `HandleDisplayWrapper` does for the plain `Display` case.
 pub fn render_str_deck(handle: &OrcHandle, out: &mut String) {
-    let items: &[u8] = handle.items::<u8>();
+    debug_assert_eq!(handle.type_id, u8::TYPE_INFO.type_id);
+    let items: &[u8] = handle.items_as_bytes();
     let marks: &[OrcMark] =
         unsafe { orc_sdk::slice_from_ptr(handle.marks, handle.n_marks as usize) };
     render_str_deck_raw(items, marks, out);

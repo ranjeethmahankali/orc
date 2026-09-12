@@ -967,7 +967,7 @@ mod test {
         match &infos.iter().next().unwrap() {
             NodeInfo::Constant(handle) => {
                 assert_eq!(handle.n_items, 3);
-                assert_eq!(handle.items::<f64>(), &[1.0, 2.0, 3.0]);
+                assert_eq!(handle.items::<f64>().unwrap(), &[1.0, 2.0, 3.0]);
             }
             _ => panic!("expected Constant"),
         }
@@ -1185,7 +1185,7 @@ mod test {
         match &infos.iter().next().unwrap() {
             NodeInfo::Constant(handle) => {
                 assert_eq!(handle.n_items, 1);
-                assert_eq!(handle.items::<i64>(), &[42]);
+                assert_eq!(handle.items::<i64>().unwrap(), &[42]);
             }
             _ => panic!("expected Constant"),
         }
@@ -1206,7 +1206,7 @@ mod test {
         match &infos.iter().next().unwrap() {
             NodeInfo::Constant(handle) => {
                 assert_eq!(handle.n_items, 3);
-                assert_eq!(handle.items::<f64>(), &[1.0, 2.0, 3.0]);
+                assert_eq!(handle.items::<f64>().unwrap(), &[1.0, 2.0, 3.0]);
                 assert!(handle.n_marks > 0, "nested deck should have marks");
             }
             _ => panic!("expected Constant"),

@@ -101,7 +101,7 @@ impl TOrcPluginAdaptor for Adaptor {
         // Header already written by try_serialize_handle. Write custom item data.
         match handle.type_id {
             complex::COMPLEX_NUM_TYPE_ID => {
-                let items = handle.items::<Complex>();
+                let items = handle.items::<Complex>()?;
                 let n_serialized =
                     Complex::serialize(items, write).map_err(|_| Error::SerializationError)?;
                 if n_serialized != items.len() {
@@ -248,7 +248,7 @@ mod tests {
         let out = deserialize_handle(&buf, next_id());
         assert_eq!(out.type_id, ORC_TYPE_F64);
         assert_eq!(out.n_items, 3);
-        assert_eq!(out.items::<f64>(), &[1.0, 2.0, 3.0]);
+        assert_eq!(out.items::<f64>().unwrap(), &[1.0, 2.0, 3.0]);
     }
 
     #[test]
@@ -259,7 +259,7 @@ mod tests {
         let out = deserialize_handle(&buf, next_id());
         assert_eq!(out.type_id, ORC_TYPE_I32);
         assert_eq!(out.n_items, 4);
-        assert_eq!(out.items::<i32>(), &[10, 20, 30, 40]);
+        assert_eq!(out.items::<i32>().unwrap(), &[10, 20, 30, 40]);
     }
 
     #[test]
@@ -269,7 +269,7 @@ mod tests {
         let buf = serialize_handle(&h);
         let out = deserialize_handle(&buf, next_id());
         assert_eq!(out.type_id, ORC_TYPE_U8);
-        assert_eq!(out.items::<u8>(), &[255, 0, 128]);
+        assert_eq!(out.items::<u8>().unwrap(), &[255, 0, 128]);
     }
 
     #[test]
@@ -281,7 +281,7 @@ mod tests {
         let out = deserialize_handle(&buf, next_id());
         assert_eq!(out.type_id, ORC_TYPE_F64);
         assert_eq!(out.n_items, 3);
-        assert_eq!(out.items::<f64>(), &[1.0, 2.0, 3.0]);
+        assert_eq!(out.items::<f64>().unwrap(), &[1.0, 2.0, 3.0]);
         assert_eq!(out.n_marks, h.n_marks);
         let orig_marks = unsafe { std::slice::from_raw_parts(h.marks, h.n_marks as usize) };
         let out_marks = unsafe { std::slice::from_raw_parts(out.marks, out.n_marks as usize) };
@@ -311,7 +311,7 @@ mod tests {
         let out = deserialize_handle(&buf, next_id());
         assert_eq!(out.type_id, complex::COMPLEX_NUM_TYPE_ID);
         assert_eq!(out.n_items, 2);
-        assert_eq!(out.items::<Complex>(), deck.items());
+        assert_eq!(out.items::<Complex>().unwrap(), deck.items());
     }
 
     #[test]
@@ -372,7 +372,7 @@ mod tests {
                 let out = deserialize_handle(&buf, next_id());
                 assert_eq!(out.type_id, <$ty as TOrcData>::TYPE_INFO.type_id);
                 let expected: &[$ty] = &[$($v),+];
-                assert_eq!(out.items::<$ty>(), expected);
+                assert_eq!(out.items::<$ty>().unwrap(), expected);
             }};
         }
         test_type!(u8, [1, 2, 3]);

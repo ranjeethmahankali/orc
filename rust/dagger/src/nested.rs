@@ -261,7 +261,10 @@ mod test {
 
         let (_, pushed) = open(&mut state, nh).unwrap();
         assert_eq!(pushed.simulated_inputs.len(), 1);
-        assert_eq!(pushed.simulated_inputs[0].items::<f64>(), [42.0].as_slice());
+        assert_eq!(
+            pushed.simulated_inputs[0].items::<f64>().unwrap(),
+            [42.0].as_slice()
+        );
     }
 
     #[test]
@@ -334,7 +337,7 @@ mod test {
                 computed[output].free_fn.is_some(),
                 "the call's output must actually be computed"
             );
-            computed[output].items::<f64>().to_vec()
+            computed[output].items::<f64>().unwrap().to_vec()
         };
 
         // Open it, confirm the simulated inputs reflect the real call-site values, close it
@@ -362,7 +365,7 @@ mod test {
         }
         let recomputed = state.computed_outputs.try_borrow().unwrap();
         assert_eq!(
-            recomputed[output].items::<f64>(),
+            recomputed[output].items::<f64>().unwrap(),
             first_result.as_slice(),
             "recomputing the same, unedited definition must give the same answer"
         );

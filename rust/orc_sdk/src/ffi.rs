@@ -155,7 +155,9 @@ impl OrcHandle {
     }
 
     pub fn items<T: TOrcData>(&self) -> Result<&[T], Error> {
-        if T::TYPE_INFO.type_id != self.type_id || self.item_size as usize % size_of::<T>() != 0 {
+        if T::TYPE_INFO.type_id != self.type_id
+            || (self.item_size as usize).is_multiple_of(size_of::<T>())
+        {
             return Err(Error::DeckTypeMismatch);
         }
         let n = (self.item_size * self.n_items) as usize / size_of::<T>();

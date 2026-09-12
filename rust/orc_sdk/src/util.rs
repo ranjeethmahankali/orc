@@ -910,7 +910,7 @@ pub fn to_str_deck<T: TOrcData + Display>(
     out: &mut Deck<u8>,
 ) -> Result<(), Error> {
     out.clear();
-    let items = input.items::<T>();
+    let items = input.items::<T>()?;
     let mut comb = Combinations::from_handles(std::slice::from_ref(input), &[0], &[1])?;
     let mut buf = String::new();
     loop {
@@ -1502,7 +1502,7 @@ mod tests {
         reg.alloc_with_value(Some(deck), &mut h).unwrap();
         // The handle should reflect the new data, not be cleared.
         assert_eq!(h.n_items, 3);
-        let items = h.items::<f64>();
+        let items = h.items::<f64>().unwrap();
         assert_eq!(items, &[1.0, 2.0, 3.0]);
         disarm(&mut h);
     }
@@ -1710,7 +1710,7 @@ mod tests {
         try_deserialize_handle(&mut cursor, &mut out, &reg).unwrap();
         assert_eq!(out.type_id, h.type_id);
         assert_eq!(out.n_items, 3);
-        assert_eq!(out.items::<f64>(), &[1.0, 2.0, 3.0]);
+        assert_eq!(out.items::<f64>().unwrap(), &[1.0, 2.0, 3.0]);
         disarm(&mut out);
     }
 
@@ -1728,7 +1728,7 @@ mod tests {
                 try_deserialize_handle(&mut cursor, &mut out, &reg).unwrap();
                 assert_eq!(out.type_id, <$ty as TOrcData>::TYPE_INFO.type_id);
                 let expected: &[$ty] = &[$($v),+];
-                assert_eq!(out.items::<$ty>(), expected);
+                assert_eq!(out.items::<$ty>().unwrap(), expected);
                 disarm(&mut out);
             }};
         }
@@ -1755,7 +1755,7 @@ mod tests {
         let mut out = serial_fresh_handle(serial_next_id());
         let mut cursor = std::io::Cursor::new(&buf[..]);
         try_deserialize_handle(&mut cursor, &mut out, &reg).unwrap();
-        assert_eq!(out.items::<f64>(), &[1.0, 2.0, 3.0]);
+        assert_eq!(out.items::<f64>().unwrap(), &[1.0, 2.0, 3.0]);
         assert_eq!(out.n_marks, h.n_marks);
         let orig_marks = unsafe { slice_from_ptr(h.marks, h.n_marks as usize) };
         let out_marks = unsafe { slice_from_ptr(out.marks, out.n_marks as usize) };
