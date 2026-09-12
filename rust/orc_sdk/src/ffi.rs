@@ -401,6 +401,26 @@ impl TOrcData for OrcItemProxy {
     };
 }
 
+/// Array types all defer to their inner type for their type info. `N` has to be
+/// enumerated explicitly rather than left as a const generic parameter: `TOrcData`
+/// requires `Default`, and the standard library only implements `Default` for `[T; N]`
+/// at fixed sizes (via an internal macro, up to `N = 32`) -- there is no blanket
+/// `impl<T: Default, const N: usize> Default for [T; N]`, so the compiler can't prove
+/// the bound holds for a generic `N` even though it holds for every concrete one below.
+macro_rules! impl_torcdata_for_array {
+    ($($n:literal),* $(,)?) => {
+        $(
+            impl<T: TOrcData> TOrcData for [T; $n] {
+                const TYPE_INFO: OrcTypeInfo = T::TYPE_INFO;
+            }
+        )*
+    };
+}
+impl_torcdata_for_array!(
+    1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26,
+    27, 28, 29, 30, 31, 32
+);
+
 // ==================== Dims helper functions ====================
 
 pub fn dims_multiply(dims: &OrcDims, other: &OrcDims) -> OrcDims {
