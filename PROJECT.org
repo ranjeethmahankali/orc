@@ -188,61 +188,77 @@
    :CREATED:  2026-09-12 Sat 15:22
    :END:
 
-   The C-side change adds an explicit ~item_size~ parameter to ~orc_deck_alloc~ (ABI, in
-   ~orc_abi.h~) and ~orc_sdk_handle_alloc~ (SDK, in ~orc_sdk.h~/~orc_sdk.c~), rather than
-   deriving it purely from ~type_id~. The new value is validated as a multiple of the
-   primitive's intrinsic size (~item_size % single_item_size == 0~) before being stored on
-   the handle. This is a real fix, not just plumbing: before this change,
-   ~orc_sdk_deck_from_proxy~ first called ~orc_sdk_handle_alloc(id, out)~ (which always sized
-   the initial buffer using the scalar's intrinsic size), then separately grew the deck to
-   the real ~item_size~ taken from the input handle -- for primitives those two sizes always
-   happened to match, but for an aggregate they wouldn't have, and
-   ~_orc_sdk_deck_grow_capacity~'s realloc would have computed the *old* buffer size using
-   the *new* item_size, desyncing the allocator bookkeeping. Passing the correct item_size
-   into the very first allocation closes that gap. Verified: clean rebuild
-   (~cmake --build~) with zero warnings, and all 277 existing C/C++ tests
-   (~orc_sdk_tests~, ~example_c_plugin_tests~, ~orc_sdk_cpp_tests~) pass unmodified in
-   behavior -- every touched call site is a mechanical ~sizeof(T)~ argument added at an
-   existing call, nothing else changed.
+   Progress so far: ~orc_sdk_handle_alloc~/~orc_deck_alloc~ (C SDK + ABI) now take an
+   explicit ~item_size~, validated as a multiple of the primitive's intrinsic size, and
+   this fixed a real latent bug in ~orc_sdk_deck_from_proxy~ (it used to size the initial
+   allocation from the scalar's intrinsic size, then separately grow to the real item_size,
+   desyncing the allocator bookkeeping for anything that wasn't a primitive). Clean rebuild,
+   0 warnings, all 277 C/C++ tests pass. Decided the ABI-exported ~orc_deck_alloc~ itself was
+   dead weight -- nothing in any host (~dagger~, ~server_host~, ~kbb_cli_host~, ~pyorc~) ever
+   called the loaded symbol in production, since outputs are allocated automatically when a
+   plugin function runs (~registry_.alloc::<T>()~ on the Rust side, direct
+   ~orc_sdk_handle_alloc~ calls in C plugin bodies) -- so it was deleted outright from
+   ~orc_abi.h~, ~orc_sdk.h~/~.c~, and the Rust side (~ffi.rs~'s ~orc_plugin!~ macro,
+   ~DeckAllocFn~, ~host.rs~'s ~Plugin::load~/~alloc_deck~). Workspace builds clean,
+   ~cargo run -p bindings_generator -- c/orc_abi.h --rust-check rust/orc_sdk/src/bindings.rs~
+   is back in sync. One loose end from that deletion: ~TOrcPluginAdaptor::deck_alloc~
+   (~rust/orc_sdk/src/ffi.rs:302~) and its one implementation
+   (~rust/example_rust_plugin/src/lib.rs~) are now unreachable and should be removed too.
 
-   Two bugs survive in the new code, both in ~orc_sdk_deck_from_proxy~ / ~orc_sdk_handle_alloc~:
+   Remaining work, to take one at a time:
 
-   - ~orc_sdk_deck_from_proxy~'s multi-input loop (right before the now-fixed
-     ~orc_sdk_handle_alloc(id, item_size, out)~ call) only checks that all inputs share the
-     same ~type_id~, not the same ~item_size~. That equality used to be implied for free --
-     same type_id meant same primitive meant same size. Once one type_id can carry several
-     item sizes, ~ORC_DECK_PROXY_SHUFFLE~ (the one proxy mode that legitimately takes more
-     than one input deck) will silently accept, say, a scalar F64 deck and an F64x3 deck in
-     the same shuffle, and copy items using ~item_size~ taken from input 0 regardless of
-     which input a given proxy item actually points to -- wrong-width copies with no error.
-     Needs an ~inputs[i].item_size != item_size~ check alongside the existing type_id check.
-   - The new ~item_size % single_item_size~ validation doesn't reject ~item_size == 0~
-     (~0 % anything == 0~, so it passes). That allocates a deck whose header records
-     ~item_size = 0~; every subsequent item-index computation (~index * item_size~)
-     collapses to the same address, so every "item" in the deck silently aliases the same
-     memory instead of erroring out. The old code couldn't hit this because ~item_size~ was
-     always derived internally and asserted non-zero (~single_item_size != 0~); that assert
-     still guards the *derived* value, not the new caller-supplied one. Needs an explicit
-     ~item_size == 0~ rejection.
-
-   Neither bug is exercised by the diff's test changes -- every test that touches
-   ~orc_sdk_handle_alloc~/~orc_deck_alloc~ was updated by adding ~sizeof(existing_type)~ at
-   the call site; none of them actually allocate a multi-primitive item_size, so the new
-   validation branch itself (success *and* rejection paths) has no coverage yet.
-
-   The bigger open item: this covers only the C side. ~orc_abi.h~'s ~orc_deck_alloc~ is a
-   cross-language ABI boundary, and the Rust side hasn't moved to match --
-   ~rust/orc_sdk/src/bindings.rs~ (bindgen output), the ~orc_plugin!~ macro and
-   ~DeckAllocFn~/~TOrcPluginAdaptor::deck_alloc~ in ~rust/orc_sdk/src/ffi.rs~, and every Rust
-   plugin (~example_rust_plugin~, ~pyorc~) still use the old two-argument signature. Confirmed
-   locally: ~cargo run -p bindings_generator -- c/orc_abi.h --rust-check
-   rust/orc_sdk/src/bindings.rs~ now fails (this is one of the three CI checks in
-   ~.github/workflows/ci.yml~), so CI will catch the staleness -- but until the Rust side is
-   updated to match, any Rust-built plugin exports an ~orc_deck_alloc~ symbol with the old
-   2-parameter signature while the header a C host compiles against now declares 3
-   parameters. That's a live cross-language ABI mismatch, not just a lint failure, for
-   exactly the "C++ plugin and Rust plugin should produce an identical handle"
-   interoperability goal this task is about.
+   1. *C:* ~orc_sdk_deck_from_proxy~'s multi-input loop (~orc_sdk.c~, right before the
+      ~orc_sdk_handle_alloc(id, item_size, out)~ call) only checks that all inputs share the
+      same ~type_id~, not the same ~item_size~. That equality used to be implied for free --
+      same type_id meant same primitive meant same size. Once one type_id can carry several
+      item sizes, ~ORC_DECK_PROXY_SHUFFLE~ (the one proxy mode that legitimately takes more
+      than one input deck) will silently accept a scalar F64 deck and an F64x3 deck in the
+      same shuffle and copy items using ~item_size~ taken from input 0 regardless of which
+      input a given proxy item actually points to -- wrong-width copies, no error. Needs an
+      ~inputs[i].item_size != item_size~ check alongside the existing type_id check.
+   2. *C:* the ~item_size % single_item_size~ validation in ~orc_sdk_handle_alloc~ doesn't
+      reject ~item_size == 0~ (~0 % anything == 0~, so it passes). That allocates a deck
+      whose header records ~item_size = 0~; every item-index computation
+      (~index * item_size~) collapses to the same address, so every "item" silently aliases
+      the same memory instead of erroring out. Needs an explicit ~item_size == 0~ rejection.
+      Neither of these two is exercised by any existing test -- the new validation branch has
+      no coverage in either direction (success or rejection).
+   3. *Rust, the actual enabling piece:* there is still no ~TOrcData~ impl for any aggregate
+      type -- only the primitives (~u8~..~i64~, ~f32~, ~f64~, ~OrcItemProxy~) implement it.
+      Until something like ~impl<const N: usize> TOrcData for [T; N] where T: TOrcData~
+      exists (with ~TYPE_INFO.type_id~ reusing ~T~'s id, and item_size following for free
+      from ~size_of::<[T; N]>()~ inside ~update_handle_from_deck~), no Rust plugin can write
+      ~#[orc_fn] fn run(a: &[f64; 3])~ at all. This is the piece that actually unblocks the
+      task; everything before it was allocation plumbing.
+   4. *Rust, consumption sites that assume item_size == sizeof(scalar):* cataloged during the
+      original footprint pass, still unchanged --
+      - ~OrcHandle::items::<T>()~ (~rust/orc_sdk/src/ffi.rs:178~) casts the raw pointer to
+        ~&[T]~ with no runtime check that ~item_size == size_of::<T>()~. This is the core
+        trust boundary; today it's safe only because type_id and item_size have always been
+        1:1. Worth at least a debug assertion once aggregates exist.
+      - ~rust/dagger/src/const_edit.rs~ -- ~is_editable()~ matches ~handle.type_id~ alone
+        against ~ORC_TYPE_F64 | ORC_TYPE_I64~; ~format_item()~ calls
+        ~handle.items::<f64>()[index]~ assuming scalar layout. An aggregate F64x3 constant
+        would show garbled values in the node editor instead of being treated as read-only.
+      - ~rust/pyorc/src/handle.rs~ -- ~__array_interface__~ sets numpy ~shape = (n_items,)~
+        from ~type_id~ alone; numpy would misread an aggregate deck's buffer shape entirely.
+      - ~rust/dagger/src/main.rs~, ~rust/server_host/src/server.rs~,
+        ~rust/kbb_cli_host/src/main.rs~, ~rust/pyorc/src/host.rs~,
+        ~rust/pyorc/src/lib.rs::create_orc_handle~ -- all have
+        ~match type_id { ORC_TYPE_F64 => ... }~ blocks for building/deserializing constant
+        handles from scalar literals, same implicit assumption.
+      None of these need to *support* aggregates for this task to be done -- each just needs
+      an explicit ~item_size == sizeof(scalar)~ guard so they degrade to "not
+      editable / not supported" instead of silently misreading the buffer.
+   5. *Test coverage:* once (3) lands, need an end-to-end test on the Rust side (allocate a
+      handle at item_size=24, stride ~Combinations~/~DeckView~ over it, free it) -- nothing
+      exercises an actual aggregate handle yet on either side of the FFI boundary.
+   6. *Worth a quick check once (3) lands:* ~derive_macros~'s ~generate_type_dispatch~ builds
+      match arms keyed on the numeric ~OrcTypeId~ alone. If a single ~#[orc_fn]~ ever
+      declares ~let types = (run::<f64>, run::<[f64; 3]>)~, both monomorphizations produce
+      the same pattern value -- the macro's existing "duplicate dispatch pattern"
+      compile-time check should already catch this, but it hasn't been exercised against a
+      real aggregate type yet.
 
 * TODO Mesh plugin functions
   :PROPERTIES:
