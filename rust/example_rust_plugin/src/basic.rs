@@ -754,4 +754,32 @@ mod tests {
         assert_ne!(err, orc_sdk::ORC_ERROR_NONE);
         assert!(out.items.is_null());
     }
+
+    #[test]
+    fn t_vec3_length_multiple_items() {
+        // A single-item deck can't catch an indexing bug that's off by a whole item_size (24
+        // bytes) -- this exercises Combinations actually striding across several vec3 items.
+        let mut v = Deck::<[f64; 3]>::default();
+        v.push([3.0, 4.0, 0.0], 1);
+        v.push([0.0, 0.0, 1.0], 0);
+        v.push([1.0, 2.0, 2.0], 0);
+        let mut out = out_handle();
+        let inputs = [view(&v)];
+        unsafe { vec3_length(0, inputs.as_ptr(), 1, &mut out, 1) };
+        assert_eq!(
+            DeckView::<f64>::from_handle(&out).unwrap().items(),
+            &[5.0, 1.0, 3.0]
+        );
+    }
+
+    #[test]
+    fn t_vec3_length_wrong_n_inputs() {
+        let mut v = Deck::<[f64; 3]>::default();
+        v.push([3.0, 4.0, 0.0], 1);
+        let mut out = out_handle();
+        let inputs = [view(&v), view(&v)]; // 2 instead of 1
+        unsafe { vec3_length(0, inputs.as_ptr(), 2, &mut out, 1) };
+        assert!(out.free_fn.is_none());
+        assert!(out.items.is_null());
+    }
 }

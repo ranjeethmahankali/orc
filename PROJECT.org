@@ -266,7 +266,7 @@
       None of these need to *support* aggregates for this task to be done -- each just needs
       an explicit ~item_size == sizeof(scalar)~ guard so they degrade to "not
       editable / not supported" instead of silently misreading the buffer.
-   5. [ ] *Test coverage:* once (3) lands, need an end-to-end test on the Rust side (allocate a
+   5. [X] *Test coverage:* once (3) lands, need an end-to-end test on the Rust side (allocate a
       handle at item_size=24, stride ~Combinations~/~DeckView~ over it, free it) -- nothing
       exercises an actual aggregate handle yet on either side of the FFI boundary.
    6. [X] *Worth a quick check once (3) lands:* ~derive_macros~'s ~generate_type_dispatch~ builds
