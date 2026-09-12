@@ -6,7 +6,7 @@ use std::ops::{Add, Div, Mul, Sub};
 #[orc_fn]
 fn add() {
     let host_callbacks = host_callbacks();
-    let registry: &ObjectRegistry = registry();
+    let registry: &DeckRegistry = registry();
     let types = (run::<f64>, run::<i64>);
 
     /// Adds two inputs values, assigns result to the output. This function supports any integer or
@@ -32,7 +32,7 @@ fn add() {
 #[orc_fn]
 fn multiply() {
     let host_callbacks = host_callbacks();
-    let registry: &ObjectRegistry = registry();
+    let registry: &DeckRegistry = registry();
     let types = (run::<f64>, run::<i64>);
 
     /// Multiplies two inputs values, and assigns the result to the output. This function supports
@@ -58,7 +58,7 @@ fn multiply() {
 #[orc_fn]
 fn subtract() {
     let host_callbacks = host_callbacks();
-    let registry: &ObjectRegistry = registry();
+    let registry: &DeckRegistry = registry();
     let types = (run::<f32>, run::<f64>);
 
     /// Subtracts the second operand from the first, and assigns to the output. The input types must
@@ -74,7 +74,7 @@ fn subtract() {
 #[orc_fn]
 fn divide() {
     let host_callbacks = host_callbacks();
-    let registry: &ObjectRegistry = registry();
+    let registry: &DeckRegistry = registry();
     let types = (run::<f32>, run::<f64>);
 
     /// Divides the first input with the second input, and assign to the output. All inputs must be
@@ -91,7 +91,7 @@ fn divide() {
 #[orc_fn]
 fn pow() {
     let host_callbacks = host_callbacks();
-    let registry: &ObjectRegistry = registry();
+    let registry: &DeckRegistry = registry();
 
     fn run(lhs: &f64, rhs: &f64, out: &mut f64) {
         *out = lhs.powf(*rhs);
@@ -101,7 +101,7 @@ fn pow() {
 #[orc_fn]
 fn repeat_list() {
     let host_callbacks = host_callbacks();
-    let registry: &ObjectRegistry = registry();
+    let registry: &DeckRegistry = registry();
     let types = (
         run::<f32>, run::<f64>, run::<u8>, run::<u16>, run::<u32>, run::<u64>, run::<i8>,
         run::<i16>, run::<i32>, run::<i64>,
@@ -127,7 +127,7 @@ fn repeat_list() {
 #[orc_map_fn]
 fn sin() {
     let host_callbacks = host_callbacks();
-    let registry: &ObjectRegistry = registry();
+    let registry: &DeckRegistry = registry();
 
     fn run(lhs: &f64, rhs: &mut f64) {
         *rhs = lhs.sin();
@@ -141,7 +141,7 @@ fn sin() {
 #[orc_map_fn]
 fn cos() {
     let host_callbacks = host_callbacks();
-    let registry: &ObjectRegistry = registry();
+    let registry: &DeckRegistry = registry();
 
     fn run(lhs: &f64, rhs: &mut f64) {
         *rhs = lhs.cos();
@@ -151,7 +151,7 @@ fn cos() {
 #[orc_map_fn]
 fn tan() {
     let host_callbacks = host_callbacks();
-    let registry: &ObjectRegistry = registry();
+    let registry: &DeckRegistry = registry();
 
     fn run(lhs: &f64, rhs: &mut f64) {
         *rhs = lhs.tan();
@@ -161,7 +161,7 @@ fn tan() {
 #[orc_fn]
 fn collatz_parallel_experiment() {
     let host_callbacks = host_callbacks();
-    let registry: &ObjectRegistry = registry();
+    let registry: &DeckRegistry = registry();
 
     const OUTPUT_DEPTHS: [u8; 1] = [1];
     fn run(host: &HostCallbacks, nums: &[u64], n_iter: &u64, output: &mut DeckWriter<u64>) {

@@ -64,7 +64,7 @@ impl TOrcData for Complex {
 /// Create a complex number from real and imaginary parts.
 fn create_complex() {
     let host_callbacks = host_callbacks();
-    let registry: &ObjectRegistry = registry();
+    let registry: &DeckRegistry = registry();
 
     fn run(real: &f64, imag: &f64, out: &mut Complex) {
         *out = Complex {
@@ -78,7 +78,7 @@ fn create_complex() {
 /// Add two complex numbers together.
 fn add_complex() {
     let host_callbacks = host_callbacks();
-    let registry: &ObjectRegistry = registry();
+    let registry: &DeckRegistry = registry();
 
     fn run(lhs: &Complex, rhs: &Complex, out: &mut Complex) {
         *out = Complex {
@@ -92,7 +92,7 @@ fn add_complex() {
 /// Multiply two complex numbers.
 fn mul_complex() {
     let host_callbacks = host_callbacks();
-    let registry: &ObjectRegistry = registry();
+    let registry: &DeckRegistry = registry();
 
     fn run(lhs: &Complex, rhs: &Complex, out: &mut Complex) {
         *out = Complex {
@@ -106,7 +106,7 @@ fn mul_complex() {
 /// Get real and imaginary parts of a complex number.
 fn complex_get_parts() {
     let host_callbacks = host_callbacks();
-    let registry: &ObjectRegistry = registry();
+    let registry: &DeckRegistry = registry();
 
     fn run(c: &Complex, real_out: &mut f64, imag_out: &mut f64) {
         *real_out = c.real;
