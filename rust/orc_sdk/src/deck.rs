@@ -736,22 +736,26 @@ where
 
 impl<'a, T: TOrcData> DeckView<'a, T> {
     pub fn from_handle(handle: &'a OrcHandle) -> Result<Self, Error> {
-        if handle.type_id != T::TYPE_INFO.type_id {
+        if handle.type_id != T::TYPE_INFO.type_id
+            || (handle.n_items > 0 && handle.item_size as usize != std::mem::size_of::<T>())
+        {
             return Err(Error::DeckTypeMismatch);
         }
-        // # SAFETY: We just checked the type id. Not a water tight test if we're accessing this
-        // data over the FFI boundary, but this is as safe as I can think of making this code at
-        // this time.
+        // # SAFETY: We just checked the type id and item_size. Not a water tight test if we're
+        // accessing this data over the FFI boundary, but this is as safe as I can think of making
+        // this code at this time.
         Ok(unsafe { Self::from_handle_unchecked(handle, None) })
     }
 
     pub fn from_handle_at_depth(handle: &'a OrcHandle, depth: u8) -> Result<Self, Error> {
-        if handle.type_id != T::TYPE_INFO.type_id {
+        if handle.type_id != T::TYPE_INFO.type_id
+            || (handle.n_items > 0 && handle.item_size as usize != std::mem::size_of::<T>())
+        {
             return Err(Error::DeckTypeMismatch);
         }
-        // # SAFETY: We just checked the type id. Not a water tight test if we're accessing this
-        // data over the FFI boundary, but this is as safe as I can think of making this code at
-        // this time.
+        // # SAFETY: We just checked the type id and item_size. Not a water tight test if we're
+        // accessing this data over the FFI boundary, but this is as safe as I can think of making
+        // this code at this time.
         Ok(unsafe { Self::from_handle_unchecked(handle, Some(depth)) })
     }
 
@@ -761,7 +765,12 @@ impl<'a, T: TOrcData> DeckView<'a, T> {
     /// # SAFETY
     ///
     /// The caller is responsible for making sure that the items pointer actually points to data of
-    /// type T, and that `handle.type_id` matches the id of type `T`.
+    /// type T, that `handle.type_id` matches the id of type `T`, and that `handle.item_size`
+    /// equals `size_of::<T>()` -- this reads exactly `handle.n_items` elements of `T`, so a
+    /// handle whose item_size is a multiple of (but not equal to) `size_of::<T>()` -- e.g. an
+    /// aggregate sharing a scalar's type_id -- would silently read only the first component of
+    /// each item instead of erroring out, since marks/strides here are indexed in units of
+    /// `handle.n_items`, not the flattened scalar count.
     unsafe fn from_handle_unchecked(handle: &'a OrcHandle, requested_depth: Option<u8>) -> Self {
         let (items, marks, stride_offset, strides) = unsafe {
             let items = slice_from_ptr(handle.items.cast(), handle.n_items as usize);

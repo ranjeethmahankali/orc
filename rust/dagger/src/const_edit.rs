@@ -10,6 +10,7 @@ use orc_sdk::{
     ORC_TYPE_I64, ORC_TYPE_U8, ORC_TYPE_U16, ORC_TYPE_U32, ORC_TYPE_U64, OrcHandle, OrcMark,
     TypeOwner, update_handle_from_deck,
 };
+use std::mem::size_of;
 
 const TAB_WIDTH: usize = 3;
 
@@ -142,11 +143,23 @@ pub(crate) fn deck_rows(n_items: usize, marks: &[OrcMark]) -> Vec<Row> {
 /// how to parse/format (`f64` or `i64` today). A plugin-owned type's storage lives entirely on
 /// the other side of the FFI boundary -- possibly not even Rust -- so there is no `with_mut` to
 /// borrow it through at all; those constants stay read-only, same as before this feature existed.
+///
+/// `item_size` must match the scalar exactly, not just be a multiple of it: an aggregate (e.g. an
+/// F64x3 handle, which shares F64's type_id) would otherwise be treated as if it were a plain list
+/// of scalars, and this editor would show one text box per aggregate item holding only that
+/// item's first component, silently discarding the rest.
 pub(crate) fn is_editable(handle: &OrcHandle) -> bool {
-    matches!(
+    if !matches!(
         crate::PLUGIN_SET.get_type_owner(handle.type_id),
         Some(TypeOwner::BuiltIn(_))
-    ) && matches!(handle.type_id, ORC_TYPE_F64 | ORC_TYPE_I64)
+    ) {
+        return false;
+    }
+    match handle.type_id {
+        ORC_TYPE_F64 => handle.item_size as usize == size_of::<f64>(),
+        ORC_TYPE_I64 => handle.item_size as usize == size_of::<i64>(),
+        _ => false,
+    }
 }
 
 /// The same collapsed-ruler text `Inspect` shows for arbitrary connected data, used for a
@@ -178,17 +191,41 @@ fn format_item(handle: &OrcHandle, index: usize) -> String {
     // item here, instead of making use of the ABI provided deck_to_str. For now, I am adding these
     // unwraps to get this compiling. Intending to get rid of these unwraps, and generally rewrite
     // this part of the code to just use the ABI for string conversion instead of doing it's own.
+    //
+    // Each arm's guard requires item_size to match that scalar exactly, not just be a multiple of
+    // it, so an aggregate sharing a scalar's type_id (e.g. F64x3) falls through to the `_` arm
+    // instead of having its first component read out and displayed as if it were the whole item.
     match handle.type_id {
-        ORC_TYPE_U8 => handle.items::<u8>().unwrap()[index].to_string(),
-        ORC_TYPE_U16 => handle.items::<u16>().unwrap()[index].to_string(),
-        ORC_TYPE_U32 => handle.items::<u32>().unwrap()[index].to_string(),
-        ORC_TYPE_U64 => handle.items::<u64>().unwrap()[index].to_string(),
-        ORC_TYPE_F32 => handle.items::<f32>().unwrap()[index].to_string(),
-        ORC_TYPE_F64 => handle.items::<f64>().unwrap()[index].to_string(),
-        ORC_TYPE_I8 => handle.items::<i8>().unwrap()[index].to_string(),
-        ORC_TYPE_I16 => handle.items::<i16>().unwrap()[index].to_string(),
-        ORC_TYPE_I32 => handle.items::<i32>().unwrap()[index].to_string(),
-        ORC_TYPE_I64 => handle.items::<i64>().unwrap()[index].to_string(),
+        ORC_TYPE_U8 if handle.item_size as usize == size_of::<u8>() => {
+            handle.items::<u8>().unwrap()[index].to_string()
+        }
+        ORC_TYPE_U16 if handle.item_size as usize == size_of::<u16>() => {
+            handle.items::<u16>().unwrap()[index].to_string()
+        }
+        ORC_TYPE_U32 if handle.item_size as usize == size_of::<u32>() => {
+            handle.items::<u32>().unwrap()[index].to_string()
+        }
+        ORC_TYPE_U64 if handle.item_size as usize == size_of::<u64>() => {
+            handle.items::<u64>().unwrap()[index].to_string()
+        }
+        ORC_TYPE_F32 if handle.item_size as usize == size_of::<f32>() => {
+            handle.items::<f32>().unwrap()[index].to_string()
+        }
+        ORC_TYPE_F64 if handle.item_size as usize == size_of::<f64>() => {
+            handle.items::<f64>().unwrap()[index].to_string()
+        }
+        ORC_TYPE_I8 if handle.item_size as usize == size_of::<i8>() => {
+            handle.items::<i8>().unwrap()[index].to_string()
+        }
+        ORC_TYPE_I16 if handle.item_size as usize == size_of::<i16>() => {
+            handle.items::<i16>().unwrap()[index].to_string()
+        }
+        ORC_TYPE_I32 if handle.item_size as usize == size_of::<i32>() => {
+            handle.items::<i32>().unwrap()[index].to_string()
+        }
+        ORC_TYPE_I64 if handle.item_size as usize == size_of::<i64>() => {
+            handle.items::<i64>().unwrap()[index].to_string()
+        }
         _ => "<item>".to_string(),
     }
 }

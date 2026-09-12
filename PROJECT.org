@@ -246,19 +246,19 @@
       from ~size_of::<[T; N]>()~ inside ~update_handle_from_deck~), no Rust plugin can write
       ~#[orc_fn] fn run(a: &[f64; 3])~ at all. This is the piece that actually unblocks the
       task; everything before it was allocation plumbing.
-   4. *Rust, consumption sites that assume item_size == sizeof(scalar):* cataloged during the
+   4. [X] *Rust, consumption sites that assume item_size == sizeof(scalar):* cataloged during the
       original footprint pass, still unchanged --
       - [X] ~OrcHandle::items::<T>()~ (~rust/orc_sdk/src/ffi.rs:178~) casts the raw pointer to
         ~&[T]~ with no runtime check that ~item_size == size_of::<T>()~. This is the core
         trust boundary; today it's safe only because type_id and item_size have always been
         1:1. Worth at least a debug assertion once aggregates exist.
-      - [ ] ~rust/dagger/src/const_edit.rs~ -- ~is_editable()~ matches ~handle.type_id~ alone
+      - [X] ~rust/dagger/src/const_edit.rs~ -- ~is_editable()~ matches ~handle.type_id~ alone
         against ~ORC_TYPE_F64 | ORC_TYPE_I64~; ~format_item()~ calls
         ~handle.items::<f64>()[index]~ assuming scalar layout. An aggregate F64x3 constant
         would show garbled values in the node editor instead of being treated as read-only.
-      - [ ] ~rust/pyorc/src/handle.rs~ -- ~__array_interface__~ sets numpy ~shape = (n_items,)~
+      - [X] ~rust/pyorc/src/handle.rs~ -- ~__array_interface__~ sets numpy ~shape = (n_items,)~
         from ~type_id~ alone; numpy would misread an aggregate deck's buffer shape entirely.
-      - [ ] ~rust/dagger/src/main.rs~, ~rust/server_host/src/server.rs~,
+      - [X] ~rust/dagger/src/main.rs~, ~rust/server_host/src/server.rs~,
         ~rust/kbb_cli_host/src/main.rs~, ~rust/pyorc/src/host.rs~,
         ~rust/pyorc/src/lib.rs::create_orc_handle~ -- all have
         ~match type_id { ORC_TYPE_F64 => ... }~ blocks for building/deserializing constant
