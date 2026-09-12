@@ -926,7 +926,9 @@ typedef OrcSdk_TypeInfo (*OrcSdk_TypeCallbacksGetterFn)(OrcTypeId const id);
 
 void orc_sdk_init(OrcHost const *host, OrcSdk_TypeCallbacksGetterFn type_fn);
 
-OrcError orc_sdk_handle_alloc(OrcTypeId const type_id, OrcHandle *const out);
+OrcError orc_sdk_handle_alloc(OrcTypeId const  type_id,
+                              uint64_t const   item_size,
+                              OrcHandle *const out);
 
 OrcError orc_sdk_handle_free(OrcHandle *const handle);
 

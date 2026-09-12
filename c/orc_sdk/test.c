@@ -759,7 +759,7 @@ static int _handle_thread_fn(void *arg)
 
   for (size_t i = 0; i < per_thread; ++i) {
     handles[i].handle = (uint64_t)(base + i);
-    if (orc_sdk_handle_alloc(ORC_TYPE_F64, &handles[i]) != ORC_ERROR_NONE)
+    if (orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(double), &handles[i]) != ORC_ERROR_NONE)
       return 1;
     if (handles[i].items == NULL || handles[i].free_fn == NULL)
       return 2;
@@ -802,7 +802,7 @@ static void test_handle_alloc_id_survives(void)
   OrcHandle out = {0};
   out.handle    = 42;
 
-  OrcError err = orc_sdk_handle_alloc(ORC_TYPE_F64, &out);
+  OrcError err = orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(double), &out);
   TEST_ASSERT_TRUE_MESSAGE(err == ORC_ERROR_NONE, "Alloc should succeed");
   TEST_ASSERT_TRUE_MESSAGE(out.handle == 42, "handle must remain 42 after alloc");
   TEST_ASSERT_TRUE_MESSAGE(out.items != NULL, "items must be set after alloc");
@@ -820,10 +820,10 @@ static void test_handle_alloc_reuse(void)
   orc_sdk_init(NULL, NULL);
   OrcHandle h = {0};
   h.handle    = 50;
-  orc_sdk_handle_alloc(ORC_TYPE_F64, &h);
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(double), &h);
   void const *const original_items = h.items;
 
-  OrcError err = orc_sdk_handle_alloc(ORC_TYPE_F64, &h);
+  OrcError err = orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(double), &h);
   TEST_ASSERT_TRUE_MESSAGE(err == ORC_ERROR_NONE, "Reuse: should succeed");
   TEST_ASSERT_TRUE_MESSAGE(h.items == original_items, "Reuse: items must not change");
   TEST_ASSERT_TRUE_MESSAGE(h.type_id == ORC_TYPE_F64, "Reuse: type must be unchanged");
@@ -837,9 +837,9 @@ static void test_handle_alloc_type_change(void)
   orc_sdk_init(NULL, NULL);
   OrcHandle h = {0};
   h.handle    = 51;
-  orc_sdk_handle_alloc(ORC_TYPE_F64, &h);
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(double), &h);
 
-  OrcError err = orc_sdk_handle_alloc(ORC_TYPE_U32, &h);
+  OrcError err = orc_sdk_handle_alloc(ORC_TYPE_U32, sizeof(uint32_t), &h);
   TEST_ASSERT_TRUE_MESSAGE(err == ORC_ERROR_NONE, "Type change: should succeed");
   TEST_ASSERT_TRUE_MESSAGE(h.type_id == ORC_TYPE_U32, "Type change: type_id must update");
   TEST_ASSERT_TRUE_MESSAGE(h.item_size == sizeof(uint32_t),
@@ -855,7 +855,7 @@ static void test_handle_alloc_fresh(void)
   orc_sdk_init(NULL, NULL);
   OrcHandle h  = {0};
   h.handle     = 52;
-  OrcError err = orc_sdk_handle_alloc(ORC_TYPE_F64, &h);
+  OrcError err = orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(double), &h);
   TEST_ASSERT_TRUE_MESSAGE(err == ORC_ERROR_NONE, "Fresh: should succeed");
   TEST_ASSERT_TRUE_MESSAGE(h.type_id == ORC_TYPE_F64, "Fresh: type_id must be set");
   TEST_ASSERT_TRUE_MESSAGE(h.items != NULL, "Fresh: items must be set");
@@ -883,7 +883,7 @@ static void test_handle_alloc_eviction(void)
   h.free_fn         = _mock_free_fn;
   h.items           = (void *)1;  // non-null: simulates foreign plugin data
 
-  OrcError err = orc_sdk_handle_alloc(ORC_TYPE_F64, &h);
+  OrcError err = orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(double), &h);
   TEST_ASSERT_TRUE_MESSAGE(err == ORC_ERROR_NONE, "Eviction: should succeed");
   TEST_ASSERT_TRUE_MESSAGE(_mock_free_called, "Eviction: foreign free_fn must be called");
   TEST_ASSERT_TRUE_MESSAGE(h.type_id == ORC_TYPE_F64, "Eviction: type_id must be set");
@@ -5703,9 +5703,9 @@ static void test_list_item_combinations(void)
   lists.handle     = 0;
   indices.handle   = 1;
   out_items.handle = 2;
-  orc_sdk_handle_alloc(ORC_TYPE_F64, &lists);
-  orc_sdk_handle_alloc(ORC_TYPE_U32, &indices);
-  orc_sdk_handle_alloc(ORC_TYPE_F64, &out_items);
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(double), &lists);
+  orc_sdk_handle_alloc(ORC_TYPE_U32, sizeof(uint32_t), &indices);
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(double), &out_items);
   TEST_ASSERT_TRUE_MESSAGE(
     lists.items != NULL && indices.items != NULL && out_items.items != NULL,
     "Unable to allocate decks");
@@ -5799,9 +5799,9 @@ static void test_add_f64_combinations(void)
   a.handle   = 1;
   b.handle   = 2;
   out.handle = 3;
-  orc_sdk_handle_alloc(ORC_TYPE_F64, &a);
-  orc_sdk_handle_alloc(ORC_TYPE_F64, &b);
-  orc_sdk_handle_alloc(ORC_TYPE_F64, &out);
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(double), &a);
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(double), &b);
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(double), &out);
   TEST_ASSERT_TRUE_MESSAGE(a.items != NULL && b.items != NULL && out.items != NULL,
                            "Unable to allocate decks");
 
@@ -5920,11 +5920,12 @@ static void test_scalar_broadcast_combinations(void)
   list.handle   = 1;
   scalar.handle = 2;
   out.handle    = 3;
-  orc_sdk_handle_alloc(ORC_TYPE_F64, &list);
-  orc_sdk_handle_alloc(ORC_TYPE_F64, &scalar);
-  orc_sdk_handle_alloc(ORC_TYPE_F64, &out);
-  TEST_ASSERT_TRUE_MESSAGE(list.items != NULL && scalar.items != NULL && out.items != NULL,
-                           "Unable to allocate decks");
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(double), &list);
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(double), &scalar);
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(double), &out);
+  TEST_ASSERT_TRUE_MESSAGE(
+    list.items != NULL && scalar.items != NULL && out.items != NULL,
+    "Unable to allocate decks");
 
   ORC_SDK_DECK_INIT(list.items, double, (1.0, 2.0, 3.0));
   orc_sdk_oh_update(&list);
@@ -5986,8 +5987,8 @@ static void test_list_length_combinations(void)
   OrcHandle out = {0};
   in.handle     = 1;
   out.handle    = 2;
-  orc_sdk_handle_alloc(ORC_TYPE_F64, &in);
-  orc_sdk_handle_alloc(ORC_TYPE_U64, &out);
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(double), &in);
+  orc_sdk_handle_alloc(ORC_TYPE_U64, sizeof(uint64_t), &out);
   TEST_ASSERT_TRUE_MESSAGE(in.items != NULL && out.items != NULL,
                            "Unable to allocate decks");
   { /* Depth-2 input: 5 lists, some empty (stack_depth=2). */
@@ -6047,10 +6048,10 @@ static void test_two_output_combinations(void)
   out1.handle = 1;
   out2.handle = 2;
   in_a.handle = 3;
-  orc_sdk_handle_alloc(ORC_TYPE_F64, &in_a);
-  orc_sdk_handle_alloc(ORC_TYPE_F64, &in_b);
-  orc_sdk_handle_alloc(ORC_TYPE_F64, &out1);
-  orc_sdk_handle_alloc(ORC_TYPE_F64, &out2);
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(double), &in_a);
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(double), &in_b);
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(double), &out1);
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(double), &out2);
   TEST_ASSERT_TRUE_MESSAGE(
     in_a.items != NULL && in_b.items != NULL && out1.items != NULL && out2.items != NULL,
     "Unable to allocate decks");
@@ -6117,9 +6118,9 @@ static void test_first_add_combinations(void)
   b.handle   = 0;
   out.handle = 1;
   a.handle   = 2;
-  orc_sdk_handle_alloc(ORC_TYPE_F64, &a);
-  orc_sdk_handle_alloc(ORC_TYPE_F64, &b);
-  orc_sdk_handle_alloc(ORC_TYPE_F64, &out);
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(double), &a);
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(double), &b);
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(double), &out);
   TEST_ASSERT_TRUE_MESSAGE(a.items != NULL && b.items != NULL && out.items != NULL,
                            "Unable to allocate decks");
   { /* Equal-length: a and b each have 3 depth=1 groups (stack_depth=2). */
@@ -6302,7 +6303,7 @@ static void test_deck_from_proxy_copy_items(void)
     OrcHandle in = {0}, out = {0};
     in.handle  = 1;
     out.handle = 2;
-    orc_sdk_handle_alloc(ORC_TYPE_F64, &in);
+    orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(double), &in);
     ORC_SDK_DECK_INIT(in.items, double, ((1.0, 2.0), (3.0, 4.0, 5.0)));
     orc_sdk_oh_update(&in);
     OrcHandle proxy = _make_flattened_proxy(in.items);
@@ -6322,7 +6323,7 @@ static void test_deck_from_proxy_copy_items(void)
     OrcHandle in = {0}, out = {0};
     in.handle  = 1;
     out.handle = 2;
-    orc_sdk_handle_alloc(ORC_TYPE_F64, &in);
+    orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(double), &in);
     ORC_SDK_DECK_INIT(in.items, double, (((1.0, 2.0), (3.0)), ((4.0, 5.0))));
     orc_sdk_oh_update(&in);
     OrcHandle proxy = _make_flattened_proxy(in.items);
@@ -6340,7 +6341,7 @@ static void test_deck_from_proxy_copy_items(void)
     OrcHandle in = {0}, out = {0};
     in.handle  = 1;
     out.handle = 2;
-    orc_sdk_handle_alloc(ORC_TYPE_F64, &in);
+    orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(double), &in);
     ORC_SDK_DECK_INIT(in.items, double, (1.0, 2.0, 3.0));
     orc_sdk_oh_update(&in);
     OrcHandle proxy = _make_grafted_proxy(in.items);
@@ -6359,7 +6360,7 @@ static void test_deck_from_proxy_copy_items(void)
     OrcHandle in = {0}, out = {0};
     in.handle  = 1;
     out.handle = 2;
-    orc_sdk_handle_alloc(ORC_TYPE_F64, &in);
+    orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(double), &in);
     ORC_SDK_DECK_INIT(in.items, double, ((1.0, 2.0), (3.0)));
     orc_sdk_oh_update(&in);
     OrcHandle proxy = _make_grafted_proxy(in.items);
@@ -6377,7 +6378,7 @@ static void test_deck_from_proxy_copy_items(void)
     OrcHandle in = {0}, out = {0};
     in.handle  = 1;
     out.handle = 2;
-    orc_sdk_handle_alloc(ORC_TYPE_F64, &in);
+    orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(double), &in);
     ORC_SDK_DECK_INIT(in.items, double, ((1.0, 2.0), (3.0, 4.0)));
     orc_sdk_oh_update(&in);
     /* Graft to create a gap in depth levels, then use simplify proxy. */
@@ -6406,7 +6407,7 @@ static void test_deck_from_proxy_shuffle(void)
     OrcHandle in = {0}, out = {0};
     in.handle  = 1;
     out.handle = 2;
-    orc_sdk_handle_alloc(ORC_TYPE_F64, &in);
+    orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(double), &in);
     ORC_SDK_DECK_INIT(in.items, double, (1.0, 2.0, 3.0));
     orc_sdk_oh_update(&in);
     OrcItemProxy *pdeck = NULL;
@@ -6434,7 +6435,7 @@ static void test_deck_from_proxy_shuffle(void)
     OrcHandle in = {0}, out = {0};
     in.handle  = 1;
     out.handle = 2;
-    orc_sdk_handle_alloc(ORC_TYPE_F64, &in);
+    orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(double), &in);
     ORC_SDK_DECK_INIT(in.items, double, ((1.0, 2.0), (3.0, 4.0, 5.0)));
     orc_sdk_oh_update(&in);
     OrcItemProxy *pdeck = NULL;
@@ -6470,7 +6471,7 @@ static void test_deck_from_proxy_shuffle(void)
     OrcHandle in = {0}, out = {0};
     in.handle  = 1;
     out.handle = 2;
-    orc_sdk_handle_alloc(ORC_TYPE_F64, &in);
+    orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(double), &in);
     ORC_SDK_DECK_INIT(in.items, double, ((1.0, 2.0, 3.0), (4.0, 5.0)));
     orc_sdk_oh_update(&in);
     OrcItemProxy *pdeck = NULL;
@@ -6496,8 +6497,8 @@ static void test_deck_from_proxy_shuffle(void)
     a.handle   = 1;
     b.handle   = 2;
     out.handle = 3;
-    orc_sdk_handle_alloc(ORC_TYPE_F64, &a);
-    orc_sdk_handle_alloc(ORC_TYPE_F64, &b);
+    orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(double), &a);
+    orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(double), &b);
     ORC_SDK_DECK_INIT(a.items, double, (1.0, 2.0));
     orc_sdk_oh_update(&a);
     ORC_SDK_DECK_INIT(b.items, double, (10.0, 20.0));
@@ -6537,7 +6538,7 @@ static void test_deck_from_proxy_type_agnostic(void)
     OrcHandle in = {0}, out = {0};
     in.handle  = 1;
     out.handle = 2;
-    orc_sdk_handle_alloc(ORC_TYPE_U32, &in);
+    orc_sdk_handle_alloc(ORC_TYPE_U32, sizeof(uint32_t), &in);
     ORC_SDK_DECK_INIT(in.items, uint32_t, ((10, 20), (30)));
     orc_sdk_oh_update(&in);
     OrcHandle proxy = _make_flattened_proxy(in.items);
@@ -6555,7 +6556,7 @@ static void test_deck_from_proxy_type_agnostic(void)
     OrcHandle in = {0}, out = {0};
     in.handle  = 1;
     out.handle = 2;
-    orc_sdk_handle_alloc(ORC_TYPE_I32, &in);
+    orc_sdk_handle_alloc(ORC_TYPE_I32, sizeof(int32_t), &in);
     ORC_SDK_DECK_INIT(in.items, int32_t, (-1, -2, -3, -4));
     orc_sdk_oh_update(&in);
     OrcItemProxy *pdeck = NULL;
@@ -6586,7 +6587,7 @@ static void test_deck_from_proxy_type_agnostic(void)
     OrcHandle in = {0}, out = {0};
     in.handle  = 1;
     out.handle = 2;
-    orc_sdk_handle_alloc(ORC_TYPE_I16, &in);
+    orc_sdk_handle_alloc(ORC_TYPE_I16, sizeof(int16_t), &in);
     ORC_SDK_DECK_INIT(in.items, int16_t, (10, 20, 30));
     orc_sdk_oh_update(&in);
     OrcHandle proxy = _make_grafted_proxy(in.items);
@@ -6863,7 +6864,7 @@ static void test_mark_padding_zeroed(void)
   orc_sdk_init(NULL, NULL);
   OrcHandle h = {0};
   h.handle    = 1;
-  orc_sdk_handle_alloc(ORC_TYPE_F64, &h);
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(double), &h);
   ORC_SDK_DECK_INIT(h.items, double, ((1.0, 2.0), (3.0)));
   orc_sdk_oh_update(&h);
   TEST_ASSERT_TRUE(h.n_marks > 0);
@@ -7008,7 +7009,7 @@ static void test_handle_to_str_u32(void)
   orc_sdk_init(NULL, NULL);
   OrcHandle input = {0};
   input.handle    = 100;
-  orc_sdk_handle_alloc(ORC_TYPE_U32, &input);
+  orc_sdk_handle_alloc(ORC_TYPE_U32, sizeof(uint32_t), &input);
   ORC_SDK_DECK_INIT(input.items, uint32_t, (42, 100, 0));
   orc_sdk_oh_update(&input);
   OrcHandle out = {0};
@@ -7038,7 +7039,7 @@ static void test_handle_to_str_f64(void)
   orc_sdk_init(NULL, NULL);
   OrcHandle input = {0};
   input.handle    = 200;
-  orc_sdk_handle_alloc(ORC_TYPE_F64, &input);
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(double), &input);
   ORC_SDK_DECK_INIT(input.items, double, (1.5, -2.0));
   orc_sdk_oh_update(&input);
   OrcHandle out = {0};
@@ -7083,7 +7084,7 @@ static void test_handle_to_str_empty(void)
   orc_sdk_init(NULL, NULL);
   OrcHandle input = {0};
   input.handle    = 300;
-  orc_sdk_handle_alloc(ORC_TYPE_U32, &input);
+  orc_sdk_handle_alloc(ORC_TYPE_U32, sizeof(uint32_t), &input);
   // items is NULL, n_items is 0 — empty deck.
   orc_sdk_oh_update(&input);
   TEST_ASSERT_TRUE(input.n_items == 0);

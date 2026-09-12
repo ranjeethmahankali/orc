@@ -344,7 +344,9 @@ respect the `out->handle` property. It must not be modified, and must be used as
 point to the allocated data, until `orc_deck_free` is called, with the same `handle`
 property.
  */
-ORC_PLUGIN_EXPORT OrcError orc_deck_alloc(OrcTypeId const id, OrcHandle *const out);
+ORC_PLUGIN_EXPORT OrcError orc_deck_alloc(OrcTypeId const  type_id,
+                                          uint64_t const   item_size,
+                                          OrcHandle *const out);
 
 ORC_PLUGIN_EXPORT OrcError orc_deck_free(OrcHandle *const handle);
 
