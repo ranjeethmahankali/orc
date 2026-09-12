@@ -6,8 +6,9 @@
 
 use crate::state::EditorState;
 use orc_sdk::{
-    NH, NodeInfo, ORC_TYPE_F64, ORC_TYPE_I64, OrcHandle, OrcMark, TypeOwner,
-    update_handle_from_deck,
+    NH, NodeInfo, ORC_TYPE_F32, ORC_TYPE_F64, ORC_TYPE_I8, ORC_TYPE_I16, ORC_TYPE_I32,
+    ORC_TYPE_I64, ORC_TYPE_U8, ORC_TYPE_U16, ORC_TYPE_U32, ORC_TYPE_U64, OrcHandle, OrcMark,
+    TypeOwner, update_handle_from_deck,
 };
 
 const TAB_WIDTH: usize = 3;
@@ -174,8 +175,17 @@ pub(crate) struct ConstEditCache {
 
 fn format_item(handle: &OrcHandle, index: usize) -> String {
     match handle.type_id {
+        ORC_TYPE_U8 => handle.items::<u8>()[index].to_string(),
+        ORC_TYPE_U16 => handle.items::<u16>()[index].to_string(),
+        ORC_TYPE_U32 => handle.items::<u32>()[index].to_string(),
+        ORC_TYPE_U64 => handle.items::<u64>()[index].to_string(),
+        ORC_TYPE_F32 => handle.items::<f32>()[index].to_string(),
+        ORC_TYPE_F64 => handle.items::<f64>()[index].to_string(),
+        ORC_TYPE_I8 => handle.items::<i8>()[index].to_string(),
+        ORC_TYPE_I16 => handle.items::<i16>()[index].to_string(),
+        ORC_TYPE_I32 => handle.items::<i32>()[index].to_string(),
         ORC_TYPE_I64 => handle.items::<i64>()[index].to_string(),
-        _ => handle.items::<f64>()[index].to_string(),
+        _ => "<item>".to_string(),
     }
 }
 
