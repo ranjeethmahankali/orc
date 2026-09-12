@@ -175,6 +175,67 @@
   these datatypes. E.g. a Rust plugin that owns a ~Deck<glam::DVec3>~, and a C++ plugin that owns a
   ~Deck<glm::dvec3>~ or an equivalent C deck, should all produce an identical handle.
 
+** Footprint of the Refactor
+   :PROPERTIES:
+   :CREATED:  2026-09-12 Sat 15:22
+   :END:
+
+   The C-side change adds an explicit ~item_size~ parameter to ~orc_deck_alloc~ (ABI, in
+   ~orc_abi.h~) and ~orc_sdk_handle_alloc~ (SDK, in ~orc_sdk.h~/~orc_sdk.c~), rather than
+   deriving it purely from ~type_id~. The new value is validated as a multiple of the
+   primitive's intrinsic size (~item_size % single_item_size == 0~) before being stored on
+   the handle. This is a real fix, not just plumbing: before this change,
+   ~orc_sdk_deck_from_proxy~ first called ~orc_sdk_handle_alloc(id, out)~ (which always sized
+   the initial buffer using the scalar's intrinsic size), then separately grew the deck to
+   the real ~item_size~ taken from the input handle -- for primitives those two sizes always
+   happened to match, but for an aggregate they wouldn't have, and
+   ~_orc_sdk_deck_grow_capacity~'s realloc would have computed the *old* buffer size using
+   the *new* item_size, desyncing the allocator bookkeeping. Passing the correct item_size
+   into the very first allocation closes that gap. Verified: clean rebuild
+   (~cmake --build~) with zero warnings, and all 277 existing C/C++ tests
+   (~orc_sdk_tests~, ~example_c_plugin_tests~, ~orc_sdk_cpp_tests~) pass unmodified in
+   behavior -- every touched call site is a mechanical ~sizeof(T)~ argument added at an
+   existing call, nothing else changed.
+
+   Two bugs survive in the new code, both in ~orc_sdk_deck_from_proxy~ / ~orc_sdk_handle_alloc~:
+
+   - ~orc_sdk_deck_from_proxy~'s multi-input loop (right before the now-fixed
+     ~orc_sdk_handle_alloc(id, item_size, out)~ call) only checks that all inputs share the
+     same ~type_id~, not the same ~item_size~. That equality used to be implied for free --
+     same type_id meant same primitive meant same size. Once one type_id can carry several
+     item sizes, ~ORC_DECK_PROXY_SHUFFLE~ (the one proxy mode that legitimately takes more
+     than one input deck) will silently accept, say, a scalar F64 deck and an F64x3 deck in
+     the same shuffle, and copy items using ~item_size~ taken from input 0 regardless of
+     which input a given proxy item actually points to -- wrong-width copies with no error.
+     Needs an ~inputs[i].item_size != item_size~ check alongside the existing type_id check.
+   - The new ~item_size % single_item_size~ validation doesn't reject ~item_size == 0~
+     (~0 % anything == 0~, so it passes). That allocates a deck whose header records
+     ~item_size = 0~; every subsequent item-index computation (~index * item_size~)
+     collapses to the same address, so every "item" in the deck silently aliases the same
+     memory instead of erroring out. The old code couldn't hit this because ~item_size~ was
+     always derived internally and asserted non-zero (~single_item_size != 0~); that assert
+     still guards the *derived* value, not the new caller-supplied one. Needs an explicit
+     ~item_size == 0~ rejection.
+
+   Neither bug is exercised by the diff's test changes -- every test that touches
+   ~orc_sdk_handle_alloc~/~orc_deck_alloc~ was updated by adding ~sizeof(existing_type)~ at
+   the call site; none of them actually allocate a multi-primitive item_size, so the new
+   validation branch itself (success *and* rejection paths) has no coverage yet.
+
+   The bigger open item: this covers only the C side. ~orc_abi.h~'s ~orc_deck_alloc~ is a
+   cross-language ABI boundary, and the Rust side hasn't moved to match --
+   ~rust/orc_sdk/src/bindings.rs~ (bindgen output), the ~orc_plugin!~ macro and
+   ~DeckAllocFn~/~TOrcPluginAdaptor::deck_alloc~ in ~rust/orc_sdk/src/ffi.rs~, and every Rust
+   plugin (~example_rust_plugin~, ~pyorc~) still use the old two-argument signature. Confirmed
+   locally: ~cargo run -p bindings_generator -- c/orc_abi.h --rust-check
+   rust/orc_sdk/src/bindings.rs~ now fails (this is one of the three CI checks in
+   ~.github/workflows/ci.yml~), so CI will catch the staleness -- but until the Rust side is
+   updated to match, any Rust-built plugin exports an ~orc_deck_alloc~ symbol with the old
+   2-parameter signature while the header a C host compiles against now declares 3
+   parameters. That's a live cross-language ABI mismatch, not just a lint failure, for
+   exactly the "C++ plugin and Rust plugin should produce an identical handle"
+   interoperability goal this task is about.
+
 * TODO Mesh plugin functions
   :PROPERTIES:
   :CREATED:  2026-09-11 Fri 21:50
