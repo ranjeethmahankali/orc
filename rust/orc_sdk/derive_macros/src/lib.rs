@@ -612,17 +612,35 @@ fn generate_type_dispatch(
         })
         .collect();
 
+    // `seen_patterns` above only catches two monomorphizations naming the identical Rust type;
+    // it can't evaluate `size_of` for an arbitrary generic type, so it can't tell whether two
+    // *different* Rust types (e.g. `f64` and `[f64; 1]`, which happen to share both a type_id and
+    // a size) would actually collide at runtime. rustc's own `unreachable_patterns` lint could in
+    // principle catch that in the match below, but lints are suppressed for code originating from
+    // an external macro expansion -- which this always is, since `#[orc_fn]` lives in a separate
+    // crate from every caller -- so even an explicit `#[deny(unreachable_patterns)]` on the match
+    // is silently a no-op here (verified empirically: a minimal two-crate proc-macro reproducing
+    // this exact shape does not report the lint even with `#[deny]` attached to the generated
+    // code). A `const` assertion is not a lint, so it isn't subject to that suppression; it's the
+    // only mechanism here that actually converts a genuine collision into a compile error.
+    let mut collision_asserts: Vec<proc_macro2::TokenStream> = Vec::new();
+    for i in 0..type_consts.len() {
+        for j in (i + 1)..type_consts.len() {
+            let (id_i, size_i, _) = &type_consts[i];
+            let (id_j, size_j, _) = &type_consts[j];
+            collision_asserts.push(quote! {
+                const _: () = ::std::assert!(
+                    !(#id_i == #id_j && #size_i == #size_j),
+                    "duplicate dispatch signature in `let types`: two entries produce the same (type_id, item_size) pair"
+                );
+            });
+        }
+    }
+
     quote! {
         #(#errors)*
         #(#const_decls)*
-        // `seen_patterns` above only catches two monomorphizations naming the identical Rust
-        // type; it can't evaluate `size_of` for an arbitrary generic type, so it can't tell
-        // whether two *different* Rust types (e.g. `f64` and `[f64; 3]` sharing f64's type_id)
-        // would actually collide at runtime. Denying this lint makes rustc's own pattern
-        // reachability analysis the authority on that instead: two arms whose (type_id, item_size)
-        // values genuinely coincide become a hard compile error here, rather than a silently
-        // unreachable arm.
-        #[deny(unreachable_patterns)]
+        #(#collision_asserts)*
         let result_ = match #scrutinee {
             #(#arms)*
             _ => Err(orc_sdk::Error::DeckTypeMismatch),
@@ -1192,7 +1210,7 @@ pub fn orc_fn(_attrs: TokenStream, input: TokenStream) -> TokenStream {
         Ok(v) => v,
         Err(e) => return e.to_compile_error().into(),
     };
-    let generated = generate_orc_fn(FnConfig {
+    generate_orc_fn(FnConfig {
         name: &name,
         docs: &docs,
         run_fn: &run_fn,
@@ -1202,11 +1220,8 @@ pub fn orc_fn(_attrs: TokenStream, input: TokenStream) -> TokenStream {
         host_callbacks_expr: &host_callbacks_expr,
         user_items: &user_items,
         params: &validated_params,
-    });
-    if name == "scratch_colliding_dispatch" {
-        eprintln!("SCRATCH_DEBUG_DUMP:\n{generated}");
-    }
-    generated.into()
+    })
+    .into()
 }
 
 fn validate_orc_map_fn(

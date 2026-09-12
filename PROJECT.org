@@ -269,7 +269,7 @@
    5. [ ] *Test coverage:* once (3) lands, need an end-to-end test on the Rust side (allocate a
       handle at item_size=24, stride ~Combinations~/~DeckView~ over it, free it) -- nothing
       exercises an actual aggregate handle yet on either side of the FFI boundary.
-   6. [ ] *Worth a quick check once (3) lands:* ~derive_macros~'s ~generate_type_dispatch~ builds
+   6. [X] *Worth a quick check once (3) lands:* ~derive_macros~'s ~generate_type_dispatch~ builds
       match arms keyed on the numeric ~OrcTypeId~ alone. If a single ~#[orc_fn]~ ever
       declares ~let types = (run::<f64>, run::<[f64; 3]>)~, both monomorphizations produce
       the same pattern value -- the macro's existing "duplicate dispatch pattern"

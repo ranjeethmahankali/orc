@@ -193,17 +193,6 @@ fn vec3_length() {
     }
 }
 
-#[orc_fn]
-fn scratch_colliding_dispatch() {
-    let host_callbacks = host_callbacks();
-    let registry: &DeckRegistry = registry();
-    let types = (run::<f64>, run::<[f64; 1]>);
-
-    fn run<T: TOrcData + Copy>(v: &T, out: &mut T) {
-        *out = *v;
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
