@@ -152,9 +152,12 @@
   serialization story of the workflows throws a bit of a wrench into this. I've given this some
   thought in [[*tkwogf - Overhaul of workflow property serialization][this task]], but I don't yet know what the solution is. This requires more thought.
 
-* TODO tl9jwh - Support aggregate slices of the same datatype in OrcHandle
+* NEXT tl9jwh - Support aggregate slices of the same datatype in OrcHandle
   :PROPERTIES:
   :CREATED:  2026-09-12 Sat 14:12
+  :END:
+  :LOGBOOK:
+  - State "NEXT"       from "TODO"       [2026-09-12 Sat 15:39]
   :END:
 
   This would be super useful for sharing data types such ~glm::dvec3~, and other ~glm~ primitives
@@ -174,6 +177,11 @@
   Need to think a bit more about how the handles are created on the side of the plugins that own
   these datatypes. E.g. a Rust plugin that owns a ~Deck<glam::DVec3>~, and a C++ plugin that owns a
   ~Deck<glm::dvec3>~ or an equivalent C deck, should all produce an identical handle.
+
+  <2026-09-12 Sat 15:37> In the current design of the ABI, ~orc_deck_alloc~ was vestigial. The
+  functions allocate their own outputs when they're run, so no code path is really using this. And
+  it is making the main goal of this task a little more inconvenient to achieve, so I am getting rid
+  of it.
 
 ** Footprint of the Refactor
    :PROPERTIES:
