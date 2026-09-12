@@ -183,6 +183,16 @@ fn collatz_parallel_experiment() {
     }
 }
 
+#[orc_fn]
+fn vec3_length() {
+    let host_callbacks = host_callbacks();
+    let registry: &ObjectRegistry = registry();
+
+    fn run(v: &[f64; 3], len: &mut f64) {
+        *len = v.map(|c| c * c).iter().sum::<f64>().sqrt()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
