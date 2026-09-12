@@ -154,9 +154,13 @@ impl OrcHandle {
         }
     }
 
-    pub fn items<T: TOrcData>(&self) -> &[T] {
+    pub fn items<T: TOrcData>(&self) -> Result<&[T], Error> {
+        if T::TYPE_INFO.type_id != self.type_id || self.item_size as usize % size_of::<T>() != 0 {
+            return Err(Error::DeckTypeMismatch);
+        }
+        let n = (self.item_size * self.n_items) as usize / size_of::<T>();
         // SAFETY; We're using the pointer and the length from the same pointer.
-        unsafe { slice_from_ptr(self.items.cast(), self.n_items as usize) }
+        Ok(unsafe { slice_from_ptr(self.items.cast(), n) })
     }
 
     pub fn items_as_bytes(&self) -> &[u8] {
