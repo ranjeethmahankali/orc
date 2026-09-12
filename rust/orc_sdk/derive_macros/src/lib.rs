@@ -503,8 +503,12 @@ fn generate_type_dispatch(
     registry_expr: &proc_macro2::TokenStream,
 ) -> proc_macro2::TokenStream {
     let n_inputs = params.inputs.len();
+    // Dispatch keys on (type_id, item_size), not type_id alone: an aggregate like `[f64; 3]`
+    // shares f64's type_id (that's the whole point -- it lets a receiver that only knows about
+    // f64 still recognize the data as f64-shaped), so type_id by itself can't tell a scalar
+    // handle apart from an aggregate one sharing the same type_id.
     let scrutinee_elems: Vec<proc_macro2::TokenStream> = (0..n_inputs)
-        .map(|i| quote! { inputs_[#i].type_id })
+        .map(|i| quote! { (inputs_[#i].type_id, inputs_[#i].item_size) })
         .collect();
     let scrutinee = quote! { (#(#scrutinee_elems),*) };
 
@@ -520,28 +524,38 @@ fn generate_type_dispatch(
         .map(|args| args.iter().collect())
         .collect();
 
-    // Track unique types → their const ident.
-    let mut type_to_const: std::collections::HashMap<String, proc_macro2::Ident> =
-        std::collections::HashMap::new();
+    // Track unique types → their (type_id, item_size) const idents.
+    let mut type_to_consts: std::collections::HashMap<
+        String,
+        (proc_macro2::Ident, proc_macro2::Ident),
+    > = std::collections::HashMap::new();
     // Ordered for deterministic const emission.
-    let mut type_consts: Vec<(proc_macro2::Ident, syn::Type)> = Vec::new();
+    let mut type_consts: Vec<(proc_macro2::Ident, proc_macro2::Ident, syn::Type)> = Vec::new();
 
-    let mut get_or_insert = |ty: &syn::Type| -> proc_macro2::Ident {
+    let mut get_or_insert = |ty: &syn::Type| -> (proc_macro2::Ident, proc_macro2::Ident) {
         let key = quote! { #ty }.to_string();
-        if let Some(ident) = type_to_const.get(&key) {
-            return ident.clone();
+        if let Some(idents) = type_to_consts.get(&key) {
+            return idents.clone();
         }
-        let mangled = key
-            .replace("::", "_")
-            .replace(" ", "")
-            .replace("<", "_")
-            .replace(">", "")
-            .replace(",", "_")
-            .to_uppercase();
-        let ident = format_ident!("ORC_TYPE_ID_{mangled}_");
-        type_to_const.insert(key, ident.clone());
-        type_consts.push((ident.clone(), ty.clone()));
-        ident
+        // Map every character that isn't valid mid-identifier to `_`, rather than special-casing
+        // the punctuation of a few type shapes (generics, paths) -- `[f64; 3]`'s brackets and
+        // semicolon need exactly the same treatment as `Vec<T>`'s angle brackets, and the next
+        // type shape that shows up here shouldn't need its own bespoke `.replace()` call.
+        let mangled: String = key
+            .chars()
+            .map(|c| {
+                if c.is_ascii_alphanumeric() {
+                    c.to_ascii_uppercase()
+                } else {
+                    '_'
+                }
+            })
+            .collect();
+        let type_id_ident = format_ident!("ORC_TYPE_ID_{mangled}_");
+        let item_size_ident = format_ident!("ORC_ITEM_SIZE_{mangled}_");
+        type_to_consts.insert(key, (type_id_ident.clone(), item_size_ident.clone()));
+        type_consts.push((type_id_ident.clone(), item_size_ident.clone(), ty.clone()));
+        (type_id_ident, item_size_ident)
     };
 
     let mut seen_patterns: std::collections::HashSet<String> = std::collections::HashSet::new();
@@ -555,14 +569,14 @@ fn generate_type_dispatch(
             .map(|p| substitute_type(&p.inner_type, &all_generics, case_args))
             .collect();
 
-        let pattern_idents: Vec<proc_macro2::Ident> =
+        let pattern_idents: Vec<(proc_macro2::Ident, proc_macro2::Ident)> =
             mono_input_types.iter().map(&mut get_or_insert).collect();
 
         let pattern_key = pattern_idents
             .iter()
-            .map(|i| i.to_string())
+            .map(|(type_id, item_size)| format!("{type_id},{item_size}"))
             .collect::<Vec<_>>()
-            .join(",");
+            .join(";");
 
         if !seen_patterns.insert(pattern_key) {
             errors.push(quote! {
@@ -577,17 +591,23 @@ fn generate_type_dispatch(
             quote! { ::<#(#case_args),*> }
         };
 
+        let pattern_pairs: Vec<proc_macro2::TokenStream> = pattern_idents
+            .iter()
+            .map(|(type_id, item_size)| quote! { (#type_id, #item_size) })
+            .collect();
+
         arms.push(quote! {
-            (#(#pattern_idents),*) => dispatch_ #turbofish (&host_, #registry_expr, inputs_, outputs_),
+            (#(#pattern_pairs),*) => dispatch_ #turbofish (&host_, #registry_expr, inputs_, outputs_),
         });
     }
 
     let const_decls: Vec<proc_macro2::TokenStream> = type_consts
         .iter()
-        .map(|(ident, ty)| {
+        .map(|(type_id_ident, item_size_ident, ty)| {
             quote! {
-                const #ident: orc_sdk::OrcTypeId =
+                const #type_id_ident: orc_sdk::OrcTypeId =
                     <#ty as orc_sdk::TOrcData>::TYPE_INFO.type_id;
+                const #item_size_ident: u64 = ::std::mem::size_of::<#ty>() as u64;
             }
         })
         .collect();
@@ -595,6 +615,14 @@ fn generate_type_dispatch(
     quote! {
         #(#errors)*
         #(#const_decls)*
+        // `seen_patterns` above only catches two monomorphizations naming the identical Rust
+        // type; it can't evaluate `size_of` for an arbitrary generic type, so it can't tell
+        // whether two *different* Rust types (e.g. `f64` and `[f64; 3]` sharing f64's type_id)
+        // would actually collide at runtime. Denying this lint makes rustc's own pattern
+        // reachability analysis the authority on that instead: two arms whose (type_id, item_size)
+        // values genuinely coincide become a hard compile error here, rather than a silently
+        // unreachable arm.
+        #[deny(unreachable_patterns)]
         let result_ = match #scrutinee {
             #(#arms)*
             _ => Err(orc_sdk::Error::DeckTypeMismatch),
@@ -1164,7 +1192,7 @@ pub fn orc_fn(_attrs: TokenStream, input: TokenStream) -> TokenStream {
         Ok(v) => v,
         Err(e) => return e.to_compile_error().into(),
     };
-    generate_orc_fn(FnConfig {
+    let generated = generate_orc_fn(FnConfig {
         name: &name,
         docs: &docs,
         run_fn: &run_fn,
@@ -1174,8 +1202,11 @@ pub fn orc_fn(_attrs: TokenStream, input: TokenStream) -> TokenStream {
         host_callbacks_expr: &host_callbacks_expr,
         user_items: &user_items,
         params: &validated_params,
-    })
-    .into()
+    });
+    if name == "scratch_colliding_dispatch" {
+        eprintln!("SCRATCH_DEBUG_DUMP:\n{generated}");
+    }
+    generated.into()
 }
 
 fn validate_orc_map_fn(
