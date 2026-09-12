@@ -152,9 +152,27 @@
   serialization story of the workflows throws a bit of a wrench into this. I've given this some
   thought in [[*tkwogf - Overhaul of workflow property serialization][this task]], but I don't yet know what the solution is. This requires more thought.
 
-* TODO Curve and Mesh related plugin functions
+* TODO tl9jwh - Support aggregate slices of the same datatype in OrcHandle
+  :PROPERTIES:
+  :CREATED:  2026-09-12 Sat 14:12
+  :END:
+
+  This would be super useful for sharing data types such ~glm::dvec3~, and other ~glm~ primitives
+  and similar datatypes in other languages and libraries, across the FFI boundary, without the fuss
+  of creating new datatypes. This is not absolutely essential, but makes interoperability across
+  plugins much easier.
+
+* TODO Mesh plugin functions
+  :PROPERTIES:
+  :CREATED:  2026-09-11 Fri 21:50
+  :END:
+
+* NEXT tl8agd - Curve plugin functions
   :PROPERTIES:
   :CREATED:  2026-09-11 Fri 11:44
+  :END:
+  :LOGBOOK:
+  - State "NEXT"       from "TODO"       [2026-09-11 Fri 21:50]
   :END:
 
 * DONE tl7i00 - Python code generation from a workflow
@@ -189,4 +207,3 @@
     to client, which saves that to .py file, similar to how it saves a .orc file today.
 
   <2026-09-11 Fri 13:42> Found and fixed a bug in Rust SDK's implementation of Combinations.
-
