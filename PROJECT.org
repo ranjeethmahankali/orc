@@ -152,6 +152,16 @@
   serialization story of the workflows throws a bit of a wrench into this. I've given this some
   thought in [[*tkwogf - Overhaul of workflow property serialization][this task]], but I don't yet know what the solution is. This requires more thought.
 
+* TODO tl9jwh - Support aggregate slices of the same datatype in OrcHandle
+  :PROPERTIES:
+  :CREATED:  2026-09-12 Sat 14:12
+  :END:
+
+  This would be super useful for sharing data types such ~glm::dvec3~, and other ~glm~ primitives
+  and similar datatypes in other languages and libraries, across the FFI boundary, without the fuss
+  of creating new datatypes. This is not absolutely essential, but makes interoperability across
+  plugins much easier.
+
 * TODO Mesh plugin functions
   :PROPERTIES:
   :CREATED:  2026-09-11 Fri 21:50
