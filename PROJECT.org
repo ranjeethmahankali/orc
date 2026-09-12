@@ -183,6 +183,10 @@
   it is making the main goal of this task a little more inconvenient to achieve, so I am getting rid
   of it.
 
+  <2026-09-12 Sat 16:14> Implemented the ~TOrcData~ trait for array types up to size 32 on the Rust
+  side. The sites that consume handles still don't check for item_size, and they need some
+  attention.
+
 ** Footprint of the Refactor
    :PROPERTIES:
    :CREATED:  2026-09-12 Sat 15:22
