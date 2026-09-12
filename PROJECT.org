@@ -248,17 +248,17 @@
       task; everything before it was allocation plumbing.
    4. *Rust, consumption sites that assume item_size == sizeof(scalar):* cataloged during the
       original footprint pass, still unchanged --
-      - ~OrcHandle::items::<T>()~ (~rust/orc_sdk/src/ffi.rs:178~) casts the raw pointer to
+      - [X] ~OrcHandle::items::<T>()~ (~rust/orc_sdk/src/ffi.rs:178~) casts the raw pointer to
         ~&[T]~ with no runtime check that ~item_size == size_of::<T>()~. This is the core
         trust boundary; today it's safe only because type_id and item_size have always been
         1:1. Worth at least a debug assertion once aggregates exist.
-      - ~rust/dagger/src/const_edit.rs~ -- ~is_editable()~ matches ~handle.type_id~ alone
+      - [ ] ~rust/dagger/src/const_edit.rs~ -- ~is_editable()~ matches ~handle.type_id~ alone
         against ~ORC_TYPE_F64 | ORC_TYPE_I64~; ~format_item()~ calls
         ~handle.items::<f64>()[index]~ assuming scalar layout. An aggregate F64x3 constant
         would show garbled values in the node editor instead of being treated as read-only.
-      - ~rust/pyorc/src/handle.rs~ -- ~__array_interface__~ sets numpy ~shape = (n_items,)~
+      - [ ] ~rust/pyorc/src/handle.rs~ -- ~__array_interface__~ sets numpy ~shape = (n_items,)~
         from ~type_id~ alone; numpy would misread an aggregate deck's buffer shape entirely.
-      - ~rust/dagger/src/main.rs~, ~rust/server_host/src/server.rs~,
+      - [ ] ~rust/dagger/src/main.rs~, ~rust/server_host/src/server.rs~,
         ~rust/kbb_cli_host/src/main.rs~, ~rust/pyorc/src/host.rs~,
         ~rust/pyorc/src/lib.rs::create_orc_handle~ -- all have
         ~match type_id { ORC_TYPE_F64 => ... }~ blocks for building/deserializing constant
@@ -266,10 +266,10 @@
       None of these need to *support* aggregates for this task to be done -- each just needs
       an explicit ~item_size == sizeof(scalar)~ guard so they degrade to "not
       editable / not supported" instead of silently misreading the buffer.
-   5. *Test coverage:* once (3) lands, need an end-to-end test on the Rust side (allocate a
+   5. [ ] *Test coverage:* once (3) lands, need an end-to-end test on the Rust side (allocate a
       handle at item_size=24, stride ~Combinations~/~DeckView~ over it, free it) -- nothing
       exercises an actual aggregate handle yet on either side of the FFI boundary.
-   6. *Worth a quick check once (3) lands:* ~derive_macros~'s ~generate_type_dispatch~ builds
+   6. [ ] *Worth a quick check once (3) lands:* ~derive_macros~'s ~generate_type_dispatch~ builds
       match arms keyed on the numeric ~OrcTypeId~ alone. If a single ~#[orc_fn]~ ever
       declares ~let types = (run::<f64>, run::<[f64; 3]>)~, both monomorphizations produce
       the same pattern value -- the macro's existing "duplicate dispatch pattern"
