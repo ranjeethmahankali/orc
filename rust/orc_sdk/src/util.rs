@@ -876,10 +876,29 @@ pub fn try_deserialize_handle(
         registry.alloc_with_value(Some(deck), handle)
     }
     let marks = read_orc_handle_header(out, r).map_err(|_| Vec::new())?;
-    match out.type_id {
-        ORC_TYPE_U8 | ORC_TYPE_U16 | ORC_TYPE_U32 | ORC_TYPE_U64 | ORC_TYPE_I8 | ORC_TYPE_I16
-        | ORC_TYPE_I32 | ORC_TYPE_I64 | ORC_TYPE_F32 | ORC_TYPE_F64 => {}
+    // This fast path only ever reads a scalar's worth of bytes per item (`read_items::<T>`
+    // below always uses the plain scalar `T`), so it must not run at all when item_size is an
+    // aggregate multiple of the scalar size -- doing so would read only a fraction of what was
+    // actually written, silently desyncing the rest of the stream instead of erroring out.
+    // Falls through to `Err(marks)`, same as an unrecognized (plugin-owned custom) type_id,
+    // deferring to the caller's own type_id switch (which will reject it there instead).
+    let scalar_size = match out.type_id {
+        ORC_TYPE_U8 => size_of::<u8>(),
+        ORC_TYPE_U16 => size_of::<u16>(),
+        ORC_TYPE_U32 => size_of::<u32>(),
+        ORC_TYPE_U64 => size_of::<u64>(),
+        ORC_TYPE_I8 => size_of::<i8>(),
+        ORC_TYPE_I16 => size_of::<i16>(),
+        ORC_TYPE_I32 => size_of::<i32>(),
+        ORC_TYPE_I64 => size_of::<i64>(),
+        ORC_TYPE_F32 => size_of::<f32>(),
+        ORC_TYPE_F64 => size_of::<f64>(),
         _ => return Err(marks),
+    };
+    if out.item_size as usize != scalar_size {
+        // Even though the SDK can read the entire array of primitive type items, it is the caller's
+        // responsibility to choose an aggregate type.
+        return Err(marks);
     }
     let result = match out.type_id {
         ORC_TYPE_U8 => read_items::<u8>(r, marks, out.n_items as usize, out, registry),
