@@ -152,6 +152,18 @@
   serialization story of the workflows throws a bit of a wrench into this. I've given this some
   thought in [[*tkwogf - Overhaul of workflow property serialization][this task]], but I don't yet know what the solution is. This requires more thought.
 
+* TODO Fix the strings in dagger UI
+  :PROPERTIES:
+  :CREATED:  2026-09-12 Sat 18:51
+  :END:
+
+  A few things were very poorly implemented by the LLM, and I didn't catch them in time. I left some
+  comments indicating the areas that need to be rewritten:
+
+  - [[file:rust/dagger/src/const_edit.rs::// TODO: this whole function is questionable. I am not sure why we're manually formatting each][We should not manually format individual items. Just use the ABI machinery to convert to strings.]]
+  - [[file:rust/dagger/src/const_edit.rs::// TODO: I am temporarily tolerating some unwraps in below code. We should get rid of them][Maintain a separte string representation coupled with the UI, and convert when changes are commited.]]
+  - [[file:rust/dagger/src/const_edit.rs::// TODO: I am temporarily tolerating some unwraps in below code. We should get rid of them][Same as above]]
+
 * NEXT tl9jwh - Support aggregate slices of the same datatype in OrcHandle
   :PROPERTIES:
   :CREATED:  2026-09-12 Sat 14:12
