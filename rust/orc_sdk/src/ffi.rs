@@ -155,14 +155,12 @@ impl OrcHandle {
     }
 
     pub fn items<T: TOrcData>(&self) -> Result<&[T], Error> {
-        if T::TYPE_INFO.type_id != self.type_id
-            || !(self.item_size as usize).is_multiple_of(size_of::<T>())
-        {
+        if T::TYPE_INFO.type_id != self.type_id || (self.item_size as usize) != size_of::<T>() {
             return Err(Error::DeckTypeMismatch);
         }
-        let n = (self.item_size * self.n_items) as usize / size_of::<T>();
-        // SAFETY; We're using the pointer and the length from the same pointer.
-        Ok(unsafe { slice_from_ptr(self.items.cast(), n) })
+        // SAFETY; We're using the pointer and the length from the same pointer. We also made sure
+        // the type matches exactly to what the caller asked for.
+        Ok(unsafe { slice_from_ptr(self.items.cast(), self.n_items as usize) })
     }
 
     pub fn items_as_bytes(&self) -> &[u8] {
