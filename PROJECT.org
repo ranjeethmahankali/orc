@@ -275,7 +275,10 @@
       the same pattern value -- the macro's existing "duplicate dispatch pattern"
       compile-time check should already catch this, but it hasn't been exercised against a
       real aggregate type yet.
-   7. [ ] String conversion at the ABI level should check for, and handle aggregate types
+   7. [ ] We tried to cover aggregate types in Rust deserialization. We did not check whether the
+      serialization and deserialization helpers in the C SDK are accounting for aggregate types. We
+      should also add support there, and get parity with the Rust SDK.
+   8. [ ] String conversion at the ABI level should check for, and handle aggregate types
       properly. It should print comma separated values. This means the string conversion in the SDK,
       and in the plugins for custom types needs to be updated. This also needs some good test
       coverage afterwards to make sure all the places handle it properly.
