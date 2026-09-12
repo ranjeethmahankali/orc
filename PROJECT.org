@@ -160,7 +160,20 @@
   This would be super useful for sharing data types such ~glm::dvec3~, and other ~glm~ primitives
   and similar datatypes in other languages and libraries, across the FFI boundary, without the fuss
   of creating new datatypes. This is not absolutely essential, but makes interoperability across
-  plugins much easier.
+  plugins much easier. Rigght now the primitive type_id, and item_size are two separate fields of
+  ~OrcHandle~. This is enough to let the receiver know that the data is an aggregate array of said
+  primitive. E.g. a handle with type f64, and item size of 24 bytes automatically implies an array
+  of 3 doubles. Each item of the deck is a fixed size arrary of 3 doubles. The combinations, the
+  striding logic etc. in the C SDK already respect the item_size, and stride over the 24 bytes. So
+  the C SDK can already work this way with minimal changes, as long as the owner / sender of the
+  handle properly assigns these fields. On the Rust side, [[file:rust/orc_sdk/src/deck.rs::pub fn get_input<T: Default>(&self, items: &'a \[T\], index: usize) -> DeckView<'a, T> {][this function]] just needs to be invoked
+  with type ~[f64; 3]~ (e.g. when item size is 24 bytes) and the items is of type ~&[[f64;
+  3]]~. Presumabley something upstream in the Rust's orc_fn (macro expansion) checks the item size
+  before casting the items pointer to a slice of that type.
+
+  Need to think a bit more about how the handles are created on the side of the plugins that own
+  these datatypes. E.g. a Rust plugin that owns a ~Deck<glam::DVec3>~, and a C++ plugin that owns a
+  ~Deck<glm::dvec3>~ or an equivalent C deck, should all produce an identical handle.
 
 * TODO Mesh plugin functions
   :PROPERTIES:
