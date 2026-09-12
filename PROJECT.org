@@ -279,6 +279,54 @@
       properly. It should print comma separated values. This means the string conversion in the SDK,
       and in the plugins for custom types needs to be updated. This also needs some good test
       coverage afterwards to make sure all the places handle it properly.
+      - [ ] *C SDK:* ~OrcSdk_SNPrintItemFn~ (~orc_sdk.h:646~) and ~OrcSdk_TypeInfo.snprint_fn~
+        (~orc_sdk.h:922~) take only ~(item, dst, len)~ -- no way to know how many scalar
+        components are packed into one item. Needs an item-size/count parameter so a printer
+        can loop.
+      - [ ] *C SDK:* every ~_snprint_*~ function (~orc_sdk.c~, generated via
+        ~_ORC_SDK_DECLARE_SNPRINT_FUNC~, plus the hand-written ~_snprint_proxy~ and
+        ~_snprint_fallback_fn~) reads exactly one scalar at ~*item~. Needs to loop over
+        ~item_size / sizeof(scalar)~ elements and join with commas.
+      - [ ] *C SDK:* ~orc_sdk_handle_to_str~ (~orc_sdk.c:2663~) picks ~print_fn~ by ~type_id~
+        alone and calls it once per item pointer -- needs to compute the component count from
+        ~item_size~ and pass it through.
+      - [ ] *C SDK:* the debug-only ~_orc_sdk_deck_to_str~/~orc_sdk_deck_to_str~ macro (used
+        directly by C unit tests to pretty-print a raw ~Deck~, separate from the ABI's
+        ~orc_deck_to_str~) shares the same ~OrcSdk_SNPrintItemFn~ typedef and needs the same
+        treatment to keep compiling and to actually exercise aggregate printing in test output.
+      - [ ] *Rust SDK:* ~to_str_deck<T: TOrcData + Display>~ (~rust/orc_sdk/src/util.rs:927~)
+        requires ~T: Display~ -- arrays don't implement ~Display~ in std, so this can't even be
+        instantiated for ~[f64; N]~ today. Needs either a new trait with a blanket impl for
+        ~T: Display~ plus per-~N~ impls for ~[T; N]~ that comma-join (same "enumerate concrete
+        N via macro" pattern already used for the ~TOrcData~ array impl), or a separate
+        aggregate-aware formatting path the caller picks based on item_size.
+      - [ ] *Rust SDK:* ~HandleDisplayWrapper~ / ~OrcHandle::display::<T>()~
+        (~rust/orc_sdk/src/util.rs:492-519~) independently builds a raw
+        ~slice_from_ptr::<T>(handle.items.cast(), handle.n_items as usize)~ -- the same
+        "trusts n_items and T without checking item_size" pattern the ~items::<T>()~ and
+        ~DeckView::from_handle~ fixes closed elsewhere. Missed by that pass; needs the same
+        item_size validation, and needs to support aggregates once the point above lands.
+      - [ ] *Duplicated type_id -> T dispatch for ~deck_to_str~ (two host-side copies, not
+        four -- confirmed ~server_host~ and ~kbb_cli_host~ don't have their own):*
+        ~rust/dagger/src/main.rs::host_deck_to_str~ and ~rust/pyorc/src/host.rs::host_deck_to_str~
+        both need the same (type_id, item_size) treatment. Worth considering centralizing this
+        switch into one shared ~orc_sdk~ function instead of fixing it twice, echoing the same
+        duplication question that came up for ~deck_from_proxy~.
+      - [ ] *Plugin-owned custom types:* ~rust/example_rust_plugin/src/lib.rs::deck_to_str~
+        (~line 152~) is the concrete "custom type" entry point this item calls out --
+        needs the same (type_id, item_size) treatment, and is also where an aggregate of a
+        plugin-owned type (e.g. "3 Complex numbers per item") would first prove out.
+      - [ ] *Downstream consumers to sanity-check, likely no code change needed:*
+        ~rust/dagger/src/inspect.rs~'s decoding of a ~to_str_deck~ result assumes one string per
+        original item but no particular length, so it should keep working once each item's
+        string just gets longer (comma-joined) -- and ~const_edit.rs::render_readonly~ calls the
+        same path, which is also why the const_edit.rs TODO rewrite (using the ABI's
+        ~deck_to_str~ instead of hand-rolled formatting) is blocked on this landing first.
+      - [ ] *Test coverage:* extend ~test_handle_to_str_*~ (~c/orc_sdk/test.c~),
+        ~t_to_str_deck_*~ (~rust/orc_sdk/src/util.rs~), the ~t_deck_to_str_*~ suite
+        (~rust/kbb_cli_host/src/test.rs~, which already exercises every loaded plugin's
+        ~to_str_deck~), and ~t_collapsed_display_*~ (~rust/dagger/src/inspect.rs~) with an
+        aggregate case each (e.g. item_size=24 F64 -> ~"1.000000,2.000000,3.000000"~).
 
 * TODO Mesh plugin functions
   :PROPERTIES:
