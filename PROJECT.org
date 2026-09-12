@@ -211,7 +211,7 @@
 
    Remaining work, to take one at a time:
 
-   1. *C:* ~orc_sdk_deck_from_proxy~'s multi-input loop (~orc_sdk.c~, right before the
+   1. [X] *C:* ~orc_sdk_deck_from_proxy~'s multi-input loop (~orc_sdk.c~, right before the
       ~orc_sdk_handle_alloc(id, item_size, out)~ call) only checks that all inputs share the
       same ~type_id~, not the same ~item_size~. That equality used to be implied for free --
       same type_id meant same primitive meant same size. Once one type_id can carry several
@@ -220,14 +220,14 @@
       same shuffle and copy items using ~item_size~ taken from input 0 regardless of which
       input a given proxy item actually points to -- wrong-width copies, no error. Needs an
       ~inputs[i].item_size != item_size~ check alongside the existing type_id check.
-   2. *C:* the ~item_size % single_item_size~ validation in ~orc_sdk_handle_alloc~ doesn't
+   2. [X] *C:* the ~item_size % single_item_size~ validation in ~orc_sdk_handle_alloc~ doesn't
       reject ~item_size == 0~ (~0 % anything == 0~, so it passes). That allocates a deck
       whose header records ~item_size = 0~; every item-index computation
       (~index * item_size~) collapses to the same address, so every "item" silently aliases
       the same memory instead of erroring out. Needs an explicit ~item_size == 0~ rejection.
       Neither of these two is exercised by any existing test -- the new validation branch has
       no coverage in either direction (success or rejection).
-   3. *Rust, the actual enabling piece:* there is still no ~TOrcData~ impl for any aggregate
+   3. [X] *Rust, the actual enabling piece:* there is still no ~TOrcData~ impl for any aggregate
       type -- only the primitives (~u8~..~i64~, ~f32~, ~f64~, ~OrcItemProxy~) implement it.
       Until something like ~impl<const N: usize> TOrcData for [T; N] where T: TOrcData~
       exists (with ~TYPE_INFO.type_id~ reusing ~T~'s id, and item_size following for free
