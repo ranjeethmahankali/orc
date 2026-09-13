@@ -1515,12 +1515,12 @@ static size_t _stride(OrcMark const  *marks,
     }
   }
   else if (n_marks == 0 && mark_idx == 0) {
-    // A genuinely empty marks array (a bare scalar being telescoped up to broadcast against a
-    // deeper sibling input) still has exactly one group -- the whole thing -- there is just no
-    // *next* group to stride to, same as a real single mark at depth 0 would report via the
-    // `depth == 0` branch above. Falling through to the `mark_idx >= n_marks` case below would
-    // instead treat this as "already exhausted", which is only correct for an index that ran
-    // past the end of a *non-empty* marks array.
+    // A genuinely empty marks array (a bare scalar being telescoped up to broadcast
+    // against a deeper sibling input) still has exactly one group -- the whole thing --
+    // there is just no *next* group to stride to, same as a real single mark at depth 0
+    // would report via the `depth == 0` branch above. Falling through to the `mark_idx >=
+    // n_marks` case below would instead treat this as "already exhausted", which is only
+    // correct for an index that ran past the end of a *non-empty* marks array.
     return 1;
   }
   else {
@@ -1528,10 +1528,11 @@ static size_t _stride(OrcMark const  *marks,
   }
 }
 
-/* Position of the mark at `idx`, or the total item count if `idx` runs past the last real mark
- * (matching the "no more marks, this group extends to the end" convention `_stride` also uses).
- * A genuinely empty marks array is the one exception: index 0 there is not "past the end", it's
- * the start of the array's one implicit group -- see `_stride`'s own comment on the same case. */
+/* Position of the mark at `idx`, or the total item count if `idx` runs past the last real
+ * mark (matching the "no more marks, this group extends to the end" convention `_stride`
+ * also uses). A genuinely empty marks array is the one exception: index 0 there is not
+ * "past the end", it's the start of the array's one implicit group -- see `_stride`'s own
+ * comment on the same case. */
 static size_t _mark_pos(OrcMark const *marks, size_t n_marks, size_t n_items, size_t idx)
 {
   if (idx < n_marks) {
@@ -2181,9 +2182,14 @@ OrcSdk_DeckWriter *orc_sdk_comb_get_output(void *ptr, size_t const index)
   return comb->writer_matrix + (index + 1) * comb->stack_depth - 1;
 }
 
-OrcError orc_sdk_handle_alloc(OrcTypeId const id, OrcHandle *const out)
+OrcError orc_sdk_handle_alloc(OrcTypeId const  id,
+                              uint64_t const   item_size,
+                              OrcHandle *const out)
 {
   if (out == NULL) {
+    return ORC_ERROR_INVALID_HANDLE;
+  }
+  if (item_size == 0) {
     return ORC_ERROR_INVALID_HANDLE;
   }
   {
@@ -2211,43 +2217,43 @@ OrcError orc_sdk_handle_alloc(OrcTypeId const id, OrcHandle *const out)
       }
     }
   }
-  out->item_size = 0;
+  uint64_t single_item_size = 0;
   switch (id) {
     // Unsigned integers.
   case ORC_TYPE_U8:
-    out->item_size = sizeof(uint8_t);
+    single_item_size = sizeof(uint8_t);
     break;
   case ORC_TYPE_U16:
-    out->item_size = sizeof(uint16_t);
+    single_item_size = sizeof(uint16_t);
     break;
   case ORC_TYPE_U32:
-    out->item_size = sizeof(uint32_t);
+    single_item_size = sizeof(uint32_t);
     break;
   case ORC_TYPE_U64:
-    out->item_size = sizeof(uint64_t);
+    single_item_size = sizeof(uint64_t);
     break;
     // Scalars.
   case ORC_TYPE_F32:
-    out->item_size = sizeof(float);
+    single_item_size = sizeof(float);
     break;
   case ORC_TYPE_F64:
-    out->item_size = sizeof(double);
+    single_item_size = sizeof(double);
     break;
     // Signed integers.
   case ORC_TYPE_I8:
-    out->item_size = sizeof(int8_t);
+    single_item_size = sizeof(int8_t);
     break;
   case ORC_TYPE_I16:
-    out->item_size = sizeof(int16_t);
+    single_item_size = sizeof(int16_t);
     break;
   case ORC_TYPE_I32:
-    out->item_size = sizeof(int32_t);
+    single_item_size = sizeof(int32_t);
     break;
   case ORC_TYPE_I64:
-    out->item_size = sizeof(int64_t);
+    single_item_size = sizeof(int64_t);
     break;
   case ORC_TYPE_PROXY:
-    out->item_size = sizeof(OrcItemProxy);
+    single_item_size = sizeof(OrcItemProxy);
     break;
   default: {
     if (PLUGIN_TYPE_FN) {
@@ -2255,15 +2261,19 @@ OrcError orc_sdk_handle_alloc(OrcTypeId const id, OrcHandle *const out)
       if (!_is_type_info_valid(&info)) {
         return ORC_ERROR_TYPE_MISMATCH;
       }
-      out->item_size = info.item_size;
+      single_item_size = info.item_size;
     }
     else {
       return ORC_ERROR_TYPE_MISMATCH;
     }
   }
   }
-  ORC_SDK_REQUIRE_WITH_MSG(out->item_size != 0,
+  ORC_SDK_REQUIRE_WITH_MSG(single_item_size != 0,
                            "Item size cannot be inferred from the type id.");
+  if (item_size % single_item_size) {
+    return ORC_ERROR_INVALID_HANDLE;
+  }
+  out->item_size         = item_size;
   out->type_id           = id;
   size_t const INIT_SIZE = 1;
   void        *deck_ptr  = _orc_sdk_deck_grow_capacity(NULL, out->item_size, INIT_SIZE);
@@ -2302,10 +2312,11 @@ OrcError orc_sdk_handle_free(OrcHandle *const handle)
   return handle->free_fn(handle);
 }
 
-#define DEFINE_TRIVIAL_COPY_FN(suffix, type)                                         \
-  static void _copy_items_##suffix(void const *src, void *dst, size_t const n_items) \
-  {                                                                                  \
-    memcpy(dst, src, n_items * sizeof(type));                                        \
+#define DEFINE_TRIVIAL_COPY_FN(suffix, type)                                  \
+  static void _copy_items_##suffix(                                           \
+    void const *src, void *dst, size_t const n_items, size_t const item_size) \
+  {                                                                           \
+    memcpy(dst, src, n_items *item_size);                                     \
   }
 
 DEFINE_TRIVIAL_COPY_FN(u8, uint8_t)
@@ -2321,6 +2332,7 @@ DEFINE_TRIVIAL_COPY_FN(i64, int64_t)
 DEFINE_TRIVIAL_COPY_FN(proxy, OrcItemProxy)
 
 OrcError _copy_items(OrcTypeId const type_id,
+                     size_t const    item_size,
                      void const     *src,
                      void           *dst,
                      size_t const    n_items)
@@ -2378,7 +2390,7 @@ OrcError _copy_items(OrcTypeId const type_id,
   }
   ORC_SDK_REQUIRE_WITH_MSG(
     copy_fn != NULL, "Should never happen. Either find a copy function, or error out.");
-  copy_fn(src, dst, n_items);
+  copy_fn(src, dst, n_items, item_size);
   return ORC_ERROR_NONE;
 }
 
@@ -2395,15 +2407,15 @@ OrcError orc_sdk_deck_from_proxy(OrcHandle const   *inputs,
     // Invalid proxy deck
     return ORC_ERROR_INVALID_PROXY;
   }
-  OrcTypeId const id        = inputs[0].type_id;
+  OrcTypeId const type_id   = inputs[0].type_id;
   size_t const    item_size = inputs[0].item_size;
   for (size_t i = 1; i < n_inputs; ++i) {
-    if (id != inputs[i].type_id) {
+    if (type_id != inputs[i].type_id || item_size != inputs[i].item_size) {
       // All input decks must be of the same type
       return ORC_ERROR_TYPE_MISMATCH;
     }
   }
-  OrcError const err = orc_sdk_handle_alloc(id, out);
+  OrcError const err = orc_sdk_handle_alloc(type_id, item_size, out);
   if (err != ORC_ERROR_NONE) {
     return err;
   }
@@ -2423,10 +2435,10 @@ OrcError orc_sdk_deck_from_proxy(OrcHandle const   *inputs,
     _OrcSdk_DeckHeader *h = _orc_sdk_deck_header(deck);
     h->item_size          = item_size;
     memcpy(out->dims, proxy->dims, sizeof(OrcDims));
-    out->type_id = id;
+    out->type_id = type_id;
     {  // Copy the data.
       memset(deck, 0, item_size * n_items);
-      OrcError const e = _copy_items(id, inputs[0].items, deck, n_items);
+      OrcError const e = _copy_items(type_id, item_size, inputs[0].items, deck, n_items);
       if (e) {
         orc_sdk_handle_free(out);
         return e;
@@ -2457,10 +2469,10 @@ OrcError orc_sdk_deck_from_proxy(OrcHandle const   *inputs,
     _OrcSdk_DeckHeader *h = _orc_sdk_deck_header(deck);
     h->item_size          = item_size;
     memcpy(out->dims, proxy->dims, sizeof(OrcDims));
-    out->type_id = id;
+    out->type_id = type_id;
     {  // Copy the data.
       memset(deck, 0, item_size * n_items);
-      OrcError const e = _copy_items(id, inputs[0].items, deck, n_items);
+      OrcError const e = _copy_items(type_id, item_size, inputs[0].items, deck, n_items);
       if (e) {
         orc_sdk_handle_free(out);
         return e;
@@ -2486,7 +2498,7 @@ OrcError orc_sdk_deck_from_proxy(OrcHandle const   *inputs,
     _OrcSdk_DeckHeader *h = _orc_sdk_deck_header(deck);
     h->item_size          = item_size;
     memcpy(out->dims, proxy->dims, sizeof(OrcDims));
-    out->type_id = id;
+    out->type_id = type_id;
     // Copy the data one at a time from by iterating over the proxy.
     OrcItemProxy *proxies = (OrcItemProxy *)proxy->items;
     while (h->count < n_items) {
@@ -2496,7 +2508,7 @@ OrcError orc_sdk_deck_from_proxy(OrcHandle const   *inputs,
       void *src =
         (char *)inputs[proxies[h->count].tree].items + item_size * proxies[h->count].item;
       void          *dst = (char *)deck + item_size * h->count;
-      OrcError const e   = _copy_items(id, src, dst, 1);
+      OrcError const e   = _copy_items(type_id, item_size, src, dst, 1);
       if (e) {
         orc_sdk_handle_free(out);
         return e;
@@ -2704,7 +2716,7 @@ OrcError orc_sdk_handle_to_str(OrcHandle const *input, OrcHandle *out)
     print_fn = _snprint_fallback_fn;
   }
   // Allocate the output deck.
-  OrcError err = orc_sdk_handle_alloc(ORC_TYPE_U8, out);
+  OrcError err = orc_sdk_handle_alloc(ORC_TYPE_U8, sizeof(uint8_t), out);
   if (err != ORC_ERROR_NONE) {
     return err;
   }

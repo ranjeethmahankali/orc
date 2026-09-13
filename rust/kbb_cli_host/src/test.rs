@@ -1078,7 +1078,7 @@ fn t_serial_round_trip_f64_flat() {
     let d = deck![1.0_f64, 2.0, 3.0];
     let h = make_handle(&d);
     let out = serial_round_trip(&h);
-    assert_eq!(out.items::<f64>(), &[1.0, 2.0, 3.0]);
+    assert_eq!(out.items::<f64>().unwrap(), &[1.0, 2.0, 3.0]);
 }
 
 #[test]
@@ -1087,7 +1087,7 @@ fn t_serial_round_trip_f64_nested() {
     let h = make_handle(&d);
     assert!(h.n_marks > 0);
     let out = serial_round_trip(&h);
-    assert_eq!(out.items::<f64>(), &[1.0, 2.0, 3.0]);
+    assert_eq!(out.items::<f64>().unwrap(), &[1.0, 2.0, 3.0]);
     assert_eq!(out.n_marks, h.n_marks);
     let orig_marks = unsafe { std::slice::from_raw_parts(h.marks, h.n_marks as usize) };
     let out_marks = unsafe { std::slice::from_raw_parts(out.marks, out.n_marks as usize) };
@@ -1114,7 +1114,7 @@ fn t_serial_round_trip_i32() {
     let d = deck![10_i32, 20, 30, 40];
     let h = make_handle(&d);
     let out = serial_round_trip(&h);
-    assert_eq!(out.items::<i32>(), &[10, 20, 30, 40]);
+    assert_eq!(out.items::<i32>().unwrap(), &[10, 20, 30, 40]);
 }
 
 #[test]
@@ -1122,7 +1122,7 @@ fn t_serial_round_trip_u8() {
     let d = deck![255_u8, 0, 128];
     let h = make_handle(&d);
     let out = serial_round_trip(&h);
-    assert_eq!(out.items::<u8>(), &[255, 0, 128]);
+    assert_eq!(out.items::<u8>().unwrap(), &[255, 0, 128]);
 }
 
 #[test]
@@ -1130,7 +1130,7 @@ fn t_serial_round_trip_u16() {
     let d = deck![100_u16, 200, 65535];
     let h = make_handle(&d);
     let out = serial_round_trip(&h);
-    assert_eq!(out.items::<u16>(), &[100, 200, 65535]);
+    assert_eq!(out.items::<u16>().unwrap(), &[100, 200, 65535]);
 }
 
 #[test]
@@ -1138,7 +1138,7 @@ fn t_serial_round_trip_u32() {
     let d = deck![1000_u32, 2000, u32::MAX];
     let h = make_handle(&d);
     let out = serial_round_trip(&h);
-    assert_eq!(out.items::<u32>(), &[1000, 2000, u32::MAX]);
+    assert_eq!(out.items::<u32>().unwrap(), &[1000, 2000, u32::MAX]);
 }
 
 #[test]
@@ -1146,7 +1146,7 @@ fn t_serial_round_trip_u64() {
     let d = deck![u64::MAX, 0_u64, 42];
     let h = make_handle(&d);
     let out = serial_round_trip(&h);
-    assert_eq!(out.items::<u64>(), &[u64::MAX, 0, 42]);
+    assert_eq!(out.items::<u64>().unwrap(), &[u64::MAX, 0, 42]);
 }
 
 #[test]
@@ -1154,7 +1154,7 @@ fn t_serial_round_trip_i8() {
     let d = deck![-128_i8, 0, 127];
     let h = make_handle(&d);
     let out = serial_round_trip(&h);
-    assert_eq!(out.items::<i8>(), &[-128, 0, 127]);
+    assert_eq!(out.items::<i8>().unwrap(), &[-128, 0, 127]);
 }
 
 #[test]
@@ -1162,7 +1162,7 @@ fn t_serial_round_trip_i16() {
     let d = deck![-100_i16, 0, 100];
     let h = make_handle(&d);
     let out = serial_round_trip(&h);
-    assert_eq!(out.items::<i16>(), &[-100, 0, 100]);
+    assert_eq!(out.items::<i16>().unwrap(), &[-100, 0, 100]);
 }
 
 #[test]
@@ -1170,7 +1170,7 @@ fn t_serial_round_trip_i64() {
     let d = deck![i64::MIN, 0_i64, i64::MAX];
     let h = make_handle(&d);
     let out = serial_round_trip(&h);
-    assert_eq!(out.items::<i64>(), &[i64::MIN, 0, i64::MAX]);
+    assert_eq!(out.items::<i64>().unwrap(), &[i64::MIN, 0, i64::MAX]);
 }
 
 #[test]
@@ -1178,7 +1178,7 @@ fn t_serial_round_trip_f32() {
     let d = deck![1.5_f32, -2.5, 0.0];
     let h = make_handle(&d);
     let out = serial_round_trip(&h);
-    assert_eq!(out.items::<f32>(), &[1.5f32, -2.5, 0.0]);
+    assert_eq!(out.items::<f32>().unwrap(), &[1.5f32, -2.5, 0.0]);
 }
 
 #[test]
@@ -1282,8 +1282,14 @@ fn extract_complex_parts(handle: &OrcHandle) -> (Vec<f64>, Vec<f64>) {
             2,
         );
     }
-    let reals = outputs[0].items::<f64>().to_vec();
-    let imags = outputs[1].items::<f64>().to_vec();
+    assert!(
+        outputs
+            .iter()
+            .all(|o| o.item_size as usize == size_of::<f64>()),
+        "We're not expecting aggregate types here"
+    );
+    let reals = outputs[0].items::<f64>().unwrap().to_vec();
+    let imags = outputs[1].items::<f64>().unwrap().to_vec();
     (reals, imags)
 }
 
@@ -1364,8 +1370,9 @@ fn t_serial_every_plugin_handles_builtin_types() {
             for (si, sp) in plugins.iter().enumerate() {
                 for (di, dp) in plugins.iter().enumerate() {
                     let out = cross_plugin_round_trip(&h, sp, dp);
+                    assert!(out.item_size as usize == size_of::<$ty>(), "We're not expecting aggregate types here");
                     assert_eq!(
-                        out.items::<$ty>(), expected,
+                        out.items::<$ty>().unwrap(), expected,
                         "failed: serialize with plugin {si} ({}), deserialize with plugin {di} ({}), type {}",
                         sp.name(), dp.name(), stringify!($ty)
                     );
@@ -1394,8 +1401,12 @@ fn t_serial_every_plugin_handles_nested_builtin() {
     for (si, sp) in plugins.iter().enumerate() {
         for (di, dp) in plugins.iter().enumerate() {
             let out = cross_plugin_round_trip(&h, sp, dp);
+            assert!(
+                out.item_size as usize == size_of::<f64>(),
+                "Not expecting aggregate types."
+            );
             assert_eq!(
-                out.items::<f64>(),
+                out.items::<f64>().unwrap(),
                 &[1.0, 2.0, 3.0],
                 "items mismatch: plugin {si} ({}) -> plugin {di} ({})",
                 sp.name(),
@@ -1438,7 +1449,11 @@ fn t_serial_concurrent_serialization() {
         plugin
             .deserialize_deck(0, &buf1, &mut out1)
             .expect("deserialize buf1 failed");
-        assert_eq!(out1.items::<f64>(), &[1.0, 2.0, 3.0, 4.0, 5.0]);
+        assert!(
+            out1.item_size as usize == size_of::<f64>(),
+            "Not expecting aggregate types"
+        );
+        assert_eq!(out1.items::<f64>().unwrap(), &[1.0, 2.0, 3.0, 4.0, 5.0]);
         let mut out2 = OrcHandle {
             handle: next_id(),
             ..Default::default()
@@ -1446,7 +1461,11 @@ fn t_serial_concurrent_serialization() {
         plugin
             .deserialize_deck(0, &buf2, &mut out2)
             .expect("deserialize buf2 failed");
-        assert_eq!(out2.items::<i32>(), &[-10, 20, -30, 40, -50]);
+        assert!(
+            out2.item_size as usize == size_of::<i32>(),
+            "Not expecting aggregate types"
+        );
+        assert_eq!(out2.items::<i32>().unwrap(), &[-10, 20, -30, 40, -50]);
     });
 }
 

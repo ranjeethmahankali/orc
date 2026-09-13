@@ -875,23 +875,112 @@ pub fn try_deserialize_handle(
         deck.assign_from_raw_data(items, marks);
         registry.alloc_with_value(Some(deck), handle)
     }
-    let marks = read_orc_handle_header(out, r).map_err(|_| Vec::new())?;
-    match out.type_id {
-        ORC_TYPE_U8 | ORC_TYPE_U16 | ORC_TYPE_U32 | ORC_TYPE_U64 | ORC_TYPE_I8 | ORC_TYPE_I16
-        | ORC_TYPE_I32 | ORC_TYPE_I64 | ORC_TYPE_F32 | ORC_TYPE_F64 => {}
-        _ => return Err(marks),
+    // Dispatches to `read_items::<T>` for a plain scalar (n_components == 1), or
+    // `read_items::<[T; N]>` for an aggregate of N scalars sharing T's type_id, covering
+    // N = 2..=32 -- the same range the `TOrcData` blanket array impl supports. A primitive
+    // type_id is never plugin-owned, so unlike a genuinely unrecognized type_id there is no
+    // plugin to defer to here: the host has everything it needs (type_id, item_size, n_items,
+    // marks) to deserialize an aggregate of primitives itself, regardless of what any particular
+    // plugin calls that shape (`[f64; 3]`, `glam::DVec3`, `glm::dvec3`, ...) -- once the resulting
+    // handle crosses back over the FFI boundary it's just bytes plus (type_id, item_size)
+    // metadata, and a plugin reads it by casting the pointer, not by matching Rust type identity.
+    macro_rules! read_scalar_or_aggregate {
+        ($ty:ty, $n_components:expr, $r:expr, $marks:expr, $n_items:expr, $handle:expr, $registry:expr) => {
+            match $n_components {
+                1 => read_items::<$ty>($r, $marks, $n_items, $handle, $registry),
+                2 => read_items::<[$ty; 2]>($r, $marks, $n_items, $handle, $registry),
+                3 => read_items::<[$ty; 3]>($r, $marks, $n_items, $handle, $registry),
+                4 => read_items::<[$ty; 4]>($r, $marks, $n_items, $handle, $registry),
+                5 => read_items::<[$ty; 5]>($r, $marks, $n_items, $handle, $registry),
+                6 => read_items::<[$ty; 6]>($r, $marks, $n_items, $handle, $registry),
+                7 => read_items::<[$ty; 7]>($r, $marks, $n_items, $handle, $registry),
+                8 => read_items::<[$ty; 8]>($r, $marks, $n_items, $handle, $registry),
+                9 => read_items::<[$ty; 9]>($r, $marks, $n_items, $handle, $registry),
+                10 => read_items::<[$ty; 10]>($r, $marks, $n_items, $handle, $registry),
+                11 => read_items::<[$ty; 11]>($r, $marks, $n_items, $handle, $registry),
+                12 => read_items::<[$ty; 12]>($r, $marks, $n_items, $handle, $registry),
+                13 => read_items::<[$ty; 13]>($r, $marks, $n_items, $handle, $registry),
+                14 => read_items::<[$ty; 14]>($r, $marks, $n_items, $handle, $registry),
+                15 => read_items::<[$ty; 15]>($r, $marks, $n_items, $handle, $registry),
+                16 => read_items::<[$ty; 16]>($r, $marks, $n_items, $handle, $registry),
+                17 => read_items::<[$ty; 17]>($r, $marks, $n_items, $handle, $registry),
+                18 => read_items::<[$ty; 18]>($r, $marks, $n_items, $handle, $registry),
+                19 => read_items::<[$ty; 19]>($r, $marks, $n_items, $handle, $registry),
+                20 => read_items::<[$ty; 20]>($r, $marks, $n_items, $handle, $registry),
+                21 => read_items::<[$ty; 21]>($r, $marks, $n_items, $handle, $registry),
+                22 => read_items::<[$ty; 22]>($r, $marks, $n_items, $handle, $registry),
+                23 => read_items::<[$ty; 23]>($r, $marks, $n_items, $handle, $registry),
+                24 => read_items::<[$ty; 24]>($r, $marks, $n_items, $handle, $registry),
+                25 => read_items::<[$ty; 25]>($r, $marks, $n_items, $handle, $registry),
+                26 => read_items::<[$ty; 26]>($r, $marks, $n_items, $handle, $registry),
+                27 => read_items::<[$ty; 27]>($r, $marks, $n_items, $handle, $registry),
+                28 => read_items::<[$ty; 28]>($r, $marks, $n_items, $handle, $registry),
+                29 => read_items::<[$ty; 29]>($r, $marks, $n_items, $handle, $registry),
+                30 => read_items::<[$ty; 30]>($r, $marks, $n_items, $handle, $registry),
+                31 => read_items::<[$ty; 31]>($r, $marks, $n_items, $handle, $registry),
+                32 => read_items::<[$ty; 32]>($r, $marks, $n_items, $handle, $registry),
+                // Beyond what the `TOrcData` array impl covers. Not plugin-deferrable either
+                // (same reasoning as above), so this is a hard failure, not `Err(marks)`.
+                _ => Err(Error::SerializationError),
+            }
+        };
     }
+
+    let marks = read_orc_handle_header(out, r).map_err(|_| Vec::new())?;
+    let scalar_size = match out.type_id {
+        ORC_TYPE_U8 => size_of::<u8>(),
+        ORC_TYPE_U16 => size_of::<u16>(),
+        ORC_TYPE_U32 => size_of::<u32>(),
+        ORC_TYPE_U64 => size_of::<u64>(),
+        ORC_TYPE_I8 => size_of::<i8>(),
+        ORC_TYPE_I16 => size_of::<i16>(),
+        ORC_TYPE_I32 => size_of::<i32>(),
+        ORC_TYPE_I64 => size_of::<i64>(),
+        ORC_TYPE_F32 => size_of::<f32>(),
+        ORC_TYPE_F64 => size_of::<f64>(),
+        // Not a primitive type_id -- may be plugin-owned, so defer to the caller's own switch.
+        _ => return Err(marks),
+    };
+    let item_size = out.item_size as usize;
+    if item_size == 0 || !item_size.is_multiple_of(scalar_size) {
+        // A malformed item_size for a recognized primitive type_id isn't something any plugin
+        // could resolve either -- primitives are never plugin-owned -- so this is a hard failure,
+        // not a deferral.
+        return Err(Vec::new());
+    }
+    let n_components = item_size / scalar_size;
+    let n_items = out.n_items as usize;
     let result = match out.type_id {
-        ORC_TYPE_U8 => read_items::<u8>(r, marks, out.n_items as usize, out, registry),
-        ORC_TYPE_U16 => read_items::<u16>(r, marks, out.n_items as usize, out, registry),
-        ORC_TYPE_U32 => read_items::<u32>(r, marks, out.n_items as usize, out, registry),
-        ORC_TYPE_U64 => read_items::<u64>(r, marks, out.n_items as usize, out, registry),
-        ORC_TYPE_I8 => read_items::<i8>(r, marks, out.n_items as usize, out, registry),
-        ORC_TYPE_I16 => read_items::<i16>(r, marks, out.n_items as usize, out, registry),
-        ORC_TYPE_I32 => read_items::<i32>(r, marks, out.n_items as usize, out, registry),
-        ORC_TYPE_I64 => read_items::<i64>(r, marks, out.n_items as usize, out, registry),
-        ORC_TYPE_F32 => read_items::<f32>(r, marks, out.n_items as usize, out, registry),
-        ORC_TYPE_F64 => read_items::<f64>(r, marks, out.n_items as usize, out, registry),
+        ORC_TYPE_U8 => {
+            read_scalar_or_aggregate!(u8, n_components, r, marks, n_items, out, registry)
+        }
+        ORC_TYPE_U16 => {
+            read_scalar_or_aggregate!(u16, n_components, r, marks, n_items, out, registry)
+        }
+        ORC_TYPE_U32 => {
+            read_scalar_or_aggregate!(u32, n_components, r, marks, n_items, out, registry)
+        }
+        ORC_TYPE_U64 => {
+            read_scalar_or_aggregate!(u64, n_components, r, marks, n_items, out, registry)
+        }
+        ORC_TYPE_I8 => {
+            read_scalar_or_aggregate!(i8, n_components, r, marks, n_items, out, registry)
+        }
+        ORC_TYPE_I16 => {
+            read_scalar_or_aggregate!(i16, n_components, r, marks, n_items, out, registry)
+        }
+        ORC_TYPE_I32 => {
+            read_scalar_or_aggregate!(i32, n_components, r, marks, n_items, out, registry)
+        }
+        ORC_TYPE_I64 => {
+            read_scalar_or_aggregate!(i64, n_components, r, marks, n_items, out, registry)
+        }
+        ORC_TYPE_F32 => {
+            read_scalar_or_aggregate!(f32, n_components, r, marks, n_items, out, registry)
+        }
+        ORC_TYPE_F64 => {
+            read_scalar_or_aggregate!(f64, n_components, r, marks, n_items, out, registry)
+        }
         _ => unreachable!(),
     };
     result.map_err(|_| Vec::new())?;
@@ -910,7 +999,7 @@ pub fn to_str_deck<T: TOrcData + Display>(
     out: &mut Deck<u8>,
 ) -> Result<(), Error> {
     out.clear();
-    let items = input.items::<T>();
+    let items = input.items::<T>()?;
     let mut comb = Combinations::from_handles(std::slice::from_ref(input), &[0], &[1])?;
     let mut buf = String::new();
     loop {
@@ -1502,7 +1591,7 @@ mod tests {
         reg.alloc_with_value(Some(deck), &mut h).unwrap();
         // The handle should reflect the new data, not be cleared.
         assert_eq!(h.n_items, 3);
-        let items = h.items::<f64>();
+        let items = h.items::<f64>().unwrap();
         assert_eq!(items, &[1.0, 2.0, 3.0]);
         disarm(&mut h);
     }
@@ -1710,8 +1799,58 @@ mod tests {
         try_deserialize_handle(&mut cursor, &mut out, &reg).unwrap();
         assert_eq!(out.type_id, h.type_id);
         assert_eq!(out.n_items, 3);
-        assert_eq!(out.items::<f64>(), &[1.0, 2.0, 3.0]);
+        assert_eq!(out.items::<f64>().unwrap(), &[1.0, 2.0, 3.0]);
         disarm(&mut out);
+    }
+
+    #[test]
+    fn t_try_serialize_round_trip_aggregate_f64x3() {
+        // An aggregate shares its scalar's type_id (F64), distinguished only by item_size -- the
+        // deserialize fast path has to recognize that and materialize `Deck<[f64; 3]>`, not
+        // silently truncate to a plain `Deck<f64>` or defer as if this were a plugin-owned type.
+        let reg = DeckRegistry::new();
+        let mut d = Deck::<[f64; 3]>::default();
+        d.push([1.0, 2.0, 3.0], 1);
+        d.push([4.0, 5.0, 6.0], 0);
+        let h = serial_make_handle(&d);
+        assert_eq!(h.item_size, size_of::<[f64; 3]>() as u64);
+        let mut buf = Vec::new();
+        try_serialize_handle(&h, &mut buf).unwrap();
+        let mut out = serial_fresh_handle(serial_next_id());
+        let mut cursor = std::io::Cursor::new(&buf[..]);
+        try_deserialize_handle(&mut cursor, &mut out, &reg).unwrap();
+        assert_eq!(out.type_id, h.type_id);
+        assert_eq!(out.item_size, size_of::<[f64; 3]>() as u64);
+        assert_eq!(out.n_items, 2);
+        assert_eq!(
+            out.items::<[f64; 3]>().unwrap(),
+            &[[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]
+        );
+        disarm(&mut out);
+    }
+
+    #[test]
+    fn t_try_deserialize_rejects_malformed_item_size() {
+        // item_size for a recognized primitive type_id (F64) that isn't a multiple of the
+        // scalar's size is corrupt data, not a deferrable custom type -- must be a hard failure
+        // (`Err` with empty marks), not `Err(marks)` implying some plugin could pick it up.
+        let reg = DeckRegistry::new();
+        let d: Deck<f64> = deck![1.0, 2.0];
+        let h = serial_make_handle(&d);
+        let mut buf = Vec::new();
+        try_serialize_handle(&h, &mut buf).unwrap();
+        // Corrupt the serialized item_size field to something that isn't a multiple of
+        // sizeof(f64). Header layout: version(8) + type_id(8) + dims(28) + n_items(8) +
+        // item_size(8) + ...
+        let item_size_offset = 8 + 8 + size_of::<crate::OrcDims>() + 8;
+        buf[item_size_offset..item_size_offset + 8].copy_from_slice(&12u64.to_ne_bytes());
+        let mut out = serial_fresh_handle(serial_next_id());
+        let mut cursor = std::io::Cursor::new(&buf[..]);
+        let err = try_deserialize_handle(&mut cursor, &mut out, &reg).unwrap_err();
+        assert!(
+            err.is_empty(),
+            "malformed item_size must not defer via Err(marks)"
+        );
     }
 
     #[test]
@@ -1728,7 +1867,7 @@ mod tests {
                 try_deserialize_handle(&mut cursor, &mut out, &reg).unwrap();
                 assert_eq!(out.type_id, <$ty as TOrcData>::TYPE_INFO.type_id);
                 let expected: &[$ty] = &[$($v),+];
-                assert_eq!(out.items::<$ty>(), expected);
+                assert_eq!(out.items::<$ty>().unwrap(), expected);
                 disarm(&mut out);
             }};
         }
@@ -1755,7 +1894,7 @@ mod tests {
         let mut out = serial_fresh_handle(serial_next_id());
         let mut cursor = std::io::Cursor::new(&buf[..]);
         try_deserialize_handle(&mut cursor, &mut out, &reg).unwrap();
-        assert_eq!(out.items::<f64>(), &[1.0, 2.0, 3.0]);
+        assert_eq!(out.items::<f64>().unwrap(), &[1.0, 2.0, 3.0]);
         assert_eq!(out.n_marks, h.n_marks);
         let orig_marks = unsafe { slice_from_ptr(h.marks, h.n_marks as usize) };
         let out_marks = unsafe { slice_from_ptr(out.marks, out.n_marks as usize) };

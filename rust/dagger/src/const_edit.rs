@@ -6,9 +6,11 @@
 
 use crate::state::EditorState;
 use orc_sdk::{
-    NH, NodeInfo, ORC_TYPE_F64, ORC_TYPE_I64, OrcHandle, OrcMark, TypeOwner,
-    update_handle_from_deck,
+    NH, NodeInfo, ORC_TYPE_F32, ORC_TYPE_F64, ORC_TYPE_I8, ORC_TYPE_I16, ORC_TYPE_I32,
+    ORC_TYPE_I64, ORC_TYPE_U8, ORC_TYPE_U16, ORC_TYPE_U32, ORC_TYPE_U64, OrcHandle, OrcMark,
+    TypeOwner, update_handle_from_deck,
 };
+use std::mem::size_of;
 
 const TAB_WIDTH: usize = 3;
 
@@ -141,11 +143,23 @@ pub(crate) fn deck_rows(n_items: usize, marks: &[OrcMark]) -> Vec<Row> {
 /// how to parse/format (`f64` or `i64` today). A plugin-owned type's storage lives entirely on
 /// the other side of the FFI boundary -- possibly not even Rust -- so there is no `with_mut` to
 /// borrow it through at all; those constants stay read-only, same as before this feature existed.
+///
+/// `item_size` must match the scalar exactly, not just be a multiple of it: an aggregate (e.g. an
+/// F64x3 handle, which shares F64's type_id) would otherwise be treated as if it were a plain list
+/// of scalars, and this editor would show one text box per aggregate item holding only that
+/// item's first component, silently discarding the rest.
 pub(crate) fn is_editable(handle: &OrcHandle) -> bool {
-    matches!(
+    if !matches!(
         crate::PLUGIN_SET.get_type_owner(handle.type_id),
         Some(TypeOwner::BuiltIn(_))
-    ) && matches!(handle.type_id, ORC_TYPE_F64 | ORC_TYPE_I64)
+    ) {
+        return false;
+    }
+    match handle.type_id {
+        ORC_TYPE_F64 => handle.item_size as usize == size_of::<f64>(),
+        ORC_TYPE_I64 => handle.item_size as usize == size_of::<i64>(),
+        _ => false,
+    }
 }
 
 /// The same collapsed-ruler text `Inspect` shows for arbitrary connected data, used for a
@@ -173,9 +187,46 @@ pub(crate) struct ConstEditCache {
 }
 
 fn format_item(handle: &OrcHandle, index: usize) -> String {
+    // TODO: this whole function is questionable. I am not sure why we're manually formatting each
+    // item here, instead of making use of the ABI provided deck_to_str. For now, I am adding these
+    // unwraps to get this compiling. Intending to get rid of these unwraps, and generally rewrite
+    // this part of the code to just use the ABI for string conversion instead of doing it's own.
+    //
+    // Each arm's guard requires item_size to match that scalar exactly, not just be a multiple of
+    // it, so an aggregate sharing a scalar's type_id (e.g. F64x3) falls through to the `_` arm
+    // instead of having its first component read out and displayed as if it were the whole item.
     match handle.type_id {
-        ORC_TYPE_I64 => handle.items::<i64>()[index].to_string(),
-        _ => handle.items::<f64>()[index].to_string(),
+        ORC_TYPE_U8 if handle.item_size as usize == size_of::<u8>() => {
+            handle.items::<u8>().unwrap()[index].to_string()
+        }
+        ORC_TYPE_U16 if handle.item_size as usize == size_of::<u16>() => {
+            handle.items::<u16>().unwrap()[index].to_string()
+        }
+        ORC_TYPE_U32 if handle.item_size as usize == size_of::<u32>() => {
+            handle.items::<u32>().unwrap()[index].to_string()
+        }
+        ORC_TYPE_U64 if handle.item_size as usize == size_of::<u64>() => {
+            handle.items::<u64>().unwrap()[index].to_string()
+        }
+        ORC_TYPE_F32 if handle.item_size as usize == size_of::<f32>() => {
+            handle.items::<f32>().unwrap()[index].to_string()
+        }
+        ORC_TYPE_F64 if handle.item_size as usize == size_of::<f64>() => {
+            handle.items::<f64>().unwrap()[index].to_string()
+        }
+        ORC_TYPE_I8 if handle.item_size as usize == size_of::<i8>() => {
+            handle.items::<i8>().unwrap()[index].to_string()
+        }
+        ORC_TYPE_I16 if handle.item_size as usize == size_of::<i16>() => {
+            handle.items::<i16>().unwrap()[index].to_string()
+        }
+        ORC_TYPE_I32 if handle.item_size as usize == size_of::<i32>() => {
+            handle.items::<i32>().unwrap()[index].to_string()
+        }
+        ORC_TYPE_I64 if handle.item_size as usize == size_of::<i64>() => {
+            handle.items::<i64>().unwrap()[index].to_string()
+        }
+        _ => "<item>".to_string(),
     }
 }
 
@@ -329,15 +380,22 @@ pub fn insert_after(state: &mut EditorState, nh: NH, after_index: usize) {
         return;
     }
     let type_id = handle.type_id;
+
+    // TODO: I am temporarily tolerating some unwraps in below code. We should get rid of them
+    // later. We should rewrite this part of the code a little differently. We're doing things in
+    // strange and manual ways. We should just maintain a list of strings and marks, editable and
+    // coupled with the UI, and convert all that to a deck when the changes are commited. The LLM
+    // generated all this overcomplicated nonsense instead. We should get rid of this.
+
     // Copied out (constants are small) rather than borrowed, since `alloc_with_value` below
     // needs `&mut handle` while these would otherwise still be borrowing from it.
     let marks = handle.marks().to_vec();
     let alloc_result = if type_id == ORC_TYPE_I64 {
-        let items = handle.items::<i64>().to_vec();
+        let items = handle.items::<i64>().unwrap().to_vec();
         let new_deck = rebuild_with_insertion(&items, &marks, after_index, 0i64);
         crate::REGISTRY.alloc_with_value(Some(new_deck), handle)
     } else {
-        let items = handle.items::<f64>().to_vec();
+        let items = handle.items::<f64>().unwrap().to_vec();
         let new_deck = rebuild_with_insertion(&items, &marks, after_index, 0.0f64);
         crate::REGISTRY.alloc_with_value(Some(new_deck), handle)
     };
@@ -400,12 +458,19 @@ pub fn delete_row(state: &mut EditorState, nh: NH, delete_index: usize) {
     }
     let type_id = handle.type_id;
     let marks = handle.marks().to_vec();
+
+    // TODO: I am temporarily tolerating some unwraps in below code. We should get rid of them
+    // later. We should rewrite this part of the code a little differently. We're doing things in
+    // strange and manual ways. We should just maintain a list of strings and marks, editable and
+    // coupled with the UI, and convert all that to a deck when the changes are commited. The LLM
+    // generated all this overcomplicated nonsense instead. We should get rid of this.
+
     let alloc_result = if type_id == ORC_TYPE_I64 {
-        let items = handle.items::<i64>().to_vec();
+        let items = handle.items::<i64>().unwrap().to_vec();
         let new_deck = rebuild_with_deletion(&items, &marks, delete_index);
         crate::REGISTRY.alloc_with_value(Some(new_deck), handle)
     } else {
-        let items = handle.items::<f64>().to_vec();
+        let items = handle.items::<f64>().unwrap().to_vec();
         let new_deck = rebuild_with_deletion(&items, &marks, delete_index);
         crate::REGISTRY.alloc_with_value(Some(new_deck), handle)
     };
@@ -603,7 +668,7 @@ mod test {
         let NodeInfo::Constant(handle) = &node_infos[nh] else {
             panic!("expected a constant node")
         };
-        assert_eq!(handle.items::<f64>(), &[1.0, 42.5]);
+        assert_eq!(handle.items::<f64>().unwrap(), &[1.0, 42.5]);
         assert!(
             state.dirty,
             "committing a value must mark the workflow dirty"
@@ -626,7 +691,11 @@ mod test {
         let NodeInfo::Constant(handle) = &node_infos[nh] else {
             panic!("expected a constant node")
         };
-        assert_eq!(handle.items::<f64>(), &[7.0], "the deck must be unchanged");
+        assert_eq!(
+            handle.items::<f64>().unwrap(),
+            &[7.0],
+            "the deck must be unchanged"
+        );
         assert_eq!(
             state.const_edit_cache.try_borrow().unwrap()[nh].buffers[0],
             "7"
@@ -652,7 +721,7 @@ mod test {
         let NodeInfo::Constant(handle) = &node_infos[nh] else {
             panic!("expected a constant node")
         };
-        handle.items::<i64>().to_vec()
+        handle.items::<i64>().unwrap().to_vec()
     }
 
     /// The `ORC_TYPE_I64` branch is a distinct code path in `commit_row`/`insert_after`/
@@ -722,7 +791,7 @@ mod test {
         let NodeInfo::Constant(handle) = &node_infos[nh] else {
             panic!("expected a constant node")
         };
-        handle.items::<f64>().to_vec()
+        handle.items::<f64>().unwrap().to_vec()
     }
 
     fn n_marks_of(state: &EditorState, nh: NH) -> u64 {
@@ -872,7 +941,7 @@ mod test {
         commit_row(&mut state, nh, 0);
 
         let computed = state.computed_outputs.try_borrow().unwrap();
-        assert_eq!(computed[oh].items::<f64>(), &[99.0]);
+        assert_eq!(computed[oh].items::<f64>().unwrap(), &[99.0]);
         assert!(state.dirty_version.try_borrow().unwrap()[nh] > version_before);
     }
 }

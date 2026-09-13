@@ -115,7 +115,9 @@ fn read_deck(py: Python<'_>, handle: &Handle) -> PyResult<PyObject> {
     let handle = &handle.inner;
     macro_rules! read_typed {
         ($T:ty) => {{
-            let items: &[$T] = handle.items::<$T>();
+            let items: &[$T] = handle
+                .items::<$T>()
+                .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("{}", e)))?;
             let py_items: Vec<PyObject> = items
                 .iter()
                 .map(|v| Ok(v.into_pyobject(py)?.into_any().unbind()))

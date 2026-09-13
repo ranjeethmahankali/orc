@@ -345,10 +345,6 @@ unsafe extern "C" {
     pub fn orc_plugin_init(host: *const OrcHost, plugin_data_out: *mut OrcPlugin) -> OrcError;
 }
 unsafe extern "C" {
-    #[doc = "The host may call this function to allocate a deck for this handle. The plugin must\nrespect the `out->handle` property. It must not be modified, and must be used as a key to\npoint to the allocated data, until `orc_deck_free` is called, with the same `handle`\nproperty."]
-    pub fn orc_deck_alloc(id: OrcTypeId, out: *mut OrcHandle) -> OrcError;
-}
-unsafe extern "C" {
     pub fn orc_deck_free(handle: *mut OrcHandle) -> OrcError;
 }
 unsafe extern "C" {

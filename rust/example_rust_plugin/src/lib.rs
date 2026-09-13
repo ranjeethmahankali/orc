@@ -2,9 +2,9 @@ use complex::Complex;
 use orc_sdk::{
     Deck, DeckRegistry, Error, HostCallbacks, ORC_ABI_VERSION, ORC_TYPE_F32, ORC_TYPE_F64,
     ORC_TYPE_I8, ORC_TYPE_I16, ORC_TYPE_I32, ORC_TYPE_I64, ORC_TYPE_U8, ORC_TYPE_U16, ORC_TYPE_U32,
-    ORC_TYPE_U64, OrcFuncInfo, OrcHandle, OrcHost, OrcHostCallbackAPI, OrcPlugin, OrcTypeId,
-    OrcTypeInfo, ProxyType, TOrcData, TOrcPluginAdaptor, deck_from_proxy, orc_fn_info, orc_plugin,
-    reset_handle, to_str_deck,
+    ORC_TYPE_U64, OrcFuncInfo, OrcHandle, OrcHost, OrcHostCallbackAPI, OrcPlugin, OrcTypeInfo,
+    ProxyType, TOrcData, TOrcPluginAdaptor, deck_from_proxy, orc_fn_info, orc_plugin, reset_handle,
+    to_str_deck,
 };
 use std::sync::{LazyLock, OnceLock};
 
@@ -49,23 +49,6 @@ impl TOrcPluginAdaptor for Adaptor {
         out.n_functions = ORC_EXPORTED_FUNCTIONS.len() as u64;
         out.functions = ORC_EXPORTED_FUNCTIONS.as_ptr();
         Ok(())
-    }
-
-    fn deck_alloc(type_id: OrcTypeId, handle: &mut OrcHandle) -> Result<(), Error> {
-        match type_id {
-            ORC_TYPE_U8 => REGISTRY.alloc::<u8>(handle),
-            ORC_TYPE_U16 => REGISTRY.alloc::<u16>(handle),
-            ORC_TYPE_U32 => REGISTRY.alloc::<u32>(handle),
-            ORC_TYPE_U64 => REGISTRY.alloc::<u64>(handle),
-            ORC_TYPE_I8 => REGISTRY.alloc::<i8>(handle),
-            ORC_TYPE_I16 => REGISTRY.alloc::<i16>(handle),
-            ORC_TYPE_I32 => REGISTRY.alloc::<i32>(handle),
-            ORC_TYPE_I64 => REGISTRY.alloc::<i64>(handle),
-            ORC_TYPE_F32 => REGISTRY.alloc::<f32>(handle),
-            ORC_TYPE_F64 => REGISTRY.alloc::<f64>(handle),
-            complex::COMPLEX_NUM_TYPE_ID => REGISTRY.alloc::<complex::Complex>(handle),
-            _ => Err(Error::DeckTypeMismatch),
-        }
     }
 
     fn deck_free(handle: &mut OrcHandle) -> Result<(), Error> {
@@ -118,7 +101,7 @@ impl TOrcPluginAdaptor for Adaptor {
         // Header already written by try_serialize_handle. Write custom item data.
         match handle.type_id {
             complex::COMPLEX_NUM_TYPE_ID => {
-                let items = handle.items::<Complex>();
+                let items = handle.items::<Complex>()?;
                 let n_serialized =
                     Complex::serialize(items, write).map_err(|_| Error::SerializationError)?;
                 if n_serialized != items.len() {
@@ -201,6 +184,7 @@ const ORC_EXPORTED_FUNCTIONS: &[OrcFuncInfo] = &[
     orc_fn_info!(basic::divide),
     orc_fn_info!(basic::repeat_list),
     orc_fn_info!(basic::collatz_parallel_experiment),
+    orc_fn_info!(basic::vec3_length),
     // Complex numbers.
     orc_fn_info!(complex::create_complex),
     orc_fn_info!(complex::add_complex),
@@ -265,7 +249,7 @@ mod tests {
         let out = deserialize_handle(&buf, next_id());
         assert_eq!(out.type_id, ORC_TYPE_F64);
         assert_eq!(out.n_items, 3);
-        assert_eq!(out.items::<f64>(), &[1.0, 2.0, 3.0]);
+        assert_eq!(out.items::<f64>().unwrap(), &[1.0, 2.0, 3.0]);
     }
 
     #[test]
@@ -276,7 +260,7 @@ mod tests {
         let out = deserialize_handle(&buf, next_id());
         assert_eq!(out.type_id, ORC_TYPE_I32);
         assert_eq!(out.n_items, 4);
-        assert_eq!(out.items::<i32>(), &[10, 20, 30, 40]);
+        assert_eq!(out.items::<i32>().unwrap(), &[10, 20, 30, 40]);
     }
 
     #[test]
@@ -286,7 +270,7 @@ mod tests {
         let buf = serialize_handle(&h);
         let out = deserialize_handle(&buf, next_id());
         assert_eq!(out.type_id, ORC_TYPE_U8);
-        assert_eq!(out.items::<u8>(), &[255, 0, 128]);
+        assert_eq!(out.items::<u8>().unwrap(), &[255, 0, 128]);
     }
 
     #[test]
@@ -298,7 +282,7 @@ mod tests {
         let out = deserialize_handle(&buf, next_id());
         assert_eq!(out.type_id, ORC_TYPE_F64);
         assert_eq!(out.n_items, 3);
-        assert_eq!(out.items::<f64>(), &[1.0, 2.0, 3.0]);
+        assert_eq!(out.items::<f64>().unwrap(), &[1.0, 2.0, 3.0]);
         assert_eq!(out.n_marks, h.n_marks);
         let orig_marks = unsafe { std::slice::from_raw_parts(h.marks, h.n_marks as usize) };
         let out_marks = unsafe { std::slice::from_raw_parts(out.marks, out.n_marks as usize) };
@@ -328,7 +312,7 @@ mod tests {
         let out = deserialize_handle(&buf, next_id());
         assert_eq!(out.type_id, complex::COMPLEX_NUM_TYPE_ID);
         assert_eq!(out.n_items, 2);
-        assert_eq!(out.items::<Complex>(), deck.items());
+        assert_eq!(out.items::<Complex>().unwrap(), deck.items());
     }
 
     #[test]
@@ -376,57 +360,6 @@ mod tests {
         assert!(result.is_err());
     }
 
-    // ==================== deck_alloc / deck_free ====================
-
-    #[test]
-    fn t_deck_alloc_f64() {
-        let mut h = out_handle();
-        Adaptor::deck_alloc(ORC_TYPE_F64, &mut h).unwrap();
-        assert_eq!(h.type_id, ORC_TYPE_F64);
-        assert_eq!(h.item_size, size_of::<f64>() as u64);
-        assert_eq!(h.n_items, 0);
-        assert!(h.free_fn.is_some());
-        Adaptor::deck_free(&mut h).unwrap();
-        assert!(h.items.is_null());
-    }
-
-    #[test]
-    fn t_deck_alloc_complex() {
-        let mut h = out_handle();
-        Adaptor::deck_alloc(complex::COMPLEX_NUM_TYPE_ID, &mut h).unwrap();
-        assert_eq!(h.type_id, complex::COMPLEX_NUM_TYPE_ID);
-        assert_eq!(h.item_size, size_of::<Complex>() as u64);
-        Adaptor::deck_free(&mut h).unwrap();
-    }
-
-    #[test]
-    fn t_deck_alloc_unknown_type_fails() {
-        let mut h = out_handle();
-        let result = Adaptor::deck_alloc(0xDEAD, &mut h);
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn t_deck_alloc_preserves_handle_id() {
-        let mut h = out_handle();
-        let expected_id = h.handle;
-        Adaptor::deck_alloc(ORC_TYPE_I32, &mut h).unwrap();
-        assert_eq!(h.handle, expected_id);
-        Adaptor::deck_free(&mut h).unwrap();
-    }
-
-    #[test]
-    fn t_deck_free_sets_null() {
-        let mut h = out_handle();
-        Adaptor::deck_alloc(ORC_TYPE_F32, &mut h).unwrap();
-        assert!(h.free_fn.is_some());
-        Adaptor::deck_free(&mut h).unwrap();
-        assert!(h.items.is_null());
-        assert!(h.marks.is_null());
-        assert_eq!(h.n_items, 0);
-        assert_eq!(h.type_id, 0);
-    }
-
     // ==================== all primitive types round-trip ====================
 
     #[test]
@@ -440,7 +373,7 @@ mod tests {
                 let out = deserialize_handle(&buf, next_id());
                 assert_eq!(out.type_id, <$ty as TOrcData>::TYPE_INFO.type_id);
                 let expected: &[$ty] = &[$($v),+];
-                assert_eq!(out.items::<$ty>(), expected);
+                assert_eq!(out.items::<$ty>().unwrap(), expected);
             }};
         }
         test_type!(u8, [1, 2, 3]);

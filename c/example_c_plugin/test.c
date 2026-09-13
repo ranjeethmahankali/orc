@@ -29,7 +29,7 @@ static void test_list_length_basic(void)
   OrcHandle in = {0}, out = {0};
   in.handle  = 1;
   out.handle = 2;
-  orc_sdk_handle_alloc(ORC_TYPE_F64, &in);
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(double), &in);
   ORC_SDK_DECK_INIT(in.items, double, ((1.0, 2.0, 3.0), (4.0, 5.0)));
   orc_sdk_oh_update(&in);
   CALL_LIST_LENGTH(in, out);
@@ -48,7 +48,7 @@ static void test_list_length_with_empty_lists(void)
   OrcHandle in = {0}, out = {0};
   in.handle  = 1;
   out.handle = 2;
-  orc_sdk_handle_alloc(ORC_TYPE_F64, &in);
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(double), &in);
   ORC_SDK_DECK_INIT(in.items, double, ((), (1.0), ()));
   orc_sdk_oh_update(&in);
   CALL_LIST_LENGTH(in, out);
@@ -68,7 +68,7 @@ static void test_list_length_single_list(void)
   OrcHandle in = {0}, out = {0};
   in.handle  = 1;
   out.handle = 2;
-  orc_sdk_handle_alloc(ORC_TYPE_F64, &in);
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(double), &in);
   ORC_SDK_DECK_INIT(in.items, double, ((42.0)));
   orc_sdk_oh_update(&in);
   CALL_LIST_LENGTH(in, out);
@@ -88,7 +88,7 @@ static void test_list_length_depth3(void)
   OrcHandle in = {0}, out = {0};
   in.handle  = 1;
   out.handle = 2;
-  orc_sdk_handle_alloc(ORC_TYPE_F64, &in);
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(double), &in);
   ORC_SDK_DECK_INIT(in.items, double, (((1.0, 2.0), (3.0)), ((4.0, 5.0, 6.0))));
   orc_sdk_oh_update(&in);
   CALL_LIST_LENGTH(in, out);
@@ -112,7 +112,7 @@ static void test_list_length_wrong_n_inputs(void)
   OrcHandle in = {0}, out = {0};
   in.handle  = 1;
   out.handle = 2;
-  orc_sdk_handle_alloc(ORC_TYPE_F64, &in);
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(double), &in);
   ORC_SDK_DECK_INIT(in.items, double, ((1.0)));
   orc_sdk_oh_update(&in);
   LIST_LENGTH_INFO.func(0, &in, 2, &out, 1);
@@ -128,7 +128,7 @@ static void test_list_length_wrong_n_outputs(void)
   OrcHandle in = {0}, out = {0};
   in.handle  = 1;
   out.handle = 2;
-  orc_sdk_handle_alloc(ORC_TYPE_F64, &in);
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(double), &in);
   ORC_SDK_DECK_INIT(in.items, double, ((1.0)));
   orc_sdk_oh_update(&in);
   LIST_LENGTH_INFO.func(0, &in, 1, &out, 2);
@@ -154,7 +154,7 @@ static void test_list_length_null_output_ptr(void)
   orc_sdk_init(NULL, NULL);
   OrcHandle in = {0};
   in.handle    = 1;
-  orc_sdk_handle_alloc(ORC_TYPE_F64, &in);
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(double), &in);
   ORC_SDK_DECK_INIT(in.items, double, ((1.0)));
   orc_sdk_oh_update(&in);
   LIST_LENGTH_INFO.func(0, &in, 1, NULL, 1);
@@ -172,7 +172,7 @@ static void test_list_length_output_free_fn_set(void)
   OrcHandle in = {0}, out = {0};
   in.handle  = 1;
   out.handle = 2;
-  orc_sdk_handle_alloc(ORC_TYPE_F64, &in);
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(double), &in);
   ORC_SDK_DECK_INIT(in.items, double, ((1.0)));
   orc_sdk_oh_update(&in);
   CALL_LIST_LENGTH(in, out);
@@ -188,7 +188,7 @@ static void test_list_length_output_id_preserved(void)
   OrcHandle in = {0}, out = {0};
   in.handle  = 1;
   out.handle = 99;
-  orc_sdk_handle_alloc(ORC_TYPE_F64, &in);
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(double), &in);
   ORC_SDK_DECK_INIT(in.items, double, ((1.0)));
   orc_sdk_oh_update(&in);
   CALL_LIST_LENGTH(in, out);
@@ -204,7 +204,7 @@ static void test_list_length_output_is_u64(void)
   OrcHandle in = {0}, out = {0};
   in.handle  = 1;
   out.handle = 2;
-  orc_sdk_handle_alloc(ORC_TYPE_F64, &in);
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(double), &in);
   ORC_SDK_DECK_INIT(in.items, double, ((1.0, 2.0)));
   orc_sdk_oh_update(&in);
   CALL_LIST_LENGTH(in, out);
@@ -220,7 +220,7 @@ static void test_list_length_input_handle_unaffected(void)
   OrcHandle in = {0}, out = {0};
   in.handle  = 1;
   out.handle = 2;
-  orc_sdk_handle_alloc(ORC_TYPE_F64, &in);
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(double), &in);
   ORC_SDK_DECK_INIT(in.items, double, ((1.0, 2.0), (3.0)));
   orc_sdk_oh_update(&in);
   void const *items_before                = in.items;
@@ -241,7 +241,7 @@ static void test_list_length_reuse_output_same_type(void)
   OrcHandle in = {0}, out = {0};
   in.handle  = 1;
   out.handle = 2;
-  orc_sdk_handle_alloc(ORC_TYPE_F64, &in);
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(double), &in);
   /* First call: [[1,2,3],[4,5]] -> [3,2] */
   ORC_SDK_DECK_INIT(in.items, double, ((1.0, 2.0, 3.0), (4.0, 5.0)));
   orc_sdk_oh_update(&in);
@@ -268,9 +268,9 @@ static void test_list_length_output_type_change(void)
   OrcHandle in = {0}, out = {0};
   in.handle  = 1;
   out.handle = 2;
-  orc_sdk_handle_alloc(ORC_TYPE_F64, &in);
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(double), &in);
   /* Pre-allocate output as F64. */
-  orc_sdk_handle_alloc(ORC_TYPE_F64, &out);
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(double), &out);
   TEST_ASSERT_EQUAL_UINT64(ORC_TYPE_F64, out.type_id);
   ORC_SDK_DECK_INIT(in.items, double, ((1.0, 2.0)));
   orc_sdk_oh_update(&in);
@@ -288,7 +288,7 @@ static void test_list_length_clears_previous_output(void)
   OrcHandle in = {0}, out = {0};
   in.handle  = 1;
   out.handle = 2;
-  orc_sdk_handle_alloc(ORC_TYPE_F64, &in);
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(double), &in);
   /* First call: 3 singleton lists -> [1,1,1] */
   ORC_SDK_DECK_INIT(in.items, double, ((1.0), (2.0), (3.0)));
   orc_sdk_oh_update(&in);
@@ -318,7 +318,7 @@ static void test_flatten_deck_basic(void)
   OrcHandle in = {0}, out = {0};
   in.handle  = 1;
   out.handle = 2;
-  orc_sdk_handle_alloc(ORC_TYPE_F64, &in);
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(double), &in);
   ORC_SDK_DECK_INIT(in.items, double, ((1.0, 2.0, 3.0), (4.0, 5.0)));
   orc_sdk_oh_update(&in);
   CALL_FLATTEN_DECK(in, out);
@@ -341,7 +341,7 @@ static void test_flatten_deck_already_flat(void)
   OrcHandle in = {0}, out = {0};
   in.handle  = 1;
   out.handle = 2;
-  orc_sdk_handle_alloc(ORC_TYPE_F64, &in);
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(double), &in);
   ORC_SDK_DECK_INIT(in.items, double, (1.0, 2.0, 3.0));
   orc_sdk_oh_update(&in);
   CALL_FLATTEN_DECK(in, out);
@@ -366,10 +366,10 @@ static void test_flatten_deck_multiple_inputs(void)
   ins[1].handle     = 2;
   outs[0].handle    = 3;
   outs[1].handle    = 4;
-  orc_sdk_handle_alloc(ORC_TYPE_F64, &ins[0]);
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(double), &ins[0]);
   ORC_SDK_DECK_INIT(ins[0].items, double, ((1.0, 2.0), (3.0)));
   orc_sdk_oh_update(&ins[0]);
-  orc_sdk_handle_alloc(ORC_TYPE_F64, &ins[1]);
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(double), &ins[1]);
   ORC_SDK_DECK_INIT(ins[1].items, double, ((4.0, 5.0, 6.0)));
   orc_sdk_oh_update(&ins[1]);
   FLATTEN_DECK_INFO.func(0, ins, 2, outs, 2);
@@ -398,7 +398,7 @@ static void test_flatten_deck_integer_type(void)
   OrcHandle in = {0}, out = {0};
   in.handle  = 1;
   out.handle = 2;
-  orc_sdk_handle_alloc(ORC_TYPE_U32, &in);
+  orc_sdk_handle_alloc(ORC_TYPE_U32, sizeof(uint32_t), &in);
   ORC_SDK_DECK_INIT(in.items, uint32_t, ((10u, 20u), (30u)));
   orc_sdk_oh_update(&in);
   CALL_FLATTEN_DECK(in, out);
@@ -423,7 +423,7 @@ static void test_flatten_deck_mismatched_counts(void)
   OrcHandle in = {0}, out = {0};
   in.handle  = 1;
   out.handle = 2;
-  orc_sdk_handle_alloc(ORC_TYPE_F64, &in);
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(double), &in);
   ORC_SDK_DECK_INIT(in.items, double, ((1.0)));
   orc_sdk_oh_update(&in);
 
@@ -453,7 +453,7 @@ static void test_flatten_deck_null_outputs_ptr(void)
   orc_sdk_init(NULL, NULL);
   OrcHandle in = {0};
   in.handle    = 1;
-  orc_sdk_handle_alloc(ORC_TYPE_F64, &in);
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(double), &in);
   ORC_SDK_DECK_INIT(in.items, double, ((1.0)));
   orc_sdk_oh_update(&in);
 
@@ -492,7 +492,7 @@ static void test_flatten_deck_output_free_fn_set(void)
   OrcHandle in = {0}, out = {0};
   in.handle  = 1;
   out.handle = 2;
-  orc_sdk_handle_alloc(ORC_TYPE_F64, &in);
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(double), &in);
   ORC_SDK_DECK_INIT(in.items, double, ((1.0, 2.0)));
   orc_sdk_oh_update(&in);
 
@@ -510,7 +510,7 @@ static void test_flatten_deck_output_type_matches_input(void)
   OrcHandle in = {0}, out = {0};
   in.handle  = 1;
   out.handle = 2;
-  orc_sdk_handle_alloc(ORC_TYPE_F32, &in);
+  orc_sdk_handle_alloc(ORC_TYPE_F32, sizeof(float), &in);
   ORC_SDK_DECK_INIT(in.items, float, ((1.0f, 2.0f)));
   orc_sdk_oh_update(&in);
 
@@ -528,7 +528,7 @@ static void test_flatten_deck_output_handle_preserved(void)
   OrcHandle in = {0}, out = {0};
   in.handle  = 1;
   out.handle = 99;
-  orc_sdk_handle_alloc(ORC_TYPE_F64, &in);
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(double), &in);
   ORC_SDK_DECK_INIT(in.items, double, ((1.0)));
   orc_sdk_oh_update(&in);
 
@@ -546,7 +546,7 @@ static void test_flatten_deck_dims_preserved(void)
   OrcHandle in = {0}, out = {0};
   in.handle  = 1;
   out.handle = 2;
-  orc_sdk_handle_alloc(ORC_TYPE_F64, &in);
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(double), &in);
   /* Set dims after alloc — alloc zeroes them. */
   in.dims[ORC_DIM_LENGTH] = 1;
   in.dims[ORC_DIM_TIME]   = -2;
@@ -614,7 +614,7 @@ static void test_serialize_round_trip_f64_flat(void)
   _init_sdk_with_serial_write();
   OrcHandle h = {0};
   h.handle    = 1;
-  orc_sdk_handle_alloc(ORC_TYPE_F64, &h);
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(double), &h);
   ORC_SDK_DECK_INIT(h.items, double, (1.0, 2.0, 3.0));
   orc_sdk_oh_update(&h);
   char     *buf = _serialize_handle(&h);
@@ -630,12 +630,48 @@ static void test_serialize_round_trip_f64_flat(void)
   orc_sdk_arr_free(buf);
 }
 
+typedef struct
+{
+  double x, y, z;
+} _Vec3;
+
+/* Full round trip for an aggregate (item_size=24, 3 doubles/item) deck through the plugin
+   ABI's own orc_deck_serialize/orc_deck_deserialize -- closes the gap noted in
+   PROJECT.org where every existing case here used item_size == sizeof(scalar). */
+static void test_serialize_round_trip_f64_aggregate(void)
+{
+  _init_sdk_with_serial_write();
+  OrcHandle h = {0};
+  h.handle    = 1;
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(_Vec3), &h);
+  _Vec3 *vdeck = (_Vec3 *)h.items;
+  orc_sdk_deck_push(vdeck, ((_Vec3) {1.0, 2.0, 3.0}), 1);
+  orc_sdk_deck_push(vdeck, ((_Vec3) {4.0, 5.0, 6.0}), 0);
+  h.items = vdeck;
+  orc_sdk_oh_update(&h);
+  char     *buf = _serialize_handle(&h);
+  OrcHandle out = _deserialize_handle(buf, orc_sdk_arr_len(buf), 10);
+  TEST_ASSERT_EQUAL_UINT64(ORC_TYPE_F64, out.type_id);
+  TEST_ASSERT_EQUAL_UINT64(sizeof(_Vec3), out.item_size);
+  TEST_ASSERT_EQUAL_UINT64(2, out.n_items);
+  _Vec3 const *items = (_Vec3 const *)out.items;
+  TEST_ASSERT_EQUAL_DOUBLE(1.0, items[0].x);
+  TEST_ASSERT_EQUAL_DOUBLE(2.0, items[0].y);
+  TEST_ASSERT_EQUAL_DOUBLE(3.0, items[0].z);
+  TEST_ASSERT_EQUAL_DOUBLE(4.0, items[1].x);
+  TEST_ASSERT_EQUAL_DOUBLE(5.0, items[1].y);
+  TEST_ASSERT_EQUAL_DOUBLE(6.0, items[1].z);
+  orc_sdk_handle_free(&h);
+  orc_sdk_handle_free(&out);
+  orc_sdk_arr_free(buf);
+}
+
 static void test_serialize_round_trip_i32_flat(void)
 {
   _init_sdk_with_serial_write();
   OrcHandle h = {0};
   h.handle    = 1;
-  orc_sdk_handle_alloc(ORC_TYPE_I32, &h);
+  orc_sdk_handle_alloc(ORC_TYPE_I32, sizeof(int32_t), &h);
   ORC_SDK_DECK_INIT(h.items, int32_t, (10, 20, 30, 40));
   orc_sdk_oh_update(&h);
   char     *buf = _serialize_handle(&h);
@@ -657,7 +693,7 @@ static void test_serialize_round_trip_u8_flat(void)
   _init_sdk_with_serial_write();
   OrcHandle h = {0};
   h.handle    = 1;
-  orc_sdk_handle_alloc(ORC_TYPE_U8, &h);
+  orc_sdk_handle_alloc(ORC_TYPE_U8, sizeof(uint8_t), &h);
   ORC_SDK_DECK_INIT(h.items, uint8_t, (255, 0, 128));
   orc_sdk_oh_update(&h);
   char     *buf = _serialize_handle(&h);
@@ -678,7 +714,7 @@ static void test_serialize_round_trip_f64_nested(void)
   _init_sdk_with_serial_write();
   OrcHandle h = {0};
   h.handle    = 1;
-  orc_sdk_handle_alloc(ORC_TYPE_F64, &h);
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(double), &h);
   ORC_SDK_DECK_INIT(h.items, double, ((1.0, 2.0), (3.0)));
   orc_sdk_oh_update(&h);
   TEST_ASSERT_TRUE(h.n_marks > 0);
@@ -705,7 +741,7 @@ static void test_serialize_round_trip_empty_deck(void)
   _init_sdk_with_serial_write();
   OrcHandle h = {0};
   h.handle    = 1;
-  orc_sdk_handle_alloc(ORC_TYPE_F32, &h);
+  orc_sdk_handle_alloc(ORC_TYPE_F32, sizeof(float), &h);
   orc_sdk_oh_update(&h);
   TEST_ASSERT_EQUAL_UINT64(0, h.n_items);
   char     *buf = _serialize_handle(&h);
@@ -722,7 +758,7 @@ static void test_serialize_preserves_dims(void)
   _init_sdk_with_serial_write();
   OrcHandle h = {0};
   h.handle    = 1;
-  orc_sdk_handle_alloc(ORC_TYPE_F64, &h);
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(double), &h);
   ORC_SDK_DECK_INIT(h.items, double, (1.0, 2.0));
   h.dims[0] = 1;
   h.dims[1] = -2;
@@ -741,7 +777,7 @@ static void test_deserialize_trailing_bytes_fails(void)
   _init_sdk_with_serial_write();
   OrcHandle h = {0};
   h.handle    = 1;
-  orc_sdk_handle_alloc(ORC_TYPE_I64, &h);
+  orc_sdk_handle_alloc(ORC_TYPE_I64, sizeof(int64_t), &h);
   ORC_SDK_DECK_INIT(h.items, int64_t, (42));
   orc_sdk_oh_update(&h);
   char *buf = _serialize_handle(&h);
@@ -759,7 +795,7 @@ static void test_deserialize_truncated_fails(void)
   _init_sdk_with_serial_write();
   OrcHandle h = {0};
   h.handle    = 1;
-  orc_sdk_handle_alloc(ORC_TYPE_F64, &h);
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(double), &h);
   ORC_SDK_DECK_INIT(h.items, double, (1.0, 2.0, 3.0));
   orc_sdk_oh_update(&h);
   char     *buf      = _serialize_handle(&h);
@@ -787,7 +823,7 @@ static void test_serialize_round_trip_all_primitive_types(void)
   /* u16 */
   {
     OrcHandle h = {.handle = 2};
-    orc_sdk_handle_alloc(ORC_TYPE_U16, &h);
+    orc_sdk_handle_alloc(ORC_TYPE_U16, sizeof(uint16_t), &h);
     ORC_SDK_DECK_INIT(h.items, uint16_t, (100, 200));
     orc_sdk_oh_update(&h);
     char     *buf = _serialize_handle(&h);
@@ -802,7 +838,7 @@ static void test_serialize_round_trip_all_primitive_types(void)
   /* u32 */
   {
     OrcHandle h = {.handle = 3};
-    orc_sdk_handle_alloc(ORC_TYPE_U32, &h);
+    orc_sdk_handle_alloc(ORC_TYPE_U32, sizeof(uint32_t), &h);
     ORC_SDK_DECK_INIT(h.items, uint32_t, (1000, 2000));
     orc_sdk_oh_update(&h);
     char     *buf = _serialize_handle(&h);
@@ -817,7 +853,7 @@ static void test_serialize_round_trip_all_primitive_types(void)
   /* u64 */
   {
     OrcHandle h = {.handle = 4};
-    orc_sdk_handle_alloc(ORC_TYPE_U64, &h);
+    orc_sdk_handle_alloc(ORC_TYPE_U64, sizeof(uint64_t), &h);
     ORC_SDK_DECK_INIT(h.items, uint64_t, (10000, 20000));
     orc_sdk_oh_update(&h);
     char     *buf = _serialize_handle(&h);
@@ -832,7 +868,7 @@ static void test_serialize_round_trip_all_primitive_types(void)
   /* i8 */
   {
     OrcHandle h = {.handle = 5};
-    orc_sdk_handle_alloc(ORC_TYPE_I8, &h);
+    orc_sdk_handle_alloc(ORC_TYPE_I8, sizeof(int8_t), &h);
     ORC_SDK_DECK_INIT(h.items, int8_t, (-1, 0, 1));
     orc_sdk_oh_update(&h);
     char     *buf = _serialize_handle(&h);
@@ -848,7 +884,7 @@ static void test_serialize_round_trip_all_primitive_types(void)
   /* i16 */
   {
     OrcHandle h = {.handle = 6};
-    orc_sdk_handle_alloc(ORC_TYPE_I16, &h);
+    orc_sdk_handle_alloc(ORC_TYPE_I16, sizeof(int16_t), &h);
     ORC_SDK_DECK_INIT(h.items, int16_t, (-100, 0, 100));
     orc_sdk_oh_update(&h);
     char     *buf = _serialize_handle(&h);
@@ -864,7 +900,7 @@ static void test_serialize_round_trip_all_primitive_types(void)
   /* i64 */
   {
     OrcHandle h = {.handle = 7};
-    orc_sdk_handle_alloc(ORC_TYPE_I64, &h);
+    orc_sdk_handle_alloc(ORC_TYPE_I64, sizeof(int64_t), &h);
     ORC_SDK_DECK_INIT(h.items, int64_t, (-10000, 0, 10000));
     orc_sdk_oh_update(&h);
     char     *buf = _serialize_handle(&h);
@@ -880,7 +916,7 @@ static void test_serialize_round_trip_all_primitive_types(void)
   /* f32 */
   {
     OrcHandle h = {.handle = 8};
-    orc_sdk_handle_alloc(ORC_TYPE_F32, &h);
+    orc_sdk_handle_alloc(ORC_TYPE_F32, sizeof(float), &h);
     ORC_SDK_DECK_INIT(h.items, float, (1.5f, -2.5f, 0.0f));
     orc_sdk_oh_update(&h);
     char     *buf = _serialize_handle(&h);
@@ -896,7 +932,7 @@ static void test_serialize_round_trip_all_primitive_types(void)
 }
 
 /* ============================================================
-   orc_deck_alloc / orc_deck_free
+   orc_sdk_handle_alloc / orc_deck_free
    ============================================================ */
 
 static void test_deck_alloc_f64(void)
@@ -904,7 +940,7 @@ static void test_deck_alloc_f64(void)
   orc_sdk_init(NULL, NULL);
   OrcHandle h  = {0};
   h.handle     = 1;
-  OrcError err = orc_deck_alloc(ORC_TYPE_F64, &h);
+  OrcError err = orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(double), &h);
   TEST_ASSERT_EQUAL_UINT64(ORC_ERROR_NONE, err);
   TEST_ASSERT_EQUAL_UINT64(ORC_TYPE_F64, h.type_id);
   TEST_ASSERT_EQUAL_UINT64(sizeof(double), h.item_size);
@@ -918,7 +954,7 @@ static void test_deck_alloc_i32(void)
   orc_sdk_init(NULL, NULL);
   OrcHandle h  = {0};
   h.handle     = 1;
-  OrcError err = orc_deck_alloc(ORC_TYPE_I32, &h);
+  OrcError err = orc_sdk_handle_alloc(ORC_TYPE_I32, sizeof(int32_t), &h);
   TEST_ASSERT_EQUAL_UINT64(ORC_ERROR_NONE, err);
   TEST_ASSERT_EQUAL_UINT64(ORC_TYPE_I32, h.type_id);
   TEST_ASSERT_EQUAL_UINT64(sizeof(int32_t), h.item_size);
@@ -930,7 +966,7 @@ static void test_deck_alloc_preserves_handle_id(void)
   orc_sdk_init(NULL, NULL);
   OrcHandle h = {0};
   h.handle    = 99;
-  orc_deck_alloc(ORC_TYPE_F64, &h);
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(double), &h);
   TEST_ASSERT_EQUAL_UINT64(99, h.handle);
   orc_sdk_handle_free(&h);
 }
@@ -940,7 +976,7 @@ static void test_deck_free_resets_handle(void)
   orc_sdk_init(NULL, NULL);
   OrcHandle h = {0};
   h.handle    = 1;
-  orc_deck_alloc(ORC_TYPE_F32, &h);
+  orc_sdk_handle_alloc(ORC_TYPE_F32, sizeof(float), &h);
   TEST_ASSERT_NOT_NULL(h.free_fn);
   orc_deck_free(&h);
   TEST_ASSERT_NULL(h.items);
@@ -953,9 +989,9 @@ static void test_deck_alloc_reuse_same_type(void)
   orc_sdk_init(NULL, NULL);
   OrcHandle h = {0};
   h.handle    = 1;
-  orc_deck_alloc(ORC_TYPE_F64, &h);
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(double), &h);
   void const *ptr1 = h.items;
-  orc_deck_alloc(ORC_TYPE_F64, &h);
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(double), &h);
   TEST_ASSERT_EQUAL_PTR(ptr1, h.items);
   TEST_ASSERT_EQUAL_UINT64(ORC_TYPE_F64, h.type_id);
   orc_sdk_handle_free(&h);
@@ -966,9 +1002,9 @@ static void test_deck_alloc_type_change(void)
   orc_sdk_init(NULL, NULL);
   OrcHandle h = {0};
   h.handle    = 1;
-  orc_deck_alloc(ORC_TYPE_F64, &h);
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(double), &h);
   TEST_ASSERT_EQUAL_UINT64(ORC_TYPE_F64, h.type_id);
-  orc_deck_alloc(ORC_TYPE_I32, &h);
+  orc_sdk_handle_alloc(ORC_TYPE_I32, sizeof(int32_t), &h);
   TEST_ASSERT_EQUAL_UINT64(ORC_TYPE_I32, h.type_id);
   TEST_ASSERT_EQUAL_UINT64(sizeof(int32_t), h.item_size);
   orc_sdk_handle_free(&h);
@@ -981,7 +1017,7 @@ static void test_deserialize_wrong_item_size_fails(void)
   _init_sdk_with_serial_write();
   OrcHandle h = {0};
   h.handle    = 1;
-  orc_sdk_handle_alloc(ORC_TYPE_F64, &h);
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(double), &h);
   ORC_SDK_DECK_INIT(h.items, double, (1.0, 2.0));
   orc_sdk_oh_update(&h);
   char  *buf     = _serialize_handle(&h);
@@ -1005,7 +1041,7 @@ static void test_deserialize_invalid_type_id_fails(void)
   _init_sdk_with_serial_write();
   OrcHandle h = {0};
   h.handle    = 1;
-  orc_sdk_handle_alloc(ORC_TYPE_F64, &h);
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(double), &h);
   ORC_SDK_DECK_INIT(h.items, double, (1.0));
   orc_sdk_oh_update(&h);
   char  *buf     = _serialize_handle(&h);
@@ -1029,7 +1065,7 @@ static void test_deserialize_error_cleans_up(void)
   _init_sdk_with_serial_write();
   OrcHandle h = {0};
   h.handle    = 1;
-  orc_sdk_handle_alloc(ORC_TYPE_F64, &h);
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(double), &h);
   ORC_SDK_DECK_INIT(h.items, double, (1.0, 2.0, 3.0));
   orc_sdk_oh_update(&h);
   char  *buf     = _serialize_handle(&h);
@@ -1037,15 +1073,15 @@ static void test_deserialize_error_cleans_up(void)
   /* Truncate to break deserialization after header is parsed (deck alloc
      will succeed but item read will fail). Keep enough for header + marks
      but cut off the item data. */
-  size_t truncated = buf_len - 1;
-  OrcHandle out    = {0};
-  out.handle       = 10;
-  OrcError err     = orc_deck_deserialize(0, buf, truncated, &out);
+  size_t    truncated = buf_len - 1;
+  OrcHandle out       = {0};
+  out.handle          = 10;
+  OrcError err        = orc_deck_deserialize(0, buf, truncated, &out);
   TEST_ASSERT_TRUE(err != ORC_ERROR_NONE);
   /* The handle should be cleaned up — verify we can reuse the same handle id. */
   OrcHandle fresh = {0};
   fresh.handle    = 10;
-  err = orc_sdk_handle_alloc(ORC_TYPE_F64, &fresh);
+  err             = orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(double), &fresh);
   TEST_ASSERT_EQUAL_UINT64(ORC_ERROR_NONE, err);
   orc_sdk_handle_free(&fresh);
   orc_sdk_handle_free(&h);
@@ -1085,6 +1121,7 @@ int main(void)
   RUN_TEST(test_flatten_deck_output_handle_preserved);
   RUN_TEST(test_flatten_deck_dims_preserved);
   RUN_TEST(test_serialize_round_trip_f64_flat);
+  RUN_TEST(test_serialize_round_trip_f64_aggregate);
   RUN_TEST(test_serialize_round_trip_i32_flat);
   RUN_TEST(test_serialize_round_trip_u8_flat);
   RUN_TEST(test_serialize_round_trip_f64_nested);

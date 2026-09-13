@@ -160,7 +160,7 @@ mod tests {
         let inputs = [lhs, rhs];
         unsafe { add_complex(0, inputs.as_ptr(), 2, &mut out, 1) };
         assert_eq!(
-            out.items::<Complex>(),
+            out.items::<Complex>().unwrap(),
             &[
                 Complex {
                     real: 11.0,
@@ -183,7 +183,7 @@ mod tests {
         let inputs = [lhs, rhs];
         unsafe { add_complex(0, inputs.as_ptr(), 2, &mut out, 1) };
         assert_eq!(
-            out.items::<Complex>(),
+            out.items::<Complex>().unwrap(),
             &[
                 Complex {
                     real: 5.0,
@@ -211,7 +211,7 @@ mod tests {
         let inputs = [lhs, rhs];
         unsafe { add_complex(0, inputs.as_ptr(), 2, &mut out, 1) };
         assert_eq!(
-            out.items::<Complex>(),
+            out.items::<Complex>().unwrap(),
             &[
                 Complex {
                     real: 1.0,
@@ -267,7 +267,7 @@ mod tests {
         let inputs = [lhs, rhs];
         unsafe { mul_complex(0, inputs.as_ptr(), 2, &mut out, 1) };
         assert_eq!(
-            out.items::<Complex>(),
+            out.items::<Complex>().unwrap(),
             &[
                 Complex {
                     real: -5.0,
@@ -290,7 +290,7 @@ mod tests {
         let inputs = [lhs, rhs];
         unsafe { mul_complex(0, inputs.as_ptr(), 2, &mut out, 1) };
         assert_eq!(
-            out.items::<Complex>(),
+            out.items::<Complex>().unwrap(),
             &[
                 Complex {
                     real: 5.0,
@@ -318,7 +318,7 @@ mod tests {
         let inputs = [lhs, rhs];
         unsafe { mul_complex(0, inputs.as_ptr(), 2, &mut out, 1) };
         assert_eq!(
-            out.items::<Complex>(),
+            out.items::<Complex>().unwrap(),
             &[
                 Complex {
                     real: -1.0,
@@ -345,7 +345,7 @@ mod tests {
         let inputs = [lhs, rhs];
         unsafe { mul_complex(0, inputs.as_ptr(), 2, &mut out, 1) };
         assert_eq!(
-            out.items::<Complex>(),
+            out.items::<Complex>().unwrap(),
             &[
                 Complex {
                     real: 0.0,
