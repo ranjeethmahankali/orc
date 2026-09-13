@@ -164,11 +164,26 @@
   - [[file:rust/dagger/src/const_edit.rs::// TODO: I am temporarily tolerating some unwraps in below code. We should get rid of them][Maintain a separte string representation coupled with the UI, and convert when changes are commited.]]
   - [[file:rust/dagger/src/const_edit.rs::// TODO: I am temporarily tolerating some unwraps in below code. We should get rid of them][Same as above]]
 
-* NEXT tl9jwh - Support aggregate slices of the same datatype in OrcHandle
+* TODO Mesh plugin functions
+  :PROPERTIES:
+  :CREATED:  2026-09-11 Fri 21:50
+  :END:
+
+* NEXT tl8agd - Curve plugin functions
+  :PROPERTIES:
+  :CREATED:  2026-09-11 Fri 11:44
+  :END:
+  :LOGBOOK:
+  - State "NEXT"       from "TODO"       [2026-09-11 Fri 21:50]
+  :END:
+
+* DONE tl9jwh - Support aggregate slices of the same datatype in OrcHandle
+  CLOSED: [2026-09-13 Sun 19:55]
   :PROPERTIES:
   :CREATED:  2026-09-12 Sat 14:12
   :END:
   :LOGBOOK:
+  - State "DONE"       from "NEXT"       [2026-09-13 Sun 19:55]
   - State "NEXT"       from "TODO"       [2026-09-12 Sat 15:39]
   :END:
 
@@ -203,6 +218,8 @@
   support aggregate types.
 
   <2026-09-13 Sun 19:12> Almost done. Doing a final review before merging.
+
+  <2026-09-13 Sun 19:55> Ready to merge.
 
 ** Footprint of the Refactor
    :PROPERTIES:
@@ -503,19 +520,6 @@
          ~t_numpy_3x3_from_plugin~ (~test.py:551-584~) build a "3x3 matrix" via nested-list
          *marks*, a different mechanism from item_size aggregation, and shouldn't be mistaken for
          existing aggregate coverage.
-
-* TODO Mesh plugin functions
-  :PROPERTIES:
-  :CREATED:  2026-09-11 Fri 21:50
-  :END:
-
-* NEXT tl8agd - Curve plugin functions
-  :PROPERTIES:
-  :CREATED:  2026-09-11 Fri 11:44
-  :END:
-  :LOGBOOK:
-  - State "NEXT"       from "TODO"       [2026-09-11 Fri 21:50]
-  :END:
 
 * DONE tl7i00 - Python code generation from a workflow
   CLOSED: [2026-09-11 Fri 14:10]
