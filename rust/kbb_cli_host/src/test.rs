@@ -1576,6 +1576,94 @@ fn t_serial_every_plugin_handles_vec3_aggregate() {
 }
 
 #[test]
+fn t_serial_every_plugin_handles_nested_vec3_aggregate() {
+    // Same as t_serial_every_plugin_handles_nested_builtin, but with an aggregate item_size --
+    // proves marks/structure AND the aggregate item_size both survive a cross-plugin round trip
+    // together, not just one or the other.
+    let plugins = PLUGIN_SET.plugins();
+    let mut d = Deck::<[f64; 3]>::default();
+    d.push([1.0, 2.0, 3.0], 2);
+    d.push([4.0, 5.0, 6.0], 0);
+    d.push([7.0, 8.0, 9.0], 1);
+    let h = make_handle(&d);
+    assert!(h.n_marks > 0);
+    for (si, sp) in plugins.iter().enumerate() {
+        for (di, dp) in plugins.iter().enumerate() {
+            let out = cross_plugin_round_trip(&h, sp, dp);
+            assert_eq!(
+                out.item_size as usize,
+                size_of::<[f64; 3]>(),
+                "plugin {si} ({}) -> plugin {di} ({}) lost the aggregate item_size",
+                sp.name(),
+                dp.name()
+            );
+            assert_eq!(
+                out.items::<[f64; 3]>().unwrap(),
+                &[[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]],
+                "plugin {si} ({}) -> plugin {di} ({})",
+                sp.name(),
+                dp.name()
+            );
+            assert_eq!(out.n_marks, h.n_marks, "plugin {si} -> plugin {di}");
+        }
+    }
+}
+
+#[test]
+fn t_serial_concurrent_serialization_aggregate() {
+    // Same concurrency shape as t_serial_concurrent_serialization, but both decks are
+    // aggregates (different item_size from each other) -- proves the concurrent serialize path
+    // doesn't cross-contaminate item_size/bytes between threads.
+    let plugins = PLUGIN_SET.plugins();
+    let plugin = &plugins[0];
+    let mut d1 = Deck::<[f64; 3]>::default();
+    d1.push([1.0, 2.0, 3.0], 1);
+    d1.push([4.0, 5.0, 6.0], 0);
+    let mut d2 = Deck::<[i32; 2]>::default();
+    d2.push([-10, 20], 1);
+    d2.push([-30, 40], 0);
+    let h1 = make_handle(&d1);
+    let h2 = make_handle(&d2);
+    let bh1 = h1.borrowed();
+    let bh2 = h2.borrowed();
+    std::thread::scope(|s| {
+        let t1 = s.spawn(|| {
+            plugin
+                .serialize_deck(&SERIAL_CONTEXT_ARENA, bh1.inner(), |buf| buf.clone())
+                .expect("thread 1 serialization failed")
+        });
+        let t2 = s.spawn(|| {
+            plugin
+                .serialize_deck(&SERIAL_CONTEXT_ARENA, bh2.inner(), |buf| buf.clone())
+                .expect("thread 2 serialization failed")
+        });
+        let buf1 = t1.join().unwrap();
+        let buf2 = t2.join().unwrap();
+        let mut out1 = OrcHandle {
+            handle: next_id(),
+            ..Default::default()
+        };
+        plugin
+            .deserialize_deck(0, &buf1, &mut out1)
+            .expect("deserialize buf1 failed");
+        assert_eq!(out1.item_size as usize, size_of::<[f64; 3]>());
+        assert_eq!(
+            out1.items::<[f64; 3]>().unwrap(),
+            &[[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]
+        );
+        let mut out2 = OrcHandle {
+            handle: next_id(),
+            ..Default::default()
+        };
+        plugin
+            .deserialize_deck(0, &buf2, &mut out2)
+            .expect("deserialize buf2 failed");
+        assert_eq!(out2.item_size as usize, size_of::<[i32; 2]>());
+        assert_eq!(out2.items::<[i32; 2]>().unwrap(), &[[-10, 20], [-30, 40]]);
+    });
+}
+
+#[test]
 fn t_serial_concurrent_serialization() {
     let plugins = PLUGIN_SET.plugins();
     let plugin = &plugins[0];
