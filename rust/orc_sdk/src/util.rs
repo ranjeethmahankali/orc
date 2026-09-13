@@ -651,22 +651,70 @@ pub fn deck_from_proxy<T: TOrcData>(
         Some(input) => (input.type_id, input.item_size),
         None => return Err(Error::InvalidProxy),
     };
-    if inputs.iter().skip(1).any(|h| h.type_id != type_id) || item_size as usize != size_of::<T>() {
+    if inputs.iter().skip(1).any(|h| h.type_id != type_id)
+        || (item_size as usize).is_multiple_of(size_of::<T>())
+    {
         // All inputs must be of the same type. This is a problem.
         return Err(Error::InvalidProxy);
     }
     out.dims = proxy.dims;
-    registry.alloc::<T>(out)?;
-    registry
-        .with_mut(&[out.handle], |out_decks| -> Result<(), Error> {
-            let out_deck = out_decks[0]
-                .downcast_mut::<Deck<T>>()
-                .ok_or(Error::DeckTypeMismatch)?;
-            out_deck.assign_from_proxy(inputs, proxy_type, proxy)?;
-            unsafe { update_handle_from_deck(out_deck, out) }; // SAFETY: we pulled the deck out of the same handle.
-            Ok(())
-        })
-        .flatten()
+
+    fn proxy_helper<U: TOrcData>(
+        inputs: &[OrcHandle],
+        proxy_type: ProxyType,
+        proxy: &OrcHandle,
+        out: &mut OrcHandle,
+        registry: &DeckRegistry,
+    ) -> Result<(), Error> {
+        registry.alloc::<U>(out)?;
+        registry
+            .with_mut(&[out.handle], |out_decks| -> Result<(), Error> {
+                let out_deck = out_decks[0]
+                    .downcast_mut::<Deck<U>>()
+                    .ok_or(Error::DeckTypeMismatch)?;
+                out_deck.assign_from_proxy(inputs, proxy_type, proxy)?;
+                unsafe { update_handle_from_deck(out_deck, out) }; // SAFETY: we pulled the deck out of the same handle.
+                Ok(())
+            })
+            .flatten()
+    }
+
+    let n_components = (item_size as usize) / size_of::<T>();
+    match n_components {
+        1 => proxy_helper::<T>(inputs, proxy_type, proxy, out, registry),
+        2 => proxy_helper::<[T; 2]>(inputs, proxy_type, proxy, out, registry),
+        3 => proxy_helper::<[T; 3]>(inputs, proxy_type, proxy, out, registry),
+        4 => proxy_helper::<[T; 4]>(inputs, proxy_type, proxy, out, registry),
+        5 => proxy_helper::<[T; 5]>(inputs, proxy_type, proxy, out, registry),
+        6 => proxy_helper::<[T; 6]>(inputs, proxy_type, proxy, out, registry),
+        7 => proxy_helper::<[T; 7]>(inputs, proxy_type, proxy, out, registry),
+        8 => proxy_helper::<[T; 8]>(inputs, proxy_type, proxy, out, registry),
+        9 => proxy_helper::<[T; 9]>(inputs, proxy_type, proxy, out, registry),
+        10 => proxy_helper::<[T; 10]>(inputs, proxy_type, proxy, out, registry),
+        11 => proxy_helper::<[T; 11]>(inputs, proxy_type, proxy, out, registry),
+        12 => proxy_helper::<[T; 12]>(inputs, proxy_type, proxy, out, registry),
+        13 => proxy_helper::<[T; 13]>(inputs, proxy_type, proxy, out, registry),
+        14 => proxy_helper::<[T; 14]>(inputs, proxy_type, proxy, out, registry),
+        15 => proxy_helper::<[T; 15]>(inputs, proxy_type, proxy, out, registry),
+        16 => proxy_helper::<[T; 16]>(inputs, proxy_type, proxy, out, registry),
+        17 => proxy_helper::<[T; 17]>(inputs, proxy_type, proxy, out, registry),
+        18 => proxy_helper::<[T; 18]>(inputs, proxy_type, proxy, out, registry),
+        19 => proxy_helper::<[T; 19]>(inputs, proxy_type, proxy, out, registry),
+        20 => proxy_helper::<[T; 20]>(inputs, proxy_type, proxy, out, registry),
+        21 => proxy_helper::<[T; 21]>(inputs, proxy_type, proxy, out, registry),
+        22 => proxy_helper::<[T; 22]>(inputs, proxy_type, proxy, out, registry),
+        23 => proxy_helper::<[T; 23]>(inputs, proxy_type, proxy, out, registry),
+        24 => proxy_helper::<[T; 24]>(inputs, proxy_type, proxy, out, registry),
+        25 => proxy_helper::<[T; 25]>(inputs, proxy_type, proxy, out, registry),
+        26 => proxy_helper::<[T; 26]>(inputs, proxy_type, proxy, out, registry),
+        27 => proxy_helper::<[T; 27]>(inputs, proxy_type, proxy, out, registry),
+        28 => proxy_helper::<[T; 28]>(inputs, proxy_type, proxy, out, registry),
+        29 => proxy_helper::<[T; 29]>(inputs, proxy_type, proxy, out, registry),
+        30 => proxy_helper::<[T; 30]>(inputs, proxy_type, proxy, out, registry),
+        31 => proxy_helper::<[T; 31]>(inputs, proxy_type, proxy, out, registry),
+        32 => proxy_helper::<[T; 32]>(inputs, proxy_type, proxy, out, registry),
+        _ => Err(Error::DeckTypeMismatch),
+    }
 }
 
 // ==================== Serialization ====================
