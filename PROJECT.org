@@ -380,7 +380,7 @@
         five hosts/plugins call (reusing the "enumerate concrete N via macro" pattern already
         used for the ~TOrcData~ array impls) would prevent this from drifting out of sync again,
         the way the C SDK's ~_copy_items~ once did.
-   9. [-] String conversion at the ABI level should check for, and handle aggregate types
+   9. [X] String conversion at the ABI level should check for, and handle aggregate types
       properly. It should print comma separated values. This means the string conversion in the SDK,
       and in the plugins for custom types needs to be updated. This also needs some good test
       coverage afterwards to make sure all the places handle it properly.
@@ -404,14 +404,14 @@
         ~T: Display~ plus per-~N~ impls for ~[T; N]~ that comma-join (same "enumerate concrete
         N via macro" pattern already used for the ~TOrcData~ array impl), or a separate
         aggregate-aware formatting path the caller picks based on item_size.
-      - [ ] *Rust SDK, independent of the point above -- can be done now:*
+      - [X] *Rust SDK, independent of the point above -- can be done now:*
         ~HandleDisplayWrapper~ / ~OrcHandle::display::<T>()~
         (~rust/orc_sdk/src/util.rs:492-519~) independently builds a raw
         ~slice_from_ptr::<T>(handle.items.cast(), handle.n_items as usize)~ -- the same
         "trusts n_items and T without checking item_size" pattern the ~items::<T>()~ and
         ~DeckView::from_handle~ fixes closed elsewhere. Missed by that pass; needs the same
         item_size validation regardless of aggregate support.
-      - [ ] *Rust SDK, coupled to (blocked on) the `to_str_deck` point above:* once
+      - [X] *Rust SDK, coupled to (blocked on) the `to_str_deck` point above:* once
         ~to_str_deck~ can format aggregates, ~HandleDisplayWrapper~ needs the actual aggregate
         printing support layered on top of the item_size validation above.
       - [X] *dagger -- blocked on the `to_str_deck` point landing first, but independent of
