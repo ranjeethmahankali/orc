@@ -2759,9 +2759,10 @@ OrcError orc_sdk_handle_to_str(OrcHandle const *input, OrcHandle *out)
       {  // Push the first item (potentially an aggregate type) always.
         char buf[256] = {0};
         print_fn(item, buf, 255);
-        size_t const count = strlen(buf);
-        orc_sdk_arr_resize(local_str, orc_sdk_arr_len(local_str) + count);
-        memcpy(local_str, buf, count);
+        size_t const count   = strlen(buf);
+        size_t const old_len = orc_sdk_arr_len(local_str);
+        orc_sdk_arr_resize(local_str, old_len + count);
+        memcpy(local_str + old_len, buf, count);
         item = (char *)item + single_item_size;
       }
       while (item < last_component) {
@@ -2769,9 +2770,10 @@ OrcError orc_sdk_handle_to_str(OrcHandle const *input, OrcHandle *out)
         orc_sdk_arr_push(local_str, ' ');
         char buf[256] = {0};
         print_fn(item, buf, 255);
-        size_t const count = strlen(buf);
-        orc_sdk_arr_resize(local_str, orc_sdk_arr_len(local_str) + count);
-        memcpy(local_str, buf, count);
+        size_t const count   = strlen(buf);
+        size_t const old_len = orc_sdk_arr_len(local_str);
+        orc_sdk_arr_resize(local_str, old_len + count);
+        memcpy(local_str + old_len, buf, count);
         item = (char *)item + single_item_size;
       }
       if (single_item_size < item_size) {  // More than one item.
