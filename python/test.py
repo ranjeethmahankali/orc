@@ -830,6 +830,21 @@ def t_make_deck_mixed_tuple_and_scalar_raises():
         pass
 
 
+def t_make_deck_nested_tuple_raises():
+    """A tuple/list nested inside an aggregate tuple item raises a clear ValueError instead of
+    an opaque extraction TypeError."""
+    try:
+        orc.make_deck((1.0, (2.0, 3.0)))
+        assert False, "Should have raised ValueError"
+    except ValueError:
+        pass
+    try:
+        orc.make_deck((1.0, [2.0, 3.0]))
+        assert False, "Should have raised ValueError"
+    except ValueError:
+        pass
+
+
 def t_vec3_length_accepts_tuple_input():
     """vec3_length expects a single [f64;3] item per input -- a tuple built via make_deck now
     round-trips through a real plugin function end to end."""
