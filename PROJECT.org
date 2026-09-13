@@ -202,6 +202,8 @@
   <2026-09-12 Sat 19:58> Surveying the code base, and slowly refactoring things across the repo to
   support aggregate types.
 
+  <2026-09-13 Sun 19:12> Almost done. Doing a final review before merging.
+
 ** Footprint of the Refactor
    :PROPERTIES:
    :CREATED:  2026-09-12 Sat 15:22
