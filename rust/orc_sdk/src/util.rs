@@ -1844,6 +1844,64 @@ mod tests {
     }
 
     #[test]
+    fn t_scratch_deck_from_proxy_aggregate_copy_all_and_shuffle() {
+        // SCRATCH verification, not permanent: simulates exactly what dagger/server_host/
+        // kbb_cli_host/pyorc/example_rust_plugin's `host_create_proxy_deck`-equivalents do --
+        // they see type_id=F64 and unconditionally call `deck_from_proxy::<f64>`, regardless of
+        // the handle's real item_size. Proves the item_size-driven [T; N] resolution inside
+        // `deck_from_proxy` itself is enough to make that already-existing call-site pattern
+        // correctly handle an aggregate (item_size=24, [f64;3]) deck, with no changes needed at
+        // any of those five call sites.
+        let reg = DeckRegistry::new();
+        let mut d = Deck::<[f64; 3]>::default();
+        d.push([1.0, 2.0, 3.0], 1);
+        d.push([4.0, 5.0, 6.0], 0);
+        let input = serial_make_handle(&d);
+        assert_eq!(input.item_size, size_of::<[f64; 3]>() as u64);
+
+        // CopyAll, dispatched as `deck_from_proxy::<f64>` exactly like the real call sites do.
+        let mut out = serial_fresh_handle(serial_next_id());
+        let dummy_proxy = OrcHandle::default();
+        deck_from_proxy::<f64>(&[input], ProxyType::CopyAll, &dummy_proxy, &mut out, &reg)
+            .unwrap();
+        assert_eq!(out.item_size, size_of::<[f64; 3]>() as u64);
+        assert_eq!(out.n_items, 2);
+        assert_eq!(
+            out.items::<[f64; 3]>().unwrap(),
+            &[[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]
+        );
+        disarm(&mut out);
+
+        // Shuffle, also dispatched as `deck_from_proxy::<f64>`.
+        let mut pdeck = Deck::<crate::OrcItemProxy>::default();
+        pdeck.push(crate::OrcItemProxy { tree: 0, item: 1 }, 1);
+        pdeck.push(crate::OrcItemProxy { tree: 0, item: 0 }, 0);
+        let proxy = serial_make_handle(&pdeck);
+        let mut out2 = serial_fresh_handle(serial_next_id());
+        let input2 = serial_make_handle(&d);
+        deck_from_proxy::<f64>(&[input2], ProxyType::Shuffle, &proxy, &mut out2, &reg).unwrap();
+        assert_eq!(out2.n_items, 2);
+        assert_eq!(
+            out2.items::<[f64; 3]>().unwrap(),
+            &[[4.0, 5.0, 6.0], [1.0, 2.0, 3.0]]
+        );
+        disarm(&mut out2);
+
+        // Plain scalar case must still work (this is what the inverted `is_multiple_of` check
+        // broke entirely, for every type, before the fix).
+        let mut sd = Deck::<f64>::default();
+        sd.push(7.0, 1);
+        sd.push(8.0, 0);
+        let sinput = serial_make_handle(&sd);
+        let mut sout = serial_fresh_handle(serial_next_id());
+        deck_from_proxy::<f64>(&[sinput], ProxyType::CopyAll, &dummy_proxy, &mut sout, &reg)
+            .unwrap();
+        assert_eq!(sout.item_size, size_of::<f64>() as u64);
+        assert_eq!(sout.items::<f64>().unwrap(), &[7.0, 8.0]);
+        disarm(&mut sout);
+    }
+
+    #[test]
     fn t_try_deserialize_rejects_malformed_item_size() {
         // item_size for a recognized primitive type_id (F64) that isn't a multiple of the
         // scalar's size is corrupt data, not a deferrable custom type -- must be a hard failure

@@ -328,7 +328,7 @@
         This is unrelated to the serialize/deserialize helpers this item is about, but it's a
         concrete data-corruption bug for any aggregate handle that flows through ~deck_from_proxy~
         (COPY_ALL/COPY_ITEMS/SHUFFLE), so flagging it here rather than losing it.
-   8. [-] We had to refactor _copy_items to properly fix the proxy deck creation in the C SDK. What
+   8. [X] We had to refactor _copy_items to properly fix the proxy deck creation in the C SDK. What
       about all the proxy deck creation in Rust? I see it is not handling aggregate types
       properly.
       - [X] *The core `deck_from_proxy` (~rust/orc_sdk/src/util.rs:644~) is already aggregate-safe --
@@ -342,7 +342,7 @@
         generic ~Vec<T>~ and never look at ~item_size~ or ~type_id~; ~Plugin::create_proxy_deck~
         (~rust/orc_sdk/src/host.rs:111-127~) is a pure FFI passthrough to the plugin's own
         ~deck_from_proxy~ export with no type-specific logic of its own.
-      - [ ] *dagger -- independently fixable/testable/committable, dagger owns this copy
+      - [X] *dagger -- independently fixable/testable/committable, dagger owns this copy
         outright:* fix the ~type_id~-only dispatch in ~host_create_proxy_deck~
         (~rust/dagger/src/main.rs:94-128~) to key on ~(type_id, item_size)~ instead, mirroring
         the array ~TOrcData~ impls. Confirmed clean-error failure mode today, not corruption:
@@ -354,25 +354,25 @@
         calls into this same function with ~CopyAll~, so no separate code change is needed
         there, just a test proving an aggregate constant can be duplicated/edited in the node
         editor (live UI code on the current branch) once this lands.
-      - [ ] *server_host -- independent of the other crates:* fix the ~type_id~-only dispatch
+      - [X] *server_host -- independent of the other crates:* fix the ~type_id~-only dispatch
         (and the same-type-only check at line 694) in ~host_create_proxy_deck~
         (~rust/server_host/src/server.rs:690-778~). Same clean-error-not-corruption situation as
         dagger. Also fixes ~clone_handle~ (~lines 82-98~, used by ~Session::build_workflow~ for
         ~/download_workflow~/~/download_python_script~) for free, same reasoning as dagger --
         add a test proving an aggregate constant survives a workflow download.
-      - [ ] *kbb_cli_host -- independent of the other crates:* fix the ~type_id~-only dispatch
+      - [X] *kbb_cli_host -- independent of the other crates:* fix the ~type_id~-only dispatch
         in ~host_create_proxy_deck~ (~rust/kbb_cli_host/src/main.rs:42-122~, match at 76-116).
         Also fixes ~host_clone_orc_handle~ (~lines 196-207~) for free, same reasoning -- add a
         test.
-      - [ ] *pyorc -- independent of the other crates:* fix the ~type_id~-only dispatch in
+      - [X] *pyorc -- independent of the other crates:* fix the ~type_id~-only dispatch in
         ~host_create_proxy_deck~ (~rust/pyorc/src/host.rs:74-121~). Also fixes
         ~host_clone_orc_handle~ (~line 234~, used by ~PyWorkflow::run_impl~ at ~graph.rs:145~
         for every workflow input/constant clone) for free, same reasoning -- add a test.
-      - [ ] *example_rust_plugin -- standalone, no `clone_handle`-equivalent here:* fix the
+      - [X] *example_rust_plugin -- standalone, no `clone_handle`-equivalent here:* fix the
         ~type_id~-only dispatch in its own ~deck_from_proxy~ (the ~TOrcPluginAdaptor~ impl,
         ~rust/example_rust_plugin/src/lib.rs:64-90~) -- a *plugin's* own copy of the same bug,
         missed by the earlier full-repo survey which only checked host binaries. Add a test.
-      - [ ] *Design decision, orthogonal to the five fixes above -- resolve before or after doing
+      - [X] *Design decision, orthogonal to the five fixes above -- resolve before or after doing
         them, but resolving first avoids redoing the work:* the dispatch table above is
         duplicated five times (plus the four ~clone_handle~-equivalents that ride along with
         four of them, for nine copies total). Adding ~(type_id, item_size)~ arms by hand to all
