@@ -647,11 +647,11 @@ pub fn deck_from_proxy<T: TOrcData>(
     out: &mut OrcHandle,
     registry: &DeckRegistry,
 ) -> Result<(), Error> {
-    let type_id = match inputs.first() {
-        Some(input) => input.type_id,
+    let (type_id, item_size) = match inputs.first() {
+        Some(input) => (input.type_id, input.item_size),
         None => return Err(Error::InvalidProxy),
     };
-    if inputs.iter().skip(1).any(|h| h.type_id != type_id) {
+    if inputs.iter().skip(1).any(|h| h.type_id != type_id) || item_size as usize != size_of::<T>() {
         // All inputs must be of the same type. This is a problem.
         return Err(Error::InvalidProxy);
     }
