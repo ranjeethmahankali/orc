@@ -837,6 +837,10 @@ where
 
 impl<'a, T: TOrcData> DeckView<'a, T> {
     pub fn from_handle(handle: &'a OrcHandle) -> Result<Self, Error> {
+        // `item_size` is only checked when there are items to misread: an empty handle can carry
+        // a stale/default `item_size` (e.g. 0, or a leftover aggregate size) with nothing behind
+        // it to actually misinterpret, so requiring it to match `T` here would reject otherwise
+        // harmless empty handles.
         if handle.type_id != T::TYPE_INFO.type_id
             || (handle.n_items > 0 && handle.item_size as usize != std::mem::size_of::<T>())
         {
@@ -849,6 +853,10 @@ impl<'a, T: TOrcData> DeckView<'a, T> {
     }
 
     pub fn from_handle_at_depth(handle: &'a OrcHandle, depth: u8) -> Result<Self, Error> {
+        // `item_size` is only checked when there are items to misread: an empty handle can carry
+        // a stale/default `item_size` (e.g. 0, or a leftover aggregate size) with nothing behind
+        // it to actually misinterpret, so requiring it to match `T` here would reject otherwise
+        // harmless empty handles.
         if handle.type_id != T::TYPE_INFO.type_id
             || (handle.n_items > 0 && handle.item_size as usize != std::mem::size_of::<T>())
         {

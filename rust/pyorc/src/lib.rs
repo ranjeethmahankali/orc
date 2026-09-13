@@ -453,7 +453,14 @@ fn py_to_deck<'py>(
                 ));
             }
         }
-        push_leaf(tuple.iter(), tuple.len(), depth, components, depths, n_components)
+        push_leaf(
+            tuple.iter(),
+            tuple.len(),
+            depth,
+            components,
+            depths,
+            n_components,
+        )
     } else if data.is_instance_of::<PyList>() {
         for (i, elem) in data.try_iter()?.enumerate() {
             py_to_deck(

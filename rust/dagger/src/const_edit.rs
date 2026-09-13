@@ -6,9 +6,8 @@
 
 use crate::state::EditorState;
 use orc_sdk::{
-    NH, NodeInfo, ORC_TYPE_F32, ORC_TYPE_F64, ORC_TYPE_I8, ORC_TYPE_I16, ORC_TYPE_I32,
-    ORC_TYPE_I64, ORC_TYPE_U8, ORC_TYPE_U16, ORC_TYPE_U32, ORC_TYPE_U64, OrcHandle, OrcMark,
-    TypeOwner, update_handle_from_deck,
+    NH, NodeInfo, ORC_TYPE_F64, ORC_TYPE_I64, OrcHandle, OrcMark, TOrcData, TypeOwner,
+    update_handle_from_deck,
 };
 use std::mem::size_of;
 
@@ -186,48 +185,39 @@ pub(crate) struct ConstEditCache {
     pub(crate) buffers: Vec<String>,
 }
 
-fn format_item(handle: &OrcHandle, index: usize) -> String {
-    // TODO: this whole function is questionable. I am not sure why we're manually formatting each
-    // item here, instead of making use of the ABI provided deck_to_str. For now, I am adding these
-    // unwraps to get this compiling. Intending to get rid of these unwraps, and generally rewrite
-    // this part of the code to just use the ABI for string conversion instead of doing it's own.
-    //
-    // Each arm's guard requires item_size to match that scalar exactly, not just be a multiple of
-    // it, so an aggregate sharing a scalar's type_id (e.g. F64x3) falls through to the `_` arm
-    // instead of having its first component read out and displayed as if it were the whole item.
-    match handle.type_id {
-        ORC_TYPE_U8 if handle.item_size as usize == size_of::<u8>() => {
-            handle.items::<u8>().unwrap()[index].to_string()
-        }
-        ORC_TYPE_U16 if handle.item_size as usize == size_of::<u16>() => {
-            handle.items::<u16>().unwrap()[index].to_string()
-        }
-        ORC_TYPE_U32 if handle.item_size as usize == size_of::<u32>() => {
-            handle.items::<u32>().unwrap()[index].to_string()
-        }
-        ORC_TYPE_U64 if handle.item_size as usize == size_of::<u64>() => {
-            handle.items::<u64>().unwrap()[index].to_string()
-        }
-        ORC_TYPE_F32 if handle.item_size as usize == size_of::<f32>() => {
-            handle.items::<f32>().unwrap()[index].to_string()
-        }
-        ORC_TYPE_F64 if handle.item_size as usize == size_of::<f64>() => {
-            handle.items::<f64>().unwrap()[index].to_string()
-        }
-        ORC_TYPE_I8 if handle.item_size as usize == size_of::<i8>() => {
-            handle.items::<i8>().unwrap()[index].to_string()
-        }
-        ORC_TYPE_I16 if handle.item_size as usize == size_of::<i16>() => {
-            handle.items::<i16>().unwrap()[index].to_string()
-        }
-        ORC_TYPE_I32 if handle.item_size as usize == size_of::<i32>() => {
-            handle.items::<i32>().unwrap()[index].to_string()
-        }
-        ORC_TYPE_I64 if handle.item_size as usize == size_of::<i64>() => {
-            handle.items::<i64>().unwrap()[index].to_string()
-        }
-        _ => "<item>".to_string(),
+// TODO: this whole function is questionable. I am not sure why we're manually formatting each
+// item here, instead of making use of the ABI provided deck_to_str. Intending to get rid of this,
+// and generally rewrite this part of the code to just use the ABI for string conversion instead
+// of doing its own.
+//
+// Requires item_size to match `T` exactly, not just be a multiple of it, so an aggregate sharing
+// a scalar's type_id (e.g. F64x3) is rejected instead of having its first component read out and
+// displayed as if it were the whole item.
+fn try_format_item<T: TOrcData + std::fmt::Display>(
+    handle: &OrcHandle,
+    index: usize,
+) -> Option<String> {
+    if handle.type_id != T::TYPE_INFO.type_id || handle.item_size as usize != size_of::<T>() {
+        return None;
     }
+    handle
+        .items::<T>()
+        .ok()
+        .map(|items| items[index].to_string())
+}
+
+fn format_item(handle: &OrcHandle, index: usize) -> String {
+    try_format_item::<u8>(handle, index)
+        .or_else(|| try_format_item::<u16>(handle, index))
+        .or_else(|| try_format_item::<u32>(handle, index))
+        .or_else(|| try_format_item::<u64>(handle, index))
+        .or_else(|| try_format_item::<f32>(handle, index))
+        .or_else(|| try_format_item::<f64>(handle, index))
+        .or_else(|| try_format_item::<i8>(handle, index))
+        .or_else(|| try_format_item::<i16>(handle, index))
+        .or_else(|| try_format_item::<i32>(handle, index))
+        .or_else(|| try_format_item::<i64>(handle, index))
+        .unwrap_or_else(|| "<item>".to_string())
 }
 
 /// Resyncs every Constant node's edit-buffer cache. Called once per frame, same as
@@ -649,6 +639,27 @@ mod test {
             type_id: 0xdead_beef,
             ..Default::default()
         };
+        assert!(!is_editable(&handle));
+    }
+
+    /// An aggregate handle (item_size a multiple of, but not equal to, the scalar size) shares
+    /// F64's type_id but must not be treated as an editable list of plain f64 scalars -- that
+    /// would silently show one text box per item holding only its first component. This pins
+    /// down the exact bug `is_editable`'s `item_size == size_of::<T>()` guard exists to prevent
+    /// (see its doc comment); a future simplification back to a bare `type_id`-only check would
+    /// silently reintroduce it without this test catching it.
+    #[test]
+    fn t_is_editable_false_for_an_aggregate_f64_handle() {
+        let mut deck = Deck::<[f64; 3]>::default();
+        deck.push([1.0, 2.0, 3.0], 1);
+        let mut handle = OrcHandle {
+            handle: crate::HANDLE_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
+            ..Default::default()
+        };
+        crate::REGISTRY
+            .alloc_with_value(Some(deck), &mut handle)
+            .unwrap();
+        assert_eq!(handle.item_size as usize, size_of::<[f64; 3]>());
         assert!(!is_editable(&handle));
     }
 

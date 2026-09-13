@@ -778,7 +778,8 @@ mod tests {
         v.push([3.0, 4.0, 0.0], 1);
         let mut out = out_handle();
         let inputs = [view(&v), view(&v)]; // 2 instead of 1
-        unsafe { vec3_length(0, inputs.as_ptr(), 2, &mut out, 1) };
+        let err = unsafe { vec3_length(0, inputs.as_ptr(), 2, &mut out, 1) };
+        assert_ne!(err, orc_sdk::ORC_ERROR_NONE);
         assert!(out.free_fn.is_none());
         assert!(out.items.is_null());
     }
