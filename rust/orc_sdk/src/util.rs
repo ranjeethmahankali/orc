@@ -2188,6 +2188,58 @@ mod tests {
     }
 
     #[test]
+    fn t_to_str_deck_aggregate_single_item() {
+        // Aggregates share the scalar's type_id, distinguished only by item_size -- the caller
+        // still passes the scalar type (`f64`, not `[f64; 3]`, which isn't `Display`), and
+        // to_str_deck must resolve item_size -> N internally, same approach as the C SDK fix.
+        let mut d = Deck::<[f64; 3]>::default();
+        d.push([1.0, 2.0, 3.0], 1);
+        let h = serial_make_handle(&d);
+        let mut out = Deck::<u8>::default();
+        to_str_deck::<f64>(&h, &mut out).expect("to_str_deck failed");
+        let expected = format!("[{}, {}, {}]", 1.0_f64, 2.0_f64, 3.0_f64);
+        assert_eq!(str_groups(&out), &[expected]);
+    }
+
+    #[test]
+    fn t_to_str_deck_aggregate_multiple_items() {
+        let mut d = Deck::<[f64; 3]>::default();
+        d.push([1.0, 2.0, 3.0], 1);
+        d.push([4.0, 5.0, 6.0], 0);
+        d.push([-7.5, 0.0, 100.0], 0);
+        let h = serial_make_handle(&d);
+        let mut out = Deck::<u8>::default();
+        to_str_deck::<f64>(&h, &mut out).expect("to_str_deck failed");
+        let expected: Vec<String> = [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [-7.5, 0.0, 100.0]]
+            .iter()
+            .map(|v: &[f64; 3]| format!("[{}, {}, {}]", v[0], v[1], v[2]))
+            .collect();
+        assert_eq!(str_groups(&out), expected);
+    }
+
+    #[test]
+    fn t_to_str_deck_rejects_non_multiple_item_size() {
+        // item_size not a whole multiple of size_of::<T>() must be rejected outright, not
+        // truncated by integer division into some plausible-looking but wrong N.
+        let d = deck![1.0_f64, 2.0];
+        let mut h = serial_make_handle(&d);
+        h.item_size = 20; // Not a multiple of size_of::<f64>() == 8.
+        let mut out = Deck::<u8>::default();
+        assert!(to_str_deck::<f64>(&h, &mut out).is_err());
+    }
+
+    #[test]
+    fn t_to_str_deck_rejects_wrong_scalar_for_aggregate() {
+        // The scalar T must still match the handle's type_id -- an aggregate F64x3 handle
+        // passed to `to_str_deck::<i64>` (different type_id) must fail, not misread the bytes.
+        let mut d = Deck::<[f64; 3]>::default();
+        d.push([1.0, 2.0, 3.0], 1);
+        let h = serial_make_handle(&d);
+        let mut out = Deck::<u8>::default();
+        assert!(to_str_deck::<i64>(&h, &mut out).is_err());
+    }
+
+    #[test]
     fn t_to_str_deck_empty() {
         let d: Deck<u32> = Deck::default();
         let out = run_to_str_deck(&d);
