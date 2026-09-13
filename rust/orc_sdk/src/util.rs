@@ -951,7 +951,9 @@ pub fn try_deserialize_handle(
     let n_components = item_size / scalar_size;
     let n_items = out.n_items as usize;
     let result = match out.type_id {
-        ORC_TYPE_U8 => read_scalar_or_aggregate!(u8, n_components, r, marks, n_items, out, registry),
+        ORC_TYPE_U8 => {
+            read_scalar_or_aggregate!(u8, n_components, r, marks, n_items, out, registry)
+        }
         ORC_TYPE_U16 => {
             read_scalar_or_aggregate!(u16, n_components, r, marks, n_items, out, registry)
         }
@@ -961,7 +963,9 @@ pub fn try_deserialize_handle(
         ORC_TYPE_U64 => {
             read_scalar_or_aggregate!(u64, n_components, r, marks, n_items, out, registry)
         }
-        ORC_TYPE_I8 => read_scalar_or_aggregate!(i8, n_components, r, marks, n_items, out, registry),
+        ORC_TYPE_I8 => {
+            read_scalar_or_aggregate!(i8, n_components, r, marks, n_items, out, registry)
+        }
         ORC_TYPE_I16 => {
             read_scalar_or_aggregate!(i16, n_components, r, marks, n_items, out, registry)
         }
@@ -1843,7 +1847,10 @@ mod tests {
         let mut out = serial_fresh_handle(serial_next_id());
         let mut cursor = std::io::Cursor::new(&buf[..]);
         let err = try_deserialize_handle(&mut cursor, &mut out, &reg).unwrap_err();
-        assert!(err.is_empty(), "malformed item_size must not defer via Err(marks)");
+        assert!(
+            err.is_empty(),
+            "malformed item_size must not defer via Err(marks)"
+        );
     }
 
     #[test]
