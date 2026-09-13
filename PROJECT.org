@@ -380,11 +380,11 @@
         five hosts/plugins call (reusing the "enumerate concrete N via macro" pattern already
         used for the ~TOrcData~ array impls) would prevent this from drifting out of sync again,
         the way the C SDK's ~_copy_items~ once did.
-   9. [ ] String conversion at the ABI level should check for, and handle aggregate types
+   9. [-] String conversion at the ABI level should check for, and handle aggregate types
       properly. It should print comma separated values. This means the string conversion in the SDK,
       and in the plugins for custom types needs to be updated. This also needs some good test
       coverage afterwards to make sure all the places handle it properly.
-      - [ ] *C SDK -- one coupled change; the typedef, every function using it, and both call
+      - [X] *C SDK -- one coupled change; the typedef, every function using it, and both call
         sites must land together or the build breaks, so this cannot be split further:*
         ~OrcSdk_SNPrintItemFn~ (~orc_sdk.h:646~) and ~OrcSdk_TypeInfo.snprint_fn~
         (~orc_sdk.h:922~) need an item-size/count parameter so a printer can loop; every
