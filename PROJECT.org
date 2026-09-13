@@ -328,16 +328,16 @@
         This is unrelated to the serialize/deserialize helpers this item is about, but it's a
         concrete data-corruption bug for any aggregate handle that flows through ~deck_from_proxy~
         (COPY_ALL/COPY_ITEMS/SHUFFLE), so flagging it here rather than losing it.
-   8. [ ] We had to refactor _copy_items to properly fix the proxy deck creation in the C SDK. What
+   8. [-] We had to refactor _copy_items to properly fix the proxy deck creation in the C SDK. What
       about all the proxy deck creation in Rust? I see it is not handling aggregate types
       properly.
-      - [ ] *The core `deck_from_proxy` (~rust/orc_sdk/src/util.rs:644~) is already aggregate-safe --
+      - [X] *The core `deck_from_proxy` (~rust/orc_sdk/src/util.rs:644~) is already aggregate-safe --
         confirmed, no change needed:* it's generic over ~T: TOrcData~, and every item-touching
         branch (~CopyAll~/~CopyItems~/~Shuffle~) goes through ~DeckView::<T>::from_handle~, which
         already enforces ~item_size == size_of::<T>()~ strictly. Unlike the C SDK's ~_copy_items~,
         there's no hand-rolled ~memcpy~ sized from the wrong thing here -- the bug is entirely in
         how callers choose ~T~, not in this function itself.
-      - [ ] *Also confirmed already aggregate-safe, no change needed:* ~Deck<T>::flatten~/~graft~/
+      - [X] *Also confirmed already aggregate-safe, no change needed:* ~Deck<T>::flatten~/~graft~/
         ~simplify~ (~rust/orc_sdk/src/deck.rs:252,271,316~) only ever touch marks/strides on a
         generic ~Vec<T>~ and never look at ~item_size~ or ~type_id~; ~Plugin::create_proxy_deck~
         (~rust/orc_sdk/src/host.rs:111-127~) is a pure FFI passthrough to the plugin's own
