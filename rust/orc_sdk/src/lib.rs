@@ -1,5 +1,5 @@
 mod deck;
-pub use deck::{Combinations, Deck, DeckView, DeckWriter};
+pub use deck::{Combinations, Deck, DeckItemDisplay, DeckItemDisplayAdapter, DeckView, DeckWriter};
 
 mod ffi;
 pub use ffi::{

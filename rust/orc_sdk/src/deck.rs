@@ -435,7 +435,52 @@ where
     }
 }
 
-pub fn fmt_raw_deck<T: Default + Display>(
+/// Formats a single deck item. Unlike `Display`, this can be implemented for `[T; N]` without
+/// running into coherence conflicts: the scalar impls below are all for concrete primitive
+/// types (never a blanket `impl<T: Display> DeckItemDisplay for T`), so they're structurally
+/// disjoint from the `[T; N]` blanket impl and don't overlap with it.
+pub trait DeckItemDisplay {
+    fn item_fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result;
+}
+
+macro_rules! impl_deck_item_display_scalar {
+    ($($t:ty),* $(,)?) => {
+        $(
+            impl DeckItemDisplay for $t {
+                fn item_fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                    write!(f, "{}", self)
+                }
+            }
+        )*
+    };
+}
+impl_deck_item_display_scalar!(u8, u16, u32, u64, i8, i16, i32, i64, f32, f64, usize);
+
+impl<T: DeckItemDisplay, const N: usize> DeckItemDisplay for [T; N] {
+    fn item_fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "[")?;
+        for (i, v) in self.iter().enumerate() {
+            if i > 0 {
+                write!(f, ", ")?;
+            }
+            v.item_fmt(f)?;
+        }
+        write!(f, "]")
+    }
+}
+
+/// Adapts a `DeckItemDisplay` into `Display`, so it can be used with `write!`/`format!` (e.g.
+/// to format into a `String` buffer) rather than only inside a `Formatter` that's already on
+/// hand.
+pub struct DeckItemDisplayAdapter<'a, T: DeckItemDisplay>(pub &'a T);
+
+impl<T: DeckItemDisplay> Display for DeckItemDisplayAdapter<'_, T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.item_fmt(f)
+    }
+}
+
+pub fn fmt_raw_deck<T: Default + DeckItemDisplay>(
     items: &[T],
     marks: &[OrcMark],
     f: &mut std::fmt::Formatter<'_>,
@@ -467,16 +512,19 @@ pub fn fmt_raw_deck<T: Default + Display>(
             let end = next_pos.min(n_items);
             let mut iter = m.pos..end;
             if let Some(i) = iter.next() {
-                writeln!(f, " {}", items[i as usize])?;
+                write!(f, " ")?;
+                items[i as usize].item_fmt(f)?;
+                writeln!(f)?;
             }
             for i in iter {
-                writeln!(
+                write!(
                     f,
-                    "{lp:>width$}   ┤ {}",
-                    items[i as usize],
+                    "{lp:>width$}   ┤ ",
                     lp = "",
                     width = (dmax as usize + 1) * TAB_WIDTH
                 )?;
+                items[i as usize].item_fmt(f)?;
+                writeln!(f)?;
             }
         } else {
             writeln!(f)?;
@@ -503,16 +551,19 @@ pub fn fmt_raw_deck<T: Default + Display>(
             let end = next_pos.min(n_items);
             let mut iter = last.pos..end;
             if let Some(i) = iter.next() {
-                writeln!(f, " {}", items[i as usize])?;
+                write!(f, " ")?;
+                items[i as usize].item_fmt(f)?;
+                writeln!(f)?;
             }
             for i in iter {
-                writeln!(
+                write!(
                     f,
-                    "{lp:>width$}   ┤ {}",
-                    items[i as usize],
+                    "{lp:>width$}   ┤ ",
                     lp = "",
                     width = (dmax as usize + 1) * TAB_WIDTH
                 )?;
+                items[i as usize].item_fmt(f)?;
+                writeln!(f)?;
             }
         } else {
             writeln!(f)?;
@@ -521,20 +572,21 @@ pub fn fmt_raw_deck<T: Default + Display>(
     }
     // Items after the last mark (or all items if no marks).
     for item in items.iter().skip(tail_start as usize) {
-        writeln!(
+        write!(
             f,
-            "{lp:>width$}   ┤ {}",
-            item,
+            "{lp:>width$}   ┤ ",
             lp = "",
             width = (dmax as usize + 1) * TAB_WIDTH
         )?;
+        item.item_fmt(f)?;
+        writeln!(f)?;
     }
     Ok(())
 }
 
 impl<T> Display for Deck<T>
 where
-    T: Default + Display,
+    T: Default + DeckItemDisplay,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         fmt_raw_deck(&self.items, &self.marks, f)

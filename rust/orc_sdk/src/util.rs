@@ -3,7 +3,9 @@ use crate::{
     ORC_MSG_LEVEL_FATAL, ORC_MSG_LEVEL_INFO, ORC_MSG_LEVEL_WARN, ORC_NUM_DIMS, ORC_TYPE_F32,
     ORC_TYPE_F64, ORC_TYPE_I8, ORC_TYPE_I16, ORC_TYPE_I32, ORC_TYPE_I64, ORC_TYPE_U8, ORC_TYPE_U16,
     ORC_TYPE_U32, ORC_TYPE_U64, OrcFuncInfo, OrcHandle, OrcHost, OrcHostCallbackAPI, OrcMark,
-    OrcPluginFunction, OrcTypeId, OrcTypeInfo, ProxyType, deck::fmt_raw_deck, ffi::TOrcData,
+    OrcPluginFunction, OrcTypeId, OrcTypeInfo, ProxyType,
+    deck::{DeckItemDisplay, DeckItemDisplayAdapter, fmt_raw_deck},
+    ffi::TOrcData,
 };
 use std::{
     alloc::{GlobalAlloc, Layout, System},
@@ -488,29 +490,74 @@ impl From<&OrcFuncInfo> for FuncInfo {
 }
 
 /// This is a helper for displaying handle data.
-pub struct HandleDisplayWrapper<'a, T: TOrcData + Display> {
+pub struct HandleDisplayWrapper<'a, T: TOrcData + DeckItemDisplay> {
     handle: &'a OrcHandle,
     _phantom: PhantomData<T>,
 }
 
-impl<'a, T: TOrcData + Display> Display for HandleDisplayWrapper<'a, T> {
+impl<'a, T: TOrcData + DeckItemDisplay> Display for HandleDisplayWrapper<'a, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if !(self.handle.item_size as usize).is_multiple_of(size_of::<T>()) {
+            return Err(std::fmt::Error);
+        }
         writeln!(f, "handle: {}", self.handle.handle)?;
         writeln!(f, "type_id: {:?}", self.handle.type_id)?;
         writeln!(f, "dims: {:?}", self.handle.dims)?;
-        let (items, marks) = unsafe {
-            (
-                slice_from_ptr::<T>(self.handle.items.cast(), self.handle.n_items as usize),
-                slice_from_ptr(self.handle.marks, self.handle.n_marks as usize),
-            )
-        };
-        fmt_raw_deck(items, marks, f)?;
-        Ok(())
+
+        fn write_items<U: TOrcData + DeckItemDisplay>(
+            handle: &OrcHandle,
+            f: &mut std::fmt::Formatter<'_>,
+        ) -> std::fmt::Result {
+            let (items, marks) = unsafe {
+                (
+                    slice_from_ptr::<U>(handle.items.cast(), handle.n_items as usize),
+                    slice_from_ptr(handle.marks, handle.n_marks as usize),
+                )
+            };
+            fmt_raw_deck(items, marks, f)
+        }
+
+        let n_components = (self.handle.item_size as usize) / size_of::<T>();
+        match n_components {
+            1 => write_items::<T>(self.handle, f),
+            2 => write_items::<[T; 2]>(self.handle, f),
+            3 => write_items::<[T; 3]>(self.handle, f),
+            4 => write_items::<[T; 4]>(self.handle, f),
+            5 => write_items::<[T; 5]>(self.handle, f),
+            6 => write_items::<[T; 6]>(self.handle, f),
+            7 => write_items::<[T; 7]>(self.handle, f),
+            8 => write_items::<[T; 8]>(self.handle, f),
+            9 => write_items::<[T; 9]>(self.handle, f),
+            10 => write_items::<[T; 10]>(self.handle, f),
+            11 => write_items::<[T; 11]>(self.handle, f),
+            12 => write_items::<[T; 12]>(self.handle, f),
+            13 => write_items::<[T; 13]>(self.handle, f),
+            14 => write_items::<[T; 14]>(self.handle, f),
+            15 => write_items::<[T; 15]>(self.handle, f),
+            16 => write_items::<[T; 16]>(self.handle, f),
+            17 => write_items::<[T; 17]>(self.handle, f),
+            18 => write_items::<[T; 18]>(self.handle, f),
+            19 => write_items::<[T; 19]>(self.handle, f),
+            20 => write_items::<[T; 20]>(self.handle, f),
+            21 => write_items::<[T; 21]>(self.handle, f),
+            22 => write_items::<[T; 22]>(self.handle, f),
+            23 => write_items::<[T; 23]>(self.handle, f),
+            24 => write_items::<[T; 24]>(self.handle, f),
+            25 => write_items::<[T; 25]>(self.handle, f),
+            26 => write_items::<[T; 26]>(self.handle, f),
+            27 => write_items::<[T; 27]>(self.handle, f),
+            28 => write_items::<[T; 28]>(self.handle, f),
+            29 => write_items::<[T; 29]>(self.handle, f),
+            30 => write_items::<[T; 30]>(self.handle, f),
+            31 => write_items::<[T; 31]>(self.handle, f),
+            32 => write_items::<[T; 32]>(self.handle, f),
+            _ => Err(std::fmt::Error),
+        }
     }
 }
 
 impl OrcHandle {
-    pub fn display<'a, T: TOrcData + Display>(&'a self) -> HandleDisplayWrapper<'a, T> {
+    pub fn display<'a, T: TOrcData + DeckItemDisplay>(&'a self) -> HandleDisplayWrapper<'a, T> {
         HandleDisplayWrapper {
             handle: self,
             _phantom: PhantomData,
@@ -1008,7 +1055,7 @@ pub fn try_deserialize_handle(
 
 // ==================== String Conversion ====================
 
-pub fn to_str_deck<T: TOrcData + Display>(
+pub fn to_str_deck<T: TOrcData + DeckItemDisplay>(
     input: &OrcHandle,
     out: &mut Deck<u8>,
 ) -> Result<(), Error> {
@@ -1019,7 +1066,7 @@ pub fn to_str_deck<T: TOrcData + Display>(
     }
     out.clear();
 
-    fn convert_str<U: TOrcData + Display>(
+    fn convert_str<U: TOrcData + DeckItemDisplay>(
         input: &OrcHandle,
         out: &mut Deck<u8>,
     ) -> Result<(), Error> {
@@ -1031,38 +1078,8 @@ pub fn to_str_deck<T: TOrcData + Display>(
             if !view.is_empty() {
                 let item: &U = view.as_ref();
                 buf.clear();
-                write!(buf, "{}", item).map_err(|_| Error::SerializationError)?;
-                let mut writer = comb.get_output(out, 0);
-                writer.extend_from_slice(buf.as_bytes());
-            }
-            if !comb.advance() {
-                break;
-            }
-        }
-        Ok(())
-    }
-
-    fn convert_str_arr<U: TOrcData + Display, const N: usize>(
-        input: &OrcHandle,
-        out: &mut Deck<u8>,
-    ) -> Result<(), Error>
-    where
-        [U; N]: TOrcData,
-    {
-        let items = input.items::<[U; N]>()?;
-        let mut comb = Combinations::from_handles(std::slice::from_ref(input), &[0], &[1])?;
-        let mut buf = String::new();
-        loop {
-            let view = comb.get_input(items, 0);
-            if !view.is_empty() {
-                let item: &[U; N] = view.as_ref();
-                buf.clear();
-                write!(buf, "[").map_err(|_| Error::SerializationError)?;
-                write!(buf, "{}", item[0]).map_err(|_| Error::SerializationError)?;
-                for i in 1..item.len() {
-                    write!(buf, ", {}", item[i]).map_err(|_| Error::SerializationError)?;
-                }
-                write!(buf, "]").map_err(|_| Error::SerializationError)?;
+                write!(buf, "{}", DeckItemDisplayAdapter(item))
+                    .map_err(|_| Error::SerializationError)?;
                 let mut writer = comb.get_output(out, 0);
                 writer.extend_from_slice(buf.as_bytes());
             }
@@ -1076,37 +1093,37 @@ pub fn to_str_deck<T: TOrcData + Display>(
     let n_components = (input.item_size as usize) / size_of::<T>();
     match n_components {
         1 => convert_str::<T>(input, out),
-        2 => convert_str_arr::<T, 2>(input, out),
-        3 => convert_str_arr::<T, 3>(input, out),
-        4 => convert_str_arr::<T, 4>(input, out),
-        5 => convert_str_arr::<T, 5>(input, out),
-        6 => convert_str_arr::<T, 6>(input, out),
-        7 => convert_str_arr::<T, 7>(input, out),
-        8 => convert_str_arr::<T, 8>(input, out),
-        9 => convert_str_arr::<T, 9>(input, out),
-        10 => convert_str_arr::<T, 10>(input, out),
-        11 => convert_str_arr::<T, 11>(input, out),
-        12 => convert_str_arr::<T, 12>(input, out),
-        13 => convert_str_arr::<T, 13>(input, out),
-        14 => convert_str_arr::<T, 14>(input, out),
-        15 => convert_str_arr::<T, 15>(input, out),
-        16 => convert_str_arr::<T, 16>(input, out),
-        17 => convert_str_arr::<T, 17>(input, out),
-        18 => convert_str_arr::<T, 18>(input, out),
-        19 => convert_str_arr::<T, 19>(input, out),
-        20 => convert_str_arr::<T, 20>(input, out),
-        21 => convert_str_arr::<T, 21>(input, out),
-        22 => convert_str_arr::<T, 22>(input, out),
-        23 => convert_str_arr::<T, 23>(input, out),
-        24 => convert_str_arr::<T, 24>(input, out),
-        25 => convert_str_arr::<T, 25>(input, out),
-        26 => convert_str_arr::<T, 26>(input, out),
-        27 => convert_str_arr::<T, 27>(input, out),
-        28 => convert_str_arr::<T, 28>(input, out),
-        29 => convert_str_arr::<T, 29>(input, out),
-        30 => convert_str_arr::<T, 30>(input, out),
-        31 => convert_str_arr::<T, 31>(input, out),
-        32 => convert_str_arr::<T, 32>(input, out),
+        2 => convert_str::<[T; 2]>(input, out),
+        3 => convert_str::<[T; 3]>(input, out),
+        4 => convert_str::<[T; 4]>(input, out),
+        5 => convert_str::<[T; 5]>(input, out),
+        6 => convert_str::<[T; 6]>(input, out),
+        7 => convert_str::<[T; 7]>(input, out),
+        8 => convert_str::<[T; 8]>(input, out),
+        9 => convert_str::<[T; 9]>(input, out),
+        10 => convert_str::<[T; 10]>(input, out),
+        11 => convert_str::<[T; 11]>(input, out),
+        12 => convert_str::<[T; 12]>(input, out),
+        13 => convert_str::<[T; 13]>(input, out),
+        14 => convert_str::<[T; 14]>(input, out),
+        15 => convert_str::<[T; 15]>(input, out),
+        16 => convert_str::<[T; 16]>(input, out),
+        17 => convert_str::<[T; 17]>(input, out),
+        18 => convert_str::<[T; 18]>(input, out),
+        19 => convert_str::<[T; 19]>(input, out),
+        20 => convert_str::<[T; 20]>(input, out),
+        21 => convert_str::<[T; 21]>(input, out),
+        22 => convert_str::<[T; 22]>(input, out),
+        23 => convert_str::<[T; 23]>(input, out),
+        24 => convert_str::<[T; 24]>(input, out),
+        25 => convert_str::<[T; 25]>(input, out),
+        26 => convert_str::<[T; 26]>(input, out),
+        27 => convert_str::<[T; 27]>(input, out),
+        28 => convert_str::<[T; 28]>(input, out),
+        29 => convert_str::<[T; 29]>(input, out),
+        30 => convert_str::<[T; 30]>(input, out),
+        31 => convert_str::<[T; 31]>(input, out),
+        32 => convert_str::<[T; 32]>(input, out),
         _ => Err(Error::DeckTypeMismatch),
     }
 }
@@ -2146,7 +2163,7 @@ mod tests {
     // ==================== to_str_deck ====================
 
     /// Helper: create an OrcHandle from a Deck, call to_str_deck, and return the output Deck<u8>.
-    fn run_to_str_deck<T: TOrcData + std::fmt::Display>(deck: &Deck<T>) -> Deck<u8> {
+    fn run_to_str_deck<T: TOrcData + DeckItemDisplay>(deck: &Deck<T>) -> Deck<u8> {
         let h = serial_make_handle(deck);
         let mut out = Deck::<u8>::default();
         to_str_deck::<T>(&h, &mut out).expect("to_str_deck failed");
@@ -2239,6 +2256,40 @@ mod tests {
         let h = serial_make_handle(&d);
         let mut out = Deck::<u8>::default();
         assert!(to_str_deck::<i64>(&h, &mut out).is_err());
+    }
+
+    // ==================== HandleDisplayWrapper / OrcHandle::display ====================
+
+    #[test]
+    fn t_display_scalar() {
+        let d = deck![1.5_f64, -2.0];
+        let h = serial_make_handle(&d);
+        let text = h.display::<f64>().to_string();
+        assert!(text.contains("1.5"), "got: {text}");
+        assert!(text.contains("-2"), "got: {text}");
+    }
+
+    #[test]
+    fn t_display_aggregate() {
+        let mut d = Deck::<[f64; 3]>::default();
+        d.push([1.0, 2.0, 3.0], 1);
+        d.push([4.0, 5.0, 6.0], 0);
+        let h = serial_make_handle(&d);
+        let text = h.display::<f64>().to_string();
+        assert!(text.contains("[1, 2, 3]"), "got: {text}");
+        assert!(text.contains("[4, 5, 6]"), "got: {text}");
+    }
+
+    #[test]
+    fn t_display_rejects_non_multiple_item_size() {
+        // `to_string()`/`format!` panic on a `Display::fmt` error, so use `write!` to a `String`
+        // directly here to observe the `Err` instead of triggering that panic.
+        use std::fmt::Write as _;
+        let d = deck![1.0_f64, 2.0];
+        let mut h = serial_make_handle(&d);
+        h.item_size = 20; // Not a multiple of size_of::<f64>() == 8.
+        let mut buf = String::new();
+        assert!(write!(buf, "{}", h.display::<f64>()).is_err());
     }
 
     #[test]
