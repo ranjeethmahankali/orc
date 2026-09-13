@@ -1861,8 +1861,7 @@ mod tests {
         // CopyAll, dispatched as `deck_from_proxy::<f64>` exactly like the real call sites do.
         let mut out = serial_fresh_handle(serial_next_id());
         let dummy_proxy = OrcHandle::default();
-        deck_from_proxy::<f64>(&[input], ProxyType::CopyAll, &dummy_proxy, &mut out, &reg)
-            .unwrap();
+        deck_from_proxy::<f64>(&[input], ProxyType::CopyAll, &dummy_proxy, &mut out, &reg).unwrap();
         assert_eq!(out.item_size, size_of::<[f64; 3]>() as u64);
         assert_eq!(out.n_items, 2);
         assert_eq!(
