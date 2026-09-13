@@ -947,46 +947,51 @@ pub fn try_deserialize_handle(
     // plugin calls that shape (`[f64; 3]`, `glam::DVec3`, `glm::dvec3`, ...) -- once the resulting
     // handle crosses back over the FFI boundary it's just bytes plus (type_id, item_size)
     // metadata, and a plugin reads it by casting the pointer, not by matching Rust type identity.
-    macro_rules! read_scalar_or_aggregate {
-        ($ty:ty, $n_components:expr, $r:expr, $marks:expr, $n_items:expr, $handle:expr, $registry:expr) => {
-            match $n_components {
-                1 => read_items::<$ty>($r, $marks, $n_items, $handle, $registry),
-                2 => read_items::<[$ty; 2]>($r, $marks, $n_items, $handle, $registry),
-                3 => read_items::<[$ty; 3]>($r, $marks, $n_items, $handle, $registry),
-                4 => read_items::<[$ty; 4]>($r, $marks, $n_items, $handle, $registry),
-                5 => read_items::<[$ty; 5]>($r, $marks, $n_items, $handle, $registry),
-                6 => read_items::<[$ty; 6]>($r, $marks, $n_items, $handle, $registry),
-                7 => read_items::<[$ty; 7]>($r, $marks, $n_items, $handle, $registry),
-                8 => read_items::<[$ty; 8]>($r, $marks, $n_items, $handle, $registry),
-                9 => read_items::<[$ty; 9]>($r, $marks, $n_items, $handle, $registry),
-                10 => read_items::<[$ty; 10]>($r, $marks, $n_items, $handle, $registry),
-                11 => read_items::<[$ty; 11]>($r, $marks, $n_items, $handle, $registry),
-                12 => read_items::<[$ty; 12]>($r, $marks, $n_items, $handle, $registry),
-                13 => read_items::<[$ty; 13]>($r, $marks, $n_items, $handle, $registry),
-                14 => read_items::<[$ty; 14]>($r, $marks, $n_items, $handle, $registry),
-                15 => read_items::<[$ty; 15]>($r, $marks, $n_items, $handle, $registry),
-                16 => read_items::<[$ty; 16]>($r, $marks, $n_items, $handle, $registry),
-                17 => read_items::<[$ty; 17]>($r, $marks, $n_items, $handle, $registry),
-                18 => read_items::<[$ty; 18]>($r, $marks, $n_items, $handle, $registry),
-                19 => read_items::<[$ty; 19]>($r, $marks, $n_items, $handle, $registry),
-                20 => read_items::<[$ty; 20]>($r, $marks, $n_items, $handle, $registry),
-                21 => read_items::<[$ty; 21]>($r, $marks, $n_items, $handle, $registry),
-                22 => read_items::<[$ty; 22]>($r, $marks, $n_items, $handle, $registry),
-                23 => read_items::<[$ty; 23]>($r, $marks, $n_items, $handle, $registry),
-                24 => read_items::<[$ty; 24]>($r, $marks, $n_items, $handle, $registry),
-                25 => read_items::<[$ty; 25]>($r, $marks, $n_items, $handle, $registry),
-                26 => read_items::<[$ty; 26]>($r, $marks, $n_items, $handle, $registry),
-                27 => read_items::<[$ty; 27]>($r, $marks, $n_items, $handle, $registry),
-                28 => read_items::<[$ty; 28]>($r, $marks, $n_items, $handle, $registry),
-                29 => read_items::<[$ty; 29]>($r, $marks, $n_items, $handle, $registry),
-                30 => read_items::<[$ty; 30]>($r, $marks, $n_items, $handle, $registry),
-                31 => read_items::<[$ty; 31]>($r, $marks, $n_items, $handle, $registry),
-                32 => read_items::<[$ty; 32]>($r, $marks, $n_items, $handle, $registry),
-                // Beyond what the `TOrcData` array impl covers. Not plugin-deferrable either
-                // (same reasoning as above), so this is a hard failure, not `Err(marks)`.
-                _ => Err(Error::SerializationError),
-            }
-        };
+    fn read_scalar_or_aggregate<T: TOrcData + Default + Copy + std::any::Any + Send + Sync>(
+        n_components: usize,
+        r: &mut impl std::io::Read,
+        marks: Vec<OrcMark>,
+        n_items: usize,
+        handle: &mut OrcHandle,
+        registry: &DeckRegistry,
+    ) -> Result<(), Error> {
+        match n_components {
+            1 => read_items::<T>(r, marks, n_items, handle, registry),
+            2 => read_items::<[T; 2]>(r, marks, n_items, handle, registry),
+            3 => read_items::<[T; 3]>(r, marks, n_items, handle, registry),
+            4 => read_items::<[T; 4]>(r, marks, n_items, handle, registry),
+            5 => read_items::<[T; 5]>(r, marks, n_items, handle, registry),
+            6 => read_items::<[T; 6]>(r, marks, n_items, handle, registry),
+            7 => read_items::<[T; 7]>(r, marks, n_items, handle, registry),
+            8 => read_items::<[T; 8]>(r, marks, n_items, handle, registry),
+            9 => read_items::<[T; 9]>(r, marks, n_items, handle, registry),
+            10 => read_items::<[T; 10]>(r, marks, n_items, handle, registry),
+            11 => read_items::<[T; 11]>(r, marks, n_items, handle, registry),
+            12 => read_items::<[T; 12]>(r, marks, n_items, handle, registry),
+            13 => read_items::<[T; 13]>(r, marks, n_items, handle, registry),
+            14 => read_items::<[T; 14]>(r, marks, n_items, handle, registry),
+            15 => read_items::<[T; 15]>(r, marks, n_items, handle, registry),
+            16 => read_items::<[T; 16]>(r, marks, n_items, handle, registry),
+            17 => read_items::<[T; 17]>(r, marks, n_items, handle, registry),
+            18 => read_items::<[T; 18]>(r, marks, n_items, handle, registry),
+            19 => read_items::<[T; 19]>(r, marks, n_items, handle, registry),
+            20 => read_items::<[T; 20]>(r, marks, n_items, handle, registry),
+            21 => read_items::<[T; 21]>(r, marks, n_items, handle, registry),
+            22 => read_items::<[T; 22]>(r, marks, n_items, handle, registry),
+            23 => read_items::<[T; 23]>(r, marks, n_items, handle, registry),
+            24 => read_items::<[T; 24]>(r, marks, n_items, handle, registry),
+            25 => read_items::<[T; 25]>(r, marks, n_items, handle, registry),
+            26 => read_items::<[T; 26]>(r, marks, n_items, handle, registry),
+            27 => read_items::<[T; 27]>(r, marks, n_items, handle, registry),
+            28 => read_items::<[T; 28]>(r, marks, n_items, handle, registry),
+            29 => read_items::<[T; 29]>(r, marks, n_items, handle, registry),
+            30 => read_items::<[T; 30]>(r, marks, n_items, handle, registry),
+            31 => read_items::<[T; 31]>(r, marks, n_items, handle, registry),
+            32 => read_items::<[T; 32]>(r, marks, n_items, handle, registry),
+            // Beyond what the `TOrcData` array impl covers. Not plugin-deferrable either
+            // (same reasoning as above), so this is a hard failure, not `Err(marks)`.
+            _ => Err(Error::SerializationError),
+        }
     }
 
     let marks = read_orc_handle_header(out, r).map_err(|_| Vec::new())?;
@@ -1014,35 +1019,31 @@ pub fn try_deserialize_handle(
     let n_components = item_size / scalar_size;
     let n_items = out.n_items as usize;
     let result = match out.type_id {
-        ORC_TYPE_U8 => {
-            read_scalar_or_aggregate!(u8, n_components, r, marks, n_items, out, registry)
-        }
+        ORC_TYPE_U8 => read_scalar_or_aggregate::<u8>(n_components, r, marks, n_items, out, registry),
         ORC_TYPE_U16 => {
-            read_scalar_or_aggregate!(u16, n_components, r, marks, n_items, out, registry)
+            read_scalar_or_aggregate::<u16>(n_components, r, marks, n_items, out, registry)
         }
         ORC_TYPE_U32 => {
-            read_scalar_or_aggregate!(u32, n_components, r, marks, n_items, out, registry)
+            read_scalar_or_aggregate::<u32>(n_components, r, marks, n_items, out, registry)
         }
         ORC_TYPE_U64 => {
-            read_scalar_or_aggregate!(u64, n_components, r, marks, n_items, out, registry)
+            read_scalar_or_aggregate::<u64>(n_components, r, marks, n_items, out, registry)
         }
-        ORC_TYPE_I8 => {
-            read_scalar_or_aggregate!(i8, n_components, r, marks, n_items, out, registry)
-        }
+        ORC_TYPE_I8 => read_scalar_or_aggregate::<i8>(n_components, r, marks, n_items, out, registry),
         ORC_TYPE_I16 => {
-            read_scalar_or_aggregate!(i16, n_components, r, marks, n_items, out, registry)
+            read_scalar_or_aggregate::<i16>(n_components, r, marks, n_items, out, registry)
         }
         ORC_TYPE_I32 => {
-            read_scalar_or_aggregate!(i32, n_components, r, marks, n_items, out, registry)
+            read_scalar_or_aggregate::<i32>(n_components, r, marks, n_items, out, registry)
         }
         ORC_TYPE_I64 => {
-            read_scalar_or_aggregate!(i64, n_components, r, marks, n_items, out, registry)
+            read_scalar_or_aggregate::<i64>(n_components, r, marks, n_items, out, registry)
         }
         ORC_TYPE_F32 => {
-            read_scalar_or_aggregate!(f32, n_components, r, marks, n_items, out, registry)
+            read_scalar_or_aggregate::<f32>(n_components, r, marks, n_items, out, registry)
         }
         ORC_TYPE_F64 => {
-            read_scalar_or_aggregate!(f64, n_components, r, marks, n_items, out, registry)
+            read_scalar_or_aggregate::<f64>(n_components, r, marks, n_items, out, registry)
         }
         _ => unreachable!(),
     };
