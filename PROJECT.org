@@ -199,6 +199,9 @@
   side. The sites that consume handles still don't check for item_size, and they need some
   attention.
 
+  <2026-09-12 Sat 19:58> Surveying the code base, and slowly refactoring things across the repo to
+  support aggregate types.
+
 ** Footprint of the Refactor
    :PROPERTIES:
    :CREATED:  2026-09-12 Sat 15:22
@@ -278,6 +281,53 @@
    7. [ ] We tried to cover aggregate types in Rust deserialization. We did not check whether the
       serialization and deserialization helpers in the C SDK are accounting for aggregate types. We
       should also add support there, and get parity with the Rust SDK.
+      - [ ] *Header (de)serialization is already aggregate-safe:* ~orc_sdk_serialize_handle_header~ /
+        ~orc_sdk_deserialize_handle_header~ (~orc_sdk.c:2544-2628~, declared ~orc_sdk.h:943-947~)
+        write/read ~item_size~ as an opaque ~u64~ alongside ~type_id~/~dims~/~n_items~/~n_marks~ --
+        no per-type_id dispatch happens on the header at all, so any ~item_size~ value round-trips
+        correctly today. No code change needed here.
+      - [ ] *Item payload (de)serialization is already aggregate-safe, but by a different mechanism
+        than Rust:* ~orc_deck_serialize~/~orc_deck_deserialize~ (~example_c_plugin/plugin.c:58-121~)
+        and the CLI's mirror (~cli_client/main.c:408-455~, ~serialize_handle~/~deserialize_handle~)
+        write/read the payload as ~item_size * n_items~ raw bytes with no per-scalar-type
+        interpretation, unlike Rust's typed ~try_serialize_handle~/~try_deserialize_handle~ which
+        reconstruct a ~Vec<T>~/registry-backed ~Deck<T>~. Because every built-in type is a POD value
+        type with no pointer indirection, the raw-byte-copy approach already handles any item_size
+        transparently -- this is a structurally different design that happens to already have
+        parity for aggregates, not a gap.
+      - [ ] *Allocation on deserialize is already aggregate-safe:* ~orc_deck_deserialize~
+        (~plugin.c:92~) allocates the landing deck via
+        ~orc_sdk_handle_alloc(out->type_id, out->item_size, &temp_handle)~, which already rejects
+        non-multiple ~item_size~ (item 2 above). So a deserialized aggregate handle is already
+        allocated with the right item_size.
+      - [ ] *The actual gap is test coverage, not code:* nothing in ~c/orc_sdk/test.c~ or
+        ~c/example_c_plugin/test.c~ exercises a serialize/deserialize round trip at an aggregate
+        item_size (e.g. ~ORC_TYPE_F64~ with ~item_size = 24~, 3 components/item) -- every existing
+        case (~test_serialize_round_trip_f64_flat~, ~..._all_primitive_types~, etc.,
+        ~example_c_plugin/test.c:612-887~) uses ~item_size == sizeof(scalar)~, and the header tests
+        (~orc_sdk/test.c:6633-6834~) never vary ~item_size~ either.
+        ~test_deserialize_wrong_item_size_fails~ (~example_c_plugin/test.c:979-1000~) only proves a
+        non-multiple ~item_size~ (4, for a type whose scalar is 8 bytes) is rejected -- it doesn't
+        prove a *valid* aggregate item_size (a genuine multiple) is accepted and round-trips
+        correctly end to end (header + payload + values). Should add that case on both sides.
+      - [ ] *No C-side example of a custom (plugin-owned) aggregate type:* ~example_c_plugin~
+        registers zero custom types (~plugin.c:16,25~), so unlike Rust's ~Complex~
+        (~example_rust_plugin/src/lib.rs~), there is nothing in the C codebase demonstrating or
+        testing a plugin's own ~deck_serialize~/~deck_deserialize~ continuing past the header for an
+        aggregate of a plugin-owned type. Not a bug, but means the "custom type + aggregate" path is
+        completely unverified on the C side.
+      - [ ] *Aside, found during this survey, likely a real bug independent of serialization:*
+        ~_copy_items~ (~orc_sdk.c:2333-2393~) dispatches a ~memcpy~ sized by ~n_items *
+        sizeof(<scalar type>)~ purely from ~type_id~, ignoring ~item_size~ entirely. Its three call
+        sites are all in ~orc_sdk_deck_from_proxy~ -- ~ORC_DECK_PROXY_COPY_ALL~ (line 2439) and
+        ~ORC_DECK_PROXY_COPY_ITEMS~ (line 2473) would each copy only ~n_items * sizeof(scalar)~
+        bytes into a buffer sized for ~n_items * item_size~ (leaving the rest as the ~memset~
+        zeroes, silently truncating every aggregate item to its first scalar component), and
+        ~ORC_DECK_PROXY_SHUFFLE~ (line 2509, called with ~n_items=1~ per proxy entry) copies only
+        ~sizeof(scalar)~ bytes per shuffled item instead of ~item_size~ bytes, same truncation.
+        This is unrelated to the serialize/deserialize helpers this item is about, but it's a
+        concrete data-corruption bug for any aggregate handle that flows through ~deck_from_proxy~
+        (COPY_ALL/COPY_ITEMS/SHUFFLE), so flagging it here rather than losing it.
    8. [ ] String conversion at the ABI level should check for, and handle aggregate types
       properly. It should print comma separated values. This means the string conversion in the SDK,
       and in the plugins for custom types needs to be updated. This also needs some good test
@@ -330,6 +380,80 @@
         (~rust/kbb_cli_host/src/test.rs~, which already exercises every loaded plugin's
         ~to_str_deck~), and ~t_collapsed_display_*~ (~rust/dagger/src/inspect.rs~) with an
         aggregate case each (e.g. item_size=24 F64 -> ~"1.000000,2.000000,3.000000"~).
+   9. [ ] *Full-repo survey (using sub agents), covering everything not already caught by items
+      1-8:* ~c/cli_client~, ~c/example_c_plugin~, ~cpp/orc_sdk~, ~rust/dagger~, ~rust/pyorc~,
+      ~python/~, ~rust/server_host~, ~rust/kbb_cli_host~.
+      - [ ] *C++ SDK needs no changes:* ~cpp/orc_sdk~ (~deck.hpp~/~deck.cpp~) has no ~type_id~
+        dispatch at all -- ~Deck<T>~/~DeckView<T>~/~Combinations~ are purely generic over ~T~, and
+        ~update_handle_from_deck<T>~ (~deck.hpp:602-612~) already sets
+        ~handle.item_size = sizeof(T)~ unconditionally, which is already correct for any aggregate
+        ~T~. Nothing in ~cpp/orc_sdk/test.cpp~ or elsewhere assumes item_size == a fixed scalar
+        size. This is confirmed complete, not a placeholder for later work.
+      - [ ] *The same ~type_id~-only proxy-deck dispatch is duplicated FOUR times across the
+        Rust hosts, none of them checking ~item_size~:* ~rust/dagger/src/main.rs::host_create_proxy_deck~
+        (~lines 94-128~), ~rust/server_host/src/server.rs::host_create_proxy_deck~
+        (~lines 690-778~, whose same-type check at line 694 also only compares ~type_id~),
+        ~rust/kbb_cli_host/src/main.rs~ (~lines 42-122~, match at 76-116), and
+        ~rust/pyorc/src/host.rs::host_create_proxy_deck~ (~lines 74-121~). Each matches ~type_id~
+        alone to pick a concrete scalar ~T~ for ~orc_sdk::deck_from_proxy::<T>~. Verified this is
+        *not* a silent-corruption bug: ~deck_from_proxy::<T>~ (~rust/orc_sdk/src/util.rs:644~)
+        always routes item access through ~DeckView::<T>::from_handle~, which already enforces
+        ~item_size == size_of::<T>()~ strictly -- so today an aggregate input handle just makes
+        every ~COPY_ALL~/~COPY_ITEMS~/~SHUFFLE~ proxy request fail cleanly with
+        ~Error::DeckTypeMismatch~ (surfacing as ~ORC_ERROR_INVALID_PROXY~/an HTTP error/etc.),
+        indistinguishable from a genuinely malformed proxy request. Fixing this means adding
+        ~(type_id, item_size)~ arms (mirroring the array ~TOrcData~ impls) in all four places, or
+        -- given it's the *same* dispatch table copy-pasted four times -- centralizing it into one
+        ~orc_sdk~ helper, echoing the exact duplication concern already raised for
+        ~deck_to_str~ under item 8.
+      - [ ] *~rust/server_host/src/server.rs::clone_handle~* (~lines 82-98~) calls
+        ~host_create_proxy_deck~ with ~ProxyType::CopyAll~ and is used by
+        ~Session::build_workflow~ (~line 148~) for every constant handle cloned into
+        ~/download_workflow~ and ~/download_python_script~ responses -- inherits the gap above,
+        so cloning an aggregate constant during workflow export currently hard-errors.
+      - [ ] *~rust/pyorc~ has three separate aggregate gaps, all clean hard-errors (not silent
+        misreads), stacking to make aggregates entirely unusable from Python today:*
+        - ~read_deck~'s ~read_typed!~ macro (~rust/pyorc/src/lib.rs:113-144~) matches ~type_id~
+          alone and calls ~handle.items::<T>()~, which requires exact ~item_size == size_of::<T>()~
+          -- the only way to pull deck contents back into Python currently hard-fails for any
+          aggregate handle.
+        - ~create_orc_handle~/~make_deck~ (~rust/pyorc/src/lib.rs:183-234~) has no construction
+          path for an aggregate handle at all -- ~build_deck!~ always sizes ~item_size~ from a
+          scalar ~T~, and ~py_to_deck~/~detect_type~ only understand scalar leaves plus
+          nesting-depth marks (used for ragged-list structure, a different mechanism from
+          item_size aggregation -- don't conflate the two when adding support).
+        - ~host_clone_orc_handle~ (~rust/pyorc/src/host.rs:234~, used by
+          ~PyWorkflow::run_impl~ at ~graph.rs:145~ for every workflow input/constant clone) goes
+          through the same ~host_create_proxy_deck~ gap above.
+      - [ ] *~c/cli_client/main.c~ is the one place this survey found an actual silent-misread,
+        not a clean error:* ~TYPE_TABLE~/~type_by_id~ (~lines 472-507~) is a static, ~type_id~-keyed
+        table of scalar sizes with no relationship to a real handle's ~item_size~.
+        ~print_handle_values~ (~lines 511-544~) indexes items at stride
+        ~te->item_size~ (the *table's* fixed scalar size) instead of ~h->item_size~ (the handle's
+        actual, possibly-aggregate size) -- for an aggregate handle this walks the buffer at the
+        wrong stride and prints garbage/misaligned values with no error at all.
+        ~cmd_download~ (~lines 753-779~) is the concrete path that gets an aggregate handle here:
+        it deserializes a handle straight off the wire (whose ~item_size~ is untrusted/aggregate-
+        capable, per item 7's finding that deserialization is already item_size-agnostic) and
+        feeds it directly into ~print_handle_values~ with no validation that
+        ~result.item_size == te->item_size~. ~cmd_constant~ (~lines 617-707~) only ever builds
+        handles with ~item_size = te->item_size~, so the CLI can't *author* an aggregate constant
+        today -- a feature gap, not a bug, but the same root design (~TypeEntry~ conflating
+        type_id and byte-size 1:1) would need revisiting to lift it.
+      - [ ] *Test coverage gaps found (no code bug, just missing regression coverage):*
+        ~c/example_c_plugin/test.c~'s ~list_length~/~flatten_deck~ tests never use an aggregate
+        item_size (both route through the already item_size-correct combinator/proxy machinery,
+        so not currently broken, just unverified); ~rust/kbb_cli_host/src/test.rs~ has several
+        helpers that explicitly assert aggregates away rather than testing them
+        (~extract_complex_parts~ at line 1288, ~t_serial_every_plugin_handles_builtin_types~ at
+        1373, ~t_serial_every_plugin_handles_nested_builtin~ at 1405,
+        ~t_serial_concurrent_serialization~ at 1453/1465); ~rust/server_host/tests/integration.rs~
+        never drives an aggregate handle through the HTTP API at all; and
+        ~python/test.py~/~python/example.py~ have no aggregate sample in
+        ~_make_builtin_samples()~ (~test.py:748-761~) -- note ~t_numpy_3x3_matrix~/
+        ~t_numpy_3x3_from_plugin~ (~test.py:551-584~) build a "3x3 matrix" via nested-list
+        *marks*, a different mechanism from item_size aggregation, and shouldn't be mistaken for
+        existing aggregate coverage.
 
 * TODO Mesh plugin functions
   :PROPERTIES:
