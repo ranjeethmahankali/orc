@@ -394,6 +394,27 @@ mod test {
     }
 
     #[test]
+    fn t_collapsed_display_aggregate_vec3() {
+        // An aggregate (item_size=24, [f64;3]) to_str_deck result must decode the same way as
+        // any other -- one comma-joined string per original item, no special-casing needed here.
+        let mut original = Deck::<[f64; 3]>::default();
+        original.push([1.0, 2.0, 3.0], 1);
+        original.push([4.0, 5.0, 6.0], 0);
+
+        let handle = handle_for(original);
+        let mut str_deck = Deck::<u8>::default();
+        orc_sdk::to_str_deck::<f64>(&handle, &mut str_deck).unwrap();
+
+        let mut collapsed = String::new();
+        render_str_deck_raw(str_deck.items(), str_deck.marks(), &mut collapsed);
+        assert!(collapsed.contains("[1, 2, 3]"), "got: {collapsed}");
+        assert!(collapsed.contains("[4, 5, 6]"), "got: {collapsed}");
+        // Exactly one ruler line per original item -- the comma inside "[1, 2, 3]" must not be
+        // mistaken for a line/item boundary.
+        assert_eq!(collapsed.lines().count(), 2);
+    }
+
+    #[test]
     fn t_collapsed_display_flat_deck_no_marks() {
         // A single unnested scalar (`Deck::from_value`) carries no marks at all.
         let original = Deck::<i32>::from_value(7);

@@ -1753,6 +1753,33 @@ fn t_deck_to_str_every_plugin_handles_builtin() {
 }
 
 #[test]
+fn t_deck_to_str_vec3_aggregate() {
+    // deck_to_str's dispatch (in dagger/pyorc/every plugin) matches type_id alone and calls
+    // to_str_deck::<f64>(...) -- since to_str_deck itself now resolves item_size -> [T; N]
+    // internally, this should already comma-join an aggregate without any dispatch changes,
+    // same as the deck_from_proxy story. Exercised here across every loaded plugin.
+    let plugins = PLUGIN_SET.plugins();
+    let mut d = Deck::<[f64; 3]>::default();
+    d.push([1.0, 2.0, 3.0], 1);
+    d.push([4.0, 5.0, 6.0], 0);
+    let h = make_handle(&d);
+    assert_eq!(h.item_size, size_of::<[f64; 3]>() as u64);
+    for (i, plugin) in plugins.iter().enumerate() {
+        let mut out = OrcHandle {
+            handle: next_id(),
+            ..Default::default()
+        };
+        plugin
+            .to_str_deck(&h, &mut out)
+            .unwrap_or_else(|e| panic!("plugin {} ({}) failed: {e:?}", i, plugin.name()));
+        let groups = to_str_groups(&out);
+        assert_eq!(groups.len(), 2, "plugin {} ({})", i, plugin.name());
+        assert_eq!(groups[0], "[1, 2, 3]", "plugin {} ({})", i, plugin.name());
+        assert_eq!(groups[1], "[4, 5, 6]", "plugin {} ({})", i, plugin.name());
+    }
+}
+
+#[test]
 fn t_deck_to_str_complex() {
     let h = create_complex_handle(&[3.0, -1.0], &[4.0, 0.0]);
     let plugin = plugin_for_type(h.type_id);
