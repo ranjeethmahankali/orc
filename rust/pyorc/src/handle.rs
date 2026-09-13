@@ -68,7 +68,7 @@ impl Handle {
         // for arrays of fixed-size vectors) instead of reinterpreting the buffer as a flat array
         // of scalars, which would silently fold every component into the item axis.
         let item_size = h.item_size as usize;
-        if item_size == 0 || item_size % scalar_size != 0 {
+        if item_size == 0 || !item_size.is_multiple_of(scalar_size) {
             return Err(pyo3::exceptions::PyValueError::new_err(format!(
                 "handle item_size {item_size} is not a multiple of the {scalar_size}-byte scalar \
                  size for type_id {:#x}",
