@@ -6531,6 +6531,72 @@ static void test_deck_from_proxy_shuffle(void)
   }
 }
 
+/* Regression test: _copy_items must size its memcpy from item_size, not sizeof(scalar).
+ */
+typedef struct
+{
+  double x, y, z;
+} _Vec3;
+
+static void test_deck_from_proxy_copy_items_aggregate_item_size(void)
+{
+  { /* COPY_ALL: full clone of an aggregate (item_size=24) deck. */
+    OrcHandle in = {0}, out = {0};
+    in.handle  = 1;
+    out.handle = 2;
+    orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(_Vec3), &in);
+    _Vec3 *vdeck = (_Vec3 *)in.items;
+    TEST_ASSERT_TRUE(orc_sdk_deck_push(vdeck, ((_Vec3) {1.0, 2.0, 3.0}), 0) ==
+                     ORC_ERROR_NONE);
+    TEST_ASSERT_TRUE(orc_sdk_deck_push(vdeck, ((_Vec3) {4.0, 5.0, 6.0}), 0) ==
+                     ORC_ERROR_NONE);
+    in.items = vdeck;
+    orc_sdk_oh_update(&in);
+    OrcHandle proxy;
+    memset(&proxy, 0, sizeof(proxy));
+    proxy.type_id = ORC_TYPE_PROXY;
+    TEST_ASSERT_TRUE(orc_sdk_deck_from_proxy(
+                       &in, 1, ORC_DECK_PROXY_COPY_ALL, &proxy, &out) == ORC_ERROR_NONE);
+    TEST_ASSERT_TRUE(out.item_size == sizeof(_Vec3));
+    TEST_ASSERT_TRUE(orc_sdk_deck_len(out.items) == 2);
+    _Vec3 const *actual = (_Vec3 const *)out.items;
+    TEST_ASSERT_TRUE(actual[0].x == 1.0 && actual[0].y == 2.0 && actual[0].z == 3.0);
+    TEST_ASSERT_TRUE(actual[1].x == 4.0 && actual[1].y == 5.0 && actual[1].z == 6.0);
+    TEST_ASSERT_TRUE(ORC_ERROR_NONE == orc_sdk_handle_free(&out));
+    TEST_ASSERT_TRUE(ORC_ERROR_NONE == orc_sdk_handle_free(&in));
+  }
+  { /* SHUFFLE: reverse 2 aggregate items, one at a time. */
+    OrcHandle in = {0}, out = {0};
+    in.handle  = 1;
+    out.handle = 2;
+    orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(_Vec3), &in);
+    _Vec3 *vdeck = (_Vec3 *)in.items;
+    TEST_ASSERT_TRUE(orc_sdk_deck_push(vdeck, ((_Vec3) {1.0, 2.0, 3.0}), 0) ==
+                     ORC_ERROR_NONE);
+    TEST_ASSERT_TRUE(orc_sdk_deck_push(vdeck, ((_Vec3) {4.0, 5.0, 6.0}), 0) ==
+                     ORC_ERROR_NONE);
+    in.items = vdeck;
+    orc_sdk_oh_update(&in);
+    OrcItemProxy *pdeck = NULL;
+    TEST_ASSERT_TRUE(orc_sdk_deck_push(pdeck,
+                                       ((OrcItemProxy) {.tree = 0, .item = 1}),
+                                       1) == ORC_ERROR_NONE);
+    TEST_ASSERT_TRUE(orc_sdk_deck_push(pdeck,
+                                       ((OrcItemProxy) {.tree = 0, .item = 0}),
+                                       0) == ORC_ERROR_NONE);
+    OrcHandle proxy = _make_shuffle_proxy(pdeck);
+    TEST_ASSERT_TRUE(orc_sdk_deck_from_proxy(
+                       &in, 1, ORC_DECK_PROXY_SHUFFLE, &proxy, &out) == ORC_ERROR_NONE);
+    TEST_ASSERT_TRUE(orc_sdk_deck_len(out.items) == 2);
+    _Vec3 const *actual = (_Vec3 const *)out.items;
+    TEST_ASSERT_TRUE(actual[0].x == 4.0 && actual[0].y == 5.0 && actual[0].z == 6.0);
+    TEST_ASSERT_TRUE(actual[1].x == 1.0 && actual[1].y == 2.0 && actual[1].z == 3.0);
+    orc_sdk_deck_free(pdeck);
+    TEST_ASSERT_TRUE(ORC_ERROR_NONE == orc_sdk_handle_free(&out));
+    TEST_ASSERT_TRUE(ORC_ERROR_NONE == orc_sdk_handle_free(&in));
+  }
+}
+
 static void test_deck_from_proxy_type_agnostic(void)
 {
   /*=== Verifies orc_deck_from_proxy preserves type across u32, i32, i16. ===*/
@@ -7219,6 +7285,7 @@ int main(void)
   RUN_TEST(test_first_add_combinations);
   RUN_TEST(test_deck_from_proxy_copy_items);
   RUN_TEST(test_deck_from_proxy_shuffle);
+  RUN_TEST(test_deck_from_proxy_copy_items_aggregate_item_size);
   RUN_TEST(test_deck_from_proxy_type_agnostic);
   RUN_TEST(test_handle_alloc_concurrent);
   RUN_TEST(test_handle_alloc_id_survives);

@@ -316,7 +316,7 @@
         testing a plugin's own ~deck_serialize~/~deck_deserialize~ continuing past the header for an
         aggregate of a plugin-owned type. Not a bug, but means the "custom type + aggregate" path is
         completely unverified on the C side.
-      - [ ] *Aside, found during this survey, likely a real bug independent of serialization:*
+      - [X] *Aside, found during this survey, likely a real bug independent of serialization:*
         ~_copy_items~ (~orc_sdk.c:2333-2393~) dispatches a ~memcpy~ sized by ~n_items *
         sizeof(<scalar type>)~ purely from ~type_id~, ignoring ~item_size~ entirely. Its three call
         sites are all in ~orc_sdk_deck_from_proxy~ -- ~ORC_DECK_PROXY_COPY_ALL~ (line 2439) and
@@ -380,10 +380,10 @@
         (~rust/kbb_cli_host/src/test.rs~, which already exercises every loaded plugin's
         ~to_str_deck~), and ~t_collapsed_display_*~ (~rust/dagger/src/inspect.rs~) with an
         aggregate case each (e.g. item_size=24 F64 -> ~"1.000000,2.000000,3.000000"~).
-   9. [ ] *Full-repo survey (using sub agents), covering everything not already caught by items
+   9. [-] *Full-repo survey (using sub agents), covering everything not already caught by items
       1-8:* ~c/cli_client~, ~c/example_c_plugin~, ~cpp/orc_sdk~, ~rust/dagger~, ~rust/pyorc~,
       ~python/~, ~rust/server_host~, ~rust/kbb_cli_host~.
-      - [ ] *C++ SDK needs no changes:* ~cpp/orc_sdk~ (~deck.hpp~/~deck.cpp~) has no ~type_id~
+      - [X] *C++ SDK needs no changes:* ~cpp/orc_sdk~ (~deck.hpp~/~deck.cpp~) has no ~type_id~
         dispatch at all -- ~Deck<T>~/~DeckView<T>~/~Combinations~ are purely generic over ~T~, and
         ~update_handle_from_deck<T>~ (~deck.hpp:602-612~) already sets
         ~handle.item_size = sizeof(T)~ unconditionally, which is already correct for any aggregate
