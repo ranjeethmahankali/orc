@@ -7487,13 +7487,13 @@ static void test_handle_to_str_f64(void)
     TEST_ASSERT_TRUE(len > 0);
     TEST_ASSERT_TRUE(memcmp(s, "1.5", 3) == 0);
   }
-  // Second item starts with "-2.0"
+  // Second item is "-2" (%.6g strips trailing zeros).
   TEST_ASSERT_TRUE(orc_sdk_dv_advance(&v));
   {
     size_t const len = orc_sdk_dv_len(&v);
     char const  *s   = orc_sdk_dv_item_ptr(&v);
     TEST_ASSERT_TRUE(len > 0);
-    TEST_ASSERT_TRUE(memcmp(s, "-2.0", 4) == 0);
+    TEST_ASSERT_TRUE(memcmp(s, "-2", 2) == 0);
   }
   TEST_ASSERT_TRUE(!orc_sdk_dv_advance(&v));
   orc_sdk_handle_free(&input);
@@ -7522,7 +7522,7 @@ static void test_handle_to_str_vec3_single_item(void)
   OrcSdk_DeckView v        = orc_sdk_dv_from_deck((uint8_t *)out.items, 1);
   size_t const    len      = orc_sdk_dv_len(&v);
   char const     *s        = orc_sdk_dv_item_ptr(&v);
-  char const     *expected = "[1.000000, 2.000000, 3.000000]";
+  char const     *expected = "[1, 2, 3]";
   TEST_ASSERT_TRUE(len == strlen(expected));
   TEST_ASSERT_TRUE(memcmp(s, expected, len) == 0);
   TEST_ASSERT_TRUE(!orc_sdk_dv_advance(&v));
@@ -7549,9 +7549,9 @@ static void test_handle_to_str_vec3_multiple_items(void)
   orc_sdk_oh_update(&out);
   OrcSdk_DeckView   v          = orc_sdk_dv_from_deck((uint8_t *)out.items, 1);
   char const *const expected[] = {
-    "[1.000000, 2.000000, 3.000000]",
-    "[4.000000, 5.000000, 6.000000]",
-    "[-7.500000, 0.000000, 100.000000]",
+    "[1, 2, 3]",
+    "[4, 5, 6]",
+    "[-7.5, 0, 100]",
   };
   for (size_t i = 0; i < 3; ++i) {
     size_t const len = orc_sdk_dv_len(&v);
