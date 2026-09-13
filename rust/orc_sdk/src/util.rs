@@ -1844,14 +1844,13 @@ mod tests {
     }
 
     #[test]
-    fn t_scratch_deck_from_proxy_aggregate_copy_all_and_shuffle() {
-        // SCRATCH verification, not permanent: simulates exactly what dagger/server_host/
-        // kbb_cli_host/pyorc/example_rust_plugin's `host_create_proxy_deck`-equivalents do --
-        // they see type_id=F64 and unconditionally call `deck_from_proxy::<f64>`, regardless of
-        // the handle's real item_size. Proves the item_size-driven [T; N] resolution inside
-        // `deck_from_proxy` itself is enough to make that already-existing call-site pattern
-        // correctly handle an aggregate (item_size=24, [f64;3]) deck, with no changes needed at
-        // any of those five call sites.
+    fn t_deck_from_proxy_aggregate_copy_all_and_shuffle() {
+        // Simulates exactly what dagger/server_host/kbb_cli_host/pyorc/example_rust_plugin's
+        // `host_create_proxy_deck`-equivalents do -- they see type_id=F64 and unconditionally
+        // call `deck_from_proxy::<f64>`, regardless of the handle's real item_size. Proves the
+        // item_size-driven [T; N] resolution inside `deck_from_proxy` itself is enough to make
+        // that already-existing call-site pattern correctly handle an aggregate (item_size=24,
+        // [f64;3]) deck, with no changes needed at any of those five call sites.
         let reg = DeckRegistry::new();
         let mut d = Deck::<[f64; 3]>::default();
         d.push([1.0, 2.0, 3.0], 1);
