@@ -421,6 +421,15 @@ static int serialize_handle(OrcHandle const *handle, Buf *out)
   return 0;
 }
 
+static OrcError deserialized_handle_free_fn(OrcHandle *const h)
+{
+  free((void *)h->items);
+  OrcMark *marks = (OrcMark *)h->marks;
+  orc_sdk_arr_free(marks);
+  memset(h, 0, sizeof(*h));
+  return ORC_ERROR_NONE;
+}
+
 static int deserialize_handle(void const *data, size_t data_len, OrcHandle *out)
 {
   OrcStrView src;
@@ -448,23 +457,16 @@ static int deserialize_handle(void const *data, size_t data_len, OrcHandle *out)
       return -1;
     }
   }
-  out->items = items;
-  out->marks = marks;
   if (!orc_sv_is_empty(src)) {
     fprintf(stderr, "Trailing bytes after deserialization\n");
     free(items);
     orc_sdk_arr_free(marks);
     return -1;
   }
+  out->items   = items;
+  out->marks   = marks;
+  out->free_fn = deserialized_handle_free_fn;
   return 0;
-}
-
-static void free_deserialized_handle(OrcHandle *h)
-{
-  free((void *)h->items);
-  OrcMark *marks = (OrcMark *)h->marks;
-  orc_sdk_arr_free(marks);
-  memset(h, 0, sizeof(*h));
 }
 
 /* ==================== Type name <-> type_id mapping ==================== */
@@ -775,7 +777,7 @@ static void cmd_download(char const *host,
   TypeEntry const *te = type_by_id(result.type_id);
   printf("%s ", te ? te->name : "unknown");
   print_handle_values(&result);
-  free_deserialized_handle(&result);
+  orc_sdk_handle_free(&result);
 }
 
 static void cmd_download_workflow(char const *host,
