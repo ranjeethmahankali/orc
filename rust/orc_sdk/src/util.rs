@@ -651,8 +651,11 @@ pub fn deck_from_proxy<T: TOrcData>(
         Some(input) => (input.type_id, input.item_size),
         None => return Err(Error::InvalidProxy),
     };
-    if inputs.iter().skip(1).any(|h| h.type_id != type_id)
-        || (item_size as usize).is_multiple_of(size_of::<T>())
+    if inputs
+        .iter()
+        .skip(1)
+        .any(|h| h.type_id != type_id || h.item_size != item_size)
+        || !(item_size as usize).is_multiple_of(size_of::<T>())
     {
         // All inputs must be of the same type. This is a problem.
         return Err(Error::InvalidProxy);
