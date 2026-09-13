@@ -2312,24 +2312,13 @@ OrcError orc_sdk_handle_free(OrcHandle *const handle)
   return handle->free_fn(handle);
 }
 
-#define DEFINE_TRIVIAL_COPY_FN(suffix, type)                                  \
-  static void _copy_items_##suffix(                                           \
-    void const *src, void *dst, size_t const n_items, size_t const item_size) \
-  {                                                                           \
-    memcpy(dst, src, n_items *item_size);                                     \
-  }
-
-DEFINE_TRIVIAL_COPY_FN(u8, uint8_t)
-DEFINE_TRIVIAL_COPY_FN(u16, uint16_t)
-DEFINE_TRIVIAL_COPY_FN(u32, uint32_t)
-DEFINE_TRIVIAL_COPY_FN(u64, uint64_t)
-DEFINE_TRIVIAL_COPY_FN(f32, float)
-DEFINE_TRIVIAL_COPY_FN(f64, double)
-DEFINE_TRIVIAL_COPY_FN(i8, int8_t)
-DEFINE_TRIVIAL_COPY_FN(i16, int16_t)
-DEFINE_TRIVIAL_COPY_FN(i32, int32_t)
-DEFINE_TRIVIAL_COPY_FN(i64, int64_t)
-DEFINE_TRIVIAL_COPY_FN(proxy, OrcItemProxy)
+static void _copy_primitive_items(void const  *src,
+                                  void        *dst,
+                                  size_t const n_items,
+                                  size_t const item_size)
+{
+  memcpy(dst, src, n_items * item_size);
+}
 
 OrcError _copy_items(OrcTypeId const type_id,
                      size_t const    item_size,
@@ -2340,40 +2329,40 @@ OrcError _copy_items(OrcTypeId const type_id,
   OrcSdk_CopyItemsFn copy_fn = NULL;
   switch (type_id) {
   case ORC_TYPE_U8:
-    copy_fn = _copy_items_u8;
+    copy_fn = _copy_primitive_items;
     break;
   case ORC_TYPE_U16:
-    copy_fn = _copy_items_u16;
+    copy_fn = _copy_primitive_items;
     break;
   case ORC_TYPE_U32:
-    copy_fn = _copy_items_u32;
+    copy_fn = _copy_primitive_items;
     break;
   case ORC_TYPE_U64:
-    copy_fn = _copy_items_u64;
+    copy_fn = _copy_primitive_items;
     break;
     // Scalars.
   case ORC_TYPE_F32:
-    copy_fn = _copy_items_f32;
+    copy_fn = _copy_primitive_items;
     break;
   case ORC_TYPE_F64:
-    copy_fn = _copy_items_f64;
+    copy_fn = _copy_primitive_items;
     break;
     // Signed integers.
   case ORC_TYPE_I8:
-    copy_fn = _copy_items_i8;
+    copy_fn = _copy_primitive_items;
     break;
   case ORC_TYPE_I16:
-    copy_fn = _copy_items_i16;
+    copy_fn = _copy_primitive_items;
     break;
   case ORC_TYPE_I32:
-    copy_fn = _copy_items_i32;
+    copy_fn = _copy_primitive_items;
     break;
   case ORC_TYPE_I64:
-    copy_fn = _copy_items_i64;
+    copy_fn = _copy_primitive_items;
     break;
     // Proxy for an item in a tree.
   case ORC_TYPE_PROXY:
-    copy_fn = _copy_items_proxy;
+    copy_fn = _copy_primitive_items;
     break;
   default:
     if (PLUGIN_TYPE_FN) {
@@ -2664,6 +2653,13 @@ void _snprint_fallback_fn(void const *item, char *dst, size_t len)
 
 OrcError orc_sdk_handle_to_str(OrcHandle const *input, OrcHandle *out)
 {
+  if (input == NULL) {
+    return ORC_ERROR_INVALID_HANDLE;
+  }
+  size_t const item_size = input->item_size;
+  if (item_size == 0) {
+    return ORC_ERROR_INVALID_HANDLE;
+  }
   OrcSdk_SNPrintItemFn print_fn         = NULL;
   size_t               single_item_size = 0;
   switch (input->type_id) {
@@ -2725,7 +2721,6 @@ OrcError orc_sdk_handle_to_str(OrcHandle const *input, OrcHandle *out)
     }
     break;
   }
-  size_t const item_size = input->item_size;
   if (single_item_size == 0 || (item_size % single_item_size) != 0) {
     return ORC_ERROR_TYPE_MISMATCH;
   }

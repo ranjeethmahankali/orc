@@ -7570,9 +7570,21 @@ static void test_handle_to_str_unknown_type(void)
   orc_sdk_init(NULL, NULL);
   OrcHandle input = {0};
   input.type_id   = 9999;
+  input.item_size = sizeof(double);
   OrcHandle out   = {0};
   OrcError  err   = orc_sdk_handle_to_str(&input, &out);
   TEST_ASSERT_TRUE(err == ORC_ERROR_TYPE_MISMATCH);
+}
+
+static void test_handle_to_str_zero_item_size(void)
+{
+  orc_sdk_init(NULL, NULL);
+  OrcHandle input = {0};
+  input.type_id   = ORC_TYPE_F64;
+  input.item_size = 0;
+  OrcHandle out   = {0};
+  OrcError  err   = orc_sdk_handle_to_str(&input, &out);
+  TEST_ASSERT_TRUE(err == ORC_ERROR_INVALID_HANDLE);
 }
 
 static void test_handle_to_str_empty(void)
@@ -7790,6 +7802,7 @@ int main(void)
   RUN_TEST(test_handle_to_str_vec3_single_item);
   RUN_TEST(test_handle_to_str_vec3_multiple_items);
   RUN_TEST(test_handle_to_str_unknown_type);
+  RUN_TEST(test_handle_to_str_zero_item_size);
   RUN_TEST(test_handle_to_str_empty);
   return UNITY_END();
 }

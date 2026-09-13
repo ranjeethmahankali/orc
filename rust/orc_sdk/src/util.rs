@@ -497,7 +497,9 @@ pub struct HandleDisplayWrapper<'a, T: TOrcData + DeckItemDisplay> {
 
 impl<'a, T: TOrcData + DeckItemDisplay> Display for HandleDisplayWrapper<'a, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if !(self.handle.item_size as usize).is_multiple_of(size_of::<T>()) {
+        if self.handle.type_id != T::TYPE_INFO.type_id
+            || !(self.handle.item_size as usize).is_multiple_of(size_of::<T>())
+        {
             return Err(std::fmt::Error);
         }
         writeln!(f, "handle: {}", self.handle.handle)?;
@@ -2290,6 +2292,18 @@ mod tests {
         h.item_size = 20; // Not a multiple of size_of::<f64>() == 8.
         let mut buf = String::new();
         assert!(write!(buf, "{}", h.display::<f64>()).is_err());
+    }
+
+    #[test]
+    fn t_display_rejects_wrong_type_id() {
+        // A handle for `Deck<f64>` (type_id=F64) displayed as `i64` has the same item_size (8),
+        // so a size-only check would wrongly accept it and print the f64 bits reinterpreted as
+        // i64. `display::<T>` must also check `type_id`, not just size.
+        use std::fmt::Write as _;
+        let d = deck![1.0_f64];
+        let h = serial_make_handle(&d);
+        let mut buf = String::new();
+        assert!(write!(buf, "{}", h.display::<i64>()).is_err());
     }
 
     #[test]
