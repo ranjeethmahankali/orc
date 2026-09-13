@@ -444,7 +444,7 @@
         ~to_str_deck~) with an aggregate case.
       - [X] *dagger test coverage:* extend ~t_collapsed_display_*~ (~rust/dagger/src/inspect.rs~)
         with an aggregate case.
-   10. [-] *Full-repo survey (using sub agents), covering everything not already caught by items
+   10. [X] *Full-repo survey (using sub agents), covering everything not already caught by items
        1-9:* ~c/cli_client~, ~c/example_c_plugin~, ~cpp/orc_sdk~, ~rust/dagger~, ~rust/pyorc~,
        ~python/~, ~rust/server_host~, ~rust/kbb_cli_host~.
        - [X] *C++ SDK needs no changes:* ~cpp/orc_sdk~ (~deck.hpp~/~deck.cpp~) has no ~type_id~
@@ -483,20 +483,20 @@
          ~item_size = te->item_size~, so the CLI can't *author* an aggregate constant today.
          The same root design (~TypeEntry~ conflating type_id and byte-size 1:1) would need
          revisiting to lift it.
-       - [ ] *C test coverage gap (no code bug, just missing regression coverage):*
+       - [X] *C test coverage gap (no code bug, just missing regression coverage):*
          ~c/example_c_plugin/test.c~'s ~list_length~/~flatten_deck~ tests never use an aggregate
          item_size (both route through the already item_size-correct combinator/proxy machinery,
          so not currently broken, just unverified).
-       - [ ] *Rust test coverage gap, kbb_cli_host -- independent of the server_host gap below:*
+       - [X] *Rust test coverage gap, kbb_cli_host -- independent of the server_host gap below:*
          ~rust/kbb_cli_host/src/test.rs~ has several helpers that explicitly assert aggregates
          away rather than testing them (~extract_complex_parts~ at line 1288,
          ~t_serial_every_plugin_handles_builtin_types~ at 1373,
          ~t_serial_every_plugin_handles_nested_builtin~ at 1405,
          ~t_serial_concurrent_serialization~ at 1453/1465).
-       - [ ] *Rust test coverage gap, server_host -- independent of the kbb_cli_host gap above:*
+       - [X] *Rust test coverage gap, server_host -- independent of the kbb_cli_host gap above:*
          ~rust/server_host/tests/integration.rs~ never drives an aggregate handle through the
          HTTP API at all.
-       - [ ] *Python test coverage gap:* ~python/test.py~/~python/example.py~ have no aggregate
+       - [X] *Python test coverage gap:* ~python/test.py~/~python/example.py~ have no aggregate
          sample in ~_make_builtin_samples()~ (~test.py:748-761~) -- note ~t_numpy_3x3_matrix~/
          ~t_numpy_3x3_from_plugin~ (~test.py:551-584~) build a "3x3 matrix" via nested-list
          *marks*, a different mechanism from item_size aggregation, and shouldn't be mistaken for
