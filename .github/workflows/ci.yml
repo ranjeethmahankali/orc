@@ -27,12 +27,12 @@ jobs:
         run: build/debug/orc_sdk_tests && build/debug/example_c_plugin_tests
       - name: Run C++ tests
         run: build/debug/orc_sdk_cpp_tests
-      - name: Build Rust
-        run: cargo build --verbose --all-targets --all-features
-      - name: Check Rust formatting
-        run: cargo fmt --all -- --check
       - name: Run Rust Clippy
         run: cargo clippy --all-targets --all-features -- -D warnings
+      - name: Check Rust formatting
+        run: cargo fmt --all -- --check
+      - name: Build Rust
+        run: cargo build --verbose --all-targets --all-features
       - name: Run Rust tests
         run: cargo test --all-features --verbose
       - name: Generate Rust docs
@@ -64,12 +64,12 @@ jobs:
         run: build/debug/orc_sdk_tests.exe && build/debug/example_c_plugin_tests.exe
       - name: Run C++ tests
         run: build/debug/orc_sdk_cpp_tests.exe
-      - name: Build Rust
-        run: cargo build --verbose --all-targets --all-features
-      - name: Check Rust formatting
-        run: cargo fmt --all -- --check
       - name: Run Rust Clippy
         run: cargo clippy --all-targets --all-features -- -D warnings
+      - name: Check Rust formatting
+        run: cargo fmt --all -- --check
+      - name: Build Rust
+        run: cargo build --verbose --all-targets --all-features
       - name: Run Rust tests
         run: cargo test --all-features --verbose
       - name: Generate Rust docs
@@ -101,12 +101,12 @@ jobs:
         run: build/debug/orc_sdk_tests && build/debug/example_c_plugin_tests
       - name: Run C++ tests
         run: build/debug/orc_sdk_cpp_tests
-      - name: Build Rust
-        run: cargo build --verbose --all-targets --all-features
-      - name: Check Rust formatting
-        run: cargo fmt --all -- --check
       - name: Run Rust Clippy
         run: cargo clippy --all-targets --all-features -- -D warnings
+      - name: Check Rust formatting
+        run: cargo fmt --all -- --check
+      - name: Build Rust
+        run: cargo build --verbose --all-targets --all-features
       - name: Run Rust tests
         run: cargo test --all-features --verbose
       - name: Generate Rust docs
