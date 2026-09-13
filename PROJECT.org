@@ -453,14 +453,14 @@
          ~handle.item_size = sizeof(T)~ unconditionally, which is already correct for any aggregate
          ~T~. Nothing in ~cpp/orc_sdk/test.cpp~ or elsewhere assumes item_size == a fixed scalar
          size. This is confirmed complete, not a placeholder for later work.
-       - [ ] *pyorc read path -- independent of the construction-path gap below (moved a third
+       - [X] *pyorc read path -- independent of the construction-path gap below (moved a third
          gap, `host_clone_orc_handle`, to item 8 since it's proxy-deck-creation specific), a
          clean hard-error not a silent misread:* ~read_deck~'s ~read_typed!~ macro
          (~rust/pyorc/src/lib.rs:113-144~) matches ~type_id~ alone and calls
          ~handle.items::<T>()~, which requires exact ~item_size == size_of::<T>()~ -- the only
          way to pull deck contents back into Python currently hard-fails for any aggregate
          handle.
-       - [ ] *pyorc construction path -- independent of the read-path gap above, also a clean
+       - [X] *pyorc construction path -- independent of the read-path gap above, also a clean
          hard-error:* ~create_orc_handle~/~make_deck~ (~rust/pyorc/src/lib.rs:183-234~) has no
          construction path for an aggregate handle at all -- ~build_deck!~ always sizes
          ~item_size~ from a scalar ~T~, and ~py_to_deck~/~detect_type~ only understand scalar
