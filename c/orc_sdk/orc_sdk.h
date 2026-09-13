@@ -912,7 +912,10 @@ OrcError orc_sdk_host_serial_write(uint64_t const ctx,
 // ========== ABI helpers ==========
 
 typedef void (*OrcSdk_ItemFreeFn)(void *);
-typedef void (*OrcSdk_CopyItemsFn)(void const *src, void *dst, size_t const n_items);
+typedef void (*OrcSdk_CopyItemsFn)(void const  *src,
+                                   void        *dst,
+                                   size_t const n_items,
+                                   size_t const item_size);
 
 typedef struct
 {

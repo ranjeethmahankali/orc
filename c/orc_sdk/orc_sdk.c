@@ -2312,10 +2312,11 @@ OrcError orc_sdk_handle_free(OrcHandle *const handle)
   return handle->free_fn(handle);
 }
 
-#define DEFINE_TRIVIAL_COPY_FN(suffix, type)                                         \
-  static void _copy_items_##suffix(void const *src, void *dst, size_t const n_items) \
-  {                                                                                  \
-    memcpy(dst, src, n_items * sizeof(type));                                        \
+#define DEFINE_TRIVIAL_COPY_FN(suffix, type)                                  \
+  static void _copy_items_##suffix(                                           \
+    void const *src, void *dst, size_t const n_items, size_t const item_size) \
+  {                                                                           \
+    memcpy(dst, src, n_items *item_size);                                     \
   }
 
 DEFINE_TRIVIAL_COPY_FN(u8, uint8_t)
@@ -2331,6 +2332,7 @@ DEFINE_TRIVIAL_COPY_FN(i64, int64_t)
 DEFINE_TRIVIAL_COPY_FN(proxy, OrcItemProxy)
 
 OrcError _copy_items(OrcTypeId const type_id,
+                     size_t const    item_size,
                      void const     *src,
                      void           *dst,
                      size_t const    n_items)
@@ -2388,7 +2390,7 @@ OrcError _copy_items(OrcTypeId const type_id,
   }
   ORC_SDK_REQUIRE_WITH_MSG(
     copy_fn != NULL, "Should never happen. Either find a copy function, or error out.");
-  copy_fn(src, dst, n_items);
+  copy_fn(src, dst, n_items, item_size);
   return ORC_ERROR_NONE;
 }
 
@@ -2436,7 +2438,7 @@ OrcError orc_sdk_deck_from_proxy(OrcHandle const   *inputs,
     out->type_id = type_id;
     {  // Copy the data.
       memset(deck, 0, item_size * n_items);
-      OrcError const e = _copy_items(type_id, inputs[0].items, deck, n_items);
+      OrcError const e = _copy_items(type_id, item_size, inputs[0].items, deck, n_items);
       if (e) {
         orc_sdk_handle_free(out);
         return e;
@@ -2470,7 +2472,7 @@ OrcError orc_sdk_deck_from_proxy(OrcHandle const   *inputs,
     out->type_id = type_id;
     {  // Copy the data.
       memset(deck, 0, item_size * n_items);
-      OrcError const e = _copy_items(type_id, inputs[0].items, deck, n_items);
+      OrcError const e = _copy_items(type_id, item_size, inputs[0].items, deck, n_items);
       if (e) {
         orc_sdk_handle_free(out);
         return e;
@@ -2506,7 +2508,7 @@ OrcError orc_sdk_deck_from_proxy(OrcHandle const   *inputs,
       void *src =
         (char *)inputs[proxies[h->count].tree].items + item_size * proxies[h->count].item;
       void          *dst = (char *)deck + item_size * h->count;
-      OrcError const e   = _copy_items(type_id, src, dst, 1);
+      OrcError const e   = _copy_items(type_id, item_size, src, dst, 1);
       if (e) {
         orc_sdk_handle_free(out);
         return e;
