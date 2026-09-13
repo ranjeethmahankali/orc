@@ -657,25 +657,56 @@ static void cmd_functions(char const *host, uint16_t port)
    MAX_AGGREGATE_COMPONENTS). Returns the component count, or 0 if the argument is a
    malformed/empty aggregate, or one with more than MAX_AGGREGATE_COMPONENTS components.
  */
+/* Parses one number starting at `s`, requiring the *entire* string (aside from trailing
+   whitespace) to be consumed by strtod. Returns 1 on success (with *out set), 0 on any
+   malformed/partial/empty input -- unlike bare strtod, which silently returns 0.0 and leaves
+   the caller unable to distinguish "parsed zero" from "failed to parse". */
+static int parse_strict_double(char const *s, double *out)
+{
+  char  *endptr;
+  double v = strtod(s, &endptr);
+  if (endptr == s) {
+    return 0;
+  }
+  while (*endptr == ' ' || *endptr == '\t') {
+    endptr++;
+  }
+  if (*endptr != '\0') {
+    return 0;
+  }
+  *out = v;
+  return 1;
+}
+
 static size_t parse_value_arg(char const *s, double *out)
 {
   size_t const len = strlen(s);
   if (len < 2 || s[0] != '(' || s[len - 1] != ')') {
-    out[0] = strtod(s, NULL);
-    return 1;
+    return parse_strict_double(s, &out[0]) ? 1 : 0;
   }
   char *buf = malloc(len - 1); /* (len - 2) inner chars + null terminator. */
   if (!buf)
     die("alloc failed");
   memcpy(buf, s + 1, len - 2);
   buf[len - 2] = '\0';
-  size_t count = 0;
-  for (char *tok = strtok(buf, ","); tok != NULL; tok = strtok(NULL, ",")) {
-    if (count >= MAX_AGGREGATE_COMPONENTS) {
+  size_t count  = 0;
+  char  *cursor = buf;
+  for (;;) {
+    char *comma = strchr(cursor, ',');
+    if (comma) {
+      *comma = '\0';
+    }
+    /* Explicit field scanning (not strtok) so an empty field between two commas -- e.g.
+       "(1.0,,3.0)" -- is rejected instead of silently collapsing into fewer components. */
+    if (count >= MAX_AGGREGATE_COMPONENTS || !parse_strict_double(cursor, &out[count])) {
       free(buf);
       return 0;
     }
-    out[count++] = strtod(tok, NULL);
+    count++;
+    if (!comma) {
+      break;
+    }
+    cursor = comma + 1;
   }
   free(buf);
   return count;
@@ -750,8 +781,11 @@ static void cmd_constant(char const *host,
   if (!items)
     die("alloc failed");
   for (int i = 0; i < n_values; i++) {
-    double       vals[MAX_AGGREGATE_COMPONENTS];
-    size_t const n = parse_value_arg(value_strs[i], vals);
+    /* value_strs[0] was already parsed above (to determine n_components) -- reuse `parsed`
+       instead of parsing it again. */
+    double       vals_buf[MAX_AGGREGATE_COMPONENTS];
+    double      *vals = (i == 0) ? parsed : vals_buf;
+    size_t const n    = (i == 0) ? n_components : parse_value_arg(value_strs[i], vals_buf);
     if (n != n_components) {
       free(items);
       fprintf(stderr,

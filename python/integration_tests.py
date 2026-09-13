@@ -355,6 +355,41 @@ def t_constant_aggregate_mixed_with_scalar_rejected():
     session_close(sid)
 
 
+def t_constant_malformed_unterminated_paren_rejected():
+    """An unterminated aggregate literal must fail, not silently upload a scalar 0."""
+    sid = session_start()
+    assert cli_fails("constant", sid, "f64", "(1.0,2.0")
+    session_close(sid)
+
+
+def t_constant_malformed_trailing_garbage_rejected():
+    """Garbage after the closing paren must fail, not silently upload a scalar 0."""
+    sid = session_start()
+    assert cli_fails("constant", sid, "f64", "(1.0,2.0,3.0)x")
+    session_close(sid)
+
+
+def t_constant_malformed_empty_component_rejected():
+    """An empty component between commas must fail, not silently drop that component."""
+    sid = session_start()
+    assert cli_fails("constant", sid, "f64", "(1.0,,3.0)")
+    session_close(sid)
+
+
+def t_constant_malformed_whitespace_only_aggregate_rejected():
+    """A whitespace-only aggregate literal must fail, not silently become a one-component 0."""
+    sid = session_start()
+    assert cli_fails("constant", sid, "f64", "(  )")
+    session_close(sid)
+
+
+def t_constant_malformed_scalar_rejected():
+    """A non-numeric scalar value must fail, not silently upload a 0."""
+    sid = session_start()
+    assert cli_fails("constant", sid, "f64", "abc")
+    session_close(sid)
+
+
 def t_vec3_length_via_cli_aggregate_constant():
     """Now that the CLI can author aggregate constants, a real plugin function that expects
     one [f64;3] item per input is callable end to end."""
