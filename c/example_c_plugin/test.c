@@ -18,6 +18,11 @@ void tearDown(void) {}
 /* Shorthand for the common 1-in / 1-out call. */
 #define CALL_LIST_LENGTH(in_h, out_h) LIST_LENGTH_INFO.func(0, &(in_h), 1, &(out_h), 1)
 
+typedef struct
+{
+  double x, y, z;
+} _Vec3;
+
 /* ============================================================
    Correctness
    ============================================================ */
@@ -307,6 +312,32 @@ static void test_list_length_clears_previous_output(void)
   orc_sdk_handle_free(&out);
 }
 
+static void test_list_length_aggregate_item_size(void)
+{
+  /* [[v1,v2,v3],[v4,v5]] of Vec3 items -> [3,2]. Proves list_length's combinator/proxy
+     machinery correctly strides over an aggregate item_size, not just sizeof(scalar). */
+  orc_sdk_init(NULL, NULL);
+  OrcHandle in = {0}, out = {0};
+  in.handle  = 1;
+  out.handle = 2;
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(_Vec3), &in);
+  _Vec3 *vdeck = (_Vec3 *)in.items;
+  orc_sdk_deck_push(vdeck, ((_Vec3) {1.0, 2.0, 3.0}), 2);
+  orc_sdk_deck_push(vdeck, ((_Vec3) {4.0, 5.0, 6.0}), 0);
+  orc_sdk_deck_push(vdeck, ((_Vec3) {7.0, 8.0, 9.0}), 0);
+  orc_sdk_deck_push(vdeck, ((_Vec3) {10.0, 11.0, 12.0}), 1);
+  orc_sdk_deck_push(vdeck, ((_Vec3) {13.0, 14.0, 15.0}), 0);
+  in.items = vdeck;
+  orc_sdk_oh_update(&in);
+  CALL_LIST_LENGTH(in, out);
+  uint64_t const *result = (uint64_t const *)out.items;
+  TEST_ASSERT_EQUAL_UINT64(2, out.n_items);
+  TEST_ASSERT_EQUAL_UINT64(3, result[0]);
+  TEST_ASSERT_EQUAL_UINT64(2, result[1]);
+  orc_sdk_handle_free(&in);
+  orc_sdk_handle_free(&out);
+}
+
 /* ============================================================
    flatten_deck — Correctness
    ============================================================ */
@@ -408,6 +439,41 @@ static void test_flatten_deck_integer_type(void)
   TEST_ASSERT_EQUAL_UINT32(10u, result[0]);
   TEST_ASSERT_EQUAL_UINT32(20u, result[1]);
   TEST_ASSERT_EQUAL_UINT32(30u, result[2]);
+  orc_sdk_handle_free(&in);
+  orc_sdk_handle_free(&out);
+}
+
+static void test_flatten_deck_aggregate_item_size(void)
+{
+  /* [[v1,v2,v3],[v4,v5]] of Vec3 items -> [v1,v2,v3,v4,v5]. Proves flatten_deck's proxy
+     machinery correctly copies an aggregate item_size, not just sizeof(scalar) -- this is the
+     exact shape of bug _copy_items had (item 7's aside) before it was fixed. */
+  orc_sdk_init(NULL, NULL);
+  OrcHandle in = {0}, out = {0};
+  in.handle  = 1;
+  out.handle = 2;
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(_Vec3), &in);
+  _Vec3 *vdeck = (_Vec3 *)in.items;
+  orc_sdk_deck_push(vdeck, ((_Vec3) {1.0, 2.0, 3.0}), 2);
+  orc_sdk_deck_push(vdeck, ((_Vec3) {4.0, 5.0, 6.0}), 0);
+  orc_sdk_deck_push(vdeck, ((_Vec3) {7.0, 8.0, 9.0}), 0);
+  orc_sdk_deck_push(vdeck, ((_Vec3) {10.0, 11.0, 12.0}), 1);
+  orc_sdk_deck_push(vdeck, ((_Vec3) {13.0, 14.0, 15.0}), 0);
+  in.items = vdeck;
+  orc_sdk_oh_update(&in);
+  CALL_FLATTEN_DECK(in, out);
+  TEST_ASSERT_EQUAL_UINT64(5, out.n_items);
+  TEST_ASSERT_EQUAL_UINT64(1, out.n_marks);
+  TEST_ASSERT_EQUAL_UINT64(sizeof(_Vec3), out.item_size);
+  _Vec3 const *result = (_Vec3 const *)out.items;
+  TEST_ASSERT_EQUAL_DOUBLE(1.0, result[0].x);
+  TEST_ASSERT_EQUAL_DOUBLE(2.0, result[0].y);
+  TEST_ASSERT_EQUAL_DOUBLE(3.0, result[0].z);
+  TEST_ASSERT_EQUAL_DOUBLE(4.0, result[1].x);
+  TEST_ASSERT_EQUAL_DOUBLE(10.0, result[3].x);
+  TEST_ASSERT_EQUAL_DOUBLE(13.0, result[4].x);
+  TEST_ASSERT_EQUAL_DOUBLE(14.0, result[4].y);
+  TEST_ASSERT_EQUAL_DOUBLE(15.0, result[4].z);
   orc_sdk_handle_free(&in);
   orc_sdk_handle_free(&out);
 }
@@ -629,11 +695,6 @@ static void test_serialize_round_trip_f64_flat(void)
   orc_sdk_handle_free(&out);
   orc_sdk_arr_free(buf);
 }
-
-typedef struct
-{
-  double x, y, z;
-} _Vec3;
 
 /* Full round trip for an aggregate (item_size=24, 3 doubles/item) deck through the plugin
    ABI's own orc_deck_serialize/orc_deck_deserialize -- closes the gap noted in
@@ -1108,10 +1169,12 @@ int main(void)
   RUN_TEST(test_list_length_reuse_output_same_type);
   RUN_TEST(test_list_length_output_type_change);
   RUN_TEST(test_list_length_clears_previous_output);
+  RUN_TEST(test_list_length_aggregate_item_size);
   RUN_TEST(test_flatten_deck_basic);
   RUN_TEST(test_flatten_deck_already_flat);
   RUN_TEST(test_flatten_deck_multiple_inputs);
   RUN_TEST(test_flatten_deck_integer_type);
+  RUN_TEST(test_flatten_deck_aggregate_item_size);
   RUN_TEST(test_flatten_deck_mismatched_counts);
   RUN_TEST(test_flatten_deck_null_inputs_ptr);
   RUN_TEST(test_flatten_deck_null_outputs_ptr);
