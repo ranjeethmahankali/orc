@@ -1012,24 +1012,101 @@ pub fn to_str_deck<T: TOrcData + Display>(
     input: &OrcHandle,
     out: &mut Deck<u8>,
 ) -> Result<(), Error> {
-    out.clear();
-    let items = input.items::<T>()?;
-    let mut comb = Combinations::from_handles(std::slice::from_ref(input), &[0], &[1])?;
-    let mut buf = String::new();
-    loop {
-        let view = comb.get_input(items, 0);
-        if !view.is_empty() {
-            let item: &T = view.as_ref();
-            buf.clear();
-            write!(buf, "{}", item).map_err(|_| Error::SerializationError)?;
-            let mut writer = comb.get_output(out, 0);
-            writer.extend_from_slice(buf.as_bytes());
-        }
-        if !comb.advance() {
-            break;
-        }
+    if input.type_id != T::TYPE_INFO.type_id {
+        return Err(Error::DeckTypeMismatch);
     }
-    Ok(())
+    out.clear();
+
+    fn convert_str<U: TOrcData + Display>(
+        input: &OrcHandle,
+        out: &mut Deck<u8>,
+    ) -> Result<(), Error> {
+        let items = input.items::<U>()?;
+        let mut comb = Combinations::from_handles(std::slice::from_ref(input), &[0], &[1])?;
+        let mut buf = String::new();
+        loop {
+            let view = comb.get_input(items, 0);
+            if !view.is_empty() {
+                let item: &U = view.as_ref();
+                buf.clear();
+                write!(buf, "{}", item).map_err(|_| Error::SerializationError)?;
+                let mut writer = comb.get_output(out, 0);
+                writer.extend_from_slice(buf.as_bytes());
+            }
+            if !comb.advance() {
+                break;
+            }
+        }
+        Ok(())
+    }
+
+    fn convert_str_arr<U: TOrcData + Display, const N: usize>(
+        input: &OrcHandle,
+        out: &mut Deck<u8>,
+    ) -> Result<(), Error>
+    where
+        [U; N]: TOrcData,
+    {
+        let items = input.items::<[U; N]>()?;
+        let mut comb = Combinations::from_handles(std::slice::from_ref(input), &[0], &[1])?;
+        let mut buf = String::new();
+        loop {
+            let view = comb.get_input(items, 0);
+            if !view.is_empty() {
+                let item: &[U; N] = view.as_ref();
+                buf.clear();
+                write!(buf, "[").map_err(|_| Error::SerializationError)?;
+                write!(buf, "{}", item[0]).map_err(|_| Error::SerializationError)?;
+                for i in 1..item.len() {
+                    write!(buf, ", {}", item[i]).map_err(|_| Error::SerializationError)?;
+                }
+                write!(buf, "]").map_err(|_| Error::SerializationError)?;
+                let mut writer = comb.get_output(out, 0);
+                writer.extend_from_slice(buf.as_bytes());
+            }
+            if !comb.advance() {
+                break;
+            }
+        }
+        Ok(())
+    }
+
+    let n_components = (input.item_size as usize) / size_of::<T>();
+    match n_components {
+        1 => convert_str::<T>(input, out),
+        2 => convert_str_arr::<T, 2>(input, out),
+        3 => convert_str_arr::<T, 3>(input, out),
+        4 => convert_str_arr::<T, 4>(input, out),
+        5 => convert_str_arr::<T, 5>(input, out),
+        6 => convert_str_arr::<T, 6>(input, out),
+        7 => convert_str_arr::<T, 7>(input, out),
+        8 => convert_str_arr::<T, 8>(input, out),
+        9 => convert_str_arr::<T, 9>(input, out),
+        10 => convert_str_arr::<T, 10>(input, out),
+        11 => convert_str_arr::<T, 11>(input, out),
+        12 => convert_str_arr::<T, 12>(input, out),
+        13 => convert_str_arr::<T, 13>(input, out),
+        14 => convert_str_arr::<T, 14>(input, out),
+        15 => convert_str_arr::<T, 15>(input, out),
+        16 => convert_str_arr::<T, 16>(input, out),
+        17 => convert_str_arr::<T, 17>(input, out),
+        18 => convert_str_arr::<T, 18>(input, out),
+        19 => convert_str_arr::<T, 19>(input, out),
+        20 => convert_str_arr::<T, 20>(input, out),
+        21 => convert_str_arr::<T, 21>(input, out),
+        22 => convert_str_arr::<T, 22>(input, out),
+        23 => convert_str_arr::<T, 23>(input, out),
+        24 => convert_str_arr::<T, 24>(input, out),
+        25 => convert_str_arr::<T, 25>(input, out),
+        26 => convert_str_arr::<T, 26>(input, out),
+        27 => convert_str_arr::<T, 27>(input, out),
+        28 => convert_str_arr::<T, 28>(input, out),
+        29 => convert_str_arr::<T, 29>(input, out),
+        30 => convert_str_arr::<T, 30>(input, out),
+        31 => convert_str_arr::<T, 31>(input, out),
+        32 => convert_str_arr::<T, 32>(input, out),
+        _ => Err(Error::DeckTypeMismatch),
+    }
 }
 
 #[cfg(test)]
