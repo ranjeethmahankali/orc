@@ -2754,7 +2754,7 @@ OrcError orc_sdk_handle_to_str(OrcHandle const *input, OrcHandle *out)
       void const        *last_component = (char *)item + item_size;
       orc_sdk_arr_clear(local_str);
       if (single_item_size < item_size) {  // More than one item.
-        orc_sdk_arr_push(local_str, '[');
+        orc_sdk_arr_push(local_str, '(');
       }
       {  // Push the first item (potentially an aggregate type) always.
         char buf[256] = {0};
@@ -2777,7 +2777,7 @@ OrcError orc_sdk_handle_to_str(OrcHandle const *input, OrcHandle *out)
         item = (char *)item + single_item_size;
       }
       if (single_item_size < item_size) {  // More than one item.
-        orc_sdk_arr_push(local_str, ']');
+        orc_sdk_arr_push(local_str, ')');
       }
       size_t const count = orc_sdk_arr_len(local_str);
       char        *dst   = (char *)orc_sdk_dw_push_empty_many(output_writer, count);

@@ -1774,8 +1774,8 @@ fn t_deck_to_str_vec3_aggregate() {
             .unwrap_or_else(|e| panic!("plugin {} ({}) failed: {e:?}", i, plugin.name()));
         let groups = to_str_groups(&out);
         assert_eq!(groups.len(), 2, "plugin {} ({})", i, plugin.name());
-        assert_eq!(groups[0], "[1, 2, 3]", "plugin {} ({})", i, plugin.name());
-        assert_eq!(groups[1], "[4, 5, 6]", "plugin {} ({})", i, plugin.name());
+        assert_eq!(groups[0], "(1, 2, 3)", "plugin {} ({})", i, plugin.name());
+        assert_eq!(groups[1], "(4, 5, 6)", "plugin {} ({})", i, plugin.name());
     }
 }
 

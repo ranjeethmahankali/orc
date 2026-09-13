@@ -458,14 +458,14 @@ impl_deck_item_display_scalar!(u8, u16, u32, u64, i8, i16, i32, i64, f32, f64, u
 
 impl<T: DeckItemDisplay, const N: usize> DeckItemDisplay for [T; N] {
     fn item_fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "[")?;
+        write!(f, "(")?;
         for (i, v) in self.iter().enumerate() {
             if i > 0 {
                 write!(f, ", ")?;
             }
             v.item_fmt(f)?;
         }
-        write!(f, "]")
+        write!(f, ")")
     }
 }
 

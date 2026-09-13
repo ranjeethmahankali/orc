@@ -407,9 +407,9 @@ mod test {
 
         let mut collapsed = String::new();
         render_str_deck_raw(str_deck.items(), str_deck.marks(), &mut collapsed);
-        assert!(collapsed.contains("[1, 2, 3]"), "got: {collapsed}");
-        assert!(collapsed.contains("[4, 5, 6]"), "got: {collapsed}");
-        // Exactly one ruler line per original item -- the comma inside "[1, 2, 3]" must not be
+        assert!(collapsed.contains("(1, 2, 3)"), "got: {collapsed}");
+        assert!(collapsed.contains("(4, 5, 6)"), "got: {collapsed}");
+        // Exactly one ruler line per original item -- the comma inside "(1, 2, 3)" must not be
         // mistaken for a line/item boundary.
         assert_eq!(collapsed.lines().count(), 2);
     }

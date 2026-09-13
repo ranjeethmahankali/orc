@@ -2216,7 +2216,7 @@ mod tests {
         let h = serial_make_handle(&d);
         let mut out = Deck::<u8>::default();
         to_str_deck::<f64>(&h, &mut out).expect("to_str_deck failed");
-        let expected = format!("[{}, {}, {}]", 1.0_f64, 2.0_f64, 3.0_f64);
+        let expected = format!("({}, {}, {})", 1.0_f64, 2.0_f64, 3.0_f64);
         assert_eq!(str_groups(&out), &[expected]);
     }
 
@@ -2231,7 +2231,7 @@ mod tests {
         to_str_deck::<f64>(&h, &mut out).expect("to_str_deck failed");
         let expected: Vec<String> = [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [-7.5, 0.0, 100.0]]
             .iter()
-            .map(|v: &[f64; 3]| format!("[{}, {}, {}]", v[0], v[1], v[2]))
+            .map(|v: &[f64; 3]| format!("({}, {}, {})", v[0], v[1], v[2]))
             .collect();
         assert_eq!(str_groups(&out), expected);
     }
@@ -2276,8 +2276,8 @@ mod tests {
         d.push([4.0, 5.0, 6.0], 0);
         let h = serial_make_handle(&d);
         let text = h.display::<f64>().to_string();
-        assert!(text.contains("[1, 2, 3]"), "got: {text}");
-        assert!(text.contains("[4, 5, 6]"), "got: {text}");
+        assert!(text.contains("(1, 2, 3)"), "got: {text}");
+        assert!(text.contains("(4, 5, 6)"), "got: {text}");
     }
 
     #[test]

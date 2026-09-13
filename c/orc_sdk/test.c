@@ -7522,7 +7522,7 @@ static void test_handle_to_str_vec3_single_item(void)
   OrcSdk_DeckView v        = orc_sdk_dv_from_deck((uint8_t *)out.items, 1);
   size_t const    len      = orc_sdk_dv_len(&v);
   char const     *s        = orc_sdk_dv_item_ptr(&v);
-  char const     *expected = "[1, 2, 3]";
+  char const     *expected = "(1, 2, 3)";
   TEST_ASSERT_TRUE(len == strlen(expected));
   TEST_ASSERT_TRUE(memcmp(s, expected, len) == 0);
   TEST_ASSERT_TRUE(!orc_sdk_dv_advance(&v));
@@ -7549,9 +7549,9 @@ static void test_handle_to_str_vec3_multiple_items(void)
   orc_sdk_oh_update(&out);
   OrcSdk_DeckView   v          = orc_sdk_dv_from_deck((uint8_t *)out.items, 1);
   char const *const expected[] = {
-    "[1, 2, 3]",
-    "[4, 5, 6]",
-    "[-7.5, 0, 100]",
+    "(1, 2, 3)",
+    "(4, 5, 6)",
+    "(-7.5, 0, 100)",
   };
   for (size_t i = 0; i < 3; ++i) {
     size_t const len = orc_sdk_dv_len(&v);
