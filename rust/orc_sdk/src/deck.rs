@@ -1,5 +1,5 @@
 use crate::{
-    Error, TOrcData,
+    Error, OrcItemProxy, ProxyType, TOrcData,
     bindings::{OrcHandle, OrcMark},
     slice_from_ptr,
 };
@@ -107,6 +107,55 @@ where
             &mut out.strides,
         );
         out
+    }
+
+    pub fn assign_from_proxy(
+        &mut self,
+        inputs: &[OrcHandle],
+        proxy_type: ProxyType,
+        proxy: &OrcHandle,
+    ) -> Result<(), Error>
+    where
+        T: TOrcData,
+    {
+        let (items, marks) = match proxy_type {
+            ProxyType::CopyAll => {
+                // We expect exactly one input, and we will make a full clone of that data.
+                if inputs.len() != 1 {
+                    return Err(Error::InvalidProxy);
+                }
+                let input_handle = unsafe { inputs.get_unchecked(0) }; // SAFETY: we just checked above.
+                let input = DeckView::<T>::from_handle(input_handle)?;
+                (input.items().to_vec(), input.marks().to_vec())
+            }
+            ProxyType::CopyItems => {
+                // We expect exactly one input. We will copy the items of the input, but the marks from the proxy.
+                if inputs.len() != 1 {
+                    return Err(Error::InvalidProxy);
+                }
+                let input_handle = unsafe { inputs.get_unchecked(0) }; // SAFETY: we just checked above.
+                let input = DeckView::<T>::from_handle(input_handle)?;
+                let proxy = DeckView::<OrcItemProxy>::from_handle(proxy)?;
+                (input.items().to_vec(), proxy.marks().to_vec())
+            }
+            ProxyType::Shuffle => {
+                let proxy = DeckView::<OrcItemProxy>::from_handle(proxy)?;
+                let inputs = inputs
+                    .iter()
+                    .map(|input| DeckView::<T>::from_handle(input))
+                    .collect::<Result<Box<[DeckView<T>]>, Error>>()?;
+                (
+                    proxy
+                        .items()
+                        .iter()
+                        .map(|ii| inputs[ii.tree as usize].items()[ii.item as usize].clone())
+                        .collect::<Vec<T>>(),
+                    proxy.marks().to_vec(),
+                )
+            }
+        };
+        self.assign_from_raw_data(items, marks);
+        Ok(())
     }
 
     /**

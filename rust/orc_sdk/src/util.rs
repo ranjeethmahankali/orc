@@ -1,10 +1,9 @@
 use crate::{
-    Combinations, Deck, DeckView, Error, ORC_ARGS_VARIADIC, ORC_MSG_LEVEL_DEBUG,
-    ORC_MSG_LEVEL_ERROR, ORC_MSG_LEVEL_FATAL, ORC_MSG_LEVEL_INFO, ORC_MSG_LEVEL_WARN, ORC_NUM_DIMS,
-    ORC_TYPE_F32, ORC_TYPE_F64, ORC_TYPE_I8, ORC_TYPE_I16, ORC_TYPE_I32, ORC_TYPE_I64, ORC_TYPE_U8,
-    ORC_TYPE_U16, ORC_TYPE_U32, ORC_TYPE_U64, OrcFuncInfo, OrcHandle, OrcHost, OrcHostCallbackAPI,
-    OrcItemProxy, OrcMark, OrcPluginFunction, OrcTypeId, OrcTypeInfo, ProxyType,
-    deck::fmt_raw_deck, ffi::TOrcData,
+    Combinations, Deck, Error, ORC_ARGS_VARIADIC, ORC_MSG_LEVEL_DEBUG, ORC_MSG_LEVEL_ERROR,
+    ORC_MSG_LEVEL_FATAL, ORC_MSG_LEVEL_INFO, ORC_MSG_LEVEL_WARN, ORC_NUM_DIMS, ORC_TYPE_F32,
+    ORC_TYPE_F64, ORC_TYPE_I8, ORC_TYPE_I16, ORC_TYPE_I32, ORC_TYPE_I64, ORC_TYPE_U8, ORC_TYPE_U16,
+    ORC_TYPE_U32, ORC_TYPE_U64, OrcFuncInfo, OrcHandle, OrcHost, OrcHostCallbackAPI, OrcMark,
+    OrcPluginFunction, OrcTypeId, OrcTypeInfo, ProxyType, deck::fmt_raw_deck, ffi::TOrcData,
 };
 use std::{
     alloc::{GlobalAlloc, Layout, System},
@@ -663,43 +662,7 @@ pub fn deck_from_proxy<T: TOrcData>(
             let out_deck = out_decks[0]
                 .downcast_mut::<Deck<T>>()
                 .ok_or(Error::DeckTypeMismatch)?;
-            let (items, marks) = match proxy_type {
-                ProxyType::CopyAll => {
-                    // We expect exactly one input, and we will make a full clone of that data.
-                    if inputs.len() != 1 {
-                        return Err(Error::InvalidProxy);
-                    }
-                    let input_handle = unsafe { inputs.get_unchecked(0) }; // SAFETY: we just checked above.
-                    let input = DeckView::<T>::from_handle(input_handle)?;
-                    (input.items().to_vec(), input.marks().to_vec())
-                }
-                ProxyType::CopyItems => {
-                    // We expect exactly one input. We will copy the items of the input, but the marks from the proxy.
-                    if inputs.len() != 1 {
-                        return Err(Error::InvalidProxy);
-                    }
-                    let input_handle = unsafe { inputs.get_unchecked(0) }; // SAFETY: we just checked above.
-                    let input = DeckView::<T>::from_handle(input_handle)?;
-                    let proxy = DeckView::<OrcItemProxy>::from_handle(proxy)?;
-                    (input.items().to_vec(), proxy.marks().to_vec())
-                }
-                ProxyType::Shuffle => {
-                    let proxy = DeckView::<OrcItemProxy>::from_handle(proxy)?;
-                    let inputs = inputs
-                        .iter()
-                        .map(|input| DeckView::<T>::from_handle(input))
-                        .collect::<Result<Box<[DeckView<T>]>, Error>>()?;
-                    (
-                        proxy
-                            .items()
-                            .iter()
-                            .map(|ii| inputs[ii.tree as usize].items()[ii.item as usize].clone())
-                            .collect::<Vec<T>>(),
-                        proxy.marks().to_vec(),
-                    )
-                }
-            };
-            out_deck.assign_from_raw_data(items, marks);
+            out_deck.assign_from_proxy(inputs, proxy_type, proxy)?;
             unsafe { update_handle_from_deck(out_deck, out) }; // SAFETY: we pulled the deck out of the same handle.
             Ok(())
         })
@@ -1021,7 +984,7 @@ pub fn to_str_deck<T: TOrcData + Display>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Deck, ORC_ERROR_NONE, ORC_NUM_DIMS, OrcError, OrcHandle, ffi::TOrcData};
+    use crate::{Deck, DeckView, ORC_ERROR_NONE, ORC_NUM_DIMS, OrcError, OrcHandle, ffi::TOrcData};
     use std::{
         cell::RefCell,
         sync::{
