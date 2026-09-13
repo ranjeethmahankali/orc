@@ -278,15 +278,15 @@
       the same pattern value -- the macro's existing "duplicate dispatch pattern"
       compile-time check should already catch this, but it hasn't been exercised against a
       real aggregate type yet.
-   7. [ ] We tried to cover aggregate types in Rust deserialization. We did not check whether the
+   7. [-] We tried to cover aggregate types in Rust deserialization. We did not check whether the
       serialization and deserialization helpers in the C SDK are accounting for aggregate types. We
       should also add support there, and get parity with the Rust SDK.
-      - [ ] *Header (de)serialization is already aggregate-safe:* ~orc_sdk_serialize_handle_header~ /
+      - [X] *Header (de)serialization is already aggregate-safe:* ~orc_sdk_serialize_handle_header~ /
         ~orc_sdk_deserialize_handle_header~ (~orc_sdk.c:2544-2628~, declared ~orc_sdk.h:943-947~)
         write/read ~item_size~ as an opaque ~u64~ alongside ~type_id~/~dims~/~n_items~/~n_marks~ --
         no per-type_id dispatch happens on the header at all, so any ~item_size~ value round-trips
         correctly today. No code change needed here.
-      - [ ] *Item payload (de)serialization is already aggregate-safe, but by a different mechanism
+      - [X] *Item payload (de)serialization is already aggregate-safe, but by a different mechanism
         than Rust:* ~orc_deck_serialize~/~orc_deck_deserialize~ (~example_c_plugin/plugin.c:58-121~)
         and the CLI's mirror (~cli_client/main.c:408-455~, ~serialize_handle~/~deserialize_handle~)
         write/read the payload as ~item_size * n_items~ raw bytes with no per-scalar-type
@@ -295,7 +295,7 @@
         type with no pointer indirection, the raw-byte-copy approach already handles any item_size
         transparently -- this is a structurally different design that happens to already have
         parity for aggregates, not a gap.
-      - [ ] *Allocation on deserialize is already aggregate-safe:* ~orc_deck_deserialize~
+      - [X] *Allocation on deserialize is already aggregate-safe:* ~orc_deck_deserialize~
         (~plugin.c:92~) allocates the landing deck via
         ~orc_sdk_handle_alloc(out->type_id, out->item_size, &temp_handle)~, which already rejects
         non-multiple ~item_size~ (item 2 above). So a deserialized aggregate handle is already
