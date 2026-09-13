@@ -1451,12 +1451,12 @@ char *_orc_sdk_deck_to_str(void const          *ptr,
     }
     if (h->marks[mi].pos < next_pos) {  // Items
       // Write the first item without padding.
-      size_t pos          = h->marks[mi].pos;
-      char  *item         = (char *)ptr + pos * item_size;
-      char   item_str[65] = {0};
-      snprint_item(item, item_str, 64);
-      item_str[64] = '\0';  // Just to be safe.
-      status       = orc_str_push(output, ' ');
+      size_t pos           = h->marks[mi].pos;
+      char  *item          = (char *)ptr + pos * item_size;
+      char   item_str[256] = {0};
+      snprint_item(item, item_str, sizeof(item_str) - 1);
+      item_str[sizeof(item_str) - 1] = '\0';  // Just to be safe.
+      status                         = orc_str_push(output, ' ');
       ORC_SDK_REQUIRE_WITH_MSG(status == ORC_ERROR_NONE, "Allocation failed");
       status = orc_str_push_str(output, item_str);
       ORC_SDK_REQUIRE_WITH_MSG(status == ORC_ERROR_NONE, "Allocation failed");
@@ -1472,10 +1472,10 @@ char *_orc_sdk_deck_to_str(void const          *ptr,
         }
         status = orc_str_push_str(output, "    | ");
         ORC_SDK_REQUIRE_WITH_MSG(status == ORC_ERROR_NONE, "Allocation failed");
-        memset(item_str, 0, 65);
-        snprint_item(item, item_str, 64);
-        item_str[64] = '\0';  // Just to be safe.
-        status       = orc_str_push_str(output, item_str);
+        memset(item_str, 0, sizeof(item_str));
+        snprint_item(item, item_str, sizeof(item_str) - 1);
+        item_str[sizeof(item_str) - 1] = '\0';  // Just to be safe.
+        status                         = orc_str_push_str(output, item_str);
         ORC_SDK_REQUIRE_WITH_MSG(status == ORC_ERROR_NONE, "Allocation failed");
         status = orc_str_push(output, '\n');
         ORC_SDK_REQUIRE_WITH_MSG(status == ORC_ERROR_NONE, "Allocation failed");
@@ -2758,7 +2758,7 @@ OrcError orc_sdk_handle_to_str(OrcHandle const *input, OrcHandle *out)
       }
       {  // Push the first item (potentially an aggregate type) always.
         char buf[256] = {0};
-        print_fn(item, buf, 255);
+        print_fn(item, buf, sizeof(buf) - 1);
         size_t const count   = strlen(buf);
         size_t const old_len = orc_sdk_arr_len(local_str);
         orc_sdk_arr_resize(local_str, old_len + count);
@@ -2769,7 +2769,7 @@ OrcError orc_sdk_handle_to_str(OrcHandle const *input, OrcHandle *out)
         orc_sdk_arr_push(local_str, ',');
         orc_sdk_arr_push(local_str, ' ');
         char buf[256] = {0};
-        print_fn(item, buf, 255);
+        print_fn(item, buf, sizeof(buf) - 1);
         size_t const count   = strlen(buf);
         size_t const old_len = orc_sdk_arr_len(local_str);
         orc_sdk_arr_resize(local_str, old_len + count);
@@ -2790,6 +2790,7 @@ OrcError orc_sdk_handle_to_str(OrcHandle const *input, OrcHandle *out)
     combinations = orc_sdk_comb_advance(combinations);
   }
   orc_sdk_comb_free(combinations);
+  orc_sdk_arr_free(local_str);
   orc_sdk_oh_update(out);
   return status;
 }

@@ -7500,6 +7500,70 @@ static void test_handle_to_str_f64(void)
   orc_sdk_handle_free(&out);
 }
 
+static void test_handle_to_str_vec3_single_item(void)
+{
+  // Regression test: orc_sdk_handle_to_str's aggregate (item_size > sizeof(scalar)) path used to
+  // overwrite each component's text instead of appending it, and never closed the '(' it opened.
+  orc_sdk_init(NULL, NULL);
+  OrcHandle input = {0};
+  input.handle    = 250;
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(_Vec3), &input);
+  _Vec3 *vdeck = (_Vec3 *)input.items;
+  orc_sdk_deck_push(vdeck, ((_Vec3) {1.0, 2.0, 3.0}), 1);
+  input.items = vdeck;
+  orc_sdk_oh_update(&input);
+  OrcHandle out = {0};
+  out.handle    = 251;
+  OrcError err  = orc_sdk_handle_to_str(&input, &out);
+  TEST_ASSERT_TRUE(err == ORC_ERROR_NONE);
+  orc_sdk_oh_update(&out);
+  TEST_ASSERT_TRUE(out.type_id == ORC_TYPE_U8);
+  OrcSdk_DeckView v   = orc_sdk_dv_from_deck((uint8_t *)out.items, 1);
+  size_t const    len = orc_sdk_dv_len(&v);
+  char const     *s   = orc_sdk_dv_item_ptr(&v);
+  char const     *expected = "(1.000000, 2.000000, 3.000000)";
+  TEST_ASSERT_TRUE(len == strlen(expected));
+  TEST_ASSERT_TRUE(memcmp(s, expected, len) == 0);
+  TEST_ASSERT_TRUE(!orc_sdk_dv_advance(&v));
+  orc_sdk_handle_free(&input);
+  orc_sdk_handle_free(&out);
+}
+
+static void test_handle_to_str_vec3_multiple_items(void)
+{
+  orc_sdk_init(NULL, NULL);
+  OrcHandle input = {0};
+  input.handle    = 252;
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(_Vec3), &input);
+  _Vec3 *vdeck = (_Vec3 *)input.items;
+  orc_sdk_deck_push(vdeck, ((_Vec3) {1.0, 2.0, 3.0}), 1);
+  orc_sdk_deck_push(vdeck, ((_Vec3) {4.0, 5.0, 6.0}), 0);
+  orc_sdk_deck_push(vdeck, ((_Vec3) {-7.5, 0.0, 100.0}), 0);
+  input.items = vdeck;
+  orc_sdk_oh_update(&input);
+  OrcHandle out = {0};
+  out.handle    = 253;
+  OrcError err  = orc_sdk_handle_to_str(&input, &out);
+  TEST_ASSERT_TRUE(err == ORC_ERROR_NONE);
+  orc_sdk_oh_update(&out);
+  OrcSdk_DeckView v = orc_sdk_dv_from_deck((uint8_t *)out.items, 1);
+  char const *const expected[] = {
+    "(1.000000, 2.000000, 3.000000)",
+    "(4.000000, 5.000000, 6.000000)",
+    "(-7.500000, 0.000000, 100.000000)",
+  };
+  for (size_t i = 0; i < 3; ++i) {
+    size_t const len = orc_sdk_dv_len(&v);
+    char const  *s   = orc_sdk_dv_item_ptr(&v);
+    TEST_ASSERT_TRUE(len == strlen(expected[i]));
+    TEST_ASSERT_TRUE(memcmp(s, expected[i], len) == 0);
+    bool const has_next = orc_sdk_dv_advance(&v);
+    TEST_ASSERT_TRUE(has_next == (i < 2));
+  }
+  orc_sdk_handle_free(&input);
+  orc_sdk_handle_free(&out);
+}
+
 static void test_handle_to_str_unknown_type(void)
 {
   orc_sdk_init(NULL, NULL);
@@ -7722,6 +7786,8 @@ int main(void)
   RUN_TEST(test_dw_start_new_arr_null_writer);
   RUN_TEST(test_handle_to_str_u32);
   RUN_TEST(test_handle_to_str_f64);
+  RUN_TEST(test_handle_to_str_vec3_single_item);
+  RUN_TEST(test_handle_to_str_vec3_multiple_items);
   RUN_TEST(test_handle_to_str_unknown_type);
   RUN_TEST(test_handle_to_str_empty);
   return UNITY_END();
