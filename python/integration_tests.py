@@ -123,22 +123,27 @@ def download(sid, hid):
     return dtype, values
 
 
+def _parse_value_token(token, dtype):
+    """Parse one whitespace-separated token from `download`'s output. A bare number ("1.5") is
+    one scalar item. A parenthesized, comma-separated list ("(1,2,3)", no spaces -- that's what
+    keeps each item a single whitespace-split token) is one aggregate item, parsed into a
+    tuple."""
+    caster = float if dtype in ("f32", "f64") else int
+    if token.startswith("(") and token.endswith(")"):
+        return tuple(caster(v) for v in token[1:-1].split(","))
+    return caster(token)
+
+
 def download_values(sid, hid):
-    """Download and return parsed numeric values."""
+    """Download and return parsed numeric values (bare numbers or tuples for aggregates)."""
     dtype, vals = download(sid, hid)
-    if dtype in ("f32", "f64"):
-        return [float(v) for v in vals]
-    else:
-        return [int(v) for v in vals]
+    return [_parse_value_token(v, dtype) for v in vals]
 
 
 def download_typed(sid, hid):
     """Download and return (type_name, parsed numeric values)."""
     dtype, vals = download(sid, hid)
-    if dtype in ("f32", "f64"):
-        return dtype, [float(v) for v in vals]
-    else:
-        return dtype, [int(v) for v in vals]
+    return dtype, [_parse_value_token(v, dtype) for v in vals]
 
 
 def download_workflow(sid, path, *output_ids):
@@ -284,6 +289,88 @@ def t_constant_single_element():
     hid = constant(sid, "f64", 42.0)
     vals = download_values(sid, hid)
     assert vals == [42.0]
+    session_close(sid)
+
+
+# ============================================================
+# constant + download — aggregate types (parenthesized values)
+# ============================================================
+
+
+def t_constant_aggregate_single_item():
+    """A single parenthesized value is one aggregate item."""
+    sid = session_start()
+    hid = constant(sid, "f64", "(1.0,2.0,3.0)")
+    assert download_values(sid, hid) == [(1.0, 2.0, 3.0)]
+    session_close(sid)
+
+
+def t_constant_aggregate_multiple_items():
+    """Multiple parenthesized values make a flat list of aggregate items."""
+    sid = session_start()
+    hid = constant(sid, "f64", "(1.0,2.0,3.0)", "(4.0,5.0,6.0)")
+    assert download_values(sid, hid) == [(1.0, 2.0, 3.0), (4.0, 5.0, 6.0)]
+    session_close(sid)
+
+
+def t_constant_aggregate_integer_dtype():
+    """Aggregates work with an integer dtype too."""
+    sid = session_start()
+    hid = constant(sid, "i32", "(1,2,3)", "(4,5,6)")
+    dtype, vals = download_typed(sid, hid)
+    assert dtype == "i32"
+    assert vals == [(1, 2, 3), (4, 5, 6)]
+    session_close(sid)
+
+
+def t_constant_aggregate_max_size():
+    """32 components is the largest supported aggregate size."""
+    sid = session_start()
+    literal = "(" + ",".join(str(float(i)) for i in range(32)) + ")"
+    hid = constant(sid, "f64", literal)
+    expected = tuple(float(i) for i in range(32))
+    assert download_values(sid, hid) == [expected]
+    session_close(sid)
+
+
+def t_constant_aggregate_too_large_rejected():
+    """More than 32 components is rejected, not silently truncated."""
+    sid = session_start()
+    literal = "(" + ",".join(str(float(i)) for i in range(33)) + ")"
+    assert cli_fails("constant", sid, "f64", literal)
+    session_close(sid)
+
+
+def t_constant_aggregate_varying_lengths_rejected():
+    """Values with a different number of components in the same call are rejected."""
+    sid = session_start()
+    assert cli_fails("constant", sid, "f64", "(1.0,2.0)", "(3.0,4.0,5.0)")
+    session_close(sid)
+
+
+def t_constant_aggregate_mixed_with_scalar_rejected():
+    """Mixing a scalar value with an aggregate value in the same call is rejected."""
+    sid = session_start()
+    assert cli_fails("constant", sid, "f64", "1.0", "(2.0,3.0)")
+    session_close(sid)
+
+
+def t_vec3_length_via_cli_aggregate_constant():
+    """Now that the CLI can author aggregate constants, a real plugin function that expects
+    one [f64;3] item per input is callable end to end."""
+    sid = session_start()
+    v = constant(sid, "f64", "(3.0,4.0,0.0)")
+    [out] = call(sid, "vec3_length", v)
+    assert download_values(sid, out) == [5.0]
+    session_close(sid)
+
+
+def t_vec3_length_via_cli_multiple_aggregates():
+    """Multiple aggregate items strided through Combinations, authored via the CLI."""
+    sid = session_start()
+    v = constant(sid, "f64", "(3.0,4.0,0.0)", "(0.0,0.0,1.0)")
+    [out] = call(sid, "vec3_length", v)
+    assert download_values(sid, out) == [5.0, 1.0]
     session_close(sid)
 
 

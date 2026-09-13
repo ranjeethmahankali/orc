@@ -14,6 +14,11 @@
  *   download_python_script <sid> <path> [output_ids...] -> writes .py file
  *
  * Supported types for 'constant': u8 u16 u32 u64 i8 i16 i32 i64 f32 f64
+ *
+ * Each <val> passed to 'constant' is either a bare number ("1.5"), meaning one scalar
+ * item, or a parenthesized comma-separated list ("(1.0,2.0,3.0)", up to 32 components),
+ * meaning one aggregate item. All <val>s in a single call must have the same number of
+ * components.
  */
 
 #include <orc_sdk/orc_sdk.h>
@@ -510,6 +515,31 @@ static TypeEntry const *type_by_id(OrcTypeId id)
 
 /* ==================== Print helpers ==================== */
 
+/* Prints exactly one scalar component at `p`, interpreted per `te->type_id`. */
+static void print_scalar(TypeEntry const *te, void const *p)
+{
+  if (te->type_id == ORC_TYPE_U8)
+    printf("%u", (unsigned)*(uint8_t const *)p);
+  if (te->type_id == ORC_TYPE_U16)
+    printf("%u", (unsigned)*(uint16_t const *)p);
+  if (te->type_id == ORC_TYPE_U32)
+    printf("%u", *(uint32_t const *)p);
+  if (te->type_id == ORC_TYPE_U64)
+    printf("%llu", (unsigned long long)*(uint64_t const *)p);
+  if (te->type_id == ORC_TYPE_I8)
+    printf("%d", (int)*(int8_t const *)p);
+  if (te->type_id == ORC_TYPE_I16)
+    printf("%d", (int)*(int16_t const *)p);
+  if (te->type_id == ORC_TYPE_I32)
+    printf("%d", *(int32_t const *)p);
+  if (te->type_id == ORC_TYPE_I64)
+    printf("%lld", (long long)*(int64_t const *)p);
+  if (te->type_id == ORC_TYPE_F32)
+    printf("%g", (double)*(float const *)p);
+  if (te->type_id == ORC_TYPE_F64)
+    printf("%g", *(double const *)p);
+}
+
 static void print_handle_values(OrcHandle const *h)
 {
   TypeEntry const *te = type_by_id(h->type_id);
@@ -517,30 +547,29 @@ static void print_handle_values(OrcHandle const *h)
     printf("(unknown type 0x%llx)\n", (unsigned long long)h->type_id);
     return;
   }
+  /* h->item_size is untrusted (e.g. straight off the wire in cmd_download) -- it must be
+     indexed at its own stride, not the table's fixed scalar size, and it must actually be
+     a multiple of that scalar size to mean anything. */
+  if (h->item_size == 0 || h->item_size % te->item_size != 0) {
+    printf("(malformed item_size %llu for type %s)\n",
+           (unsigned long long)h->item_size,
+           te->name);
+    return;
+  }
+  size_t const n_components = (size_t)h->item_size / te->item_size;
   for (uint64_t i = 0; i < h->n_items; i++) {
     if (i > 0)
       printf(" ");
-    void const *p = (char const *)h->items + i * te->item_size;
-    if (te->type_id == ORC_TYPE_U8)
-      printf("%u", (unsigned)*(uint8_t *)p);
-    if (te->type_id == ORC_TYPE_U16)
-      printf("%u", (unsigned)*(uint16_t *)p);
-    if (te->type_id == ORC_TYPE_U32)
-      printf("%u", *(uint32_t *)p);
-    if (te->type_id == ORC_TYPE_U64)
-      printf("%llu", (unsigned long long)*(uint64_t *)p);
-    if (te->type_id == ORC_TYPE_I8)
-      printf("%d", (int)*(int8_t *)p);
-    if (te->type_id == ORC_TYPE_I16)
-      printf("%d", (int)*(int16_t *)p);
-    if (te->type_id == ORC_TYPE_I32)
-      printf("%d", *(int32_t *)p);
-    if (te->type_id == ORC_TYPE_I64)
-      printf("%lld", (long long)*(int64_t *)p);
-    if (te->type_id == ORC_TYPE_F32)
-      printf("%g", (double)*(float *)p);
-    if (te->type_id == ORC_TYPE_F64)
-      printf("%g", *(double *)p);
+    char const *item = (char const *)h->items + i * h->item_size;
+    if (n_components > 1)
+      printf("(");
+    for (size_t c = 0; c < n_components; c++) {
+      if (c > 0)
+        printf(",");
+      print_scalar(te, item + c * te->item_size);
+    }
+    if (n_components > 1)
+      printf(")");
   }
   printf("\n");
 }
@@ -563,7 +592,11 @@ static void usage(void)
     "  download_workflow <sid> <path> [ids...]     Write workflow to file\n"
     "  download_python_script <sid> <path> [ids...] Write generated Python to file\n"
     "\n"
-    "Types: u8 u16 u32 u64 i8 i16 i32 i64 f32 f64\n");
+    "Types: u8 u16 u32 u64 i8 i16 i32 i64 f32 f64\n"
+    "\n"
+    "Each <val> for 'constant' is a bare number (one scalar item) or a parenthesized,\n"
+    "comma-separated list like (1.0,2.0,3.0) (one aggregate item, up to 32 components).\n"
+    "All <val>s in one call must have the same number of components.\n");
   exit(1);
 }
 
@@ -616,6 +649,77 @@ static void cmd_functions(char const *host, uint16_t port)
   http_response_free(&resp);
 }
 
+#define MAX_AGGREGATE_COMPONENTS 32
+
+/* Parses one `constant` value argument. A bare number ("1.5") is a single scalar
+   (component count 1). A parenthesized, comma-separated list ("(1.0,2.0,3.0)") is one
+   aggregate item -- its component values are written to `out` (capacity
+   MAX_AGGREGATE_COMPONENTS). Returns the component count, or 0 if the argument is a
+   malformed/empty aggregate, or one with more than MAX_AGGREGATE_COMPONENTS components.
+ */
+static size_t parse_value_arg(char const *s, double *out)
+{
+  size_t const len = strlen(s);
+  if (len < 2 || s[0] != '(' || s[len - 1] != ')') {
+    out[0] = strtod(s, NULL);
+    return 1;
+  }
+  char *buf = malloc(len - 1); /* (len - 2) inner chars + null terminator. */
+  if (!buf)
+    die("alloc failed");
+  memcpy(buf, s + 1, len - 2);
+  buf[len - 2] = '\0';
+  size_t count = 0;
+  for (char *tok = strtok(buf, ","); tok != NULL; tok = strtok(NULL, ",")) {
+    if (count >= MAX_AGGREGATE_COMPONENTS) {
+      free(buf);
+      return 0;
+    }
+    out[count++] = strtod(tok, NULL);
+  }
+  free(buf);
+  return count;
+}
+
+/* Writes one scalar component of the type described by `te` to `dst`. */
+static void write_scalar(TypeEntry const *te, void *dst, double v)
+{
+  switch (te->type_id) {
+  case ORC_TYPE_U8:
+    *(uint8_t *)dst = (uint8_t)v;
+    break;
+  case ORC_TYPE_U16:
+    *(uint16_t *)dst = (uint16_t)v;
+    break;
+  case ORC_TYPE_U32:
+    *(uint32_t *)dst = (uint32_t)v;
+    break;
+  case ORC_TYPE_U64:
+    *(uint64_t *)dst = (uint64_t)v;
+    break;
+  case ORC_TYPE_I8:
+    *(int8_t *)dst = (int8_t)v;
+    break;
+  case ORC_TYPE_I16:
+    *(int16_t *)dst = (int16_t)v;
+    break;
+  case ORC_TYPE_I32:
+    *(int32_t *)dst = (int32_t)v;
+    break;
+  case ORC_TYPE_I64:
+    *(int64_t *)dst = (int64_t)v;
+    break;
+  case ORC_TYPE_F32:
+    *(float *)dst = (float)v;
+    break;
+  case ORC_TYPE_F64:
+    *(double *)dst = v;
+    break;
+  default:
+    break;
+  }
+}
+
 static void cmd_constant(char const *host,
                          uint16_t    port,
                          char const *sid_str,
@@ -628,46 +732,39 @@ static void cmd_constant(char const *host,
     fprintf(stderr, "Unknown type: %s\n", type_name);
     usage();
   }
+  if (n_values <= 0) {
+    fprintf(stderr, "constant requires at least one value\n");
+    usage();
+  }
+  /* The first value's shape (scalar, or an aggregate with however many components) sets
+     the item_size for the whole deck -- every other value must match it exactly. */
+  double       parsed[MAX_AGGREGATE_COMPONENTS];
+  size_t const n_components = parse_value_arg(value_strs[0], parsed);
+  if (n_components == 0) {
+    die("Invalid, empty, or too-large (>32 components) aggregate value");
+  }
+  size_t const item_size = te->item_size * n_components;
+
   /* Parse values into a raw buffer. */
-  void *items = malloc(te->item_size * (size_t)n_values);
+  void *items = malloc(item_size * (size_t)n_values);
   if (!items)
     die("alloc failed");
   for (int i = 0; i < n_values; i++) {
-    void  *dst = (char *)items + (size_t)i * te->item_size;
-    double v   = strtod(value_strs[i], NULL);
-    switch (te->type_id) {
-    case ORC_TYPE_U8:
-      *(uint8_t *)dst = (uint8_t)v;
-      break;
-    case ORC_TYPE_U16:
-      *(uint16_t *)dst = (uint16_t)v;
-      break;
-    case ORC_TYPE_U32:
-      *(uint32_t *)dst = (uint32_t)v;
-      break;
-    case ORC_TYPE_U64:
-      *(uint64_t *)dst = (uint64_t)v;
-      break;
-    case ORC_TYPE_I8:
-      *(int8_t *)dst = (int8_t)v;
-      break;
-    case ORC_TYPE_I16:
-      *(int16_t *)dst = (int16_t)v;
-      break;
-    case ORC_TYPE_I32:
-      *(int32_t *)dst = (int32_t)v;
-      break;
-    case ORC_TYPE_I64:
-      *(int64_t *)dst = (int64_t)v;
-      break;
-    case ORC_TYPE_F32:
-      *(float *)dst = (float)v;
-      break;
-    case ORC_TYPE_F64:
-      *(double *)dst = v;
-      break;
-    default:
-      break;
+    double       vals[MAX_AGGREGATE_COMPONENTS];
+    size_t const n = parse_value_arg(value_strs[i], vals);
+    if (n != n_components) {
+      free(items);
+      fprintf(stderr,
+              "All values passed to 'constant' must have the same number of components "
+              "(expected %zu, got %zu for '%s')\n",
+              n_components,
+              n,
+              value_strs[i]);
+      die("Inconsistent aggregate value shapes");
+    }
+    for (size_t c = 0; c < n_components; c++) {
+      void *dst = (char *)items + (size_t)i * item_size + c * te->item_size;
+      write_scalar(te, dst, vals[c]);
     }
   }
   OrcMark   single_mark = {.depth = 0, .pos = 0};
@@ -675,7 +772,7 @@ static void cmd_constant(char const *host,
   memset(&handle, 0, sizeof(handle));
   handle.type_id   = te->type_id;
   handle.n_items   = (uint64_t)n_values;
-  handle.item_size = (uint64_t)te->item_size;
+  handle.item_size = (uint64_t)item_size;
   handle.items     = items;
   if (handle.n_items > 1) {
     handle.marks   = &single_mark;
