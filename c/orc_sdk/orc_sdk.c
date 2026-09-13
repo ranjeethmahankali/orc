@@ -2664,40 +2664,52 @@ void _snprint_fallback_fn(void const *item, char *dst, size_t len)
 
 OrcError orc_sdk_handle_to_str(OrcHandle const *input, OrcHandle *out)
 {
-  OrcSdk_SNPrintItemFn print_fn = NULL;
+  OrcSdk_SNPrintItemFn print_fn         = NULL;
+  size_t               single_item_size = 0;
   switch (input->type_id) {
   case ORC_TYPE_U8:
-    print_fn = _snprint_u8;
+    print_fn         = _snprint_u8;
+    single_item_size = sizeof(uint8_t);
     break;
   case ORC_TYPE_U16:
-    print_fn = _snprint_u16;
+    print_fn         = _snprint_u16;
+    single_item_size = sizeof(uint16_t);
     break;
   case ORC_TYPE_U32:
-    print_fn = _snprint_u32;
+    print_fn         = _snprint_u32;
+    single_item_size = sizeof(uint32_t);
     break;
   case ORC_TYPE_U64:
-    print_fn = _snprint_u64;
+    print_fn         = _snprint_u64;
+    single_item_size = sizeof(uint64_t);
     break;
   case ORC_TYPE_F32:
-    print_fn = _snprint_f32;
+    print_fn         = _snprint_f32;
+    single_item_size = sizeof(float);
     break;
   case ORC_TYPE_F64:
-    print_fn = _snprint_f64;
+    print_fn         = _snprint_f64;
+    single_item_size = sizeof(double);
     break;
   case ORC_TYPE_I8:
-    print_fn = _snprint_i8;
+    print_fn         = _snprint_i8;
+    single_item_size = sizeof(int8_t);
     break;
   case ORC_TYPE_I16:
-    print_fn = _snprint_i16;
+    print_fn         = _snprint_i16;
+    single_item_size = sizeof(int16_t);
     break;
   case ORC_TYPE_I32:
-    print_fn = _snprint_i32;
+    print_fn         = _snprint_i32;
+    single_item_size = sizeof(int32_t);
     break;
   case ORC_TYPE_I64:
-    print_fn = _snprint_i64;
+    print_fn         = _snprint_i64;
+    single_item_size = sizeof(int64_t);
     break;
   case ORC_TYPE_PROXY:
-    print_fn = _snprint_proxy;
+    print_fn         = _snprint_proxy;
+    single_item_size = sizeof(OrcItemProxy);
     break;
   default:
     if (PLUGIN_TYPE_FN) {
@@ -2705,12 +2717,17 @@ OrcError orc_sdk_handle_to_str(OrcHandle const *input, OrcHandle *out)
       if (!_is_type_info_valid(&info)) {
         return ORC_ERROR_TYPE_MISMATCH;
       }
-      print_fn = info.snprint_fn;
+      print_fn         = info.snprint_fn;
+      single_item_size = info.item_size;
     }
     else {
       return ORC_ERROR_TYPE_MISMATCH;
     }
     break;
+  }
+  size_t const item_size = input->item_size;
+  if (single_item_size == 0 || (item_size % single_item_size) != 0) {
+    return ORC_ERROR_TYPE_MISMATCH;
   }
   if (print_fn == NULL) {
     print_fn = _snprint_fallback_fn;
@@ -2727,21 +2744,46 @@ OrcError orc_sdk_handle_to_str(OrcHandle const *input, OrcHandle *out)
                                          (uint8_t const[]) {1},
                                          1);
   OrcError status       = ORC_ERROR_NONE;
+  char    *local_str    = NULL;
   while (combinations) {
     OrcSdk_DeckView input_view = orc_sdk_comb_get_input(combinations, 0);
     ORC_SDK_REQUIRE(input_view.depth == 0);
     if (orc_sdk_dv_len(&input_view) > 0) {
-      OrcSdk_DeckWriter *output_writer = orc_sdk_comb_get_output(combinations, 0);
-      void const        *item          = orc_sdk_dv_item_ptr(&input_view);
-      char               buf[256]      = {0};
-      print_fn(item, buf, 255);
-      size_t const count = strlen(buf);
+      OrcSdk_DeckWriter *output_writer  = orc_sdk_comb_get_output(combinations, 0);
+      void const        *item           = orc_sdk_dv_item_ptr(&input_view);
+      void const        *last_component = (char *)item + item_size;
+      orc_sdk_arr_clear(local_str);
+      if (single_item_size < item_size) {  // More than one item.
+        orc_sdk_arr_push(local_str, '(');
+      }
+      {  // Push the first item (potentially an aggregate type) always.
+        char buf[256] = {0};
+        print_fn(item, buf, 255);
+        size_t const count = strlen(buf);
+        orc_sdk_arr_resize(local_str, orc_sdk_arr_len(local_str) + count);
+        memcpy(local_str, buf, count);
+        item = (char *)item + single_item_size;
+      }
+      while (item < last_component) {
+        orc_sdk_arr_push(local_str, ',');
+        orc_sdk_arr_push(local_str, ' ');
+        char buf[256] = {0};
+        print_fn(item, buf, 255);
+        size_t const count = strlen(buf);
+        orc_sdk_arr_resize(local_str, orc_sdk_arr_len(local_str) + count);
+        memcpy(local_str, buf, count);
+        item = (char *)item + single_item_size;
+      }
+      if (single_item_size < item_size) {  // More than one item.
+        orc_sdk_arr_push(local_str, ')');
+      }
+      size_t const count = orc_sdk_arr_len(local_str);
       char        *dst   = (char *)orc_sdk_dw_push_empty_many(output_writer, count);
       if (dst == NULL) {
         status = ORC_ERROR_ALLOC_FAILED;
         break;
       }
-      memcpy(dst, buf, count);
+      memcpy(dst, local_str, count);
     }
     combinations = orc_sdk_comb_advance(combinations);
   }
