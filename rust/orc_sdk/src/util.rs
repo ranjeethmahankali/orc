@@ -1012,7 +1012,9 @@ pub fn to_str_deck<T: TOrcData + Display>(
     input: &OrcHandle,
     out: &mut Deck<u8>,
 ) -> Result<(), Error> {
-    if input.type_id != T::TYPE_INFO.type_id {
+    if input.type_id != T::TYPE_INFO.type_id
+        || !(input.item_size as usize).is_multiple_of(size_of::<T>())
+    {
         return Err(Error::DeckTypeMismatch);
     }
     out.clear();
