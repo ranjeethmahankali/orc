@@ -41,6 +41,12 @@ def simple_experiment():
     doubled_np_arr = np_arr * 2.0
     print(f"Output after doubling: {doubled_np_arr}")
 
+    # Aggregate types (e.g. [f64;3]) -- a tuple leaf is one aggregate item.
+    v = orc.make_deck([(3.0, 4.0, 0.0), (0.0, 0.0, 1.0)])
+    lengths = orc.read_deck(orc.vec3_length(v))
+    print(f"Vector lengths: {lengths}")
+    assert lengths == [5.0, 1.0], f"Unexpected: {lengths}"
+
     # Complex numbers.
     comp = orc.create_complex(a, b)
     comp2 = orc.mul_complex(comp, comp)

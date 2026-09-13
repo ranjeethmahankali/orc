@@ -908,6 +908,40 @@ def t_serial_every_plugin_handles_builtin_types():
             os.unlink(path)
 
 
+# _make_builtin_samples() keys on (type_id, dtype), which can't distinguish a flat f64 sample
+# from an aggregate f64 sample (same type_id/dtype, different item_size) -- so the aggregate
+# case is a separate, dedicated sample/tests instead of folded into that dict.
+def _make_aggregate_sample():
+    return (orc.ORC_TYPE_F64, "f64"), [
+        (1.0, 2.0, 3.0), (4.0, 5.0, 6.0), (-7.5, 0.0, 100.0)
+    ]
+
+
+def t_serial_aggregate_survives_workflow_round_trip():
+    """Same round trip as t_serial_every_plugin_handles_builtin_types, but for an aggregate
+    (tuple-leaf) sample."""
+    (type_id, dtype), values = _make_aggregate_sample()
+
+    def fn():
+        # Use flatten_deck as a type-preserving identity operation, same as the builtin-type
+        # version of this test.
+        return orc.flatten_deck(orc.make_deck(values, dtype=dtype))
+
+    graph = orc.make_workflow(fn)
+    with tempfile.NamedTemporaryFile(suffix=".orcflow", delete=False) as f:
+        path = f.name
+    try:
+        orc.save_workflow(graph, path)
+        restored = orc.load_workflow(path)
+        out = restored.run()
+        assert out.type_id == type_id
+        assert out.item_size == 24
+        assert out.n_items == len(values)
+        assert orc.read_deck(out) == values
+    finally:
+        os.unlink(path)
+
+
 def t_serial_every_plugin_handles_nested_builtin():
     """Nested f64 deck survives a workflow serialize/deserialize round-trip."""
 
@@ -1929,6 +1963,16 @@ def t_deck_to_str_every_builtin_type():
         assert len(groups) == len(values), (
             f"dtype={dtype}: expected {len(values)} strings, got {len(groups)}"
         )
+
+
+def t_deck_to_str_aggregate_sample():
+    """Same as t_deck_to_str_every_builtin_type, but for an aggregate (tuple-leaf) sample --
+    each item's string is comma-joined and wrapped in parens."""
+    (_type_id, dtype), values = _make_aggregate_sample()
+    h = orc.make_deck(values, dtype=dtype)
+    out = orc.deck_to_str(h)
+    groups = _to_str_groups(out)
+    assert groups == ["(1, 2, 3)", "(4, 5, 6)", "(-7.5, 0, 100)"]
 
 
 # ============================================================
