@@ -740,6 +740,33 @@ def t_complex_flatten():
 
 
 # ============================================================
+# Aggregate types (e.g. [f64;3]) -- not yet constructible/readable from Python
+# ============================================================
+#
+# `make_deck`/`read_deck` can only build/read plain scalar-item decks today (item_size ==
+# sizeof(scalar)); there is no `dtype` for an aggregate shape like "3 doubles per item", and no
+# plugin function exposed to Python produces one as output either. So there is no way to get a
+# real aggregate `Handle` into or out of Python yet (see PROJECT.org, item 10's pyorc gaps).
+# `vec3_length` (a real plugin function expecting one `[f64;3]` item per input) is the only
+# aggregate-shaped entry point reachable from here, and the only thing testable today is that
+# calling it with an ordinary (non-aggregate) deck is rejected cleanly rather than silently
+# misreading the buffer or crashing the interpreter.
+
+
+def t_vec3_length_rejects_non_aggregate_deck():
+    """vec3_length expects a single [f64;3] item per input. A deck built by make_deck([1,2,3])
+    is 3 separate f64 items (item_size=8), not one aggregate item (item_size=24) -- the type_id
+    matches (both are F64) but the item_size doesn't, and dispatch must reject it instead of
+    reinterpreting the buffer as a vec3."""
+    a = orc.make_deck([1.0, 2.0, 3.0])
+    try:
+        orc.vec3_length(a)
+        assert False, "Should have raised (item_size mismatch: scalar deck, not aggregate)"
+    except (RuntimeError, TypeError):
+        pass
+
+
+# ============================================================
 # Serialization round-trip (workflow-level)
 # ============================================================
 

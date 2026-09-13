@@ -462,6 +462,29 @@ def t_flatten_preserves_type():
 
 
 # ============================================================
+# Aggregate types (e.g. [f64;3]) -- not yet authorable via the CLI
+# ============================================================
+#
+# `cli_client`'s `constant` command can only build item_size == sizeof(scalar) constants (see
+# PROJECT.org, item 10's cli_client gap) -- there's no way to author a single [f64;3] item over
+# HTTP yet. `vec3_length` (n_inputs=1, expects one [f64;3] item) is a real plugin function that
+# takes an aggregate input, so the one thing testable through the full server+CLI round trip
+# today is that feeding it an ordinary 3-element f64 constant (3 separate items, item_size=8,
+# not one aggregate item, item_size=24) is rejected cleanly over HTTP -- not silently
+# misinterpreted, and not something that hangs or crashes the server.
+
+
+def t_vec3_length_rejects_non_aggregate_constant():
+    """vec3_length expects a single [f64;3] item per input. A constant built from 3 separate f64
+    values is item_size=8 (3 items), not item_size=24 (1 item) -- type_id matches (both F64) but
+    item_size doesn't, so the call must fail cleanly through the full HTTP round trip."""
+    sid = session_start()
+    a = constant(sid, "f64", 1, 2, 3)
+    assert cli_fails("call", sid, "vec3_length", a)
+    session_close(sid)
+
+
+# ============================================================
 # create_complex + complex_get_parts
 # ============================================================
 

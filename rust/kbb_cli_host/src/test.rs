@@ -104,6 +104,69 @@ fn t_flatten_deck_fn() {
     assert_eq!(view.items(), &[1.0, 2.0, 3.0, 4.0, 5.0]);
 }
 
+// ==================== Aggregate types (e.g. [f64;3]) across the FFI boundary ====================
+//
+// These mirror the scalar tests above but exercise a real, dlopen'd plugin's dispatch,
+// serialization, proxy, and cloning code paths with an aggregate (item_size=24, [f64;3]) deck --
+// not just the in-process orc_sdk/example_rust_plugin unit tests, which never cross the actual
+// FFI boundary this host loads plugins through.
+
+#[test]
+fn t_vec3_length_fn() {
+    let vec3_length_fn = PLUGIN_SET
+        .get_function("vec3_length")
+        .expect("vec3_length function not found");
+    let mut v = Deck::<[f64; 3]>::default();
+    v.push([3.0, 4.0, 0.0], 1);
+    v.push([0.0, 0.0, 1.0], 0);
+    v.push([1.0, 2.0, 2.0], 0);
+    let mut v_handle = OrcHandle {
+        handle: next_id(),
+        ..Default::default()
+    };
+    let mut out_handle = OrcHandle {
+        handle: next_id(),
+        ..Default::default()
+    };
+    unsafe {
+        update_handle_from_deck(&v, &mut v_handle);
+        (vec3_length_fn.func.expect("Invalid function"))(0, &v_handle, 1, &mut out_handle, 1);
+    }
+    let view = DeckView::<f64>::from_handle(&out_handle).unwrap();
+    assert_eq!(view.items(), &[5.0, 1.0, 3.0]);
+}
+
+#[test]
+fn t_flatten_deck_vec3_fn() {
+    // Proxy path (flatten_deck internally uses orc_sdk_deck_from_proxy / deck_from_proxy)
+    // exercised with an aggregate item_size, across the FFI boundary.
+    let flatten_fn = PLUGIN_SET
+        .get_function("flatten_deck")
+        .expect("flatten_deck function not found");
+    let mut a = Deck::<[f64; 3]>::default();
+    a.push([1.0, 2.0, 3.0], 2);
+    a.push([4.0, 5.0, 6.0], 1);
+    a.push([7.0, 8.0, 9.0], 0);
+    let mut a_handle = OrcHandle {
+        handle: next_id(),
+        ..Default::default()
+    };
+    let mut out_handle = OrcHandle {
+        handle: next_id(),
+        ..Default::default()
+    };
+    unsafe {
+        update_handle_from_deck(&a, &mut a_handle);
+        (flatten_fn.func.expect("Invalid function"))(0, &a_handle, 1, &mut out_handle, 1);
+    }
+    assert_eq!(out_handle.item_size, size_of::<[f64; 3]>() as u64);
+    let view = DeckView::<[f64; 3]>::from_handle(&out_handle).unwrap();
+    assert_eq!(
+        view.items(),
+        &[[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]]
+    );
+}
+
 #[test]
 fn t_flatten_complex() {
     // [[1+0i, 0+1i], [2+0i]] * [[5+0i, 0+1i], [3+0i]] = [[5+0i, -1+0i], [6+0i]]
@@ -1030,6 +1093,29 @@ fn t_dag_nested_fn_with_outer_input() {
     assert_eq!(view.items(), &[10.0, 14.0]);
 }
 
+// ==================== Cloning (host_clone_orc_handle) with an aggregate type ====================
+//
+// `host_clone_orc_handle` is called on every constant/input a workflow touches (see `wf.run`
+// above, in every DAG test), but never with an aggregate handle until now.
+
+#[test]
+fn t_clone_orc_handle_vec3_aggregate() {
+    let mut v = Deck::<[f64; 3]>::default();
+    v.push([1.0, 2.0, 3.0], 1);
+    v.push([4.0, 5.0, 6.0], 0);
+    let handle = make_handle(&v);
+    let cloned = host_clone_orc_handle(handle.borrowed()).unwrap();
+    assert_eq!(cloned.type_id, handle.type_id);
+    assert_eq!(cloned.item_size, size_of::<[f64; 3]>() as u64);
+    assert_eq!(cloned.n_items, 2);
+    assert_eq!(
+        cloned.items::<[f64; 3]>().unwrap(),
+        &[[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]
+    );
+    // The clone must be an independent copy, not an alias of the original.
+    assert_ne!(cloned.items, handle.items);
+}
+
 // ==================== Full round-trip serialization ====================
 
 /// Look up the plugin that owns `type_id`, matching the host's dispatch pattern.
@@ -1107,6 +1193,46 @@ fn t_serial_round_trip_f64_deeply_nested() {
     assert_eq!(orig.depth(), restored.depth());
     assert_eq!(orig.items(), restored.items());
     assert_eq!(orig.marks().len(), restored.marks().len());
+}
+
+#[test]
+fn t_serial_round_trip_vec3_flat() {
+    // Same as t_serial_round_trip_f64_flat, but item_size=24 ([f64;3]) instead of 8 -- through
+    // the plugin's real serialize_deck/deserialize_deck FFI exports, not the in-process
+    // try_serialize_handle/try_deserialize_handle unit tests in orc_sdk.
+    let mut d = Deck::<[f64; 3]>::default();
+    d.push([1.0, 2.0, 3.0], 1);
+    d.push([4.0, 5.0, 6.0], 0);
+    let h = make_handle(&d);
+    assert_eq!(h.item_size, size_of::<[f64; 3]>() as u64);
+    let out = serial_round_trip(&h);
+    assert_eq!(out.item_size, size_of::<[f64; 3]>() as u64);
+    assert_eq!(
+        out.items::<[f64; 3]>().unwrap(),
+        &[[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]
+    );
+}
+
+#[test]
+fn t_serial_round_trip_vec3_nested() {
+    let mut d = Deck::<[f64; 3]>::default();
+    d.push([1.0, 2.0, 3.0], 2);
+    d.push([4.0, 5.0, 6.0], 1);
+    d.push([7.0, 8.0, 9.0], 0);
+    let h = make_handle(&d);
+    assert!(h.n_marks > 0);
+    let out = serial_round_trip(&h);
+    assert_eq!(out.n_marks, h.n_marks);
+    assert_eq!(
+        out.items::<[f64; 3]>().unwrap(),
+        &[[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]]
+    );
+    let orig_marks = unsafe { std::slice::from_raw_parts(h.marks, h.n_marks as usize) };
+    let out_marks = unsafe { std::slice::from_raw_parts(out.marks, out.n_marks as usize) };
+    for (a, b) in orig_marks.iter().zip(out_marks.iter()) {
+        assert_eq!(a.depth, b.depth);
+        assert_eq!(a.pos, b.pos);
+    }
 }
 
 #[test]
@@ -1413,6 +1539,38 @@ fn t_serial_every_plugin_handles_nested_builtin() {
                 dp.name()
             );
             assert_eq!(out.n_marks, h.n_marks);
+        }
+    }
+}
+
+#[test]
+fn t_serial_every_plugin_handles_vec3_aggregate() {
+    // Same as t_serial_every_plugin_handles_builtin_types, but with an aggregate item_size --
+    // every plugin owning the F64 type_id must serialize/deserialize the full 24-byte item, not
+    // just the first component, regardless of which plugin produced or consumes the bytes.
+    let plugins = PLUGIN_SET.plugins();
+    let mut d = Deck::<[f64; 3]>::default();
+    d.push([1.5, -2.5, 0.0], 1);
+    d.push([3.0, 4.0, 5.0], 0);
+    let h = make_handle(&d);
+    assert_eq!(h.item_size, size_of::<[f64; 3]>() as u64);
+    for (si, sp) in plugins.iter().enumerate() {
+        for (di, dp) in plugins.iter().enumerate() {
+            let out = cross_plugin_round_trip(&h, sp, dp);
+            assert_eq!(
+                out.item_size as usize,
+                size_of::<[f64; 3]>(),
+                "plugin {si} ({}) -> plugin {di} ({}) lost the aggregate item_size",
+                sp.name(),
+                dp.name()
+            );
+            assert_eq!(
+                out.items::<[f64; 3]>().unwrap(),
+                &[[1.5, -2.5, 0.0], [3.0, 4.0, 5.0]],
+                "plugin {si} ({}) -> plugin {di} ({})",
+                sp.name(),
+                dp.name()
+            );
         }
     }
 }
