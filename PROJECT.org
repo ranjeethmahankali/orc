@@ -396,7 +396,7 @@
         directly by C unit tests to pretty-print a raw ~Deck~, separate from the ABI's
         ~orc_deck_to_str~) shares the same typedef and needs the same treatment just to keep
         compiling.
-      - [ ] *Rust SDK, foundational -- the dagger/pyorc/plugin items below all depend on this
+      - [X] *Rust SDK, foundational -- the dagger/pyorc/plugin items below all depend on this
         landing first, but it's independent of the C SDK work above (different language, no
         shared code):* ~to_str_deck<T: TOrcData + Display>~ (~rust/orc_sdk/src/util.rs:927~)
         requires ~T: Display~ -- arrays don't implement ~Display~ in std, so this can't even be
@@ -414,35 +414,35 @@
       - [ ] *Rust SDK, coupled to (blocked on) the `to_str_deck` point above:* once
         ~to_str_deck~ can format aggregates, ~HandleDisplayWrapper~ needs the actual aggregate
         printing support layered on top of the item_size validation above.
-      - [ ] *dagger -- blocked on the `to_str_deck` point landing first, but independent of
+      - [X] *dagger -- blocked on the `to_str_deck` point landing first, but independent of
         pyorc's copy below:* fix ~host_deck_to_str~'s ~type_id~-only dispatch
         (~rust/dagger/src/main.rs~) to the same ~(type_id, item_size)~ treatment.
-      - [ ] *pyorc -- blocked on the `to_str_deck` point landing first, but independent of
+      - [X] *pyorc -- blocked on the `to_str_deck` point landing first, but independent of
         dagger's copy above (confirmed ~server_host~ and ~kbb_cli_host~ don't have their own
         copy of this one, so there's nothing to do in those two crates):* fix
         ~host_deck_to_str~'s ~type_id~-only dispatch (~rust/pyorc/src/host.rs~), same treatment.
         Worth considering centralizing this switch into one shared ~orc_sdk~ function instead of
         fixing it twice, echoing the same duplication question raised for ~deck_from_proxy~
         under item 8.
-      - [ ] *Plugin-owned custom types -- blocked on the `to_str_deck` point landing first:*
+      - [X] *Plugin-owned custom types -- blocked on the `to_str_deck` point landing first:*
         ~rust/example_rust_plugin/src/lib.rs::deck_to_str~ (~line 152~) is the concrete "custom
         type" entry point this item calls out -- needs the same (type_id, item_size) treatment,
         and is also where an aggregate of a plugin-owned type (e.g. "3 Complex numbers per
         item") would first prove out.
-      - [ ] *Verification only, likely no code change needed:*
+      - [X] *Verification only, likely no code change needed:*
         ~rust/dagger/src/inspect.rs~'s decoding of a ~to_str_deck~ result assumes one string per
         original item but no particular length, so it should keep working once each item's
         string just gets longer (comma-joined) -- and ~const_edit.rs::render_readonly~ calls the
         same path, which is also why the const_edit.rs TODO rewrite (using the ABI's
         ~deck_to_str~ instead of hand-rolled formatting) is blocked on this landing first.
-      - [ ] *C test coverage:* extend ~test_handle_to_str_*~ (~c/orc_sdk/test.c~) with an
+      - [X] *C test coverage:* extend ~test_handle_to_str_*~ (~c/orc_sdk/test.c~) with an
         aggregate case (e.g. item_size=24 F64 -> ~"1.000000,2.000000,3.000000"~).
-      - [ ] *Rust orc_sdk test coverage:* extend ~t_to_str_deck_*~ (~rust/orc_sdk/src/util.rs~)
+      - [X] *Rust orc_sdk test coverage:* extend ~t_to_str_deck_*~ (~rust/orc_sdk/src/util.rs~)
         with an aggregate case.
-      - [ ] *kbb_cli_host test coverage:* extend the ~t_deck_to_str_*~ suite
+      - [X] *kbb_cli_host test coverage:* extend the ~t_deck_to_str_*~ suite
         (~rust/kbb_cli_host/src/test.rs~, which already exercises every loaded plugin's
         ~to_str_deck~) with an aggregate case.
-      - [ ] *dagger test coverage:* extend ~t_collapsed_display_*~ (~rust/dagger/src/inspect.rs~)
+      - [X] *dagger test coverage:* extend ~t_collapsed_display_*~ (~rust/dagger/src/inspect.rs~)
         with an aggregate case.
    10. [-] *Full-repo survey (using sub agents), covering everything not already caught by items
        1-9:* ~c/cli_client~, ~c/example_c_plugin~, ~cpp/orc_sdk~, ~rust/dagger~, ~rust/pyorc~,
