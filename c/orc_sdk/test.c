@@ -7502,8 +7502,9 @@ static void test_handle_to_str_f64(void)
 
 static void test_handle_to_str_vec3_single_item(void)
 {
-  // Regression test: orc_sdk_handle_to_str's aggregate (item_size > sizeof(scalar)) path used to
-  // overwrite each component's text instead of appending it, and never closed the '(' it opened.
+  // Regression test: orc_sdk_handle_to_str's aggregate (item_size > sizeof(scalar)) path
+  // used to overwrite each component's text instead of appending it, and never closed the
+  // '(' it opened.
   orc_sdk_init(NULL, NULL);
   OrcHandle input = {0};
   input.handle    = 250;
@@ -7518,9 +7519,9 @@ static void test_handle_to_str_vec3_single_item(void)
   TEST_ASSERT_TRUE(err == ORC_ERROR_NONE);
   orc_sdk_oh_update(&out);
   TEST_ASSERT_TRUE(out.type_id == ORC_TYPE_U8);
-  OrcSdk_DeckView v   = orc_sdk_dv_from_deck((uint8_t *)out.items, 1);
-  size_t const    len = orc_sdk_dv_len(&v);
-  char const     *s   = orc_sdk_dv_item_ptr(&v);
+  OrcSdk_DeckView v        = orc_sdk_dv_from_deck((uint8_t *)out.items, 1);
+  size_t const    len      = orc_sdk_dv_len(&v);
+  char const     *s        = orc_sdk_dv_item_ptr(&v);
   char const     *expected = "(1.000000, 2.000000, 3.000000)";
   TEST_ASSERT_TRUE(len == strlen(expected));
   TEST_ASSERT_TRUE(memcmp(s, expected, len) == 0);
@@ -7546,7 +7547,7 @@ static void test_handle_to_str_vec3_multiple_items(void)
   OrcError err  = orc_sdk_handle_to_str(&input, &out);
   TEST_ASSERT_TRUE(err == ORC_ERROR_NONE);
   orc_sdk_oh_update(&out);
-  OrcSdk_DeckView v = orc_sdk_dv_from_deck((uint8_t *)out.items, 1);
+  OrcSdk_DeckView   v          = orc_sdk_dv_from_deck((uint8_t *)out.items, 1);
   char const *const expected[] = {
     "(1.000000, 2.000000, 3.000000)",
     "(4.000000, 5.000000, 6.000000)",
