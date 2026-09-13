@@ -466,7 +466,7 @@
          ~item_size~ from a scalar ~T~, and ~py_to_deck~/~detect_type~ only understand scalar
          leaves plus nesting-depth marks (used for ragged-list structure, a different mechanism
          from item_size aggregation -- don't conflate the two when adding support).
-       - [ ] *c/cli_client/main.c -- fix the actual silent-misread bug this survey found,
+       - [X] *c/cli_client/main.c -- fix the actual silent-misread bug this survey found,
          independent of the feature gap below:* ~TYPE_TABLE~/~type_by_id~ (~lines 472-507~) is a
          static, ~type_id~-keyed table of scalar sizes with no relationship to a real handle's
          ~item_size~. ~print_handle_values~ (~lines 511-544~) indexes items at stride
@@ -478,7 +478,7 @@
          untrusted/aggregate-capable, per item 7's finding that deserialization is already
          item_size-agnostic) and feeds it directly into ~print_handle_values~ with no
          validation that ~result.item_size == te->item_size~.
-       - [ ] *c/cli_client/main.c -- separate feature gap, not required by the bug fix above,
+       - [X] *c/cli_client/main.c -- separate feature gap, not required by the bug fix above,
          lower priority:* ~cmd_constant~ (~lines 617-707~) only ever builds handles with
          ~item_size = te->item_size~, so the CLI can't *author* an aggregate constant today.
          The same root design (~TypeEntry~ conflating type_id and byte-size 1:1) would need
