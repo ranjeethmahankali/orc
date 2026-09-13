@@ -331,6 +331,62 @@
    8. [ ] We had to refactor _copy_items to properly fix the proxy deck creation in the C SDK. What
       about all the proxy deck creation in Rust? I see it is not handling aggregate types
       properly.
+      - [ ] *The core `deck_from_proxy` (~rust/orc_sdk/src/util.rs:644~) is already aggregate-safe --
+        confirmed, no change needed:* it's generic over ~T: TOrcData~, and every item-touching
+        branch (~CopyAll~/~CopyItems~/~Shuffle~) goes through ~DeckView::<T>::from_handle~, which
+        already enforces ~item_size == size_of::<T>()~ strictly. Unlike the C SDK's ~_copy_items~,
+        there's no hand-rolled ~memcpy~ sized from the wrong thing here -- the bug is entirely in
+        how callers choose ~T~, not in this function itself.
+      - [ ] *Also confirmed already aggregate-safe, no change needed:* ~Deck<T>::flatten~/~graft~/
+        ~simplify~ (~rust/orc_sdk/src/deck.rs:252,271,316~) only ever touch marks/strides on a
+        generic ~Vec<T>~ and never look at ~item_size~ or ~type_id~; ~Plugin::create_proxy_deck~
+        (~rust/orc_sdk/src/host.rs:111-127~) is a pure FFI passthrough to the plugin's own
+        ~deck_from_proxy~ export with no type-specific logic of its own.
+      - [ ] *The real bug: `type_id`-only dispatch choosing `T` for `deck_from_proxy::<T>`, and it's
+        duplicated FIVE times, not four -- the earlier full-repo survey (item 10) only checked the
+        four host binaries and missed a plugin doing the exact same thing:*
+        - ~rust/dagger/src/main.rs::host_create_proxy_deck~ (~lines 94-128~)
+        - ~rust/server_host/src/server.rs::host_create_proxy_deck~ (~lines 690-778~, whose
+          same-type check at line 694 also only compares ~type_id~)
+        - ~rust/kbb_cli_host/src/main.rs::host_create_proxy_deck~ (~lines 42-122~, match at 76-116)
+        - ~rust/pyorc/src/host.rs::host_create_proxy_deck~ (~lines 74-121~)
+        - *NEW, found during this survey:* ~rust/example_rust_plugin/src/lib.rs::deck_from_proxy~
+          (the ~TOrcPluginAdaptor~ impl, ~lines 64-90~) -- a *plugin's* own dispatch table, matching
+          ~type_id~ alone the same way the four hosts do. Missed earlier because that survey only
+          looked at host binaries.
+        Confirmed clean-error failure mode, not corruption: since ~deck_from_proxy::<T>~ itself
+        validates ~item_size~ strictly (see above), every one of these five currently makes an
+        aggregate handle fail any ~COPY_ALL~/~COPY_ITEMS~/~SHUFFLE~ request with
+        ~Error::DeckTypeMismatch~, indistinguishable from a malformed request.
+      - [ ] *A second, separate layer of duplication sits on top of the first: a `clone_handle`
+        helper (built by calling `host_create_proxy_deck`/`deck_from_proxy` with `CopyAll`) is
+        copy-pasted FOUR times, not the two this survey previously noticed:*
+        - ~rust/dagger/src/main.rs::host_clone_orc_handle~ (~lines 238-256~) -- used by
+          ~context_menu.rs:197~ (duplicate node), ~exec.rs:366~ and ~:514~ (constant re-eval /
+          workflow clone), and ~const_edit.rs:533~ (edit-in-place). This is live code on the
+          current node-editor branch: duplicating or editing an aggregate constant in the UI
+          already hard-fails today.
+        - *NEW, found during this survey:* ~rust/kbb_cli_host/src/main.rs::host_clone_orc_handle~
+          (~lines 196-207~).
+        - ~rust/server_host/src/server.rs::clone_handle~ (~lines 82-98~) -- used by
+          ~Session::build_workflow~ (~line 148~) for ~/download_workflow~ and
+          ~/download_python_script~.
+        - ~rust/pyorc/src/host.rs::host_clone_orc_handle~ (~line 234~) -- used by
+          ~PyWorkflow::run_impl~ at ~graph.rs:145~ for every workflow input/constant clone.
+        All four are near-identical ~10~-line functions inheriting the dispatch gap above.
+      - [ ] *Suggested fix direction:* this dispatch table is now duplicated nine times total
+        (five ~host_create_proxy_deck~-equivalents plus four ~clone_handle~-equivalents built on
+        top of them) across the Rust codebase. Adding ~(type_id, item_size)~ arms by hand to all
+        nine looks error-prone and likely to drift out of sync again (as happened with the C SDK's
+        ~_copy_items~); centralizing into one shared ~orc_sdk~ helper that all five hosts/plugins
+        call (reusing the same "enumerate concrete N via macro" pattern already used for the
+        ~TOrcData~ array impls) is worth considering instead of patching each copy individually.
+      - [ ] *Test coverage:* no existing Rust test (in ~orc_sdk~, ~dagger~, ~server_host~,
+        ~kbb_cli_host~, ~pyorc~, or ~example_rust_plugin~) exercises ~deck_from_proxy~/
+        ~host_create_proxy_deck~/~host_clone_orc_handle~ at an aggregate item_size -- mirrors the
+        gap the new C-side ~test_deck_from_proxy_copy_items_aggregate_item_size~ test just closed
+        for the C SDK. Worth an equivalent Rust test once the dispatch is fixed, covering
+        ~CopyAll~/~CopyItems~/~Shuffle~ through at least one host.
    9. [ ] String conversion at the ABI level should check for, and handle aggregate types
       properly. It should print comma separated values. This means the string conversion in the SDK,
       and in the plugins for custom types needs to be updated. This also needs some good test
@@ -384,7 +440,7 @@
         ~to_str_deck~), and ~t_collapsed_display_*~ (~rust/dagger/src/inspect.rs~) with an
         aggregate case each (e.g. item_size=24 F64 -> ~"1.000000,2.000000,3.000000"~).
    10. [-] *Full-repo survey (using sub agents), covering everything not already caught by items
-       1-8:* ~c/cli_client~, ~c/example_c_plugin~, ~cpp/orc_sdk~, ~rust/dagger~, ~rust/pyorc~,
+       1-9:* ~c/cli_client~, ~c/example_c_plugin~, ~cpp/orc_sdk~, ~rust/dagger~, ~rust/pyorc~,
        ~python/~, ~rust/server_host~, ~rust/kbb_cli_host~.
        - [X] *C++ SDK needs no changes:* ~cpp/orc_sdk~ (~deck.hpp~/~deck.cpp~) has no ~type_id~
          dispatch at all -- ~Deck<T>~/~DeckView<T>~/~Combinations~ are purely generic over ~T~, and
@@ -392,29 +448,8 @@
          ~handle.item_size = sizeof(T)~ unconditionally, which is already correct for any aggregate
          ~T~. Nothing in ~cpp/orc_sdk/test.cpp~ or elsewhere assumes item_size == a fixed scalar
          size. This is confirmed complete, not a placeholder for later work.
-       - [ ] *The same ~type_id~-only proxy-deck dispatch is duplicated FOUR times across the
-         Rust hosts, none of them checking ~item_size~:* ~rust/dagger/src/main.rs::host_create_proxy_deck~
-         (~lines 94-128~), ~rust/server_host/src/server.rs::host_create_proxy_deck~
-         (~lines 690-778~, whose same-type check at line 694 also only compares ~type_id~),
-         ~rust/kbb_cli_host/src/main.rs~ (~lines 42-122~, match at 76-116), and
-         ~rust/pyorc/src/host.rs::host_create_proxy_deck~ (~lines 74-121~). Each matches ~type_id~
-         alone to pick a concrete scalar ~T~ for ~orc_sdk::deck_from_proxy::<T>~. Verified this is
-         *not* a silent-corruption bug: ~deck_from_proxy::<T>~ (~rust/orc_sdk/src/util.rs:644~)
-         always routes item access through ~DeckView::<T>::from_handle~, which already enforces
-         ~item_size == size_of::<T>()~ strictly -- so today an aggregate input handle just makes
-         every ~COPY_ALL~/~COPY_ITEMS~/~SHUFFLE~ proxy request fail cleanly with
-         ~Error::DeckTypeMismatch~ (surfacing as ~ORC_ERROR_INVALID_PROXY~/an HTTP error/etc.),
-         indistinguishable from a genuinely malformed proxy request. Fixing this means adding
-         ~(type_id, item_size)~ arms (mirroring the array ~TOrcData~ impls) in all four places, or
-         -- given it's the *same* dispatch table copy-pasted four times -- centralizing it into one
-         ~orc_sdk~ helper, echoing the exact duplication concern already raised for
-         ~deck_to_str~ under item 8.
-       - [ ] *~rust/server_host/src/server.rs::clone_handle~* (~lines 82-98~) calls
-         ~host_create_proxy_deck~ with ~ProxyType::CopyAll~ and is used by
-         ~Session::build_workflow~ (~line 148~) for every constant handle cloned into
-         ~/download_workflow~ and ~/download_python_script~ responses -- inherits the gap above,
-         so cloning an aggregate constant during workflow export currently hard-errors.
-       - [ ] *~rust/pyorc~ has three separate aggregate gaps, all clean hard-errors (not silent
+       - [ ] *~rust/pyorc~ has two separate aggregate gaps (moved a third, `host_clone_orc_handle`,
+         to item 8 since it's proxy-deck-creation specific), both clean hard-errors (not silent
          misreads), stacking to make aggregates entirely unusable from Python today:*
          - ~read_deck~'s ~read_typed!~ macro (~rust/pyorc/src/lib.rs:113-144~) matches ~type_id~
            alone and calls ~handle.items::<T>()~, which requires exact ~item_size == size_of::<T>()~
@@ -425,9 +460,6 @@
            scalar ~T~, and ~py_to_deck~/~detect_type~ only understand scalar leaves plus
            nesting-depth marks (used for ragged-list structure, a different mechanism from
            item_size aggregation -- don't conflate the two when adding support).
-         - ~host_clone_orc_handle~ (~rust/pyorc/src/host.rs:234~, used by
-           ~PyWorkflow::run_impl~ at ~graph.rs:145~ for every workflow input/constant clone) goes
-           through the same ~host_create_proxy_deck~ gap above.
        - [ ] *~c/cli_client/main.c~ is the one place this survey found an actual silent-misread,
          not a clean error:* ~TYPE_TABLE~/~type_by_id~ (~lines 472-507~) is a static, ~type_id~-keyed
          table of scalar sizes with no relationship to a real handle's ~item_size~.
