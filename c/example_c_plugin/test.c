@@ -630,6 +630,42 @@ static void test_serialize_round_trip_f64_flat(void)
   orc_sdk_arr_free(buf);
 }
 
+typedef struct
+{
+  double x, y, z;
+} _Vec3;
+
+/* Full round trip for an aggregate (item_size=24, 3 doubles/item) deck through the plugin
+   ABI's own orc_deck_serialize/orc_deck_deserialize -- closes the gap noted in
+   PROJECT.org where every existing case here used item_size == sizeof(scalar). */
+static void test_serialize_round_trip_f64_aggregate(void)
+{
+  _init_sdk_with_serial_write();
+  OrcHandle h = {0};
+  h.handle    = 1;
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(_Vec3), &h);
+  _Vec3 *vdeck = (_Vec3 *)h.items;
+  orc_sdk_deck_push(vdeck, ((_Vec3) {1.0, 2.0, 3.0}), 1);
+  orc_sdk_deck_push(vdeck, ((_Vec3) {4.0, 5.0, 6.0}), 0);
+  h.items = vdeck;
+  orc_sdk_oh_update(&h);
+  char     *buf = _serialize_handle(&h);
+  OrcHandle out = _deserialize_handle(buf, orc_sdk_arr_len(buf), 10);
+  TEST_ASSERT_EQUAL_UINT64(ORC_TYPE_F64, out.type_id);
+  TEST_ASSERT_EQUAL_UINT64(sizeof(_Vec3), out.item_size);
+  TEST_ASSERT_EQUAL_UINT64(2, out.n_items);
+  _Vec3 const *items = (_Vec3 const *)out.items;
+  TEST_ASSERT_EQUAL_DOUBLE(1.0, items[0].x);
+  TEST_ASSERT_EQUAL_DOUBLE(2.0, items[0].y);
+  TEST_ASSERT_EQUAL_DOUBLE(3.0, items[0].z);
+  TEST_ASSERT_EQUAL_DOUBLE(4.0, items[1].x);
+  TEST_ASSERT_EQUAL_DOUBLE(5.0, items[1].y);
+  TEST_ASSERT_EQUAL_DOUBLE(6.0, items[1].z);
+  orc_sdk_handle_free(&h);
+  orc_sdk_handle_free(&out);
+  orc_sdk_arr_free(buf);
+}
+
 static void test_serialize_round_trip_i32_flat(void)
 {
   _init_sdk_with_serial_write();
@@ -1085,6 +1121,7 @@ int main(void)
   RUN_TEST(test_flatten_deck_output_handle_preserved);
   RUN_TEST(test_flatten_deck_dims_preserved);
   RUN_TEST(test_serialize_round_trip_f64_flat);
+  RUN_TEST(test_serialize_round_trip_f64_aggregate);
   RUN_TEST(test_serialize_round_trip_i32_flat);
   RUN_TEST(test_serialize_round_trip_u8_flat);
   RUN_TEST(test_serialize_round_trip_f64_nested);

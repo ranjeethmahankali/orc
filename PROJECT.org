@@ -300,7 +300,7 @@
         ~orc_sdk_handle_alloc(out->type_id, out->item_size, &temp_handle)~, which already rejects
         non-multiple ~item_size~ (item 2 above). So a deserialized aggregate handle is already
         allocated with the right item_size.
-      - [ ] *The actual gap is test coverage, not code:* nothing in ~c/orc_sdk/test.c~ or
+      - [X] *The actual gap is test coverage, not code:* nothing in ~c/orc_sdk/test.c~ or
         ~c/example_c_plugin/test.c~ exercises a serialize/deserialize round trip at an aggregate
         item_size (e.g. ~ORC_TYPE_F64~ with ~item_size = 24~, 3 components/item) -- every existing
         case (~test_serialize_round_trip_f64_flat~, ~..._all_primitive_types~, etc.,
@@ -310,7 +310,7 @@
         non-multiple ~item_size~ (4, for a type whose scalar is 8 bytes) is rejected -- it doesn't
         prove a *valid* aggregate item_size (a genuine multiple) is accepted and round-trips
         correctly end to end (header + payload + values). Should add that case on both sides.
-      - [ ] *No C-side example of a custom (plugin-owned) aggregate type:* ~example_c_plugin~
+      - [X] *No C-side example of a custom (plugin-owned) aggregate type:* ~example_c_plugin~
         registers zero custom types (~plugin.c:16,25~), so unlike Rust's ~Complex~
         (~example_rust_plugin/src/lib.rs~), there is nothing in the C codebase demonstrating or
         testing a plugin's own ~deck_serialize~/~deck_deserialize~ continuing past the header for an

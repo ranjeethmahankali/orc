@@ -2,6 +2,7 @@
 #include "unity.h"
 
 #include <limits.h>
+#include <math.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <string.h>
@@ -6597,6 +6598,287 @@ static void test_deck_from_proxy_copy_items_aggregate_item_size(void)
   }
 }
 
+// ==============================
+// Basic vector math over aggregate (item_size=24) F64 decks. No real plugin
+// implements these yet -- these _plugin_function_vec3_* helpers simulate what one
+// would look like, same as _plugin_function_add_f64 etc. do for scalars above.
+// ==============================
+
+// Vec3 + Vec3 -> Vec3, componentwise.
+void _plugin_function_vec3_add(OrcHandle const *a_handle,
+                               OrcHandle const *b_handle,
+                               OrcHandle       *out_handle)
+{
+  TEST_ASSERT_TRUE(a_handle->type_id == ORC_TYPE_F64);
+  TEST_ASSERT_TRUE(b_handle->type_id == ORC_TYPE_F64);
+  TEST_ASSERT_TRUE(out_handle->type_id == ORC_TYPE_F64);
+  TEST_ASSERT_TRUE(a_handle->item_size == sizeof(_Vec3));
+  TEST_ASSERT_TRUE(b_handle->item_size == sizeof(_Vec3));
+  TEST_ASSERT_TRUE(out_handle->item_size == sizeof(_Vec3));
+  void *combinations = orc_sdk_comb_init((OrcHandle const *[]) {a_handle, b_handle},
+                                         (uint8_t const[]) {0, 0},
+                                         2,
+                                         (OrcHandle *[]) {out_handle},
+                                         (uint8_t const[]) {0},
+                                         1);
+  while (combinations) {
+    OrcSdk_DeckView a_input = orc_sdk_comb_get_input(combinations, 0),
+                    b_input = orc_sdk_comb_get_input(combinations, 1);
+    TEST_ASSERT_TRUE(a_input.depth == 0);
+    TEST_ASSERT_TRUE(b_input.depth == 0);
+    OrcSdk_DeckWriter *out = orc_sdk_comb_get_output(combinations, 0);
+    TEST_ASSERT_TRUE(out->depth == 0);
+    _Vec3 *output_ptr = (_Vec3 *)orc_sdk_dw_push_empty(out);
+    {
+      _Vec3 const *a = (_Vec3 const *)orc_sdk_dv_item_ptr(&a_input);
+      _Vec3 const *b = (_Vec3 const *)orc_sdk_dv_item_ptr(&b_input);
+      output_ptr->x  = a->x + b->x;
+      output_ptr->y  = a->y + b->y;
+      output_ptr->z  = a->z + b->z;
+    }
+    combinations = orc_sdk_comb_advance(combinations);
+  }
+  orc_sdk_comb_free(combinations);
+}
+
+// Vec3 . Vec3 -> F64 scalar, dot product.
+void _plugin_function_vec3_dot(OrcHandle const *a_handle,
+                               OrcHandle const *b_handle,
+                               OrcHandle       *out_handle)
+{
+  TEST_ASSERT_TRUE(a_handle->type_id == ORC_TYPE_F64);
+  TEST_ASSERT_TRUE(b_handle->type_id == ORC_TYPE_F64);
+  TEST_ASSERT_TRUE(out_handle->type_id == ORC_TYPE_F64);
+  TEST_ASSERT_TRUE(a_handle->item_size == sizeof(_Vec3));
+  TEST_ASSERT_TRUE(b_handle->item_size == sizeof(_Vec3));
+  TEST_ASSERT_TRUE(out_handle->item_size == sizeof(double));
+  void *combinations = orc_sdk_comb_init((OrcHandle const *[]) {a_handle, b_handle},
+                                         (uint8_t const[]) {0, 0},
+                                         2,
+                                         (OrcHandle *[]) {out_handle},
+                                         (uint8_t const[]) {0},
+                                         1);
+  while (combinations) {
+    OrcSdk_DeckView a_input       = orc_sdk_comb_get_input(combinations, 0),
+                    b_input       = orc_sdk_comb_get_input(combinations, 1);
+    OrcSdk_DeckWriter *out        = orc_sdk_comb_get_output(combinations, 0);
+    double            *output_ptr = (double *)orc_sdk_dw_push_empty(out);
+    {
+      _Vec3 const *a = (_Vec3 const *)orc_sdk_dv_item_ptr(&a_input);
+      _Vec3 const *b = (_Vec3 const *)orc_sdk_dv_item_ptr(&b_input);
+      *output_ptr    = a->x * b->x + a->y * b->y + a->z * b->z;
+    }
+    combinations = orc_sdk_comb_advance(combinations);
+  }
+  orc_sdk_comb_free(combinations);
+}
+
+// Vec3 -> F64 scalar, Euclidean length.
+void _plugin_function_vec3_length(OrcHandle const *v_handle, OrcHandle *out_handle)
+{
+  TEST_ASSERT_TRUE(v_handle->type_id == ORC_TYPE_F64);
+  TEST_ASSERT_TRUE(out_handle->type_id == ORC_TYPE_F64);
+  TEST_ASSERT_TRUE(v_handle->item_size == sizeof(_Vec3));
+  TEST_ASSERT_TRUE(out_handle->item_size == sizeof(double));
+  void *combinations = orc_sdk_comb_init((OrcHandle const *[]) {v_handle},
+                                         (uint8_t const[]) {0},
+                                         1,
+                                         (OrcHandle *[]) {out_handle},
+                                         (uint8_t const[]) {0},
+                                         1);
+  while (combinations) {
+    OrcSdk_DeckView    v_input    = orc_sdk_comb_get_input(combinations, 0);
+    OrcSdk_DeckWriter *out        = orc_sdk_comb_get_output(combinations, 0);
+    double            *output_ptr = (double *)orc_sdk_dw_push_empty(out);
+    {
+      _Vec3 const *v = (_Vec3 const *)orc_sdk_dv_item_ptr(&v_input);
+      *output_ptr    = sqrt(v->x * v->x + v->y * v->y + v->z * v->z);
+    }
+    combinations = orc_sdk_comb_advance(combinations);
+  }
+  orc_sdk_comb_free(combinations);
+}
+
+// Vec3, F64 scalar -> Vec3. Exercises mixed item_size (24 and 8 bytes) in the same
+// combinators call.
+void _plugin_function_vec3_scale(OrcHandle const *v_handle,
+                                 OrcHandle const *s_handle,
+                                 OrcHandle       *out_handle)
+{
+  TEST_ASSERT_TRUE(v_handle->type_id == ORC_TYPE_F64);
+  TEST_ASSERT_TRUE(s_handle->type_id == ORC_TYPE_F64);
+  TEST_ASSERT_TRUE(out_handle->type_id == ORC_TYPE_F64);
+  TEST_ASSERT_TRUE(v_handle->item_size == sizeof(_Vec3));
+  TEST_ASSERT_TRUE(s_handle->item_size == sizeof(double));
+  TEST_ASSERT_TRUE(out_handle->item_size == sizeof(_Vec3));
+  void *combinations = orc_sdk_comb_init((OrcHandle const *[]) {v_handle, s_handle},
+                                         (uint8_t const[]) {0, 0},
+                                         2,
+                                         (OrcHandle *[]) {out_handle},
+                                         (uint8_t const[]) {0},
+                                         1);
+  while (combinations) {
+    OrcSdk_DeckView v_input       = orc_sdk_comb_get_input(combinations, 0),
+                    s_input       = orc_sdk_comb_get_input(combinations, 1);
+    OrcSdk_DeckWriter *out        = orc_sdk_comb_get_output(combinations, 0);
+    _Vec3             *output_ptr = (_Vec3 *)orc_sdk_dw_push_empty(out);
+    {
+      _Vec3 const *v = (_Vec3 const *)orc_sdk_dv_item_ptr(&v_input);
+      double const s = *(double const *)orc_sdk_dv_item_ptr(&s_input);
+      output_ptr->x  = v->x * s;
+      output_ptr->y  = v->y * s;
+      output_ptr->z  = v->z * s;
+    }
+    combinations = orc_sdk_comb_advance(combinations);
+  }
+  orc_sdk_comb_free(combinations);
+}
+
+static void test_vec3_add_combinations(void)
+{
+  OrcHandle a = {0}, b = {0}, out = {0};
+  a.handle   = 1;
+  b.handle   = 2;
+  out.handle = 3;
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(_Vec3), &a);
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(_Vec3), &b);
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(_Vec3), &out);
+  TEST_ASSERT_TRUE_MESSAGE(a.items != NULL && b.items != NULL && out.items != NULL,
+                           "Unable to allocate decks");
+  { /* Equal-length lists of 2 vectors each. */
+    _Vec3 *av = (_Vec3 *)a.items;
+    orc_sdk_deck_push(av, ((_Vec3) {1.0, 2.0, 3.0}), 1);
+    orc_sdk_deck_push(av, ((_Vec3) {4.0, 5.0, 6.0}), 0);
+    a.items = av;
+    orc_sdk_oh_update(&a);
+    _Vec3 *bv = (_Vec3 *)b.items;
+    orc_sdk_deck_push(bv, ((_Vec3) {10.0, 20.0, 30.0}), 1);
+    orc_sdk_deck_push(bv, ((_Vec3) {40.0, 50.0, 60.0}), 0);
+    b.items = bv;
+    orc_sdk_oh_update(&b);
+    _plugin_function_vec3_add(&a, &b, &out);
+    orc_sdk_oh_update(&out);
+    TEST_ASSERT_TRUE(orc_sdk_deck_len(out.items) == 2);
+    _Vec3 const *actual = (_Vec3 const *)out.items;
+    TEST_ASSERT_TRUE(actual[0].x == 11.0 && actual[0].y == 22.0 && actual[0].z == 33.0);
+    TEST_ASSERT_TRUE(actual[1].x == 44.0 && actual[1].y == 55.0 && actual[1].z == 66.0);
+  }
+  { /* Broadcast: a has 3 vectors, b has 1 -- b's single vector is reused for all of a. */
+    orc_sdk_deck_clear(a.items);
+    _Vec3 *av = (_Vec3 *)a.items;
+    orc_sdk_deck_push(av, ((_Vec3) {1.0, 0.0, 0.0}), 1);
+    orc_sdk_deck_push(av, ((_Vec3) {2.0, 0.0, 0.0}), 0);
+    orc_sdk_deck_push(av, ((_Vec3) {3.0, 0.0, 0.0}), 0);
+    a.items = av;
+    orc_sdk_oh_update(&a);
+    orc_sdk_deck_clear(b.items);
+    _Vec3 *bv = (_Vec3 *)b.items;
+    orc_sdk_deck_push(bv, ((_Vec3) {100.0, 200.0, 300.0}), 1);
+    b.items = bv;
+    orc_sdk_oh_update(&b);
+    orc_sdk_deck_clear(out.items);
+    orc_sdk_oh_update(&out);
+    _plugin_function_vec3_add(&a, &b, &out);
+    orc_sdk_oh_update(&out);
+    TEST_ASSERT_TRUE(orc_sdk_deck_len(out.items) == 3);
+    _Vec3 const *actual = (_Vec3 const *)out.items;
+    TEST_ASSERT_TRUE(actual[0].x == 101.0 && actual[0].y == 200.0 &&
+                     actual[0].z == 300.0);
+    TEST_ASSERT_TRUE(actual[1].x == 102.0 && actual[1].y == 200.0 &&
+                     actual[1].z == 300.0);
+    TEST_ASSERT_TRUE(actual[2].x == 103.0 && actual[2].y == 200.0 &&
+                     actual[2].z == 300.0);
+  }
+  TEST_ASSERT_TRUE(ORC_ERROR_NONE == orc_sdk_handle_free(&out));
+  TEST_ASSERT_TRUE(ORC_ERROR_NONE == orc_sdk_handle_free(&b));
+  TEST_ASSERT_TRUE(ORC_ERROR_NONE == orc_sdk_handle_free(&a));
+}
+
+static void test_vec3_dot_combinations(void)
+{
+  OrcHandle a = {0}, b = {0}, out = {0};
+  a.handle   = 1;
+  b.handle   = 2;
+  out.handle = 3;
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(_Vec3), &a);
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(_Vec3), &b);
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(double), &out);
+  _Vec3 *av = (_Vec3 *)a.items;
+  orc_sdk_deck_push(av, ((_Vec3) {1.0, 2.0, 3.0}), 1);
+  orc_sdk_deck_push(av, ((_Vec3) {1.0, 0.0, 0.0}), 0);
+  a.items = av;
+  orc_sdk_oh_update(&a);
+  _Vec3 *bv = (_Vec3 *)b.items;
+  orc_sdk_deck_push(bv, ((_Vec3) {4.0, 5.0, 6.0}), 1);
+  orc_sdk_deck_push(bv, ((_Vec3) {0.0, 1.0, 0.0}), 0);
+  b.items = bv;
+  orc_sdk_oh_update(&b);
+  _plugin_function_vec3_dot(&a, &b, &out);
+  orc_sdk_oh_update(&out);
+  TEST_ASSERT_TRUE(out.type_id == ORC_TYPE_F64);
+  TEST_ASSERT_TRUE(out.item_size == sizeof(double));
+  TEST_ASSERT_TRUE(orc_sdk_deck_len(out.items) == 2);
+  double const *actual = (double const *)out.items;
+  // (1,2,3).(4,5,6) = 4 + 10 + 18 = 32. (1,0,0).(0,1,0) = 0.
+  TEST_ASSERT_TRUE(actual[0] == 32.0);
+  TEST_ASSERT_TRUE(actual[1] == 0.0);
+  TEST_ASSERT_TRUE(ORC_ERROR_NONE == orc_sdk_handle_free(&out));
+  TEST_ASSERT_TRUE(ORC_ERROR_NONE == orc_sdk_handle_free(&b));
+  TEST_ASSERT_TRUE(ORC_ERROR_NONE == orc_sdk_handle_free(&a));
+}
+
+static void test_vec3_length_combinations(void)
+{
+  OrcHandle v = {0}, out = {0};
+  v.handle   = 1;
+  out.handle = 2;
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(_Vec3), &v);
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(double), &out);
+  _Vec3 *vv = (_Vec3 *)v.items;
+  orc_sdk_deck_push(vv, ((_Vec3) {3.0, 4.0, 0.0}), 1);
+  orc_sdk_deck_push(vv, ((_Vec3) {0.0, 0.0, 0.0}), 0);
+  orc_sdk_deck_push(vv, ((_Vec3) {1.0, 2.0, 2.0}), 0);
+  v.items = vv;
+  orc_sdk_oh_update(&v);
+  _plugin_function_vec3_length(&v, &out);
+  orc_sdk_oh_update(&out);
+  TEST_ASSERT_TRUE(orc_sdk_deck_len(out.items) == 3);
+  double const *actual = (double const *)out.items;
+  TEST_ASSERT_TRUE(actual[0] == 5.0);
+  TEST_ASSERT_TRUE(actual[1] == 0.0);
+  TEST_ASSERT_TRUE(actual[2] == 3.0);
+  TEST_ASSERT_TRUE(ORC_ERROR_NONE == orc_sdk_handle_free(&out));
+  TEST_ASSERT_TRUE(ORC_ERROR_NONE == orc_sdk_handle_free(&v));
+}
+
+static void test_vec3_scale_combinations(void)
+{
+  OrcHandle v = {0}, s = {0}, out = {0};
+  v.handle   = 1;
+  s.handle   = 2;
+  out.handle = 3;
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(_Vec3), &v);
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(double), &s);
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(_Vec3), &out);
+  _Vec3 *vv = (_Vec3 *)v.items;
+  orc_sdk_deck_push(vv, ((_Vec3) {1.0, 2.0, 3.0}), 1);
+  orc_sdk_deck_push(vv, ((_Vec3) {4.0, 5.0, 6.0}), 0);
+  v.items = vv;
+  orc_sdk_oh_update(&v);
+  ORC_SDK_DECK_INIT(s.items, double, (2.0, 10.0));
+  orc_sdk_oh_update(&s);
+  _plugin_function_vec3_scale(&v, &s, &out);
+  orc_sdk_oh_update(&out);
+  TEST_ASSERT_TRUE(out.item_size == sizeof(_Vec3));
+  TEST_ASSERT_TRUE(orc_sdk_deck_len(out.items) == 2);
+  _Vec3 const *actual = (_Vec3 const *)out.items;
+  TEST_ASSERT_TRUE(actual[0].x == 2.0 && actual[0].y == 4.0 && actual[0].z == 6.0);
+  TEST_ASSERT_TRUE(actual[1].x == 40.0 && actual[1].y == 50.0 && actual[1].z == 60.0);
+  TEST_ASSERT_TRUE(ORC_ERROR_NONE == orc_sdk_handle_free(&out));
+  TEST_ASSERT_TRUE(ORC_ERROR_NONE == orc_sdk_handle_free(&s));
+  TEST_ASSERT_TRUE(ORC_ERROR_NONE == orc_sdk_handle_free(&v));
+}
+
 static void test_deck_from_proxy_type_agnostic(void)
 {
   /*=== Verifies orc_deck_from_proxy preserves type across u32, i32, i16. ===*/
@@ -6730,6 +7012,89 @@ static void test_serialize_header_round_trip_no_marks(void)
 
   orc_sdk_arr_free(marks);
   orc_sdk_arr_free(buf);
+}
+
+/* item_size is serialized as an opaque u64 alongside type_id -- this proves a genuine
+   aggregate item_size (a multiple of the scalar size, not equal to it) round-trips
+   through the header just like any other value. */
+static void test_serialize_header_round_trip_aggregate_item_size(void)
+{
+  _init_sdk_with_serial_write();
+  OrcHandle h = {0};
+  h.handle    = 42;
+  h.type_id   = ORC_TYPE_F64;
+  h.dims[0]   = 1;
+  h.dims[1]   = -1;
+  h.n_items   = 2;
+  h.item_size = sizeof(_Vec3);
+  h.n_marks   = 0;
+  h.marks     = NULL;
+
+  char   *buf = NULL;
+  _SerCtx sc  = {&buf};
+  TEST_ASSERT_TRUE(orc_sdk_serialize_handle_header((uint64_t)(uintptr_t)&sc, &h) ==
+                   ORC_ERROR_NONE);
+
+  OrcStrView sv    = {.start = buf, .end = buf + orc_sdk_arr_len(buf)};
+  OrcHandle  out   = {0};
+  OrcMark   *marks = NULL;
+  TEST_ASSERT_TRUE(orc_sdk_deserialize_handle_header(0, &sv, &out, &marks) ==
+                   ORC_ERROR_NONE);
+
+  TEST_ASSERT_TRUE(out.type_id == ORC_TYPE_F64);
+  TEST_ASSERT_TRUE(out.item_size == sizeof(_Vec3));
+  TEST_ASSERT_TRUE(out.n_items == 2);
+  TEST_ASSERT_TRUE(sv.start == sv.end);
+
+  orc_sdk_arr_free(marks);
+  orc_sdk_arr_free(buf);
+}
+
+/* Full round trip -- header AND item payload AND values -- for an aggregate
+   (item_size=24) deck. orc_sdk_serialize_handle_header/deserialize_handle_header only
+   handle the header; like every plugin's deck_serialize/deck_deserialize (see
+   example_c_plugin/plugin.c), the item payload itself is just item_size*n_items raw bytes
+   with no per-scalar interpretation, so it round-trips transparently regardless of
+   item_size. This test proves that end to end. */
+static void test_serialize_deserialize_round_trip_aggregate_payload(void)
+{
+  _init_sdk_with_serial_write();
+  OrcHandle h = {0};
+  h.handle    = 1;
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(_Vec3), &h);
+  _Vec3 *vdeck = (_Vec3 *)h.items;
+  orc_sdk_deck_push(vdeck, ((_Vec3) {1.0, 2.0, 3.0}), 1);
+  orc_sdk_deck_push(vdeck, ((_Vec3) {4.0, 5.0, 6.0}), 0);
+  h.items = vdeck;
+  orc_sdk_oh_update(&h);
+
+  char   *buf = NULL;
+  _SerCtx sc  = {&buf};
+  TEST_ASSERT_TRUE(orc_sdk_serialize_handle_header((uint64_t)(uintptr_t)&sc, &h) ==
+                   ORC_ERROR_NONE);
+  TEST_ASSERT_TRUE(orc_sdk_host_serial_write((uint64_t)(uintptr_t)&sc,
+                                             h.items,
+                                             h.item_size * h.n_items) == ORC_ERROR_NONE);
+
+  OrcStrView sv    = {.start = buf, .end = buf + orc_sdk_arr_len(buf)};
+  OrcHandle  out   = {0};
+  OrcMark   *marks = NULL;
+  TEST_ASSERT_TRUE(orc_sdk_deserialize_handle_header(0, &sv, &out, &marks) ==
+                   ORC_ERROR_NONE);
+  TEST_ASSERT_TRUE(out.type_id == ORC_TYPE_F64);
+  TEST_ASSERT_TRUE(out.item_size == sizeof(_Vec3));
+  TEST_ASSERT_TRUE(out.n_items == 2);
+
+  _Vec3 payload[2] = {0};
+  TEST_ASSERT_TRUE(orc_sdk_sv_read_bytes(&sv, payload, sizeof(payload)) ==
+                   ORC_ERROR_NONE);
+  TEST_ASSERT_TRUE(sv.start == sv.end); /* all bytes consumed */
+  TEST_ASSERT_TRUE(payload[0].x == 1.0 && payload[0].y == 2.0 && payload[0].z == 3.0);
+  TEST_ASSERT_TRUE(payload[1].x == 4.0 && payload[1].y == 5.0 && payload[1].z == 6.0);
+
+  orc_sdk_arr_free(marks);
+  orc_sdk_arr_free(buf);
+  TEST_ASSERT_TRUE(ORC_ERROR_NONE == orc_sdk_handle_free(&h));
 }
 
 static void test_serialize_header_round_trip_with_marks(void)
@@ -7286,6 +7651,10 @@ int main(void)
   RUN_TEST(test_deck_from_proxy_copy_items);
   RUN_TEST(test_deck_from_proxy_shuffle);
   RUN_TEST(test_deck_from_proxy_copy_items_aggregate_item_size);
+  RUN_TEST(test_vec3_add_combinations);
+  RUN_TEST(test_vec3_dot_combinations);
+  RUN_TEST(test_vec3_length_combinations);
+  RUN_TEST(test_vec3_scale_combinations);
   RUN_TEST(test_deck_from_proxy_type_agnostic);
   RUN_TEST(test_handle_alloc_concurrent);
   RUN_TEST(test_handle_alloc_id_survives);
@@ -7335,6 +7704,8 @@ int main(void)
   RUN_TEST(test_hset_memory_operations);
   RUN_TEST(test_hset_is_empty_comprehensive);
   RUN_TEST(test_serialize_header_round_trip_no_marks);
+  RUN_TEST(test_serialize_header_round_trip_aggregate_item_size);
+  RUN_TEST(test_serialize_deserialize_round_trip_aggregate_payload);
   RUN_TEST(test_serialize_header_round_trip_with_marks);
   RUN_TEST(test_serialize_header_all_dims_set);
   RUN_TEST(test_deserialize_header_truncated_buffer);
