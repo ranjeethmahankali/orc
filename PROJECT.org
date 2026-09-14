@@ -152,9 +152,12 @@
   serialization story of the workflows throws a bit of a wrench into this. I've given this some
   thought in [[*tkwogf - Overhaul of workflow property serialization][this task]], but I don't yet know what the solution is. This requires more thought.
 
-* TODO Fix the strings in dagger UI
+* NEXT tlbvfz - Fix the strings in dagger UI
   :PROPERTIES:
   :CREATED:  2026-09-12 Sat 18:51
+  :END:
+  :LOGBOOK:
+  - State "NEXT"       from "TODO"       [2026-09-13 Sun 20:16]
   :END:
 
   A few things were very poorly implemented by the LLM, and I didn't catch them in time. I left some
