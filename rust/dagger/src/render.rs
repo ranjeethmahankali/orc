@@ -118,16 +118,18 @@ fn title_color(info: &NodeInfo) -> Color32 {
 }
 
 /// Picks a node's body/title/outline colors and outline width for this frame, in priority order:
-/// a cycle (a graph-shape problem) outranks a execution fault (a runtime problem), which outranks
-/// mere selection, which outranks the node's own ordinary kind-based color. Factored out of
-/// `draw_nodes` so this precedence is unit-testable without a live `Ui`.
+/// a cycle (a graph-shape problem) outranks a constant the user is editing into an unparseable
+/// state (an editing problem), which outranks an execution fault (a runtime problem), which
+/// outranks mere selection, which outranks the node's own ordinary kind-based color. Factored
+/// out of `draw_nodes` so this precedence is unit-testable without a live `Ui`.
 fn node_style(
     info: &NodeInfo,
     in_cycle: bool,
+    invalid_const: bool,
     has_fault: bool,
     selected: bool,
 ) -> (Color32, Color32, Color32, f32) {
-    if in_cycle {
+    if in_cycle || invalid_const {
         (ERROR_BODY_COLOR, ERROR_TITLE_COLOR, ERROR_STROKE_COLOR, 1.0)
     } else if has_fault {
         (FAULT_BODY_COLOR, FAULT_TITLE_COLOR, FAULT_STROKE_COLOR, 1.0)
@@ -624,6 +626,22 @@ fn draw_nodes(
     let inspect_cache = state.inspect_cache.try_borrow().ok();
     let inspect_font = FontId::new(view.scale(INSPECT_TEXT_FONT_SIZE), FontFamily::Monospace);
 
+    // Snapshot each Constant node's parse-error flag up front (the per-frame refresh may not
+    // have run yet, but the flag is written by commits, which is what we're painting). The
+    // borrow guard is consumed inside the `map` below, so nothing is held across the node loop,
+    // where editing a row takes `&mut` on the same cache.
+    let invalid_const_cache: std::collections::HashMap<NH, bool> = state
+        .const_edit_cache
+        .try_borrow()
+        .map(|cache| {
+            cache
+                .iter()
+                .enumerate()
+                .map(|(i, entry)| (orc_sdk::NH::from(i), entry.invalid))
+                .collect()
+        })
+        .unwrap_or_default();
+
     for nh in state.workflow.node_iter() {
         let rect = node_rect(positions[nh], sizes[nh]);
         if !rect.intersects(visible) {
@@ -634,6 +652,7 @@ fn draw_nodes(
         let (body_fill, title_fill, outline, outline_width) = node_style(
             info,
             in_cycle[nh],
+            invalid_const_cache.get(&nh).copied().unwrap_or(false),
             execution_error[nh].is_some(),
             selected[nh],
         );
@@ -1058,36 +1077,42 @@ mod test {
         assert_eq!(rect.max, Pos2::new(45.0, 37.0));
     }
 
-    /// A reversed condition here (returning `declared` whenever it exists, regardless of
-    /// `explicit`) would silently discard every user-set pin label; nothing else in the crate
-    /// would catch it since labels are just cosmetic text.
+    /// Reversed conditions here (e.g. returning `declared` whenever it exists) would silently
+    /// discard every user-set pin label; nothing else in the crate would catch it since labels
+    /// are just cosmetic text. Likewise the style precedence: cycle > invalid-const > fault >
+    /// selection.
     #[test]
-    fn t_node_style_precedence_cycle_beats_fault_beats_selection() {
+    fn t_node_style_precedence_cycle_beats_invalid_const_beats_fault_beats_selection() {
         let info = NodeInfo::Function(orc_sdk::FuncInfo::default());
-        let (cycle_body, ..) = node_style(&info, true, true, true);
+        let (cycle_body, ..) = node_style(&info, true, true, true, true);
         assert_eq!(
             cycle_body, ERROR_BODY_COLOR,
             "a cycle outranks everything else"
         );
 
-        let (fault_body, ..) = node_style(&info, false, true, true);
+        let (invalid_body, ..) = node_style(&info, false, true, true, true);
+        assert_eq!(
+            invalid_body, ERROR_BODY_COLOR,
+            "an unparseable constant outranks a fault"
+        );
+        let (fault_body, ..) = node_style(&info, false, false, true, true);
         assert_eq!(
             fault_body, FAULT_BODY_COLOR,
             "a fault outranks mere selection"
         );
         assert_ne!(
             fault_body, ERROR_BODY_COLOR,
-            "a fault must not read as a cycle"
+            "a fault must not read as a cycle or an invalid constant"
         );
 
         let (selected_body, _, selected_outline, selected_width) =
-            node_style(&info, false, false, true);
+            node_style(&info, false, false, false, true);
         assert_eq!(selected_body, node_color(&info));
         assert_eq!(selected_outline, SELECTION_COLOR);
         assert_eq!(selected_width, 2.0);
 
         let (plain_body, plain_title, plain_outline, plain_width) =
-            node_style(&info, false, false, false);
+            node_style(&info, false, false, false, false);
         assert_eq!(plain_body, node_color(&info));
         assert_eq!(plain_title, title_color(&info));
         assert_eq!(plain_outline, NODE_STROKE_COLOR);
