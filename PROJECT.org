@@ -169,7 +169,7 @@
 
   <2026-09-13 Sun 20:32> Started addressing these. Found some other issues while testing the UI app.
 
-  - [ ] When I zoom in and out of the canvas, the linespacing of the constant nodes doesn't
+  - [X] When I zoom in and out of the canvas, the linespacing of the constant nodes doesn't
     scale. This makes the rows appear far apart and terrible when zoomed out. This works properly in
     the inspect node. I get that inspect node is displaying a string vs an editable text box, but I
     want them to appear the same.
