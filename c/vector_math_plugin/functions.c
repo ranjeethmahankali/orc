@@ -358,26 +358,26 @@ OrcFuncInfo const VEC_ADD_INFO = {
 // vec_add's dispatch, there is no n_inputs fold here: subtraction is order-sensitive and
 // this function's arity is fixed at exactly 2 (see VEC_SUBTRACT_INFO.n_inputs), so we
 // always read input 0 and input 1 directly.
-#define DEFINE_VEC_SUBTRACT_DISPATCH(type, suffix)                                 \
-  static OrcError _vec_subtract_##suffix(void *combinations, size_t const arity)   \
-  {                                                                                \
-    while (combinations) {                                                        \
-      OrcSdk_DeckWriter *out_writer = orc_sdk_comb_get_output(combinations, 0);    \
-      type              *out_vec    = (type *)orc_sdk_dw_push_empty(out_writer);  \
-      if (out_vec == NULL) {                                                      \
-        orc_sdk_comb_free(combinations);                                          \
-        return ORC_ERROR_ALLOC_FAILED;                                            \
-      }                                                                           \
-      OrcSdk_DeckView a_view = orc_sdk_comb_get_input(combinations, 0);            \
-      OrcSdk_DeckView b_view = orc_sdk_comb_get_input(combinations, 1);            \
-      type const     *a_vec  = (type const *)orc_sdk_dv_item_ptr(&a_view);         \
-      type const     *b_vec  = (type const *)orc_sdk_dv_item_ptr(&b_view);         \
-      for (size_t j = 0; j < arity; ++j) {                                        \
-        out_vec[j] = (type)(a_vec[j] - b_vec[j]);                                 \
-      }                                                                           \
-      combinations = orc_sdk_comb_advance(combinations);                          \
-    }                                                                             \
-    return ORC_ERROR_NONE;                                                        \
+#define DEFINE_VEC_SUBTRACT_DISPATCH(type, suffix)                               \
+  static OrcError _vec_subtract_##suffix(void *combinations, size_t const arity) \
+  {                                                                              \
+    while (combinations) {                                                       \
+      OrcSdk_DeckWriter *out_writer = orc_sdk_comb_get_output(combinations, 0);  \
+      type              *out_vec    = (type *)orc_sdk_dw_push_empty(out_writer); \
+      if (out_vec == NULL) {                                                     \
+        orc_sdk_comb_free(combinations);                                         \
+        return ORC_ERROR_ALLOC_FAILED;                                           \
+      }                                                                          \
+      OrcSdk_DeckView a_view = orc_sdk_comb_get_input(combinations, 0);          \
+      OrcSdk_DeckView b_view = orc_sdk_comb_get_input(combinations, 1);          \
+      type const     *a_vec  = (type const *)orc_sdk_dv_item_ptr(&a_view);       \
+      type const     *b_vec  = (type const *)orc_sdk_dv_item_ptr(&b_view);       \
+      for (size_t j = 0; j < arity; ++j) {                                       \
+        out_vec[j] = (type)(a_vec[j] - b_vec[j]);                                \
+      }                                                                          \
+      combinations = orc_sdk_comb_advance(combinations);                         \
+    }                                                                            \
+    return ORC_ERROR_NONE;                                                       \
   }
 
 DEFINE_VEC_SUBTRACT_DISPATCH(uint8_t, u8)
@@ -527,7 +527,8 @@ OrcFuncInfo const VEC_SUBTRACT_INFO = {
   .name = "vec_subtract",
   .desc =
     "Subtract the second vector from the first. Supports vectors of any arity, and any "
-    "primitive scalar type. Both input vectors must be of the same scalar type and arity.",
+    "primitive scalar type. Both input vectors must be of the same scalar type and "
+    "arity.",
   .n_inputs    = 2,
   .n_outputs   = 1,
   .input_args  = NULL,
@@ -540,28 +541,28 @@ OrcFuncInfo const VEC_SUBTRACT_INFO = {
 // of these once instead of switching on the type for every item. The output here is a
 // single scalar (arity 1), not a vector of the same arity as the inputs -- it's a
 // reduction, not an elementwise op.
-#define DEFINE_VEC_DOT_PRODUCT_DISPATCH(type, suffix)                              \
+#define DEFINE_VEC_DOT_PRODUCT_DISPATCH(type, suffix)                               \
   static OrcError _vec_dot_product_##suffix(void *combinations, size_t const arity) \
   {                                                                                 \
-    while (combinations) {                                                         \
+    while (combinations) {                                                          \
       OrcSdk_DeckWriter *out_writer = orc_sdk_comb_get_output(combinations, 0);     \
-      type              *out_val    = (type *)orc_sdk_dw_push_empty(out_writer);   \
-      if (out_val == NULL) {                                                       \
-        orc_sdk_comb_free(combinations);                                           \
-        return ORC_ERROR_ALLOC_FAILED;                                             \
-      }                                                                            \
+      type              *out_val    = (type *)orc_sdk_dw_push_empty(out_writer);    \
+      if (out_val == NULL) {                                                        \
+        orc_sdk_comb_free(combinations);                                            \
+        return ORC_ERROR_ALLOC_FAILED;                                              \
+      }                                                                             \
       OrcSdk_DeckView a_view = orc_sdk_comb_get_input(combinations, 0);             \
       OrcSdk_DeckView b_view = orc_sdk_comb_get_input(combinations, 1);             \
       type const     *a_vec  = (type const *)orc_sdk_dv_item_ptr(&a_view);          \
       type const     *b_vec  = (type const *)orc_sdk_dv_item_ptr(&b_view);          \
-      type            sum    = 0;                                                  \
-      for (size_t j = 0; j < arity; ++j) {                                         \
-        sum = (type)(sum + a_vec[j] * b_vec[j]);                                   \
-      }                                                                            \
-      *out_val     = sum;                                                          \
-      combinations = orc_sdk_comb_advance(combinations);                           \
-    }                                                                              \
-    return ORC_ERROR_NONE;                                                        \
+      type            sum    = 0;                                                   \
+      for (size_t j = 0; j < arity; ++j) {                                          \
+        sum = (type)(sum + a_vec[j] * b_vec[j]);                                    \
+      }                                                                             \
+      *out_val     = sum;                                                           \
+      combinations = orc_sdk_comb_advance(combinations);                            \
+    }                                                                               \
+    return ORC_ERROR_NONE;                                                          \
   }
 
 DEFINE_VEC_DOT_PRODUCT_DISPATCH(float, f32)
@@ -695,21 +696,21 @@ OrcFuncInfo const VEC_DOT_PRODUCT_INFO = {
 #define DEFINE_VEC_CROSS_AREA_DISPATCH(type, suffix)                             \
   static OrcError _vec_cross_area_##suffix(void *combinations)                   \
   {                                                                              \
-    while (combinations) {                                                      \
+    while (combinations) {                                                       \
       OrcSdk_DeckWriter *out_writer = orc_sdk_comb_get_output(combinations, 0);  \
       type              *out_val    = (type *)orc_sdk_dw_push_empty(out_writer); \
-      if (out_val == NULL) {                                                    \
-        orc_sdk_comb_free(combinations);                                        \
-        return ORC_ERROR_ALLOC_FAILED;                                          \
-      }                                                                         \
+      if (out_val == NULL) {                                                     \
+        orc_sdk_comb_free(combinations);                                         \
+        return ORC_ERROR_ALLOC_FAILED;                                           \
+      }                                                                          \
       OrcSdk_DeckView a_view = orc_sdk_comb_get_input(combinations, 0);          \
       OrcSdk_DeckView b_view = orc_sdk_comb_get_input(combinations, 1);          \
       type const     *a      = (type const *)orc_sdk_dv_item_ptr(&a_view);       \
       type const     *b      = (type const *)orc_sdk_dv_item_ptr(&b_view);       \
-      *out_val     = (type)(a[0] * b[1] - a[1] * b[0]);                         \
-      combinations = orc_sdk_comb_advance(combinations);                        \
-    }                                                                           \
-    return ORC_ERROR_NONE;                                                      \
+      *out_val               = (type)(a[0] * b[1] - a[1] * b[0]);                \
+      combinations           = orc_sdk_comb_advance(combinations);               \
+    }                                                                            \
+    return ORC_ERROR_NONE;                                                       \
   }
 
 DEFINE_VEC_CROSS_AREA_DISPATCH(float, f32)
@@ -720,23 +721,23 @@ DEFINE_VEC_CROSS_AREA_DISPATCH(double, f64)
 #define DEFINE_VEC_CROSS_VEC3_DISPATCH(type, suffix)                             \
   static OrcError _vec_cross_vec3_##suffix(void *combinations)                   \
   {                                                                              \
-    while (combinations) {                                                      \
+    while (combinations) {                                                       \
       OrcSdk_DeckWriter *out_writer = orc_sdk_comb_get_output(combinations, 0);  \
       type              *out_vec    = (type *)orc_sdk_dw_push_empty(out_writer); \
-      if (out_vec == NULL) {                                                    \
-        orc_sdk_comb_free(combinations);                                        \
-        return ORC_ERROR_ALLOC_FAILED;                                          \
-      }                                                                         \
+      if (out_vec == NULL) {                                                     \
+        orc_sdk_comb_free(combinations);                                         \
+        return ORC_ERROR_ALLOC_FAILED;                                           \
+      }                                                                          \
       OrcSdk_DeckView a_view = orc_sdk_comb_get_input(combinations, 0);          \
       OrcSdk_DeckView b_view = orc_sdk_comb_get_input(combinations, 1);          \
       type const     *a      = (type const *)orc_sdk_dv_item_ptr(&a_view);       \
       type const     *b      = (type const *)orc_sdk_dv_item_ptr(&b_view);       \
-      out_vec[0]   = (type)(a[1] * b[2] - a[2] * b[1]);                         \
-      out_vec[1]   = (type)(a[2] * b[0] - a[0] * b[2]);                         \
-      out_vec[2]   = (type)(a[0] * b[1] - a[1] * b[0]);                         \
-      combinations = orc_sdk_comb_advance(combinations);                        \
-    }                                                                           \
-    return ORC_ERROR_NONE;                                                      \
+      out_vec[0]             = (type)(a[1] * b[2] - a[2] * b[1]);                \
+      out_vec[1]             = (type)(a[2] * b[0] - a[0] * b[2]);                \
+      out_vec[2]             = (type)(a[0] * b[1] - a[1] * b[0]);                \
+      combinations           = orc_sdk_comb_advance(combinations);               \
+    }                                                                            \
+    return ORC_ERROR_NONE;                                                       \
   }
 
 DEFINE_VEC_CROSS_VEC3_DISPATCH(float, f32)
@@ -798,7 +799,7 @@ static OrcError vec_cross_product(uint64_t         ctx,
   }
   // Allocate output: a single scalar (area) for arity 2, or a vec3 for arity 3.
   size_t const output_item_size = (arity == 2) ? scalar_size : 3 * scalar_size;
-  err                           = orc_sdk_handle_alloc(first_type_id, output_item_size, output);
+  err = orc_sdk_handle_alloc(first_type_id, output_item_size, output);
   if (err)
     return err;
   void             *combinations = NULL;

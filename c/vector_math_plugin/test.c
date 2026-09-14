@@ -1049,8 +1049,8 @@ static void test_vec_add_output_type_change(void)
   orc_sdk_handle_free(&in[1]);
 
   OrcHandle in2[2] = {{0}, {0}};
-  in2[0].handle = 4;
-  in2[1].handle = 5;
+  in2[0].handle    = 4;
+  in2[1].handle    = 5;
   orc_sdk_handle_alloc(ORC_TYPE_I32, sizeof(int32_t), &in2[0]);
   ORC_SDK_DECK_INIT(in2[0].items, int32_t, (7));
   orc_sdk_oh_update(&in2[0]);
@@ -1555,8 +1555,8 @@ static void test_vec_subtract_output_type_change(void)
   orc_sdk_handle_free(&in[1]);
 
   OrcHandle in2[2] = {{0}, {0}};
-  in2[0].handle = 4;
-  in2[1].handle = 5;
+  in2[0].handle    = 4;
+  in2[1].handle    = 5;
   orc_sdk_handle_alloc(ORC_TYPE_I32, sizeof(int32_t), &in2[0]);
   ORC_SDK_DECK_INIT(in2[0].items, int32_t, (7));
   orc_sdk_oh_update(&in2[0]);
@@ -2034,8 +2034,8 @@ static void test_vec_dot_product_output_type_change(void)
   orc_sdk_handle_free(&in[1]);
 
   OrcHandle in2[2] = {{0}, {0}};
-  in2[0].handle = 4;
-  in2[1].handle = 5;
+  in2[0].handle    = 4;
+  in2[1].handle    = 5;
   orc_sdk_handle_alloc(ORC_TYPE_F32, sizeof(float), &in2[0]);
   ORC_SDK_DECK_INIT(in2[0].items, float, (3.0f));
   orc_sdk_oh_update(&in2[0]);
@@ -2616,8 +2616,8 @@ static void test_vec_cross_product_output_type_change(void)
   orc_sdk_handle_free(&in[1]);
 
   OrcHandle in2[2] = {{0}, {0}};
-  in2[0].handle = 4;
-  in2[1].handle = 5;
+  in2[0].handle    = 4;
+  in2[1].handle    = 5;
   orc_sdk_handle_alloc(ORC_TYPE_F32, sizeof(_FVec2), &in2[0]);
   _FVec2 *w0 = (_FVec2 *)in2[0].items;
   orc_sdk_deck_push(w0, ((_FVec2) {2.0f, 3.0f}), 0);
