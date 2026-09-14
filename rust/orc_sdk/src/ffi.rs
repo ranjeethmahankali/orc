@@ -21,26 +21,6 @@ macro_rules! orc_plugin {
         }
 
         #[unsafe(no_mangle)]
-        pub unsafe extern "C" fn orc_deck_alloc(
-            type_id: orc_sdk::OrcTypeId,
-            out: *mut orc_sdk::OrcHandle,
-        ) -> orc_sdk::OrcError {
-            if out.is_null() {
-                return orc_sdk::ORC_ERROR_INVALID_HANDLE;
-            }
-            let out = unsafe { &mut *out };
-            match <$plugin as orc_sdk::TOrcPluginAdaptor>::deck_alloc(type_id, out) {
-                Ok(()) => {
-                    unsafe {
-                        out.free_fn = Some(orc_deck_free);
-                    }
-                    orc_sdk::ORC_ERROR_NONE
-                }
-                Err(e) => e.into(),
-            }
-        }
-
-        #[unsafe(no_mangle)]
         pub unsafe extern "C" fn orc_deck_free(
             handle: *mut orc_sdk::OrcHandle,
         ) -> orc_sdk::OrcError {
@@ -174,9 +154,13 @@ impl OrcHandle {
         }
     }
 
-    pub fn items<T: TOrcData>(&self) -> &[T] {
-        // SAFETY; We're using the pointer and the length from the same pointer.
-        unsafe { slice_from_ptr(self.items.cast(), self.n_items as usize) }
+    pub fn items<T: TOrcData>(&self) -> Result<&[T], Error> {
+        if T::TYPE_INFO.type_id != self.type_id || (self.item_size as usize) != size_of::<T>() {
+            return Err(Error::DeckTypeMismatch);
+        }
+        // SAFETY; We're using the pointer and the length from the same pointer. We also made sure
+        // the type matches exactly to what the caller asked for.
+        Ok(unsafe { slice_from_ptr(self.items.cast(), self.n_items as usize) })
     }
 
     pub fn items_as_bytes(&self) -> &[u8] {
@@ -284,7 +268,6 @@ impl<'a> OrcHandleBorrowed<'a> {
 }
 
 pub type PluginInitFn = unsafe extern "C" fn(*const OrcHost, *mut OrcPlugin) -> OrcError;
-pub type DeckAllocFn = unsafe extern "C" fn(OrcTypeId, *mut OrcHandle) -> OrcError;
 pub type DeckFreeFn = unsafe extern "C" fn(*mut OrcHandle) -> OrcError;
 pub type DeckFromProxyFn = unsafe extern "C" fn(
     inputs: *const OrcHandle,
@@ -305,7 +288,6 @@ pub type DeckToStringFn =
 
 // Compile-time checks to keep these type aliases in sync with the bindings.
 const _: PluginInitFn = orc_plugin_init;
-const _: DeckAllocFn = orc_deck_alloc;
 const _: DeckFreeFn = orc_deck_free;
 const _: DeckFromProxyFn = orc_deck_from_proxy;
 const _: DeckSerializeFn = orc_deck_serialize;
@@ -321,7 +303,6 @@ pub enum ProxyType {
 pub trait TOrcPluginAdaptor {
     fn host_callbacks() -> &'static OrcHostCallbackAPI;
     fn plugin_init(host: &OrcHost, out: &mut OrcPlugin) -> Result<(), Error>;
-    fn deck_alloc(id: OrcTypeId, handle: &mut OrcHandle) -> Result<(), Error>;
     fn deck_free(handle: &mut OrcHandle) -> Result<(), Error>;
     fn deck_from_proxy(
         inputs: &[OrcHandle],
@@ -423,6 +404,26 @@ impl TOrcData for OrcItemProxy {
         desc: c"Proxy indices that can be used to point to an element of another deck.".as_ptr(),
     };
 }
+
+/// Array types all defer to their inner type for their type info. `N` has to be
+/// enumerated explicitly rather than left as a const generic parameter: `TOrcData`
+/// requires `Default`, and the standard library only implements `Default` for `[T; N]`
+/// at fixed sizes (via an internal macro, up to `N = 32`) -- there is no blanket
+/// `impl<T: Default, const N: usize> Default for [T; N]`, so the compiler can't prove
+/// the bound holds for a generic `N` even though it holds for every concrete one below.
+macro_rules! impl_torcdata_for_array {
+    ($($n:literal),* $(,)?) => {
+        $(
+            impl<T: TOrcData> TOrcData for [T; $n] {
+                const TYPE_INFO: OrcTypeInfo = T::TYPE_INFO;
+            }
+        )*
+    };
+}
+impl_torcdata_for_array!(
+    1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26,
+    27, 28, 29, 30, 31, 32
+);
 
 // ==================== Dims helper functions ====================
 

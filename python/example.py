@@ -28,7 +28,8 @@ def simple_experiment():
 
     result = orc.read_deck(flat_out)
     print(f"After flattening: {result}")
-    assert result == [11.0, 22.0, 33.0, 5.0, 9.0, 13.0, 19.0], f"Unexpected: {result}"
+    assert result == [11.0, 22.0, 33.0, 5.0, 9.0, 13.0,
+                      19.0], f"Unexpected: {result}"
 
     # Zero-copy numpy view of the same data.
     np_arr = np.asarray(flat_out)
@@ -39,6 +40,12 @@ def simple_experiment():
             ), "Confirm that numpy is using the same pointer."
     doubled_np_arr = np_arr * 2.0
     print(f"Output after doubling: {doubled_np_arr}")
+
+    # Aggregate types (e.g. [f64;3]) -- a tuple leaf is one aggregate item.
+    v = orc.make_deck([(3.0, 4.0, 0.0), (0.0, 0.0, 1.0)])
+    lengths = orc.read_deck(orc.vec3_length(v))
+    print(f"Vector lengths: {lengths}")
+    assert lengths == [5.0, 1.0], f"Unexpected: {lengths}"
 
     # Complex numbers.
     comp = orc.create_complex(a, b)
@@ -78,6 +85,7 @@ def simple_experiment():
 
 
 def collatz_parallel_experiment():
+    """Experiment with host callbacks by computing the collatz numbers."""
     project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     search_dir = os.path.join(project_root, "build", "debug")
     print(f"Searching for plugins in: {search_dir}")

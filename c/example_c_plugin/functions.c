@@ -82,7 +82,7 @@ static OrcError list_length(uint64_t         ctx,
     return ORC_ERROR_INVALID_ARGUMENTS;
   }
   {  // Allocate outputs.
-    OrcError const err = orc_sdk_handle_alloc(ORC_TYPE_U64, output);
+    OrcError const err = orc_sdk_handle_alloc(ORC_TYPE_U64, sizeof(uint64_t), output);
     if (err != ORC_ERROR_NONE) {
       orc_sdk_report_message(
         ctx, ORC_MSG_LEVEL_ERROR, "Unable to allocate the output deck.");

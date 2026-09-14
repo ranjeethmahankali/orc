@@ -123,22 +123,27 @@ def download(sid, hid):
     return dtype, values
 
 
+def _parse_value_token(token, dtype):
+    """Parse one whitespace-separated token from `download`'s output. A bare number ("1.5") is
+    one scalar item. A parenthesized, comma-separated list ("(1,2,3)", no spaces -- that's what
+    keeps each item a single whitespace-split token) is one aggregate item, parsed into a
+    tuple."""
+    caster = float if dtype in ("f32", "f64") else int
+    if token.startswith("(") and token.endswith(")"):
+        return tuple(caster(v) for v in token[1:-1].split(","))
+    return caster(token)
+
+
 def download_values(sid, hid):
-    """Download and return parsed numeric values."""
+    """Download and return parsed numeric values (bare numbers or tuples for aggregates)."""
     dtype, vals = download(sid, hid)
-    if dtype in ("f32", "f64"):
-        return [float(v) for v in vals]
-    else:
-        return [int(v) for v in vals]
+    return [_parse_value_token(v, dtype) for v in vals]
 
 
 def download_typed(sid, hid):
     """Download and return (type_name, parsed numeric values)."""
     dtype, vals = download(sid, hid)
-    if dtype in ("f32", "f64"):
-        return dtype, [float(v) for v in vals]
-    else:
-        return dtype, [int(v) for v in vals]
+    return dtype, [_parse_value_token(v, dtype) for v in vals]
 
 
 def download_workflow(sid, path, *output_ids):
@@ -284,6 +289,123 @@ def t_constant_single_element():
     hid = constant(sid, "f64", 42.0)
     vals = download_values(sid, hid)
     assert vals == [42.0]
+    session_close(sid)
+
+
+# ============================================================
+# constant + download — aggregate types (parenthesized values)
+# ============================================================
+
+
+def t_constant_aggregate_single_item():
+    """A single parenthesized value is one aggregate item."""
+    sid = session_start()
+    hid = constant(sid, "f64", "(1.0,2.0,3.0)")
+    assert download_values(sid, hid) == [(1.0, 2.0, 3.0)]
+    session_close(sid)
+
+
+def t_constant_aggregate_multiple_items():
+    """Multiple parenthesized values make a flat list of aggregate items."""
+    sid = session_start()
+    hid = constant(sid, "f64", "(1.0,2.0,3.0)", "(4.0,5.0,6.0)")
+    assert download_values(sid, hid) == [(1.0, 2.0, 3.0), (4.0, 5.0, 6.0)]
+    session_close(sid)
+
+
+def t_constant_aggregate_integer_dtype():
+    """Aggregates work with an integer dtype too."""
+    sid = session_start()
+    hid = constant(sid, "i32", "(1,2,3)", "(4,5,6)")
+    dtype, vals = download_typed(sid, hid)
+    assert dtype == "i32"
+    assert vals == [(1, 2, 3), (4, 5, 6)]
+    session_close(sid)
+
+
+def t_constant_aggregate_max_size():
+    """32 components is the largest supported aggregate size."""
+    sid = session_start()
+    literal = "(" + ",".join(str(float(i)) for i in range(32)) + ")"
+    hid = constant(sid, "f64", literal)
+    expected = tuple(float(i) for i in range(32))
+    assert download_values(sid, hid) == [expected]
+    session_close(sid)
+
+
+def t_constant_aggregate_too_large_rejected():
+    """More than 32 components is rejected, not silently truncated."""
+    sid = session_start()
+    literal = "(" + ",".join(str(float(i)) for i in range(33)) + ")"
+    assert cli_fails("constant", sid, "f64", literal)
+    session_close(sid)
+
+
+def t_constant_aggregate_varying_lengths_rejected():
+    """Values with a different number of components in the same call are rejected."""
+    sid = session_start()
+    assert cli_fails("constant", sid, "f64", "(1.0,2.0)", "(3.0,4.0,5.0)")
+    session_close(sid)
+
+
+def t_constant_aggregate_mixed_with_scalar_rejected():
+    """Mixing a scalar value with an aggregate value in the same call is rejected."""
+    sid = session_start()
+    assert cli_fails("constant", sid, "f64", "1.0", "(2.0,3.0)")
+    session_close(sid)
+
+
+def t_constant_malformed_unterminated_paren_rejected():
+    """An unterminated aggregate literal must fail, not silently upload a scalar 0."""
+    sid = session_start()
+    assert cli_fails("constant", sid, "f64", "(1.0,2.0")
+    session_close(sid)
+
+
+def t_constant_malformed_trailing_garbage_rejected():
+    """Garbage after the closing paren must fail, not silently upload a scalar 0."""
+    sid = session_start()
+    assert cli_fails("constant", sid, "f64", "(1.0,2.0,3.0)x")
+    session_close(sid)
+
+
+def t_constant_malformed_empty_component_rejected():
+    """An empty component between commas must fail, not silently drop that component."""
+    sid = session_start()
+    assert cli_fails("constant", sid, "f64", "(1.0,,3.0)")
+    session_close(sid)
+
+
+def t_constant_malformed_whitespace_only_aggregate_rejected():
+    """A whitespace-only aggregate literal must fail, not silently become a one-component 0."""
+    sid = session_start()
+    assert cli_fails("constant", sid, "f64", "(  )")
+    session_close(sid)
+
+
+def t_constant_malformed_scalar_rejected():
+    """A non-numeric scalar value must fail, not silently upload a 0."""
+    sid = session_start()
+    assert cli_fails("constant", sid, "f64", "abc")
+    session_close(sid)
+
+
+def t_vec3_length_via_cli_aggregate_constant():
+    """Now that the CLI can author aggregate constants, a real plugin function that expects
+    one [f64;3] item per input is callable end to end."""
+    sid = session_start()
+    v = constant(sid, "f64", "(3.0,4.0,0.0)")
+    [out] = call(sid, "vec3_length", v)
+    assert download_values(sid, out) == [5.0]
+    session_close(sid)
+
+
+def t_vec3_length_via_cli_multiple_aggregates():
+    """Multiple aggregate items strided through Combinations, authored via the CLI."""
+    sid = session_start()
+    v = constant(sid, "f64", "(3.0,4.0,0.0)", "(0.0,0.0,1.0)")
+    [out] = call(sid, "vec3_length", v)
+    assert download_values(sid, out) == [5.0, 1.0]
     session_close(sid)
 
 
@@ -458,6 +580,29 @@ def t_flatten_preserves_type():
     dtype, vals = download_typed(sid, out)
     assert dtype == "u8"
     assert vals == [10, 20, 30]
+    session_close(sid)
+
+
+# ============================================================
+# Aggregate types (e.g. [f64;3]) -- not yet authorable via the CLI
+# ============================================================
+#
+# `cli_client`'s `constant` command can only build item_size == sizeof(scalar) constants (see
+# PROJECT.org, item 10's cli_client gap) -- there's no way to author a single [f64;3] item over
+# HTTP yet. `vec3_length` (n_inputs=1, expects one [f64;3] item) is a real plugin function that
+# takes an aggregate input, so the one thing testable through the full server+CLI round trip
+# today is that feeding it an ordinary 3-element f64 constant (3 separate items, item_size=8,
+# not one aggregate item, item_size=24) is rejected cleanly over HTTP -- not silently
+# misinterpreted, and not something that hangs or crashes the server.
+
+
+def t_vec3_length_rejects_non_aggregate_constant():
+    """vec3_length expects a single [f64;3] item per input. A constant built from 3 separate f64
+    values is item_size=8 (3 items), not item_size=24 (1 item) -- type_id matches (both F64) but
+    item_size doesn't, so the call must fail cleanly through the full HTTP round trip."""
+    sid = session_start()
+    a = constant(sid, "f64", 1, 2, 3)
+    assert cli_fails("call", sid, "vec3_length", a)
     session_close(sid)
 
 

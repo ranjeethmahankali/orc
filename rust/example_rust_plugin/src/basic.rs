@@ -183,6 +183,16 @@ fn collatz_parallel_experiment() {
     }
 }
 
+#[orc_fn]
+fn vec3_length() {
+    let host_callbacks = host_callbacks();
+    let registry: &DeckRegistry = registry();
+
+    fn run(v: &[f64; 3], len: &mut f64) {
+        *len = v.map(|c| c * c).iter().sum::<f64>().sqrt()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -715,5 +725,62 @@ mod tests {
         let dv = DeckView::<f64>::from_handle(&out).unwrap();
         // Each sublist repeated: [1,2,1,2] and [3,3]
         assert_eq!(dv.items(), &[1.0, 2.0, 1.0, 2.0, 3.0, 3.0]);
+    }
+
+    // ==================== vec3_length (aggregate [f64; 3] input) ====================
+
+    #[test]
+    fn t_vec3_length() {
+        // `deck![...]`'s bracket syntax builds nested list structure, so it can't also be used
+        // to write an `[f64; 3]` item literal -- push it directly instead.
+        let mut v = Deck::<[f64; 3]>::default();
+        v.push([3.0, 4.0, 0.0], 1);
+        let mut out = out_handle();
+        let inputs = [view(&v)];
+        unsafe { vec3_length(0, inputs.as_ptr(), 1, &mut out, 1) };
+        assert_eq!(out.item_size, size_of::<f64>() as u64);
+        assert_eq!(DeckView::<f64>::from_handle(&out).unwrap().items(), &[5.0]);
+    }
+
+    #[test]
+    fn t_vec3_length_rejects_scalar_f64_sharing_the_same_type_id() {
+        // A plain f64 handle resolves to the same type_id as `[f64; 3]` (that's the whole point
+        // of the aggregate design), but a different item_size. Dispatch must reject it instead of
+        // reinterpreting the buffer as a vec3.
+        let scalar: Deck<f64> = orc_sdk::deck![3.0];
+        let mut out = out_handle();
+        let inputs = [view(&scalar)];
+        let err = unsafe { vec3_length(0, inputs.as_ptr(), 1, &mut out, 1) };
+        assert_ne!(err, orc_sdk::ORC_ERROR_NONE);
+        assert!(out.items.is_null());
+    }
+
+    #[test]
+    fn t_vec3_length_multiple_items() {
+        // A single-item deck can't catch an indexing bug that's off by a whole item_size (24
+        // bytes) -- this exercises Combinations actually striding across several vec3 items.
+        let mut v = Deck::<[f64; 3]>::default();
+        v.push([3.0, 4.0, 0.0], 1);
+        v.push([0.0, 0.0, 1.0], 0);
+        v.push([1.0, 2.0, 2.0], 0);
+        let mut out = out_handle();
+        let inputs = [view(&v)];
+        unsafe { vec3_length(0, inputs.as_ptr(), 1, &mut out, 1) };
+        assert_eq!(
+            DeckView::<f64>::from_handle(&out).unwrap().items(),
+            &[5.0, 1.0, 3.0]
+        );
+    }
+
+    #[test]
+    fn t_vec3_length_wrong_n_inputs() {
+        let mut v = Deck::<[f64; 3]>::default();
+        v.push([3.0, 4.0, 0.0], 1);
+        let mut out = out_handle();
+        let inputs = [view(&v), view(&v)]; // 2 instead of 1
+        let err = unsafe { vec3_length(0, inputs.as_ptr(), 2, &mut out, 1) };
+        assert_ne!(err, orc_sdk::ORC_ERROR_NONE);
+        assert!(out.free_fn.is_none());
+        assert!(out.items.is_null());
     }
 }

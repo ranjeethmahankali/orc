@@ -1,4 +1,4 @@
-use orc_sdk::{OrcHandle, deck, try_serialize_handle};
+use orc_sdk::{OrcHandle, deck, try_deserialize_handle, try_serialize_handle};
 use server_host::server::{DECK_REGISTRY, OrcServer, next_handle_id};
 use tinyjson::JsonValue;
 
@@ -172,6 +172,98 @@ fn t_create_constant_and_download() {
     );
     assert_eq!(code, 200);
     assert_eq!(downloaded, downloaded2, "Round-tripped data should match");
+}
+
+#[test]
+fn t_create_aggregate_constant_and_download() {
+    // Same round trip as t_create_constant_and_download, but with an aggregate (item_size=24,
+    // [f64;3]) deck -- drives an aggregate handle through the HTTP API, which nothing in this
+    // file did before.
+    let (_server, base) = start_server();
+    let (_, json) = post_json(&format!("{base}/session/start"), "{}");
+    let sid = json_u64(&json, "session_id");
+    let mut d = orc_sdk::Deck::<[f64; 3]>::default();
+    d.push([1.0, 2.0, 3.0], 1);
+    d.push([4.0, 5.0, 6.0], 0);
+    let mut handle = OrcHandle {
+        handle: next_handle_id(),
+        ..Default::default()
+    };
+    DECK_REGISTRY
+        .alloc_with_value(Some(d), &mut handle)
+        .expect("Failed to allocate deck");
+    assert_eq!(handle.item_size as usize, size_of::<[f64; 3]>());
+    let data = serialize_handle(&handle);
+    handle.free();
+    let (code, json) = post_bytes_json(&format!("{base}/constant?session_id={sid}"), &data);
+    assert_eq!(code, 200);
+    let hid = json_u64(&json, "handle_id");
+    let (code, downloaded) = post_bytes(
+        &format!("{base}/download?session_id={sid}&handle_id={hid}"),
+        &[],
+    );
+    assert_eq!(code, 200);
+    assert!(
+        !downloaded.is_empty(),
+        "Serialized data should not be empty"
+    );
+    // Upload the downloaded bytes as a new constant and verify it round-trips byte for byte,
+    // same as the scalar test does.
+    let (code, json) = post_bytes_json(&format!("{base}/constant?session_id={sid}"), &downloaded);
+    assert_eq!(code, 200);
+    let hid2 = json_u64(&json, "handle_id");
+    assert_ne!(hid, hid2);
+    let (code, downloaded2) = post_bytes(
+        &format!("{base}/download?session_id={sid}&handle_id={hid2}"),
+        &[],
+    );
+    assert_eq!(code, 200);
+    assert_eq!(downloaded, downloaded2, "Round-tripped data should match");
+}
+
+#[test]
+fn t_call_vec3_length_function() {
+    // Same shape as t_call_add_function, but the input is an aggregate constant and the
+    // function (vec3_length) actually expects one [f64;3] item per input -- proves a real
+    // plugin function correctly consumes an aggregate handle uploaded over the HTTP API.
+    let (_server, base) = start_server();
+    let (_, json) = post_json(&format!("{base}/session/start"), "{}");
+    let sid = json_u64(&json, "session_id");
+    let mut d = orc_sdk::Deck::<[f64; 3]>::default();
+    d.push([3.0, 4.0, 0.0], 1);
+    d.push([0.0, 0.0, 1.0], 0);
+    let mut handle = OrcHandle {
+        handle: next_handle_id(),
+        ..Default::default()
+    };
+    DECK_REGISTRY
+        .alloc_with_value(Some(d), &mut handle)
+        .expect("Failed to allocate deck");
+    let data = serialize_handle(&handle);
+    handle.free();
+    let (_, json) = post_bytes_json(&format!("{base}/constant?session_id={sid}"), &data);
+    let v_id = json_u64(&json, "handle_id");
+    let (code, json) = post_json(
+        &format!("{base}/call"),
+        &format!(r#"{{"session_id": {sid}, "function": "vec3_length", "inputs": [{v_id}]}}"#),
+    );
+    assert_eq!(code, 200);
+    let out_ids = json_nums(&json, "output_ids");
+    assert_eq!(out_ids.len(), 1);
+    let out_id = out_ids[0] as u64;
+    let (code, data) = post_bytes(
+        &format!("{base}/download?session_id={sid}&handle_id={out_id}"),
+        &[],
+    );
+    assert_eq!(code, 200);
+    let mut out = OrcHandle {
+        handle: next_handle_id(),
+        ..Default::default()
+    };
+    try_deserialize_handle(&mut &data[..], &mut out, &DECK_REGISTRY)
+        .expect("Failed to deserialize result");
+    assert_eq!(out.items::<f64>().unwrap(), &[5.0, 1.0]);
+    out.free();
 }
 
 #[test]

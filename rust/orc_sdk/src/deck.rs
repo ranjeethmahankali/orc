@@ -1,5 +1,5 @@
 use crate::{
-    Error, TOrcData,
+    Error, OrcItemProxy, ProxyType, TOrcData,
     bindings::{OrcHandle, OrcMark},
     slice_from_ptr,
 };
@@ -107,6 +107,55 @@ where
             &mut out.strides,
         );
         out
+    }
+
+    pub fn assign_from_proxy(
+        &mut self,
+        inputs: &[OrcHandle],
+        proxy_type: ProxyType,
+        proxy: &OrcHandle,
+    ) -> Result<(), Error>
+    where
+        T: TOrcData,
+    {
+        let (items, marks) = match proxy_type {
+            ProxyType::CopyAll => {
+                // We expect exactly one input, and we will make a full clone of that data.
+                if inputs.len() != 1 {
+                    return Err(Error::InvalidProxy);
+                }
+                let input_handle = unsafe { inputs.get_unchecked(0) }; // SAFETY: we just checked above.
+                let input = DeckView::<T>::from_handle(input_handle)?;
+                (input.items().to_vec(), input.marks().to_vec())
+            }
+            ProxyType::CopyItems => {
+                // We expect exactly one input. We will copy the items of the input, but the marks from the proxy.
+                if inputs.len() != 1 {
+                    return Err(Error::InvalidProxy);
+                }
+                let input_handle = unsafe { inputs.get_unchecked(0) }; // SAFETY: we just checked above.
+                let input = DeckView::<T>::from_handle(input_handle)?;
+                let proxy = DeckView::<OrcItemProxy>::from_handle(proxy)?;
+                (input.items().to_vec(), proxy.marks().to_vec())
+            }
+            ProxyType::Shuffle => {
+                let proxy = DeckView::<OrcItemProxy>::from_handle(proxy)?;
+                let inputs = inputs
+                    .iter()
+                    .map(|input| DeckView::<T>::from_handle(input))
+                    .collect::<Result<Box<[DeckView<T>]>, Error>>()?;
+                (
+                    proxy
+                        .items()
+                        .iter()
+                        .map(|ii| inputs[ii.tree as usize].items()[ii.item as usize].clone())
+                        .collect::<Vec<T>>(),
+                    proxy.marks().to_vec(),
+                )
+            }
+        };
+        self.assign_from_raw_data(items, marks);
+        Ok(())
     }
 
     /**
@@ -386,7 +435,52 @@ where
     }
 }
 
-pub fn fmt_raw_deck<T: Default + Display>(
+/// Formats a single deck item. Unlike `Display`, this can be implemented for `[T; N]` without
+/// running into coherence conflicts: the scalar impls below are all for concrete primitive
+/// types (never a blanket `impl<T: Display> DeckItemDisplay for T`), so they're structurally
+/// disjoint from the `[T; N]` blanket impl and don't overlap with it.
+pub trait DeckItemDisplay {
+    fn item_fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result;
+}
+
+macro_rules! impl_deck_item_display_scalar {
+    ($($t:ty),* $(,)?) => {
+        $(
+            impl DeckItemDisplay for $t {
+                fn item_fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                    write!(f, "{}", self)
+                }
+            }
+        )*
+    };
+}
+impl_deck_item_display_scalar!(u8, u16, u32, u64, i8, i16, i32, i64, f32, f64, usize);
+
+impl<T: DeckItemDisplay, const N: usize> DeckItemDisplay for [T; N] {
+    fn item_fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "(")?;
+        for (i, v) in self.iter().enumerate() {
+            if i > 0 {
+                write!(f, ", ")?;
+            }
+            v.item_fmt(f)?;
+        }
+        write!(f, ")")
+    }
+}
+
+/// Adapts a `DeckItemDisplay` into `Display`, so it can be used with `write!`/`format!` (e.g.
+/// to format into a `String` buffer) rather than only inside a `Formatter` that's already on
+/// hand.
+pub struct DeckItemDisplayAdapter<'a, T: DeckItemDisplay>(pub &'a T);
+
+impl<T: DeckItemDisplay> Display for DeckItemDisplayAdapter<'_, T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.item_fmt(f)
+    }
+}
+
+pub fn fmt_raw_deck<T: Default + DeckItemDisplay>(
     items: &[T],
     marks: &[OrcMark],
     f: &mut std::fmt::Formatter<'_>,
@@ -418,16 +512,19 @@ pub fn fmt_raw_deck<T: Default + Display>(
             let end = next_pos.min(n_items);
             let mut iter = m.pos..end;
             if let Some(i) = iter.next() {
-                writeln!(f, " {}", items[i as usize])?;
+                write!(f, " ")?;
+                items[i as usize].item_fmt(f)?;
+                writeln!(f)?;
             }
             for i in iter {
-                writeln!(
+                write!(
                     f,
-                    "{lp:>width$}   ┤ {}",
-                    items[i as usize],
+                    "{lp:>width$}   ┤ ",
                     lp = "",
                     width = (dmax as usize + 1) * TAB_WIDTH
                 )?;
+                items[i as usize].item_fmt(f)?;
+                writeln!(f)?;
             }
         } else {
             writeln!(f)?;
@@ -454,16 +551,19 @@ pub fn fmt_raw_deck<T: Default + Display>(
             let end = next_pos.min(n_items);
             let mut iter = last.pos..end;
             if let Some(i) = iter.next() {
-                writeln!(f, " {}", items[i as usize])?;
+                write!(f, " ")?;
+                items[i as usize].item_fmt(f)?;
+                writeln!(f)?;
             }
             for i in iter {
-                writeln!(
+                write!(
                     f,
-                    "{lp:>width$}   ┤ {}",
-                    items[i as usize],
+                    "{lp:>width$}   ┤ ",
                     lp = "",
                     width = (dmax as usize + 1) * TAB_WIDTH
                 )?;
+                items[i as usize].item_fmt(f)?;
+                writeln!(f)?;
             }
         } else {
             writeln!(f)?;
@@ -472,20 +572,21 @@ pub fn fmt_raw_deck<T: Default + Display>(
     }
     // Items after the last mark (or all items if no marks).
     for item in items.iter().skip(tail_start as usize) {
-        writeln!(
+        write!(
             f,
-            "{lp:>width$}   ┤ {}",
-            item,
+            "{lp:>width$}   ┤ ",
             lp = "",
             width = (dmax as usize + 1) * TAB_WIDTH
         )?;
+        item.item_fmt(f)?;
+        writeln!(f)?;
     }
     Ok(())
 }
 
 impl<T> Display for Deck<T>
 where
-    T: Default + Display,
+    T: Default + DeckItemDisplay,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         fmt_raw_deck(&self.items, &self.marks, f)
@@ -736,22 +837,34 @@ where
 
 impl<'a, T: TOrcData> DeckView<'a, T> {
     pub fn from_handle(handle: &'a OrcHandle) -> Result<Self, Error> {
-        if handle.type_id != T::TYPE_INFO.type_id {
+        // `item_size` is only checked when there are items to misread: an empty handle can carry
+        // a stale/default `item_size` (e.g. 0, or a leftover aggregate size) with nothing behind
+        // it to actually misinterpret, so requiring it to match `T` here would reject otherwise
+        // harmless empty handles.
+        if handle.type_id != T::TYPE_INFO.type_id
+            || (handle.n_items > 0 && handle.item_size as usize != std::mem::size_of::<T>())
+        {
             return Err(Error::DeckTypeMismatch);
         }
-        // # SAFETY: We just checked the type id. Not a water tight test if we're accessing this
-        // data over the FFI boundary, but this is as safe as I can think of making this code at
-        // this time.
+        // # SAFETY: We just checked the type id and item_size. Not a water tight test if we're
+        // accessing this data over the FFI boundary, but this is as safe as I can think of making
+        // this code at this time.
         Ok(unsafe { Self::from_handle_unchecked(handle, None) })
     }
 
     pub fn from_handle_at_depth(handle: &'a OrcHandle, depth: u8) -> Result<Self, Error> {
-        if handle.type_id != T::TYPE_INFO.type_id {
+        // `item_size` is only checked when there are items to misread: an empty handle can carry
+        // a stale/default `item_size` (e.g. 0, or a leftover aggregate size) with nothing behind
+        // it to actually misinterpret, so requiring it to match `T` here would reject otherwise
+        // harmless empty handles.
+        if handle.type_id != T::TYPE_INFO.type_id
+            || (handle.n_items > 0 && handle.item_size as usize != std::mem::size_of::<T>())
+        {
             return Err(Error::DeckTypeMismatch);
         }
-        // # SAFETY: We just checked the type id. Not a water tight test if we're accessing this
-        // data over the FFI boundary, but this is as safe as I can think of making this code at
-        // this time.
+        // # SAFETY: We just checked the type id and item_size. Not a water tight test if we're
+        // accessing this data over the FFI boundary, but this is as safe as I can think of making
+        // this code at this time.
         Ok(unsafe { Self::from_handle_unchecked(handle, Some(depth)) })
     }
 
@@ -761,7 +874,12 @@ impl<'a, T: TOrcData> DeckView<'a, T> {
     /// # SAFETY
     ///
     /// The caller is responsible for making sure that the items pointer actually points to data of
-    /// type T, and that `handle.type_id` matches the id of type `T`.
+    /// type T, that `handle.type_id` matches the id of type `T`, and that `handle.item_size`
+    /// equals `size_of::<T>()` -- this reads exactly `handle.n_items` elements of `T`, so a
+    /// handle whose item_size is a multiple of (but not equal to) `size_of::<T>()` -- e.g. an
+    /// aggregate sharing a scalar's type_id -- would silently read only the first component of
+    /// each item instead of erroring out, since marks/strides here are indexed in units of
+    /// `handle.n_items`, not the flattened scalar count.
     unsafe fn from_handle_unchecked(handle: &'a OrcHandle, requested_depth: Option<u8>) -> Self {
         let (items, marks, stride_offset, strides) = unsafe {
             let items = slice_from_ptr(handle.items.cast(), handle.n_items as usize);

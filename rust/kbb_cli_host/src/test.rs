@@ -104,6 +104,69 @@ fn t_flatten_deck_fn() {
     assert_eq!(view.items(), &[1.0, 2.0, 3.0, 4.0, 5.0]);
 }
 
+// ==================== Aggregate types (e.g. [f64;3]) across the FFI boundary ====================
+//
+// These mirror the scalar tests above but exercise a real, dlopen'd plugin's dispatch,
+// serialization, proxy, and cloning code paths with an aggregate (item_size=24, [f64;3]) deck --
+// not just the in-process orc_sdk/example_rust_plugin unit tests, which never cross the actual
+// FFI boundary this host loads plugins through.
+
+#[test]
+fn t_vec3_length_fn() {
+    let vec3_length_fn = PLUGIN_SET
+        .get_function("vec3_length")
+        .expect("vec3_length function not found");
+    let mut v = Deck::<[f64; 3]>::default();
+    v.push([3.0, 4.0, 0.0], 1);
+    v.push([0.0, 0.0, 1.0], 0);
+    v.push([1.0, 2.0, 2.0], 0);
+    let mut v_handle = OrcHandle {
+        handle: next_id(),
+        ..Default::default()
+    };
+    let mut out_handle = OrcHandle {
+        handle: next_id(),
+        ..Default::default()
+    };
+    unsafe {
+        update_handle_from_deck(&v, &mut v_handle);
+        (vec3_length_fn.func.expect("Invalid function"))(0, &v_handle, 1, &mut out_handle, 1);
+    }
+    let view = DeckView::<f64>::from_handle(&out_handle).unwrap();
+    assert_eq!(view.items(), &[5.0, 1.0, 3.0]);
+}
+
+#[test]
+fn t_flatten_deck_vec3_fn() {
+    // Proxy path (flatten_deck internally uses orc_sdk_deck_from_proxy / deck_from_proxy)
+    // exercised with an aggregate item_size, across the FFI boundary.
+    let flatten_fn = PLUGIN_SET
+        .get_function("flatten_deck")
+        .expect("flatten_deck function not found");
+    let mut a = Deck::<[f64; 3]>::default();
+    a.push([1.0, 2.0, 3.0], 2);
+    a.push([4.0, 5.0, 6.0], 1);
+    a.push([7.0, 8.0, 9.0], 0);
+    let mut a_handle = OrcHandle {
+        handle: next_id(),
+        ..Default::default()
+    };
+    let mut out_handle = OrcHandle {
+        handle: next_id(),
+        ..Default::default()
+    };
+    unsafe {
+        update_handle_from_deck(&a, &mut a_handle);
+        (flatten_fn.func.expect("Invalid function"))(0, &a_handle, 1, &mut out_handle, 1);
+    }
+    assert_eq!(out_handle.item_size, size_of::<[f64; 3]>() as u64);
+    let view = DeckView::<[f64; 3]>::from_handle(&out_handle).unwrap();
+    assert_eq!(
+        view.items(),
+        &[[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]]
+    );
+}
+
 #[test]
 fn t_flatten_complex() {
     // [[1+0i, 0+1i], [2+0i]] * [[5+0i, 0+1i], [3+0i]] = [[5+0i, -1+0i], [6+0i]]
@@ -1030,6 +1093,29 @@ fn t_dag_nested_fn_with_outer_input() {
     assert_eq!(view.items(), &[10.0, 14.0]);
 }
 
+// ==================== Cloning (host_clone_orc_handle) with an aggregate type ====================
+//
+// `host_clone_orc_handle` is called on every constant/input a workflow touches (see `wf.run`
+// above, in every DAG test), but never with an aggregate handle until now.
+
+#[test]
+fn t_clone_orc_handle_vec3_aggregate() {
+    let mut v = Deck::<[f64; 3]>::default();
+    v.push([1.0, 2.0, 3.0], 1);
+    v.push([4.0, 5.0, 6.0], 0);
+    let handle = make_handle(&v);
+    let cloned = host_clone_orc_handle(handle.borrowed()).unwrap();
+    assert_eq!(cloned.type_id, handle.type_id);
+    assert_eq!(cloned.item_size, size_of::<[f64; 3]>() as u64);
+    assert_eq!(cloned.n_items, 2);
+    assert_eq!(
+        cloned.items::<[f64; 3]>().unwrap(),
+        &[[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]
+    );
+    // The clone must be an independent copy, not an alias of the original.
+    assert_ne!(cloned.items, handle.items);
+}
+
 // ==================== Full round-trip serialization ====================
 
 /// Look up the plugin that owns `type_id`, matching the host's dispatch pattern.
@@ -1078,7 +1164,7 @@ fn t_serial_round_trip_f64_flat() {
     let d = deck![1.0_f64, 2.0, 3.0];
     let h = make_handle(&d);
     let out = serial_round_trip(&h);
-    assert_eq!(out.items::<f64>(), &[1.0, 2.0, 3.0]);
+    assert_eq!(out.items::<f64>().unwrap(), &[1.0, 2.0, 3.0]);
 }
 
 #[test]
@@ -1087,7 +1173,7 @@ fn t_serial_round_trip_f64_nested() {
     let h = make_handle(&d);
     assert!(h.n_marks > 0);
     let out = serial_round_trip(&h);
-    assert_eq!(out.items::<f64>(), &[1.0, 2.0, 3.0]);
+    assert_eq!(out.items::<f64>().unwrap(), &[1.0, 2.0, 3.0]);
     assert_eq!(out.n_marks, h.n_marks);
     let orig_marks = unsafe { std::slice::from_raw_parts(h.marks, h.n_marks as usize) };
     let out_marks = unsafe { std::slice::from_raw_parts(out.marks, out.n_marks as usize) };
@@ -1110,11 +1196,51 @@ fn t_serial_round_trip_f64_deeply_nested() {
 }
 
 #[test]
+fn t_serial_round_trip_vec3_flat() {
+    // Same as t_serial_round_trip_f64_flat, but item_size=24 ([f64;3]) instead of 8 -- through
+    // the plugin's real serialize_deck/deserialize_deck FFI exports, not the in-process
+    // try_serialize_handle/try_deserialize_handle unit tests in orc_sdk.
+    let mut d = Deck::<[f64; 3]>::default();
+    d.push([1.0, 2.0, 3.0], 1);
+    d.push([4.0, 5.0, 6.0], 0);
+    let h = make_handle(&d);
+    assert_eq!(h.item_size, size_of::<[f64; 3]>() as u64);
+    let out = serial_round_trip(&h);
+    assert_eq!(out.item_size, size_of::<[f64; 3]>() as u64);
+    assert_eq!(
+        out.items::<[f64; 3]>().unwrap(),
+        &[[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]
+    );
+}
+
+#[test]
+fn t_serial_round_trip_vec3_nested() {
+    let mut d = Deck::<[f64; 3]>::default();
+    d.push([1.0, 2.0, 3.0], 2);
+    d.push([4.0, 5.0, 6.0], 1);
+    d.push([7.0, 8.0, 9.0], 0);
+    let h = make_handle(&d);
+    assert!(h.n_marks > 0);
+    let out = serial_round_trip(&h);
+    assert_eq!(out.n_marks, h.n_marks);
+    assert_eq!(
+        out.items::<[f64; 3]>().unwrap(),
+        &[[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]]
+    );
+    let orig_marks = unsafe { std::slice::from_raw_parts(h.marks, h.n_marks as usize) };
+    let out_marks = unsafe { std::slice::from_raw_parts(out.marks, out.n_marks as usize) };
+    for (a, b) in orig_marks.iter().zip(out_marks.iter()) {
+        assert_eq!(a.depth, b.depth);
+        assert_eq!(a.pos, b.pos);
+    }
+}
+
+#[test]
 fn t_serial_round_trip_i32() {
     let d = deck![10_i32, 20, 30, 40];
     let h = make_handle(&d);
     let out = serial_round_trip(&h);
-    assert_eq!(out.items::<i32>(), &[10, 20, 30, 40]);
+    assert_eq!(out.items::<i32>().unwrap(), &[10, 20, 30, 40]);
 }
 
 #[test]
@@ -1122,7 +1248,7 @@ fn t_serial_round_trip_u8() {
     let d = deck![255_u8, 0, 128];
     let h = make_handle(&d);
     let out = serial_round_trip(&h);
-    assert_eq!(out.items::<u8>(), &[255, 0, 128]);
+    assert_eq!(out.items::<u8>().unwrap(), &[255, 0, 128]);
 }
 
 #[test]
@@ -1130,7 +1256,7 @@ fn t_serial_round_trip_u16() {
     let d = deck![100_u16, 200, 65535];
     let h = make_handle(&d);
     let out = serial_round_trip(&h);
-    assert_eq!(out.items::<u16>(), &[100, 200, 65535]);
+    assert_eq!(out.items::<u16>().unwrap(), &[100, 200, 65535]);
 }
 
 #[test]
@@ -1138,7 +1264,7 @@ fn t_serial_round_trip_u32() {
     let d = deck![1000_u32, 2000, u32::MAX];
     let h = make_handle(&d);
     let out = serial_round_trip(&h);
-    assert_eq!(out.items::<u32>(), &[1000, 2000, u32::MAX]);
+    assert_eq!(out.items::<u32>().unwrap(), &[1000, 2000, u32::MAX]);
 }
 
 #[test]
@@ -1146,7 +1272,7 @@ fn t_serial_round_trip_u64() {
     let d = deck![u64::MAX, 0_u64, 42];
     let h = make_handle(&d);
     let out = serial_round_trip(&h);
-    assert_eq!(out.items::<u64>(), &[u64::MAX, 0, 42]);
+    assert_eq!(out.items::<u64>().unwrap(), &[u64::MAX, 0, 42]);
 }
 
 #[test]
@@ -1154,7 +1280,7 @@ fn t_serial_round_trip_i8() {
     let d = deck![-128_i8, 0, 127];
     let h = make_handle(&d);
     let out = serial_round_trip(&h);
-    assert_eq!(out.items::<i8>(), &[-128, 0, 127]);
+    assert_eq!(out.items::<i8>().unwrap(), &[-128, 0, 127]);
 }
 
 #[test]
@@ -1162,7 +1288,7 @@ fn t_serial_round_trip_i16() {
     let d = deck![-100_i16, 0, 100];
     let h = make_handle(&d);
     let out = serial_round_trip(&h);
-    assert_eq!(out.items::<i16>(), &[-100, 0, 100]);
+    assert_eq!(out.items::<i16>().unwrap(), &[-100, 0, 100]);
 }
 
 #[test]
@@ -1170,7 +1296,7 @@ fn t_serial_round_trip_i64() {
     let d = deck![i64::MIN, 0_i64, i64::MAX];
     let h = make_handle(&d);
     let out = serial_round_trip(&h);
-    assert_eq!(out.items::<i64>(), &[i64::MIN, 0, i64::MAX]);
+    assert_eq!(out.items::<i64>().unwrap(), &[i64::MIN, 0, i64::MAX]);
 }
 
 #[test]
@@ -1178,7 +1304,7 @@ fn t_serial_round_trip_f32() {
     let d = deck![1.5_f32, -2.5, 0.0];
     let h = make_handle(&d);
     let out = serial_round_trip(&h);
-    assert_eq!(out.items::<f32>(), &[1.5f32, -2.5, 0.0]);
+    assert_eq!(out.items::<f32>().unwrap(), &[1.5f32, -2.5, 0.0]);
 }
 
 #[test]
@@ -1282,8 +1408,14 @@ fn extract_complex_parts(handle: &OrcHandle) -> (Vec<f64>, Vec<f64>) {
             2,
         );
     }
-    let reals = outputs[0].items::<f64>().to_vec();
-    let imags = outputs[1].items::<f64>().to_vec();
+    assert!(
+        outputs
+            .iter()
+            .all(|o| o.item_size as usize == size_of::<f64>()),
+        "We're not expecting aggregate types here"
+    );
+    let reals = outputs[0].items::<f64>().unwrap().to_vec();
+    let imags = outputs[1].items::<f64>().unwrap().to_vec();
     (reals, imags)
 }
 
@@ -1364,8 +1496,9 @@ fn t_serial_every_plugin_handles_builtin_types() {
             for (si, sp) in plugins.iter().enumerate() {
                 for (di, dp) in plugins.iter().enumerate() {
                     let out = cross_plugin_round_trip(&h, sp, dp);
+                    assert!(out.item_size as usize == size_of::<$ty>(), "We're not expecting aggregate types here");
                     assert_eq!(
-                        out.items::<$ty>(), expected,
+                        out.items::<$ty>().unwrap(), expected,
                         "failed: serialize with plugin {si} ({}), deserialize with plugin {di} ({}), type {}",
                         sp.name(), dp.name(), stringify!($ty)
                     );
@@ -1394,8 +1527,12 @@ fn t_serial_every_plugin_handles_nested_builtin() {
     for (si, sp) in plugins.iter().enumerate() {
         for (di, dp) in plugins.iter().enumerate() {
             let out = cross_plugin_round_trip(&h, sp, dp);
+            assert!(
+                out.item_size as usize == size_of::<f64>(),
+                "Not expecting aggregate types."
+            );
             assert_eq!(
-                out.items::<f64>(),
+                out.items::<f64>().unwrap(),
                 &[1.0, 2.0, 3.0],
                 "items mismatch: plugin {si} ({}) -> plugin {di} ({})",
                 sp.name(),
@@ -1404,6 +1541,126 @@ fn t_serial_every_plugin_handles_nested_builtin() {
             assert_eq!(out.n_marks, h.n_marks);
         }
     }
+}
+
+#[test]
+fn t_serial_every_plugin_handles_vec3_aggregate() {
+    // Same as t_serial_every_plugin_handles_builtin_types, but with an aggregate item_size --
+    // every plugin owning the F64 type_id must serialize/deserialize the full 24-byte item, not
+    // just the first component, regardless of which plugin produced or consumes the bytes.
+    let plugins = PLUGIN_SET.plugins();
+    let mut d = Deck::<[f64; 3]>::default();
+    d.push([1.5, -2.5, 0.0], 1);
+    d.push([3.0, 4.0, 5.0], 0);
+    let h = make_handle(&d);
+    assert_eq!(h.item_size, size_of::<[f64; 3]>() as u64);
+    for (si, sp) in plugins.iter().enumerate() {
+        for (di, dp) in plugins.iter().enumerate() {
+            let out = cross_plugin_round_trip(&h, sp, dp);
+            assert_eq!(
+                out.item_size as usize,
+                size_of::<[f64; 3]>(),
+                "plugin {si} ({}) -> plugin {di} ({}) lost the aggregate item_size",
+                sp.name(),
+                dp.name()
+            );
+            assert_eq!(
+                out.items::<[f64; 3]>().unwrap(),
+                &[[1.5, -2.5, 0.0], [3.0, 4.0, 5.0]],
+                "plugin {si} ({}) -> plugin {di} ({})",
+                sp.name(),
+                dp.name()
+            );
+        }
+    }
+}
+
+#[test]
+fn t_serial_every_plugin_handles_nested_vec3_aggregate() {
+    // Same as t_serial_every_plugin_handles_nested_builtin, but with an aggregate item_size --
+    // proves marks/structure AND the aggregate item_size both survive a cross-plugin round trip
+    // together, not just one or the other.
+    let plugins = PLUGIN_SET.plugins();
+    let mut d = Deck::<[f64; 3]>::default();
+    d.push([1.0, 2.0, 3.0], 2);
+    d.push([4.0, 5.0, 6.0], 0);
+    d.push([7.0, 8.0, 9.0], 1);
+    let h = make_handle(&d);
+    assert!(h.n_marks > 0);
+    for (si, sp) in plugins.iter().enumerate() {
+        for (di, dp) in plugins.iter().enumerate() {
+            let out = cross_plugin_round_trip(&h, sp, dp);
+            assert_eq!(
+                out.item_size as usize,
+                size_of::<[f64; 3]>(),
+                "plugin {si} ({}) -> plugin {di} ({}) lost the aggregate item_size",
+                sp.name(),
+                dp.name()
+            );
+            assert_eq!(
+                out.items::<[f64; 3]>().unwrap(),
+                &[[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]],
+                "plugin {si} ({}) -> plugin {di} ({})",
+                sp.name(),
+                dp.name()
+            );
+            assert_eq!(out.n_marks, h.n_marks, "plugin {si} -> plugin {di}");
+        }
+    }
+}
+
+#[test]
+fn t_serial_concurrent_serialization_aggregate() {
+    // Same concurrency shape as t_serial_concurrent_serialization, but both decks are
+    // aggregates (different item_size from each other) -- proves the concurrent serialize path
+    // doesn't cross-contaminate item_size/bytes between threads.
+    let plugins = PLUGIN_SET.plugins();
+    let plugin = &plugins[0];
+    let mut d1 = Deck::<[f64; 3]>::default();
+    d1.push([1.0, 2.0, 3.0], 1);
+    d1.push([4.0, 5.0, 6.0], 0);
+    let mut d2 = Deck::<[i32; 2]>::default();
+    d2.push([-10, 20], 1);
+    d2.push([-30, 40], 0);
+    let h1 = make_handle(&d1);
+    let h2 = make_handle(&d2);
+    let bh1 = h1.borrowed();
+    let bh2 = h2.borrowed();
+    std::thread::scope(|s| {
+        let t1 = s.spawn(|| {
+            plugin
+                .serialize_deck(&SERIAL_CONTEXT_ARENA, bh1.inner(), |buf| buf.clone())
+                .expect("thread 1 serialization failed")
+        });
+        let t2 = s.spawn(|| {
+            plugin
+                .serialize_deck(&SERIAL_CONTEXT_ARENA, bh2.inner(), |buf| buf.clone())
+                .expect("thread 2 serialization failed")
+        });
+        let buf1 = t1.join().unwrap();
+        let buf2 = t2.join().unwrap();
+        let mut out1 = OrcHandle {
+            handle: next_id(),
+            ..Default::default()
+        };
+        plugin
+            .deserialize_deck(0, &buf1, &mut out1)
+            .expect("deserialize buf1 failed");
+        assert_eq!(out1.item_size as usize, size_of::<[f64; 3]>());
+        assert_eq!(
+            out1.items::<[f64; 3]>().unwrap(),
+            &[[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]
+        );
+        let mut out2 = OrcHandle {
+            handle: next_id(),
+            ..Default::default()
+        };
+        plugin
+            .deserialize_deck(0, &buf2, &mut out2)
+            .expect("deserialize buf2 failed");
+        assert_eq!(out2.item_size as usize, size_of::<[i32; 2]>());
+        assert_eq!(out2.items::<[i32; 2]>().unwrap(), &[[-10, 20], [-30, 40]]);
+    });
 }
 
 #[test]
@@ -1438,7 +1695,11 @@ fn t_serial_concurrent_serialization() {
         plugin
             .deserialize_deck(0, &buf1, &mut out1)
             .expect("deserialize buf1 failed");
-        assert_eq!(out1.items::<f64>(), &[1.0, 2.0, 3.0, 4.0, 5.0]);
+        assert!(
+            out1.item_size as usize == size_of::<f64>(),
+            "Not expecting aggregate types"
+        );
+        assert_eq!(out1.items::<f64>().unwrap(), &[1.0, 2.0, 3.0, 4.0, 5.0]);
         let mut out2 = OrcHandle {
             handle: next_id(),
             ..Default::default()
@@ -1446,7 +1707,11 @@ fn t_serial_concurrent_serialization() {
         plugin
             .deserialize_deck(0, &buf2, &mut out2)
             .expect("deserialize buf2 failed");
-        assert_eq!(out2.items::<i32>(), &[-10, 20, -30, 40, -50]);
+        assert!(
+            out2.item_size as usize == size_of::<i32>(),
+            "Not expecting aggregate types"
+        );
+        assert_eq!(out2.items::<i32>().unwrap(), &[-10, 20, -30, 40, -50]);
     });
 }
 
@@ -1572,6 +1837,33 @@ fn t_deck_to_str_every_plugin_handles_builtin() {
             i,
             plugin.name()
         );
+    }
+}
+
+#[test]
+fn t_deck_to_str_vec3_aggregate() {
+    // deck_to_str's dispatch (in dagger/pyorc/every plugin) matches type_id alone and calls
+    // to_str_deck::<f64>(...) -- since to_str_deck itself now resolves item_size -> [T; N]
+    // internally, this should already comma-join an aggregate without any dispatch changes,
+    // same as the deck_from_proxy story. Exercised here across every loaded plugin.
+    let plugins = PLUGIN_SET.plugins();
+    let mut d = Deck::<[f64; 3]>::default();
+    d.push([1.0, 2.0, 3.0], 1);
+    d.push([4.0, 5.0, 6.0], 0);
+    let h = make_handle(&d);
+    assert_eq!(h.item_size, size_of::<[f64; 3]>() as u64);
+    for (i, plugin) in plugins.iter().enumerate() {
+        let mut out = OrcHandle {
+            handle: next_id(),
+            ..Default::default()
+        };
+        plugin
+            .to_str_deck(&h, &mut out)
+            .unwrap_or_else(|e| panic!("plugin {} ({}) failed: {e:?}", i, plugin.name()));
+        let groups = to_str_groups(&out);
+        assert_eq!(groups.len(), 2, "plugin {} ({})", i, plugin.name());
+        assert_eq!(groups[0], "(1, 2, 3)", "plugin {} ({})", i, plugin.name());
+        assert_eq!(groups[1], "(4, 5, 6)", "plugin {} ({})", i, plugin.name());
     }
 }
 

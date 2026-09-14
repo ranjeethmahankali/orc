@@ -1,14 +1,15 @@
 //! Editable ruler display for Constant nodes: per-value text boxes laid out with the same ruler
 //! prefixes as `Deck`'s own `Display` impl, editability gated on whether the constant's handle
 //! lives in the host's own `DeckRegistry` (a plugin-owned type's storage can't be reached this
-//! way at all), and append-at-depth-0 to grow the deck's last run without touching its existing
-//! structure.
+//! way at all). The cache holds one string per item plus the deck's mark structure, coupled to
+//! the UI and converted back into a fresh deck on commit -- via the ABI (`to_str_deck` for
+//! reading, `FromStr` for writing) instead of hand-formatting items or nudging the deck in
+//! place. A commit that fails to parse leaves the deck untouched and paints the node red until
+//! the text is fixed.
 
 use crate::state::EditorState;
-use orc_sdk::{
-    NH, NodeInfo, ORC_TYPE_F64, ORC_TYPE_I64, OrcHandle, OrcMark, TypeOwner,
-    update_handle_from_deck,
-};
+use orc_sdk::{NH, NodeInfo, ORC_TYPE_F64, ORC_TYPE_I64, OrcHandle, OrcMark, TypeOwner};
+use std::mem::size_of;
 
 const TAB_WIDTH: usize = 3;
 
@@ -141,11 +142,23 @@ pub(crate) fn deck_rows(n_items: usize, marks: &[OrcMark]) -> Vec<Row> {
 /// how to parse/format (`f64` or `i64` today). A plugin-owned type's storage lives entirely on
 /// the other side of the FFI boundary -- possibly not even Rust -- so there is no `with_mut` to
 /// borrow it through at all; those constants stay read-only, same as before this feature existed.
+///
+/// `item_size` must match the scalar exactly, not just be a multiple of it: an aggregate (e.g. an
+/// F64x3 handle, which shares F64's type_id) would otherwise be treated as if it were a plain list
+/// of scalars, and this editor would show one text box per aggregate item holding only that
+/// item's first component, silently discarding the rest.
 pub(crate) fn is_editable(handle: &OrcHandle) -> bool {
-    matches!(
+    if !matches!(
         crate::PLUGIN_SET.get_type_owner(handle.type_id),
         Some(TypeOwner::BuiltIn(_))
-    ) && matches!(handle.type_id, ORC_TYPE_F64 | ORC_TYPE_I64)
+    ) {
+        return false;
+    }
+    match handle.type_id {
+        ORC_TYPE_F64 => handle.item_size as usize == size_of::<f64>(),
+        ORC_TYPE_I64 => handle.item_size as usize == size_of::<i64>(),
+        _ => false,
+    }
 }
 
 /// The same collapsed-ruler text `Inspect` shows for arbitrary connected data, used for a
@@ -163,25 +176,53 @@ pub(crate) fn render_readonly(handle: &OrcHandle) -> String {
     }
 }
 
-/// Cached per-row edit buffers for a Constant node, resynced from the deck whenever the item
-/// count changes (a fresh node, or this module's own append) -- never on a plain value edit,
-/// since that's this module committing exactly what the buffer already holds.
+/// Cached per-row edit buffers for a Constant node's editable ruler rows, plus the deck's mark
+/// structure as of the last time the cache was synced. Everything the editor can change lives in
+/// here -- each row's text and the mark structure it sits in -- and a commit parses all of it
+/// back into a fresh deck (via the ABI's `to_str_deck`/`FromStr`) rather than formatting items
+/// by hand or poking at the deck in place.
 #[derive(Default, Clone)]
 pub(crate) struct ConstEditCache {
     pub(crate) editable: bool,
     pub(crate) buffers: Vec<String>,
+    pub(crate) marks: Vec<OrcMark>,
+    /// An edit attempt failed to parse one of `buffers`. The node is painted red, the deck is
+    /// left untouched, and the offending text is kept so the user can fix it; cleared again once
+    /// a commit parses cleanly.
+    pub(crate) invalid: bool,
 }
 
-fn format_item(handle: &OrcHandle, index: usize) -> String {
-    match handle.type_id {
-        ORC_TYPE_I64 => handle.items::<i64>()[index].to_string(),
-        _ => handle.items::<f64>()[index].to_string(),
+/// Decodes one string per item straight from the ABI's own `to_str_deck` conversion -- the same
+/// text the read-only `host_deck_to_str` path renders -- instead of this module hand-formatting
+/// each item. A string deck (`Deck<u8>`) emits exactly one mark per original item, each mark's
+/// byte range `[pos, next_pos)` being that item's `Display` string, so the result indexes 1:1 by
+/// item. `None` means the conversion failed (unreachable in practice for an editable built-in
+/// scalar handle; kept non-panicking regardless).
+fn decode_buffers(handle: &OrcHandle) -> Option<Vec<String>> {
+    let mut str_deck = orc_sdk::Deck::<u8>::default();
+    let converted = match handle.type_id {
+        ORC_TYPE_I64 => orc_sdk::to_str_deck::<i64>(handle, &mut str_deck),
+        _ => orc_sdk::to_str_deck::<f64>(handle, &mut str_deck),
+    };
+    converted.ok()?;
+    let items = str_deck.items();
+    let marks = str_deck.marks();
+    let mut buffers = Vec::with_capacity(marks.len());
+    for (i, mark) in marks.iter().enumerate() {
+        let next = marks
+            .get(i + 1)
+            .map(|m| m.pos)
+            .unwrap_or(items.len() as u64);
+        let end = next.min(items.len() as u64) as usize;
+        let start = (mark.pos as usize).min(end);
+        buffers.push(String::from_utf8(items[start..end].to_vec()).ok()?);
     }
+    Some(buffers)
 }
 
 /// Resyncs every Constant node's edit-buffer cache. Called once per frame, same as
 /// `inspect::refresh_all`; cheap when nothing has changed, since it only rebuilds a node's
-/// buffers when its item count no longer matches what's cached.
+/// buffers when its item count or mark structure no longer matches what's cached.
 pub fn refresh_all(state: &mut EditorState) {
     let nodes: Vec<NH> = state.workflow.node_iter().collect();
     for nh in nodes {
@@ -202,103 +243,157 @@ fn refresh(state: &mut EditorState, nh: NH) {
     let Ok(mut cache) = state.const_edit_cache.try_borrow_mut() else {
         return;
     };
-    if cache[nh].buffers.len() == n_items && cache[nh].editable == editable {
-        return;
-    }
-    cache[nh] = ConstEditCache {
-        editable,
-        buffers: (0..n_items).map(|i| format_item(handle, i)).collect(),
-    };
-}
-
-/// Parses `state.const_edit_cache[nh].buffers[item_index]` and writes it back into the real
-/// deck via `DeckRegistry::with_mut` -- the registry's own lock is what makes this safe, not
-/// anything about the handle itself: a dispatched job never shares this memory in the first
-/// place, since `exec::dispatch` clones a fresh, independent copy of a constant's handle for
-/// every job (see "Handle lifetime across threads" in PROJECT.org), so nothing is ever reading
-/// through the same backing storage this mutates. On a parse failure, the buffer is reset back
-/// to the value actually stored, rather than silently keeping unparseable text on screen.
-pub fn commit_row(state: &mut EditorState, nh: NH, item_index: usize) {
-    let mut node_info_prop = state.workflow.node_info_prop();
-    let Ok(mut node_infos) = node_info_prop.try_borrow_mut() else {
-        return;
-    };
-    let NodeInfo::Constant(handle) = &mut node_infos[nh] else {
-        return;
-    };
-    if !is_editable(handle) {
-        return;
-    }
-    let Ok(mut cache) = state.const_edit_cache.try_borrow_mut() else {
-        return;
-    };
-    let Some(text) = cache[nh].buffers.get(item_index).cloned() else {
-        return;
-    };
-
-    let type_id = handle.type_id;
-    let write_result = if type_id == ORC_TYPE_I64 {
-        let Ok(value) = text.trim().parse::<i64>() else {
-            cache[nh].buffers[item_index] = format_item(handle, item_index);
-            return;
-        };
-        crate::REGISTRY.with_mut(&[handle.handle], |decks| -> Result<(), orc_sdk::Error> {
-            let deck = decks[0]
-                .downcast_mut::<orc_sdk::Deck<i64>>()
-                .ok_or(orc_sdk::Error::DeckTypeMismatch)?;
-            deck.items_mut()[item_index] = value;
-            unsafe { update_handle_from_deck(deck, &mut *handle) };
-            Ok(())
-        })
-    } else {
-        let Ok(value) = text.trim().parse::<f64>() else {
-            cache[nh].buffers[item_index] = format_item(handle, item_index);
-            return;
-        };
-        crate::REGISTRY.with_mut(&[handle.handle], |decks| -> Result<(), orc_sdk::Error> {
-            let deck = decks[0]
-                .downcast_mut::<orc_sdk::Deck<f64>>()
-                .ok_or(orc_sdk::Error::DeckTypeMismatch)?;
-            deck.items_mut()[item_index] = value;
-            unsafe { update_handle_from_deck(deck, &mut *handle) };
-            Ok(())
-        })
-    };
-    // Whether the write succeeded or the registry rejected it (unreachable in practice --
-    // `is_editable` already gated the type against what's actually stored), the buffer always
-    // ends up showing whatever the deck actually holds now, never leftover unsynced text.
-    cache[nh].buffers[item_index] = format_item(handle, item_index);
-    if write_result.is_err() {
-        return;
-    }
-    drop(cache);
-    drop(node_infos);
-    after_edit(state, nh);
-}
-
-/// Appends one more value at depth 0 -- extends the deck's last (currently open) run without
-/// creating a new mark for it (it's a plain continuation, depth 0), so nothing about the
-/// existing structure changes except the one new slot. Works by replaying every original item's
-/// exact external push depth into a fresh deck (recovering that depth is exactly what
-/// `deck_rows`' ruler math already does, just used here to drive `push`/`start_new_arr` instead
-/// of a ruler string), splicing the new value in right after `after_index` -- which also
-/// correctly preserves an empty group's bare mark, unlike naively shifting mark positions by
-/// hand would if not done carefully.
-fn rebuild_with_insertion<T: Copy + Default>(
-    items: &[T],
-    marks: &[OrcMark],
-    after_index: usize,
-    new_value: T,
-) -> orc_sdk::Deck<T> {
-    let mut new_deck = orc_sdk::Deck::<T>::default();
-    let n_items = items.len() as u64;
-
-    let push_item = |new_deck: &mut orc_sdk::Deck<T>, i: u64| {
-        new_deck.push(items[i as usize], 0);
-        if i as usize == after_index {
-            new_deck.push(new_value, 0);
+    let entry = &mut cache[nh];
+    if !editable {
+        if entry.editable {
+            *entry = ConstEditCache::default();
         }
+        return;
+    }
+    let marks = handle.marks().to_vec();
+    if entry.editable && entry.buffers.len() == n_items && entry.marks == marks {
+        return;
+    }
+    let Some(buffers) = decode_buffers(handle) else {
+        // Unreachable in practice for an editable built-in scalar handle (see `decode_buffers`);
+        // degrade to a red, empty cache rather than panic.
+        *entry = ConstEditCache {
+            editable,
+            buffers: Vec::new(),
+            marks,
+            invalid: true,
+        };
+        return;
     };
+    debug_assert_eq!(buffers.len(), n_items);
+    *entry = ConstEditCache {
+        editable,
+        buffers,
+        marks,
+        invalid: false,
+    };
+}
+
+/// The structural change to apply while rebuilding a constant's deck from its edit buffers.
+#[derive(Clone, Copy)]
+enum ConstEdit {
+    /// A plain value commit: parse every buffer, dropping any that are empty.
+    Commit,
+    /// Insert a fresh default-valued row right after `after_index`.
+    InsertAfter { after_index: usize },
+    /// Drop the row at `delete_index` outright.
+    DeleteAt { delete_index: usize },
+}
+
+/// The deck that a rebuild produced, plus bookkeeping for callers that must track positions in
+/// the newly built deck (keyboard focus).
+struct BuiltDeck {
+    deck: BuiltDeckEnum,
+    /// New index in the rebuilt deck of each retained original item; `None` for one that was
+    /// eliminated (an empty buffer, or the explicit delete target).
+    new_indices: Vec<Option<usize>>,
+    /// Where an inserted default row landed, when this edit was an insertion.
+    inserted_at: Option<usize>,
+}
+
+/// Generic intermediate: the rebuilt deck plus the same bookkeeping fields as `BuiltDeck`
+/// (which stores it through `BuiltDeckEnum` once its type is known).
+struct Rebuilt<T: Default> {
+    deck: orc_sdk::Deck<T>,
+    new_indices: Vec<Option<usize>>,
+    inserted_at: Option<usize>,
+}
+
+enum BuiltDeckEnum {
+    F64(orc_sdk::Deck<f64>),
+    I64(orc_sdk::Deck<i64>),
+}
+
+impl BuiltDeck {
+    /// The `Display` text of every item in the rebuilt deck -- what the rows snap to after a
+    /// successful commit (round-trips exactly through `FromStr`).
+    fn canonical_strings(&self) -> Vec<String> {
+        match &self.deck {
+            BuiltDeckEnum::F64(d) => d.items().iter().map(|v| v.to_string()).collect(),
+            BuiltDeckEnum::I64(d) => d.items().iter().map(|v| v.to_string()).collect(),
+        }
+    }
+
+    fn marks(&self) -> Vec<OrcMark> {
+        match &self.deck {
+            BuiltDeckEnum::F64(d) => d.marks().to_vec(),
+            BuiltDeckEnum::I64(d) => d.marks().to_vec(),
+        }
+    }
+}
+
+/// Replays one item (by its original index) into the deck being rebuilt. The empty-buffer /
+/// explicit-deletion elimination happens here, as does the "insert a default row right after
+/// this item" splice, so `walk_runs`' event order carries the original structure over verbatim
+/// (including an empty group's bare mark, since `start_new_arr` runs before this for its run).
+fn replay_item<T>(
+    new_deck: &mut orc_sdk::Deck<T>,
+    index: usize,
+    delete_at: Option<usize>,
+    insert_after: Option<usize>,
+    values: &[Option<T>],
+    new_indices: &mut [Option<usize>],
+    inserted_at: &mut Option<usize>,
+) where
+    T: Copy + Default,
+{
+    if delete_at == Some(index) {
+        return;
+    }
+    if let Some(v) = values[index] {
+        new_indices[index] = Some(new_deck.items().len());
+        new_deck.push(v, 0);
+    }
+    if insert_after == Some(index) {
+        *inserted_at = Some(new_deck.items().len());
+        new_deck.push(T::default(), 0);
+    }
+}
+
+/// Generic core of `rebuild_typed`: parses every buffer (dropping empty ones -- "empty rows
+/// mean nothing"), applies `edit`'s structural change, and replays items + marks into a fresh
+/// deck just like the old `rebuild_with_insertion`/`rebuild_with_deletion` did -- the replay,
+/// rather than hand-shifting mark positions, is what correctly preserves an empty group's bare
+/// mark and keeps later groups at the right offset. A single unparseable buffer fails the whole
+/// rebuild.
+fn rebuild_buffers<T>(
+    buffers: &[String],
+    marks: &[OrcMark],
+    edit: ConstEdit,
+) -> Result<Rebuilt<T>, ()>
+where
+    T: Copy + Default + std::str::FromStr,
+{
+    let insert_after = match edit {
+        ConstEdit::InsertAfter { after_index } if after_index < buffers.len() => Some(after_index),
+        _ => None,
+    };
+    let delete_at = match edit {
+        ConstEdit::DeleteAt { delete_index } if delete_index < buffers.len() => Some(delete_index),
+        _ => None,
+    };
+
+    // Parse everything up front: any failure aborts the commit before the deck is touched.
+    let mut values: Vec<Option<T>> = Vec::with_capacity(buffers.len());
+    for text in buffers {
+        let trimmed = text.trim();
+        if trimmed.is_empty() {
+            values.push(None);
+        } else {
+            values.push(Some(trimmed.parse::<T>().map_err(|_| ())?));
+        }
+    }
+
+    let mut new_deck = orc_sdk::Deck::<T>::default();
+    let mut new_indices = vec![None; buffers.len()];
+    let mut inserted_at = None;
+    let n_items = buffers.len() as u64;
+
     walk_runs(n_items, marks, |event| match event {
         RunEvent::Run {
             depth,
@@ -306,118 +401,165 @@ fn rebuild_with_insertion<T: Copy + Default>(
             next_pos,
         } => {
             new_deck.start_new_arr(depth.saturating_add(1));
-            for i in pos..next_pos.min(n_items) {
-                push_item(&mut new_deck, i);
+            for idx in pos..next_pos.min(n_items) {
+                replay_item(
+                    &mut new_deck,
+                    idx as usize,
+                    delete_at,
+                    insert_after,
+                    &values,
+                    &mut new_indices,
+                    &mut inserted_at,
+                );
             }
         }
-        RunEvent::TailItem(i) => push_item(&mut new_deck, i),
+        RunEvent::TailItem(i) => replay_item(
+            &mut new_deck,
+            i as usize,
+            delete_at,
+            insert_after,
+            &values,
+            &mut new_indices,
+            &mut inserted_at,
+        ),
     });
-    new_deck
+
+    Ok(Rebuilt {
+        deck: new_deck,
+        new_indices,
+        inserted_at,
+    })
+}
+
+/// Dispatch over the two editable scalar types (`f64`/`i64` -- the only reachable ones, since
+/// `is_editable` gates on exactly those).
+fn rebuild_typed(
+    type_id: u64,
+    buffers: &[String],
+    marks: &[OrcMark],
+    edit: ConstEdit,
+) -> Result<BuiltDeck, ()> {
+    if type_id == ORC_TYPE_I64 {
+        rebuild_buffers::<i64>(buffers, marks, edit).map(|rebuilt| BuiltDeck {
+            deck: BuiltDeckEnum::I64(rebuilt.deck),
+            new_indices: rebuilt.new_indices,
+            inserted_at: rebuilt.inserted_at,
+        })
+    } else {
+        rebuild_buffers::<f64>(buffers, marks, edit).map(|rebuilt| BuiltDeck {
+            deck: BuiltDeckEnum::F64(rebuilt.deck),
+            new_indices: rebuilt.new_indices,
+            inserted_at: rebuilt.inserted_at,
+        })
+    }
+}
+
+/// The shared implementation behind `commit_row`/`insert_after`/`delete_row`: parses *every*
+/// edit buffer back into a fresh deck (`FromStr`), applies the requested structural edit, drops
+/// empty rows, swaps the new deck into the registry, resyncs the cache, and propagates
+/// downstream -- the registry's own lock is what makes this safe, nothing about the handle
+/// itself: a dispatched job never shares this memory in the first place (see "Handle lifetime
+/// across threads" in PROJECT.org), so nothing is ever reading through the backing storage this
+/// mutates.
+///
+/// Returns `(inserted_at, focus_after_delete)` so `insert_after`/`delete_row` can steal
+/// keyboard focus onto the right row; `None` when nothing was applied. The meaningful `None`
+/// case is a buffer that failed to parse: the deck is left untouched, nothing propagates
+/// downstream (`after_edit` is not called), the offending text stays on screen for the user to
+/// fix, and the node is flagged `invalid` (painted red) until a later commit parses cleanly.
+fn rebuild_and_apply(
+    state: &mut EditorState,
+    nh: NH,
+    edit: ConstEdit,
+) -> Option<(Option<usize>, Option<usize>)> {
+    let mut node_info_prop = state.workflow.node_info_prop();
+    let Ok(mut node_infos) = node_info_prop.try_borrow_mut() else {
+        return None;
+    };
+    let NodeInfo::Constant(handle) = &mut node_infos[nh] else {
+        return None;
+    };
+    if !is_editable(handle) {
+        return None;
+    }
+    let type_id = handle.type_id;
+    let Ok(mut cache) = state.const_edit_cache.try_borrow_mut() else {
+        return None;
+    };
+
+    // The cache is the thing being committed. If it never got a chance to sync against the
+    // handle (e.g. an event lands on the same frame a node was created, before `refresh_all`
+    // runs), mint it from the deck first so there is always a 1:1 row set to parse.
+    if cache[nh].buffers.len() != handle.n_items as usize || cache[nh].marks != handle.marks() {
+        let Some(minted) = decode_buffers(handle) else {
+            cache[nh].invalid = true;
+            return None;
+        };
+        cache[nh].buffers = minted;
+        cache[nh].marks = handle.marks().to_vec();
+    }
+    let buffers = cache[nh].buffers.clone();
+    let marks = cache[nh].marks.clone();
+
+    let Ok(built) = rebuild_typed(type_id, &buffers, &marks, edit) else {
+        cache[nh].invalid = true;
+        return None;
+    };
+    let canonical = built.canonical_strings();
+    let new_marks = built.marks();
+    let alloc_result = match built.deck {
+        BuiltDeckEnum::F64(deck) => crate::REGISTRY.alloc_with_value(Some(deck), handle),
+        BuiltDeckEnum::I64(deck) => crate::REGISTRY.alloc_with_value(Some(deck), handle),
+    };
+    if alloc_result.is_err() {
+        // Registry-level failure (concurrency etc., theoretically unreachable here): leave the
+        // cache alone and back out -- no dirty flag, no propagation.
+        return None;
+    }
+    cache[nh].buffers = canonical;
+    cache[nh].marks = new_marks;
+    cache[nh].invalid = false;
+    let focus_after_delete = match edit {
+        // Deleting a row moves focus to the closest remaining row above it (spreadsheet-style
+        // merge-back), matching how deleting an empty line merges you back into the one above.
+        ConstEdit::DeleteAt { delete_index } => (0..delete_index)
+            .rev()
+            .find_map(|j| built.new_indices[j])
+            .filter(|idx| *idx > 0),
+        _ => None,
+    };
+    drop(cache);
+    drop(node_infos);
+    after_edit(state, nh);
+    Some((built.inserted_at, focus_after_delete))
+}
+
+/// Parses the cached edit buffer for `item_index` (in practice, every row: the whole buffer set
+/// is what a commit re-parses) and writes it back into the real deck. See `rebuild_and_apply`
+/// for the parse-failure behavior (text kept, node flagged red, nothing propagates).
+pub fn commit_row(state: &mut EditorState, nh: NH, _item_index: usize) {
+    let _ = rebuild_and_apply(state, nh, ConstEdit::Commit);
 }
 
 /// Inserts one new zero-valued depth-0 row immediately after `after_index` -- the "hit Enter to
 /// add a row" gesture, wherever in the list Enter was pressed, not just at the end.
 pub fn insert_after(state: &mut EditorState, nh: NH, after_index: usize) {
-    let mut node_info_prop = state.workflow.node_info_prop();
-    let Ok(mut node_infos) = node_info_prop.try_borrow_mut() else {
-        return;
-    };
-    let NodeInfo::Constant(handle) = &mut node_infos[nh] else {
-        return;
-    };
-    if !is_editable(handle) {
-        return;
+    if let Some((Some(new_row), _)) =
+        rebuild_and_apply(state, nh, ConstEdit::InsertAfter { after_index })
+    {
+        state.pending_focus_row.set(Some((nh, new_row)));
     }
-    let type_id = handle.type_id;
-    // Copied out (constants are small) rather than borrowed, since `alloc_with_value` below
-    // needs `&mut handle` while these would otherwise still be borrowing from it.
-    let marks = handle.marks().to_vec();
-    let alloc_result = if type_id == ORC_TYPE_I64 {
-        let items = handle.items::<i64>().to_vec();
-        let new_deck = rebuild_with_insertion(&items, &marks, after_index, 0i64);
-        crate::REGISTRY.alloc_with_value(Some(new_deck), handle)
-    } else {
-        let items = handle.items::<f64>().to_vec();
-        let new_deck = rebuild_with_insertion(&items, &marks, after_index, 0.0f64);
-        crate::REGISTRY.alloc_with_value(Some(new_deck), handle)
-    };
-    if alloc_result.is_err() {
-        return;
-    }
-    drop(node_infos);
-    state.pending_focus_row.set(Some((nh, after_index + 1)));
-    after_edit(state, nh);
-    refresh(state, nh);
-}
-
-/// Same replay strategy as `rebuild_with_insertion`, just omitting `delete_index` instead of
-/// splicing a value in. `start_new_arr` for a run still runs unconditionally before that run's
-/// items are replayed, so deleting the only item in a run leaves behind a legitimate empty-group
-/// mark (the same bare-ruler-line state `deck_rows`/`Display` already know how to show) rather
-/// than silently discarding the group along with its one item.
-fn rebuild_with_deletion<T: Copy + Default>(
-    items: &[T],
-    marks: &[OrcMark],
-    delete_index: usize,
-) -> orc_sdk::Deck<T> {
-    let mut new_deck = orc_sdk::Deck::<T>::default();
-    let n_items = items.len() as u64;
-
-    let push_item = |new_deck: &mut orc_sdk::Deck<T>, i: u64| {
-        if i as usize != delete_index {
-            new_deck.push(items[i as usize], 0);
-        }
-    };
-    walk_runs(n_items, marks, |event| match event {
-        RunEvent::Run {
-            depth,
-            pos,
-            next_pos,
-        } => {
-            new_deck.start_new_arr(depth.saturating_add(1));
-            for i in pos..next_pos.min(n_items) {
-                push_item(&mut new_deck, i);
-            }
-        }
-        RunEvent::TailItem(i) => push_item(&mut new_deck, i),
-    });
-    new_deck
 }
 
 /// Removes the value at `delete_index` -- backspacing an already-empty row's gesture for
 /// deleting it outright. Focus moves to the previous row, if there is one, matching how deleting
 /// an empty line merges you back into the one above it in most text/list editors.
 pub fn delete_row(state: &mut EditorState, nh: NH, delete_index: usize) {
-    let mut node_info_prop = state.workflow.node_info_prop();
-    let Ok(mut node_infos) = node_info_prop.try_borrow_mut() else {
-        return;
-    };
-    let NodeInfo::Constant(handle) = &mut node_infos[nh] else {
-        return;
-    };
-    if !is_editable(handle) {
-        return;
+    if let Some((_, Some(focus))) =
+        rebuild_and_apply(state, nh, ConstEdit::DeleteAt { delete_index })
+    {
+        state.pending_focus_row.set(Some((nh, focus)));
     }
-    let type_id = handle.type_id;
-    let marks = handle.marks().to_vec();
-    let alloc_result = if type_id == ORC_TYPE_I64 {
-        let items = handle.items::<i64>().to_vec();
-        let new_deck = rebuild_with_deletion(&items, &marks, delete_index);
-        crate::REGISTRY.alloc_with_value(Some(new_deck), handle)
-    } else {
-        let items = handle.items::<f64>().to_vec();
-        let new_deck = rebuild_with_deletion(&items, &marks, delete_index);
-        crate::REGISTRY.alloc_with_value(Some(new_deck), handle)
-    };
-    if alloc_result.is_err() {
-        return;
-    }
-    drop(node_infos);
-    if delete_index > 0 {
-        state.pending_focus_row.set(Some((nh, delete_index - 1)));
-    }
-    after_edit(state, nh);
-    refresh(state, nh);
 }
 
 /// What happened this frame in a Constant node's editable rows -- collected while `render.rs`
@@ -435,11 +577,19 @@ pub(crate) struct ConstEditEvents {
 }
 
 pub(crate) fn apply_events(state: &mut EditorState, events: ConstEditEvents) {
-    // A row that both changed text and had Enter pressed in it must commit that text before the
-    // insertion shifts indices out from under it. A row that triggers a deletion is always empty
-    // (nothing meaningful to commit), so ordering against `committed_rows` doesn't matter there.
+    // A row that had Enter pressed in it (i.e. it also appears in `inserted_after`) is fully
+    // committed by `insert_after`'s own rebuild of every buffer -- deferring its commit keeps
+    // the insertion's `after_index` meaningful, since committing it first could eliminate an
+    // empty row (or the later insertion itself) and shift indices out from under it. Every other
+    // committed row still commits before any insertion; those don't relocate this frame's rows.
     for (nh, item_index) in events.committed_rows {
-        commit_row(state, nh, item_index);
+        let inserted = events
+            .inserted_after
+            .iter()
+            .any(|(n, i)| *n == nh && *i == item_index);
+        if !inserted {
+            commit_row(state, nh, item_index);
+        }
     }
     for (nh, delete_index) in events.deleted_rows {
         delete_row(state, nh, delete_index);
@@ -587,6 +737,27 @@ mod test {
         assert!(!is_editable(&handle));
     }
 
+    /// An aggregate handle (item_size a multiple of, but not equal to, the scalar size) shares
+    /// F64's type_id but must not be treated as an editable list of plain f64 scalars -- that
+    /// would silently show one text box per item holding only its first component. This pins
+    /// down the exact bug `is_editable`'s `item_size == size_of::<T>()` guard exists to prevent
+    /// (see its doc comment); a future simplification back to a bare `type_id`-only check would
+    /// silently reintroduce it without this test catching it.
+    #[test]
+    fn t_is_editable_false_for_an_aggregate_f64_handle() {
+        let mut deck = Deck::<[f64; 3]>::default();
+        deck.push([1.0, 2.0, 3.0], 1);
+        let mut handle = OrcHandle {
+            handle: crate::HANDLE_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
+            ..Default::default()
+        };
+        crate::REGISTRY
+            .alloc_with_value(Some(deck), &mut handle)
+            .unwrap();
+        assert_eq!(handle.item_size as usize, size_of::<[f64; 3]>());
+        assert!(!is_editable(&handle));
+    }
+
     #[test]
     fn t_commit_row_parses_and_writes_a_new_value() {
         let mut deck = Deck::<f64>::default();
@@ -603,19 +774,24 @@ mod test {
         let NodeInfo::Constant(handle) = &node_infos[nh] else {
             panic!("expected a constant node")
         };
-        assert_eq!(handle.items::<f64>(), &[1.0, 42.5]);
+        assert_eq!(handle.items::<f64>().unwrap(), &[1.0, 42.5]);
         assert!(
             state.dirty,
             "committing a value must mark the workflow dirty"
         );
     }
 
-    /// Unparseable text must not corrupt the deck -- the buffer reverts to whatever the deck
-    /// actually holds instead.
+    /// Unparseable text must neither corrupt the deck nor silently vanish from the screen: the
+    /// offending buffer stays put (so the user can fix it), the deck is untouched, nothing
+    /// propagates downstream, and the node is flagged invalid (painted red) until a clean commit.
     #[test]
-    fn t_commit_row_reverts_the_buffer_on_unparseable_text() {
+    fn t_commit_row_keeps_the_buffer_and_flags_the_node_on_unparseable_text() {
         let (mut state, nh) = constant_node(Deck::from_value(7.0));
+        let oh = state.workflow.node_outputs(nh).next().unwrap();
         refresh(&mut state, nh);
+        let version_before = state.dirty_version.try_borrow().unwrap()[nh];
+        let computed_before =
+            std::sync::Arc::clone(&state.computed_outputs.try_borrow().unwrap()[oh]);
         state.const_edit_cache.try_borrow_mut().unwrap()[nh].buffers[0] =
             "not a number".to_string();
 
@@ -626,10 +802,32 @@ mod test {
         let NodeInfo::Constant(handle) = &node_infos[nh] else {
             panic!("expected a constant node")
         };
-        assert_eq!(handle.items::<f64>(), &[7.0], "the deck must be unchanged");
+        assert_eq!(
+            handle.items::<f64>().unwrap(),
+            &[7.0],
+            "the deck must be unchanged"
+        );
+        drop(node_infos);
         assert_eq!(
             state.const_edit_cache.try_borrow().unwrap()[nh].buffers[0],
-            "7"
+            "not a number",
+            "the offending text must stay on screen so the user can fix it"
+        );
+        assert!(
+            state.const_edit_cache.try_borrow().unwrap()[nh].invalid,
+            "a failed parse must flag the node (red) rather than being silently dropped"
+        );
+        assert_eq!(
+            state.dirty_version.try_borrow().unwrap()[nh],
+            version_before,
+            "a failed commit must not propagate downstream (no dirty bump, no computed refresh)"
+        );
+        assert!(
+            std::sync::Arc::ptr_eq(
+                &computed_before,
+                &state.computed_outputs.try_borrow().unwrap()[oh]
+            ),
+            "a failed commit must not replace the computed output handle"
         );
     }
 
@@ -652,7 +850,7 @@ mod test {
         let NodeInfo::Constant(handle) = &node_infos[nh] else {
             panic!("expected a constant node")
         };
-        handle.items::<i64>().to_vec()
+        handle.items::<i64>().unwrap().to_vec()
     }
 
     /// The `ORC_TYPE_I64` branch is a distinct code path in `commit_row`/`insert_after`/
@@ -674,7 +872,7 @@ mod test {
     }
 
     #[test]
-    fn t_commit_row_reverts_an_i64_buffer_on_unparseable_text() {
+    fn t_commit_row_keeps_an_i64_buffer_and_flags_the_node_on_unparseable_text() {
         let (mut state, nh) = constant_node_i64(Deck::from_value(7i64));
         refresh(&mut state, nh);
         state.const_edit_cache.try_borrow_mut().unwrap()[nh].buffers[0] =
@@ -685,8 +883,53 @@ mod test {
         assert_eq!(items_of_i64(&state, nh), vec![7]);
         assert_eq!(
             state.const_edit_cache.try_borrow().unwrap()[nh].buffers[0],
-            "7"
+            "not a number"
         );
+        assert!(state.const_edit_cache.try_borrow().unwrap()[nh].invalid);
+    }
+
+    /// Fixing the offending text on a later commit clears the invalid flag and writes the value
+    /// through -- the red node recovers without any structural change to the deck.
+    #[test]
+    fn t_commit_row_recovers_once_the_bad_text_is_fixed() {
+        let (mut state, nh) = constant_node(Deck::from_value(7.0));
+        refresh(&mut state, nh);
+        state.const_edit_cache.try_borrow_mut().unwrap()[nh].buffers[0] = "nope".to_string();
+        commit_row(&mut state, nh, 0);
+        assert!(state.const_edit_cache.try_borrow().unwrap()[nh].invalid);
+
+        state.const_edit_cache.try_borrow_mut().unwrap()[nh].buffers[0] = "12.5".to_string();
+        commit_row(&mut state, nh, 0);
+
+        let node_info_prop = state.workflow.node_info_prop();
+        let node_infos = node_info_prop.try_borrow().unwrap();
+        let NodeInfo::Constant(handle) = &node_infos[nh] else {
+            panic!("expected a constant node")
+        };
+        assert_eq!(handle.items::<f64>().unwrap(), &[12.5]);
+        assert!(
+            !state.const_edit_cache.try_borrow().unwrap()[nh].invalid,
+            "a clean commit must clear the red invalid flag"
+        );
+    }
+
+    /// "Empty rows mean nothing": committing one eliminates it from both the data and the
+    /// editing rows (whitespace-only counts as empty too).
+    #[test]
+    fn t_commit_row_eliminates_an_empty_row() {
+        let mut deck = Deck::<f64>::default();
+        deck.push(1.0, 1);
+        deck.push(2.0, 0);
+        deck.push(3.0, 0);
+        let (mut state, nh) = constant_node(deck);
+        refresh(&mut state, nh);
+        state.const_edit_cache.try_borrow_mut().unwrap()[nh].buffers[1] = "   ".to_string();
+
+        commit_row(&mut state, nh, 1);
+
+        assert_eq!(items_of(&state, nh), vec![1.0, 3.0]);
+        let cache = state.const_edit_cache.try_borrow().unwrap();
+        assert_eq!(cache[nh].buffers, vec!["1".to_string(), "3".to_string()]);
     }
 
     #[test]
@@ -722,7 +965,7 @@ mod test {
         let NodeInfo::Constant(handle) = &node_infos[nh] else {
             panic!("expected a constant node")
         };
-        handle.items::<f64>().to_vec()
+        handle.items::<f64>().unwrap().to_vec()
     }
 
     fn n_marks_of(state: &EditorState, nh: NH) -> u64 {
@@ -872,7 +1115,7 @@ mod test {
         commit_row(&mut state, nh, 0);
 
         let computed = state.computed_outputs.try_borrow().unwrap();
-        assert_eq!(computed[oh].items::<f64>(), &[99.0]);
+        assert_eq!(computed[oh].items::<f64>().unwrap(), &[99.0]);
         assert!(state.dirty_version.try_borrow().unwrap()[nh] > version_before);
     }
 }

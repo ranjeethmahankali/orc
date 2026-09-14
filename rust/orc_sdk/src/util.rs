@@ -1,10 +1,11 @@
 use crate::{
-    Combinations, Deck, DeckView, Error, ORC_ARGS_VARIADIC, ORC_MSG_LEVEL_DEBUG,
-    ORC_MSG_LEVEL_ERROR, ORC_MSG_LEVEL_FATAL, ORC_MSG_LEVEL_INFO, ORC_MSG_LEVEL_WARN, ORC_NUM_DIMS,
-    ORC_TYPE_F32, ORC_TYPE_F64, ORC_TYPE_I8, ORC_TYPE_I16, ORC_TYPE_I32, ORC_TYPE_I64, ORC_TYPE_U8,
-    ORC_TYPE_U16, ORC_TYPE_U32, ORC_TYPE_U64, OrcFuncInfo, OrcHandle, OrcHost, OrcHostCallbackAPI,
-    OrcItemProxy, OrcMark, OrcPluginFunction, OrcTypeId, OrcTypeInfo, ProxyType,
-    deck::fmt_raw_deck, ffi::TOrcData,
+    Combinations, Deck, Error, ORC_ARGS_VARIADIC, ORC_MSG_LEVEL_DEBUG, ORC_MSG_LEVEL_ERROR,
+    ORC_MSG_LEVEL_FATAL, ORC_MSG_LEVEL_INFO, ORC_MSG_LEVEL_WARN, ORC_NUM_DIMS, ORC_TYPE_F32,
+    ORC_TYPE_F64, ORC_TYPE_I8, ORC_TYPE_I16, ORC_TYPE_I32, ORC_TYPE_I64, ORC_TYPE_U8, ORC_TYPE_U16,
+    ORC_TYPE_U32, ORC_TYPE_U64, OrcFuncInfo, OrcHandle, OrcHost, OrcHostCallbackAPI, OrcMark,
+    OrcPluginFunction, OrcTypeId, OrcTypeInfo, ProxyType,
+    deck::{DeckItemDisplay, DeckItemDisplayAdapter, fmt_raw_deck},
+    ffi::TOrcData,
 };
 use std::{
     alloc::{GlobalAlloc, Layout, System},
@@ -489,29 +490,76 @@ impl From<&OrcFuncInfo> for FuncInfo {
 }
 
 /// This is a helper for displaying handle data.
-pub struct HandleDisplayWrapper<'a, T: TOrcData + Display> {
+pub struct HandleDisplayWrapper<'a, T: TOrcData + DeckItemDisplay> {
     handle: &'a OrcHandle,
     _phantom: PhantomData<T>,
 }
 
-impl<'a, T: TOrcData + Display> Display for HandleDisplayWrapper<'a, T> {
+impl<'a, T: TOrcData + DeckItemDisplay> Display for HandleDisplayWrapper<'a, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.handle.type_id != T::TYPE_INFO.type_id
+            || !(self.handle.item_size as usize).is_multiple_of(size_of::<T>())
+        {
+            return Err(std::fmt::Error);
+        }
         writeln!(f, "handle: {}", self.handle.handle)?;
         writeln!(f, "type_id: {:?}", self.handle.type_id)?;
         writeln!(f, "dims: {:?}", self.handle.dims)?;
-        let (items, marks) = unsafe {
-            (
-                slice_from_ptr::<T>(self.handle.items.cast(), self.handle.n_items as usize),
-                slice_from_ptr(self.handle.marks, self.handle.n_marks as usize),
-            )
-        };
-        fmt_raw_deck(items, marks, f)?;
-        Ok(())
+
+        fn write_items<U: TOrcData + DeckItemDisplay>(
+            handle: &OrcHandle,
+            f: &mut std::fmt::Formatter<'_>,
+        ) -> std::fmt::Result {
+            let (items, marks) = unsafe {
+                (
+                    slice_from_ptr::<U>(handle.items.cast(), handle.n_items as usize),
+                    slice_from_ptr(handle.marks, handle.n_marks as usize),
+                )
+            };
+            fmt_raw_deck(items, marks, f)
+        }
+
+        let n_components = (self.handle.item_size as usize) / size_of::<T>();
+        match n_components {
+            1 => write_items::<T>(self.handle, f),
+            2 => write_items::<[T; 2]>(self.handle, f),
+            3 => write_items::<[T; 3]>(self.handle, f),
+            4 => write_items::<[T; 4]>(self.handle, f),
+            5 => write_items::<[T; 5]>(self.handle, f),
+            6 => write_items::<[T; 6]>(self.handle, f),
+            7 => write_items::<[T; 7]>(self.handle, f),
+            8 => write_items::<[T; 8]>(self.handle, f),
+            9 => write_items::<[T; 9]>(self.handle, f),
+            10 => write_items::<[T; 10]>(self.handle, f),
+            11 => write_items::<[T; 11]>(self.handle, f),
+            12 => write_items::<[T; 12]>(self.handle, f),
+            13 => write_items::<[T; 13]>(self.handle, f),
+            14 => write_items::<[T; 14]>(self.handle, f),
+            15 => write_items::<[T; 15]>(self.handle, f),
+            16 => write_items::<[T; 16]>(self.handle, f),
+            17 => write_items::<[T; 17]>(self.handle, f),
+            18 => write_items::<[T; 18]>(self.handle, f),
+            19 => write_items::<[T; 19]>(self.handle, f),
+            20 => write_items::<[T; 20]>(self.handle, f),
+            21 => write_items::<[T; 21]>(self.handle, f),
+            22 => write_items::<[T; 22]>(self.handle, f),
+            23 => write_items::<[T; 23]>(self.handle, f),
+            24 => write_items::<[T; 24]>(self.handle, f),
+            25 => write_items::<[T; 25]>(self.handle, f),
+            26 => write_items::<[T; 26]>(self.handle, f),
+            27 => write_items::<[T; 27]>(self.handle, f),
+            28 => write_items::<[T; 28]>(self.handle, f),
+            29 => write_items::<[T; 29]>(self.handle, f),
+            30 => write_items::<[T; 30]>(self.handle, f),
+            31 => write_items::<[T; 31]>(self.handle, f),
+            32 => write_items::<[T; 32]>(self.handle, f),
+            _ => Err(std::fmt::Error),
+        }
     }
 }
 
 impl OrcHandle {
-    pub fn display<'a, T: TOrcData + Display>(&'a self) -> HandleDisplayWrapper<'a, T> {
+    pub fn display<'a, T: TOrcData + DeckItemDisplay>(&'a self) -> HandleDisplayWrapper<'a, T> {
         HandleDisplayWrapper {
             handle: self,
             _phantom: PhantomData,
@@ -648,62 +696,77 @@ pub fn deck_from_proxy<T: TOrcData>(
     out: &mut OrcHandle,
     registry: &DeckRegistry,
 ) -> Result<(), Error> {
-    let type_id = match inputs.first() {
-        Some(input) => input.type_id,
+    let (type_id, item_size) = match inputs.first() {
+        Some(input) => (input.type_id, input.item_size),
         None => return Err(Error::InvalidProxy),
     };
-    if inputs.iter().skip(1).any(|h| h.type_id != type_id) {
+    if inputs
+        .iter()
+        .skip(1)
+        .any(|h| h.type_id != type_id || h.item_size != item_size)
+        || !(item_size as usize).is_multiple_of(size_of::<T>())
+    {
         // All inputs must be of the same type. This is a problem.
         return Err(Error::InvalidProxy);
     }
     out.dims = proxy.dims;
-    registry.alloc::<T>(out)?;
-    registry
-        .with_mut(&[out.handle], |out_decks| -> Result<(), Error> {
-            let out_deck = out_decks[0]
-                .downcast_mut::<Deck<T>>()
-                .ok_or(Error::DeckTypeMismatch)?;
-            let (items, marks) = match proxy_type {
-                ProxyType::CopyAll => {
-                    // We expect exactly one input, and we will make a full clone of that data.
-                    if inputs.len() != 1 {
-                        return Err(Error::InvalidProxy);
-                    }
-                    let input_handle = unsafe { inputs.get_unchecked(0) }; // SAFETY: we just checked above.
-                    let input = DeckView::<T>::from_handle(input_handle)?;
-                    (input.items().to_vec(), input.marks().to_vec())
-                }
-                ProxyType::CopyItems => {
-                    // We expect exactly one input. We will copy the items of the input, but the marks from the proxy.
-                    if inputs.len() != 1 {
-                        return Err(Error::InvalidProxy);
-                    }
-                    let input_handle = unsafe { inputs.get_unchecked(0) }; // SAFETY: we just checked above.
-                    let input = DeckView::<T>::from_handle(input_handle)?;
-                    let proxy = DeckView::<OrcItemProxy>::from_handle(proxy)?;
-                    (input.items().to_vec(), proxy.marks().to_vec())
-                }
-                ProxyType::Shuffle => {
-                    let proxy = DeckView::<OrcItemProxy>::from_handle(proxy)?;
-                    let inputs = inputs
-                        .iter()
-                        .map(|input| DeckView::<T>::from_handle(input))
-                        .collect::<Result<Box<[DeckView<T>]>, Error>>()?;
-                    (
-                        proxy
-                            .items()
-                            .iter()
-                            .map(|ii| inputs[ii.tree as usize].items()[ii.item as usize].clone())
-                            .collect::<Vec<T>>(),
-                        proxy.marks().to_vec(),
-                    )
-                }
-            };
-            out_deck.assign_from_raw_data(items, marks);
-            unsafe { update_handle_from_deck(out_deck, out) }; // SAFETY: we pulled the deck out of the same handle.
-            Ok(())
-        })
-        .flatten()
+
+    fn proxy_helper<U: TOrcData>(
+        inputs: &[OrcHandle],
+        proxy_type: ProxyType,
+        proxy: &OrcHandle,
+        out: &mut OrcHandle,
+        registry: &DeckRegistry,
+    ) -> Result<(), Error> {
+        registry.alloc::<U>(out)?;
+        registry
+            .with_mut(&[out.handle], |out_decks| -> Result<(), Error> {
+                let out_deck = out_decks[0]
+                    .downcast_mut::<Deck<U>>()
+                    .ok_or(Error::DeckTypeMismatch)?;
+                out_deck.assign_from_proxy(inputs, proxy_type, proxy)?;
+                unsafe { update_handle_from_deck(out_deck, out) }; // SAFETY: we pulled the deck out of the same handle.
+                Ok(())
+            })
+            .flatten()
+    }
+
+    let n_components = (item_size as usize) / size_of::<T>();
+    match n_components {
+        1 => proxy_helper::<T>(inputs, proxy_type, proxy, out, registry),
+        2 => proxy_helper::<[T; 2]>(inputs, proxy_type, proxy, out, registry),
+        3 => proxy_helper::<[T; 3]>(inputs, proxy_type, proxy, out, registry),
+        4 => proxy_helper::<[T; 4]>(inputs, proxy_type, proxy, out, registry),
+        5 => proxy_helper::<[T; 5]>(inputs, proxy_type, proxy, out, registry),
+        6 => proxy_helper::<[T; 6]>(inputs, proxy_type, proxy, out, registry),
+        7 => proxy_helper::<[T; 7]>(inputs, proxy_type, proxy, out, registry),
+        8 => proxy_helper::<[T; 8]>(inputs, proxy_type, proxy, out, registry),
+        9 => proxy_helper::<[T; 9]>(inputs, proxy_type, proxy, out, registry),
+        10 => proxy_helper::<[T; 10]>(inputs, proxy_type, proxy, out, registry),
+        11 => proxy_helper::<[T; 11]>(inputs, proxy_type, proxy, out, registry),
+        12 => proxy_helper::<[T; 12]>(inputs, proxy_type, proxy, out, registry),
+        13 => proxy_helper::<[T; 13]>(inputs, proxy_type, proxy, out, registry),
+        14 => proxy_helper::<[T; 14]>(inputs, proxy_type, proxy, out, registry),
+        15 => proxy_helper::<[T; 15]>(inputs, proxy_type, proxy, out, registry),
+        16 => proxy_helper::<[T; 16]>(inputs, proxy_type, proxy, out, registry),
+        17 => proxy_helper::<[T; 17]>(inputs, proxy_type, proxy, out, registry),
+        18 => proxy_helper::<[T; 18]>(inputs, proxy_type, proxy, out, registry),
+        19 => proxy_helper::<[T; 19]>(inputs, proxy_type, proxy, out, registry),
+        20 => proxy_helper::<[T; 20]>(inputs, proxy_type, proxy, out, registry),
+        21 => proxy_helper::<[T; 21]>(inputs, proxy_type, proxy, out, registry),
+        22 => proxy_helper::<[T; 22]>(inputs, proxy_type, proxy, out, registry),
+        23 => proxy_helper::<[T; 23]>(inputs, proxy_type, proxy, out, registry),
+        24 => proxy_helper::<[T; 24]>(inputs, proxy_type, proxy, out, registry),
+        25 => proxy_helper::<[T; 25]>(inputs, proxy_type, proxy, out, registry),
+        26 => proxy_helper::<[T; 26]>(inputs, proxy_type, proxy, out, registry),
+        27 => proxy_helper::<[T; 27]>(inputs, proxy_type, proxy, out, registry),
+        28 => proxy_helper::<[T; 28]>(inputs, proxy_type, proxy, out, registry),
+        29 => proxy_helper::<[T; 29]>(inputs, proxy_type, proxy, out, registry),
+        30 => proxy_helper::<[T; 30]>(inputs, proxy_type, proxy, out, registry),
+        31 => proxy_helper::<[T; 31]>(inputs, proxy_type, proxy, out, registry),
+        32 => proxy_helper::<[T; 32]>(inputs, proxy_type, proxy, out, registry),
+        _ => Err(Error::DeckTypeMismatch),
+    }
 }
 
 // ==================== Serialization ====================
@@ -875,23 +938,117 @@ pub fn try_deserialize_handle(
         deck.assign_from_raw_data(items, marks);
         registry.alloc_with_value(Some(deck), handle)
     }
-    let marks = read_orc_handle_header(out, r).map_err(|_| Vec::new())?;
-    match out.type_id {
-        ORC_TYPE_U8 | ORC_TYPE_U16 | ORC_TYPE_U32 | ORC_TYPE_U64 | ORC_TYPE_I8 | ORC_TYPE_I16
-        | ORC_TYPE_I32 | ORC_TYPE_I64 | ORC_TYPE_F32 | ORC_TYPE_F64 => {}
-        _ => return Err(marks),
+    // Dispatches to `read_items::<T>` for a plain scalar (n_components == 1), or
+    // `read_items::<[T; N]>` for an aggregate of N scalars sharing T's type_id, covering
+    // N = 2..=32 -- the same range the `TOrcData` blanket array impl supports. A primitive
+    // type_id is never plugin-owned, so unlike a genuinely unrecognized type_id there is no
+    // plugin to defer to here: the host has everything it needs (type_id, item_size, n_items,
+    // marks) to deserialize an aggregate of primitives itself, regardless of what any particular
+    // plugin calls that shape (`[f64; 3]`, `glam::DVec3`, `glm::dvec3`, ...) -- once the resulting
+    // handle crosses back over the FFI boundary it's just bytes plus (type_id, item_size)
+    // metadata, and a plugin reads it by casting the pointer, not by matching Rust type identity.
+    fn read_scalar_or_aggregate<T: TOrcData + Default + Copy + std::any::Any + Send + Sync>(
+        n_components: usize,
+        r: &mut impl std::io::Read,
+        marks: Vec<OrcMark>,
+        n_items: usize,
+        handle: &mut OrcHandle,
+        registry: &DeckRegistry,
+    ) -> Result<(), Error> {
+        match n_components {
+            1 => read_items::<T>(r, marks, n_items, handle, registry),
+            2 => read_items::<[T; 2]>(r, marks, n_items, handle, registry),
+            3 => read_items::<[T; 3]>(r, marks, n_items, handle, registry),
+            4 => read_items::<[T; 4]>(r, marks, n_items, handle, registry),
+            5 => read_items::<[T; 5]>(r, marks, n_items, handle, registry),
+            6 => read_items::<[T; 6]>(r, marks, n_items, handle, registry),
+            7 => read_items::<[T; 7]>(r, marks, n_items, handle, registry),
+            8 => read_items::<[T; 8]>(r, marks, n_items, handle, registry),
+            9 => read_items::<[T; 9]>(r, marks, n_items, handle, registry),
+            10 => read_items::<[T; 10]>(r, marks, n_items, handle, registry),
+            11 => read_items::<[T; 11]>(r, marks, n_items, handle, registry),
+            12 => read_items::<[T; 12]>(r, marks, n_items, handle, registry),
+            13 => read_items::<[T; 13]>(r, marks, n_items, handle, registry),
+            14 => read_items::<[T; 14]>(r, marks, n_items, handle, registry),
+            15 => read_items::<[T; 15]>(r, marks, n_items, handle, registry),
+            16 => read_items::<[T; 16]>(r, marks, n_items, handle, registry),
+            17 => read_items::<[T; 17]>(r, marks, n_items, handle, registry),
+            18 => read_items::<[T; 18]>(r, marks, n_items, handle, registry),
+            19 => read_items::<[T; 19]>(r, marks, n_items, handle, registry),
+            20 => read_items::<[T; 20]>(r, marks, n_items, handle, registry),
+            21 => read_items::<[T; 21]>(r, marks, n_items, handle, registry),
+            22 => read_items::<[T; 22]>(r, marks, n_items, handle, registry),
+            23 => read_items::<[T; 23]>(r, marks, n_items, handle, registry),
+            24 => read_items::<[T; 24]>(r, marks, n_items, handle, registry),
+            25 => read_items::<[T; 25]>(r, marks, n_items, handle, registry),
+            26 => read_items::<[T; 26]>(r, marks, n_items, handle, registry),
+            27 => read_items::<[T; 27]>(r, marks, n_items, handle, registry),
+            28 => read_items::<[T; 28]>(r, marks, n_items, handle, registry),
+            29 => read_items::<[T; 29]>(r, marks, n_items, handle, registry),
+            30 => read_items::<[T; 30]>(r, marks, n_items, handle, registry),
+            31 => read_items::<[T; 31]>(r, marks, n_items, handle, registry),
+            32 => read_items::<[T; 32]>(r, marks, n_items, handle, registry),
+            // Beyond what the `TOrcData` array impl covers. Not plugin-deferrable either
+            // (same reasoning as above), so this is a hard failure, not `Err(marks)`.
+            _ => Err(Error::SerializationError),
+        }
     }
+
+    let marks = read_orc_handle_header(out, r).map_err(|_| Vec::new())?;
+    let scalar_size = match out.type_id {
+        ORC_TYPE_U8 => size_of::<u8>(),
+        ORC_TYPE_U16 => size_of::<u16>(),
+        ORC_TYPE_U32 => size_of::<u32>(),
+        ORC_TYPE_U64 => size_of::<u64>(),
+        ORC_TYPE_I8 => size_of::<i8>(),
+        ORC_TYPE_I16 => size_of::<i16>(),
+        ORC_TYPE_I32 => size_of::<i32>(),
+        ORC_TYPE_I64 => size_of::<i64>(),
+        ORC_TYPE_F32 => size_of::<f32>(),
+        ORC_TYPE_F64 => size_of::<f64>(),
+        // Not a primitive type_id -- may be plugin-owned, so defer to the caller's own switch.
+        _ => return Err(marks),
+    };
+    let item_size = out.item_size as usize;
+    if item_size == 0 || !item_size.is_multiple_of(scalar_size) {
+        // A malformed item_size for a recognized primitive type_id isn't something any plugin
+        // could resolve either -- primitives are never plugin-owned -- so this is a hard failure,
+        // not a deferral.
+        return Err(Vec::new());
+    }
+    let n_components = item_size / scalar_size;
+    let n_items = out.n_items as usize;
     let result = match out.type_id {
-        ORC_TYPE_U8 => read_items::<u8>(r, marks, out.n_items as usize, out, registry),
-        ORC_TYPE_U16 => read_items::<u16>(r, marks, out.n_items as usize, out, registry),
-        ORC_TYPE_U32 => read_items::<u32>(r, marks, out.n_items as usize, out, registry),
-        ORC_TYPE_U64 => read_items::<u64>(r, marks, out.n_items as usize, out, registry),
-        ORC_TYPE_I8 => read_items::<i8>(r, marks, out.n_items as usize, out, registry),
-        ORC_TYPE_I16 => read_items::<i16>(r, marks, out.n_items as usize, out, registry),
-        ORC_TYPE_I32 => read_items::<i32>(r, marks, out.n_items as usize, out, registry),
-        ORC_TYPE_I64 => read_items::<i64>(r, marks, out.n_items as usize, out, registry),
-        ORC_TYPE_F32 => read_items::<f32>(r, marks, out.n_items as usize, out, registry),
-        ORC_TYPE_F64 => read_items::<f64>(r, marks, out.n_items as usize, out, registry),
+        ORC_TYPE_U8 => {
+            read_scalar_or_aggregate::<u8>(n_components, r, marks, n_items, out, registry)
+        }
+        ORC_TYPE_U16 => {
+            read_scalar_or_aggregate::<u16>(n_components, r, marks, n_items, out, registry)
+        }
+        ORC_TYPE_U32 => {
+            read_scalar_or_aggregate::<u32>(n_components, r, marks, n_items, out, registry)
+        }
+        ORC_TYPE_U64 => {
+            read_scalar_or_aggregate::<u64>(n_components, r, marks, n_items, out, registry)
+        }
+        ORC_TYPE_I8 => {
+            read_scalar_or_aggregate::<i8>(n_components, r, marks, n_items, out, registry)
+        }
+        ORC_TYPE_I16 => {
+            read_scalar_or_aggregate::<i16>(n_components, r, marks, n_items, out, registry)
+        }
+        ORC_TYPE_I32 => {
+            read_scalar_or_aggregate::<i32>(n_components, r, marks, n_items, out, registry)
+        }
+        ORC_TYPE_I64 => {
+            read_scalar_or_aggregate::<i64>(n_components, r, marks, n_items, out, registry)
+        }
+        ORC_TYPE_F32 => {
+            read_scalar_or_aggregate::<f32>(n_components, r, marks, n_items, out, registry)
+        }
+        ORC_TYPE_F64 => {
+            read_scalar_or_aggregate::<f64>(n_components, r, marks, n_items, out, registry)
+        }
         _ => unreachable!(),
     };
     result.map_err(|_| Vec::new())?;
@@ -905,34 +1062,83 @@ pub fn try_deserialize_handle(
 
 // ==================== String Conversion ====================
 
-pub fn to_str_deck<T: TOrcData + Display>(
+pub fn to_str_deck<T: TOrcData + DeckItemDisplay>(
     input: &OrcHandle,
     out: &mut Deck<u8>,
 ) -> Result<(), Error> {
-    out.clear();
-    let items = input.items::<T>();
-    let mut comb = Combinations::from_handles(std::slice::from_ref(input), &[0], &[1])?;
-    let mut buf = String::new();
-    loop {
-        let view = comb.get_input(items, 0);
-        if !view.is_empty() {
-            let item: &T = view.as_ref();
-            buf.clear();
-            write!(buf, "{}", item).map_err(|_| Error::SerializationError)?;
-            let mut writer = comb.get_output(out, 0);
-            writer.extend_from_slice(buf.as_bytes());
-        }
-        if !comb.advance() {
-            break;
-        }
+    if input.type_id != T::TYPE_INFO.type_id
+        || !(input.item_size as usize).is_multiple_of(size_of::<T>())
+    {
+        return Err(Error::DeckTypeMismatch);
     }
-    Ok(())
+    out.clear();
+
+    fn convert_str<U: TOrcData + DeckItemDisplay>(
+        input: &OrcHandle,
+        out: &mut Deck<u8>,
+    ) -> Result<(), Error> {
+        let items = input.items::<U>()?;
+        let mut comb = Combinations::from_handles(std::slice::from_ref(input), &[0], &[1])?;
+        let mut buf = String::new();
+        loop {
+            let view = comb.get_input(items, 0);
+            if !view.is_empty() {
+                let item: &U = view.as_ref();
+                buf.clear();
+                write!(buf, "{}", DeckItemDisplayAdapter(item))
+                    .map_err(|_| Error::SerializationError)?;
+                let mut writer = comb.get_output(out, 0);
+                writer.extend_from_slice(buf.as_bytes());
+            }
+            if !comb.advance() {
+                break;
+            }
+        }
+        Ok(())
+    }
+
+    let n_components = (input.item_size as usize) / size_of::<T>();
+    match n_components {
+        1 => convert_str::<T>(input, out),
+        2 => convert_str::<[T; 2]>(input, out),
+        3 => convert_str::<[T; 3]>(input, out),
+        4 => convert_str::<[T; 4]>(input, out),
+        5 => convert_str::<[T; 5]>(input, out),
+        6 => convert_str::<[T; 6]>(input, out),
+        7 => convert_str::<[T; 7]>(input, out),
+        8 => convert_str::<[T; 8]>(input, out),
+        9 => convert_str::<[T; 9]>(input, out),
+        10 => convert_str::<[T; 10]>(input, out),
+        11 => convert_str::<[T; 11]>(input, out),
+        12 => convert_str::<[T; 12]>(input, out),
+        13 => convert_str::<[T; 13]>(input, out),
+        14 => convert_str::<[T; 14]>(input, out),
+        15 => convert_str::<[T; 15]>(input, out),
+        16 => convert_str::<[T; 16]>(input, out),
+        17 => convert_str::<[T; 17]>(input, out),
+        18 => convert_str::<[T; 18]>(input, out),
+        19 => convert_str::<[T; 19]>(input, out),
+        20 => convert_str::<[T; 20]>(input, out),
+        21 => convert_str::<[T; 21]>(input, out),
+        22 => convert_str::<[T; 22]>(input, out),
+        23 => convert_str::<[T; 23]>(input, out),
+        24 => convert_str::<[T; 24]>(input, out),
+        25 => convert_str::<[T; 25]>(input, out),
+        26 => convert_str::<[T; 26]>(input, out),
+        27 => convert_str::<[T; 27]>(input, out),
+        28 => convert_str::<[T; 28]>(input, out),
+        29 => convert_str::<[T; 29]>(input, out),
+        30 => convert_str::<[T; 30]>(input, out),
+        31 => convert_str::<[T; 31]>(input, out),
+        32 => convert_str::<[T; 32]>(input, out),
+        _ => Err(Error::DeckTypeMismatch),
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Deck, ORC_ERROR_NONE, ORC_NUM_DIMS, OrcError, OrcHandle, ffi::TOrcData};
+    use crate::{Deck, DeckView, ORC_ERROR_NONE, ORC_NUM_DIMS, OrcError, OrcHandle, ffi::TOrcData};
     use std::{
         cell::RefCell,
         sync::{
@@ -1502,7 +1708,7 @@ mod tests {
         reg.alloc_with_value(Some(deck), &mut h).unwrap();
         // The handle should reflect the new data, not be cleared.
         assert_eq!(h.n_items, 3);
-        let items = h.items::<f64>();
+        let items = h.items::<f64>().unwrap();
         assert_eq!(items, &[1.0, 2.0, 3.0]);
         disarm(&mut h);
     }
@@ -1710,8 +1916,114 @@ mod tests {
         try_deserialize_handle(&mut cursor, &mut out, &reg).unwrap();
         assert_eq!(out.type_id, h.type_id);
         assert_eq!(out.n_items, 3);
-        assert_eq!(out.items::<f64>(), &[1.0, 2.0, 3.0]);
+        assert_eq!(out.items::<f64>().unwrap(), &[1.0, 2.0, 3.0]);
         disarm(&mut out);
+    }
+
+    #[test]
+    fn t_try_serialize_round_trip_aggregate_f64x3() {
+        // An aggregate shares its scalar's type_id (F64), distinguished only by item_size -- the
+        // deserialize fast path has to recognize that and materialize `Deck<[f64; 3]>`, not
+        // silently truncate to a plain `Deck<f64>` or defer as if this were a plugin-owned type.
+        let reg = DeckRegistry::new();
+        let mut d = Deck::<[f64; 3]>::default();
+        d.push([1.0, 2.0, 3.0], 1);
+        d.push([4.0, 5.0, 6.0], 0);
+        let h = serial_make_handle(&d);
+        assert_eq!(h.item_size, size_of::<[f64; 3]>() as u64);
+        let mut buf = Vec::new();
+        try_serialize_handle(&h, &mut buf).unwrap();
+        let mut out = serial_fresh_handle(serial_next_id());
+        let mut cursor = std::io::Cursor::new(&buf[..]);
+        try_deserialize_handle(&mut cursor, &mut out, &reg).unwrap();
+        assert_eq!(out.type_id, h.type_id);
+        assert_eq!(out.item_size, size_of::<[f64; 3]>() as u64);
+        assert_eq!(out.n_items, 2);
+        assert_eq!(
+            out.items::<[f64; 3]>().unwrap(),
+            &[[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]
+        );
+        disarm(&mut out);
+    }
+
+    #[test]
+    fn t_deck_from_proxy_aggregate_copy_all_and_shuffle() {
+        // Simulates exactly what dagger/server_host/kbb_cli_host/pyorc/example_rust_plugin's
+        // `host_create_proxy_deck`-equivalents do -- they see type_id=F64 and unconditionally
+        // call `deck_from_proxy::<f64>`, regardless of the handle's real item_size. Proves the
+        // item_size-driven [T; N] resolution inside `deck_from_proxy` itself is enough to make
+        // that already-existing call-site pattern correctly handle an aggregate (item_size=24,
+        // [f64;3]) deck, with no changes needed at any of those five call sites.
+        let reg = DeckRegistry::new();
+        let mut d = Deck::<[f64; 3]>::default();
+        d.push([1.0, 2.0, 3.0], 1);
+        d.push([4.0, 5.0, 6.0], 0);
+        let input = serial_make_handle(&d);
+        assert_eq!(input.item_size, size_of::<[f64; 3]>() as u64);
+
+        // CopyAll, dispatched as `deck_from_proxy::<f64>` exactly like the real call sites do.
+        let mut out = serial_fresh_handle(serial_next_id());
+        let dummy_proxy = OrcHandle::default();
+        deck_from_proxy::<f64>(&[input], ProxyType::CopyAll, &dummy_proxy, &mut out, &reg).unwrap();
+        assert_eq!(out.item_size, size_of::<[f64; 3]>() as u64);
+        assert_eq!(out.n_items, 2);
+        assert_eq!(
+            out.items::<[f64; 3]>().unwrap(),
+            &[[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]
+        );
+        disarm(&mut out);
+
+        // Shuffle, also dispatched as `deck_from_proxy::<f64>`.
+        let mut pdeck = Deck::<crate::OrcItemProxy>::default();
+        pdeck.push(crate::OrcItemProxy { tree: 0, item: 1 }, 1);
+        pdeck.push(crate::OrcItemProxy { tree: 0, item: 0 }, 0);
+        let proxy = serial_make_handle(&pdeck);
+        let mut out2 = serial_fresh_handle(serial_next_id());
+        let input2 = serial_make_handle(&d);
+        deck_from_proxy::<f64>(&[input2], ProxyType::Shuffle, &proxy, &mut out2, &reg).unwrap();
+        assert_eq!(out2.n_items, 2);
+        assert_eq!(
+            out2.items::<[f64; 3]>().unwrap(),
+            &[[4.0, 5.0, 6.0], [1.0, 2.0, 3.0]]
+        );
+        disarm(&mut out2);
+
+        // Plain scalar case must still work (this is what the inverted `is_multiple_of` check
+        // broke entirely, for every type, before the fix).
+        let mut sd = Deck::<f64>::default();
+        sd.push(7.0, 1);
+        sd.push(8.0, 0);
+        let sinput = serial_make_handle(&sd);
+        let mut sout = serial_fresh_handle(serial_next_id());
+        deck_from_proxy::<f64>(&[sinput], ProxyType::CopyAll, &dummy_proxy, &mut sout, &reg)
+            .unwrap();
+        assert_eq!(sout.item_size, size_of::<f64>() as u64);
+        assert_eq!(sout.items::<f64>().unwrap(), &[7.0, 8.0]);
+        disarm(&mut sout);
+    }
+
+    #[test]
+    fn t_try_deserialize_rejects_malformed_item_size() {
+        // item_size for a recognized primitive type_id (F64) that isn't a multiple of the
+        // scalar's size is corrupt data, not a deferrable custom type -- must be a hard failure
+        // (`Err` with empty marks), not `Err(marks)` implying some plugin could pick it up.
+        let reg = DeckRegistry::new();
+        let d: Deck<f64> = deck![1.0, 2.0];
+        let h = serial_make_handle(&d);
+        let mut buf = Vec::new();
+        try_serialize_handle(&h, &mut buf).unwrap();
+        // Corrupt the serialized item_size field to something that isn't a multiple of
+        // sizeof(f64). Header layout: version(8) + type_id(8) + dims(28) + n_items(8) +
+        // item_size(8) + ...
+        let item_size_offset = 8 + 8 + size_of::<crate::OrcDims>() + 8;
+        buf[item_size_offset..item_size_offset + 8].copy_from_slice(&12u64.to_ne_bytes());
+        let mut out = serial_fresh_handle(serial_next_id());
+        let mut cursor = std::io::Cursor::new(&buf[..]);
+        let err = try_deserialize_handle(&mut cursor, &mut out, &reg).unwrap_err();
+        assert!(
+            err.is_empty(),
+            "malformed item_size must not defer via Err(marks)"
+        );
     }
 
     #[test]
@@ -1728,7 +2040,7 @@ mod tests {
                 try_deserialize_handle(&mut cursor, &mut out, &reg).unwrap();
                 assert_eq!(out.type_id, <$ty as TOrcData>::TYPE_INFO.type_id);
                 let expected: &[$ty] = &[$($v),+];
-                assert_eq!(out.items::<$ty>(), expected);
+                assert_eq!(out.items::<$ty>().unwrap(), expected);
                 disarm(&mut out);
             }};
         }
@@ -1755,7 +2067,7 @@ mod tests {
         let mut out = serial_fresh_handle(serial_next_id());
         let mut cursor = std::io::Cursor::new(&buf[..]);
         try_deserialize_handle(&mut cursor, &mut out, &reg).unwrap();
-        assert_eq!(out.items::<f64>(), &[1.0, 2.0, 3.0]);
+        assert_eq!(out.items::<f64>().unwrap(), &[1.0, 2.0, 3.0]);
         assert_eq!(out.n_marks, h.n_marks);
         let orig_marks = unsafe { slice_from_ptr(h.marks, h.n_marks as usize) };
         let out_marks = unsafe { slice_from_ptr(out.marks, out.n_marks as usize) };
@@ -1858,7 +2170,7 @@ mod tests {
     // ==================== to_str_deck ====================
 
     /// Helper: create an OrcHandle from a Deck, call to_str_deck, and return the output Deck<u8>.
-    fn run_to_str_deck<T: TOrcData + std::fmt::Display>(deck: &Deck<T>) -> Deck<u8> {
+    fn run_to_str_deck<T: TOrcData + DeckItemDisplay>(deck: &Deck<T>) -> Deck<u8> {
         let h = serial_make_handle(deck);
         let mut out = Deck::<u8>::default();
         to_str_deck::<T>(&h, &mut out).expect("to_str_deck failed");
@@ -1899,6 +2211,104 @@ mod tests {
             str_groups(&out),
             &[i64::MIN.to_string(), "0".to_string(), i64::MAX.to_string()]
         );
+    }
+
+    #[test]
+    fn t_to_str_deck_aggregate_single_item() {
+        // Aggregates share the scalar's type_id, distinguished only by item_size -- the caller
+        // still passes the scalar type (`f64`, not `[f64; 3]`, which isn't `Display`), and
+        // to_str_deck must resolve item_size -> N internally, same approach as the C SDK fix.
+        let mut d = Deck::<[f64; 3]>::default();
+        d.push([1.0, 2.0, 3.0], 1);
+        let h = serial_make_handle(&d);
+        let mut out = Deck::<u8>::default();
+        to_str_deck::<f64>(&h, &mut out).expect("to_str_deck failed");
+        let expected = format!("({}, {}, {})", 1.0_f64, 2.0_f64, 3.0_f64);
+        assert_eq!(str_groups(&out), &[expected]);
+    }
+
+    #[test]
+    fn t_to_str_deck_aggregate_multiple_items() {
+        let mut d = Deck::<[f64; 3]>::default();
+        d.push([1.0, 2.0, 3.0], 1);
+        d.push([4.0, 5.0, 6.0], 0);
+        d.push([-7.5, 0.0, 100.0], 0);
+        let h = serial_make_handle(&d);
+        let mut out = Deck::<u8>::default();
+        to_str_deck::<f64>(&h, &mut out).expect("to_str_deck failed");
+        let expected: Vec<String> = [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [-7.5, 0.0, 100.0]]
+            .iter()
+            .map(|v: &[f64; 3]| format!("({}, {}, {})", v[0], v[1], v[2]))
+            .collect();
+        assert_eq!(str_groups(&out), expected);
+    }
+
+    #[test]
+    fn t_to_str_deck_rejects_non_multiple_item_size() {
+        // item_size not a whole multiple of size_of::<T>() must be rejected outright, not
+        // truncated by integer division into some plausible-looking but wrong N.
+        let d = deck![1.0_f64, 2.0];
+        let mut h = serial_make_handle(&d);
+        h.item_size = 20; // Not a multiple of size_of::<f64>() == 8.
+        let mut out = Deck::<u8>::default();
+        assert!(to_str_deck::<f64>(&h, &mut out).is_err());
+    }
+
+    #[test]
+    fn t_to_str_deck_rejects_wrong_scalar_for_aggregate() {
+        // The scalar T must still match the handle's type_id -- an aggregate F64x3 handle
+        // passed to `to_str_deck::<i64>` (different type_id) must fail, not misread the bytes.
+        let mut d = Deck::<[f64; 3]>::default();
+        d.push([1.0, 2.0, 3.0], 1);
+        let h = serial_make_handle(&d);
+        let mut out = Deck::<u8>::default();
+        assert!(to_str_deck::<i64>(&h, &mut out).is_err());
+    }
+
+    // ==================== HandleDisplayWrapper / OrcHandle::display ====================
+
+    #[test]
+    fn t_display_scalar() {
+        let d = deck![1.5_f64, -2.0];
+        let h = serial_make_handle(&d);
+        let text = h.display::<f64>().to_string();
+        assert!(text.contains("1.5"), "got: {text}");
+        assert!(text.contains("-2"), "got: {text}");
+    }
+
+    #[test]
+    fn t_display_aggregate() {
+        let mut d = Deck::<[f64; 3]>::default();
+        d.push([1.0, 2.0, 3.0], 1);
+        d.push([4.0, 5.0, 6.0], 0);
+        let h = serial_make_handle(&d);
+        let text = h.display::<f64>().to_string();
+        assert!(text.contains("(1, 2, 3)"), "got: {text}");
+        assert!(text.contains("(4, 5, 6)"), "got: {text}");
+    }
+
+    #[test]
+    fn t_display_rejects_non_multiple_item_size() {
+        // `to_string()`/`format!` panic on a `Display::fmt` error, so use `write!` to a `String`
+        // directly here to observe the `Err` instead of triggering that panic.
+        use std::fmt::Write as _;
+        let d = deck![1.0_f64, 2.0];
+        let mut h = serial_make_handle(&d);
+        h.item_size = 20; // Not a multiple of size_of::<f64>() == 8.
+        let mut buf = String::new();
+        assert!(write!(buf, "{}", h.display::<f64>()).is_err());
+    }
+
+    #[test]
+    fn t_display_rejects_wrong_type_id() {
+        // A handle for `Deck<f64>` (type_id=F64) displayed as `i64` has the same item_size (8),
+        // so a size-only check would wrongly accept it and print the f64 bits reinterpreted as
+        // i64. `display::<T>` must also check `type_id`, not just size.
+        use std::fmt::Write as _;
+        let d = deck![1.0_f64];
+        let h = serial_make_handle(&d);
+        let mut buf = String::new();
+        assert!(write!(buf, "{}", h.display::<i64>()).is_err());
     }
 
     #[test]

@@ -110,30 +110,116 @@ fn parse_dtype(s: &str) -> PyResult<u64> {
     }
 }
 
+/// Converts a single deck item into a Python object. Scalars become plain Python numbers;
+/// aggregates (`[T; N]`, item_size a multiple of the scalar size) become Python tuples of their
+/// N components. Mirrors `orc_sdk::DeckItemDisplay`'s approach: concrete impls per scalar type
+/// (never a blanket `impl<T: IntoPyObject> ToPyDeckItem for T`) so the `[T; N]` impl doesn't
+/// overlap with them.
+trait ToPyDeckItem {
+    fn to_py_item(&self, py: Python<'_>) -> PyResult<PyObject>;
+}
+
+macro_rules! impl_to_py_deck_item_scalar {
+    ($($t:ty),* $(,)?) => {
+        $(
+            impl ToPyDeckItem for $t {
+                fn to_py_item(&self, py: Python<'_>) -> PyResult<PyObject> {
+                    Ok(self.into_pyobject(py)?.into_any().unbind())
+                }
+            }
+        )*
+    };
+}
+impl_to_py_deck_item_scalar!(u8, u16, u32, u64, i8, i16, i32, i64, f32, f64);
+
+impl<T: ToPyDeckItem, const N: usize> ToPyDeckItem for [T; N] {
+    fn to_py_item(&self, py: Python<'_>) -> PyResult<PyObject> {
+        let parts: PyResult<Vec<PyObject>> = self.iter().map(|v| v.to_py_item(py)).collect();
+        Ok(PyTuple::new(py, parts?)?.into_any().unbind())
+    }
+}
+
+fn read_items_as_pylist<U: orc_sdk::TOrcData + ToPyDeckItem>(
+    py: Python<'_>,
+    handle: &OrcHandle,
+) -> PyResult<PyObject> {
+    let items: &[U] = handle
+        .items::<U>()
+        .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("{}", e)))?;
+    let py_items: Vec<PyObject> = items
+        .iter()
+        .map(|v| v.to_py_item(py))
+        .collect::<PyResult<_>>()?;
+    deck_to_nested_py_list(py, py_items, handle.marks())
+}
+
+/// Dispatches to `read_items_as_pylist::<T>` for a plain scalar (n_components == 1), or
+/// `read_items_as_pylist::<[T; N]>` for an aggregate, covering N = 2..=32.
+fn read_typed<T: orc_sdk::TOrcData + ToPyDeckItem>(
+    py: Python<'_>,
+    handle: &OrcHandle,
+) -> PyResult<PyObject> {
+    let scalar_size = size_of::<T>();
+    if handle.item_size == 0 || !(handle.item_size as usize).is_multiple_of(scalar_size) {
+        return Err(pyo3::exceptions::PyRuntimeError::new_err(format!(
+            "item_size {} is not a valid multiple of the scalar size {scalar_size}",
+            handle.item_size
+        )));
+    }
+    match (handle.item_size as usize) / scalar_size {
+        1 => read_items_as_pylist::<T>(py, handle),
+        2 => read_items_as_pylist::<[T; 2]>(py, handle),
+        3 => read_items_as_pylist::<[T; 3]>(py, handle),
+        4 => read_items_as_pylist::<[T; 4]>(py, handle),
+        5 => read_items_as_pylist::<[T; 5]>(py, handle),
+        6 => read_items_as_pylist::<[T; 6]>(py, handle),
+        7 => read_items_as_pylist::<[T; 7]>(py, handle),
+        8 => read_items_as_pylist::<[T; 8]>(py, handle),
+        9 => read_items_as_pylist::<[T; 9]>(py, handle),
+        10 => read_items_as_pylist::<[T; 10]>(py, handle),
+        11 => read_items_as_pylist::<[T; 11]>(py, handle),
+        12 => read_items_as_pylist::<[T; 12]>(py, handle),
+        13 => read_items_as_pylist::<[T; 13]>(py, handle),
+        14 => read_items_as_pylist::<[T; 14]>(py, handle),
+        15 => read_items_as_pylist::<[T; 15]>(py, handle),
+        16 => read_items_as_pylist::<[T; 16]>(py, handle),
+        17 => read_items_as_pylist::<[T; 17]>(py, handle),
+        18 => read_items_as_pylist::<[T; 18]>(py, handle),
+        19 => read_items_as_pylist::<[T; 19]>(py, handle),
+        20 => read_items_as_pylist::<[T; 20]>(py, handle),
+        21 => read_items_as_pylist::<[T; 21]>(py, handle),
+        22 => read_items_as_pylist::<[T; 22]>(py, handle),
+        23 => read_items_as_pylist::<[T; 23]>(py, handle),
+        24 => read_items_as_pylist::<[T; 24]>(py, handle),
+        25 => read_items_as_pylist::<[T; 25]>(py, handle),
+        26 => read_items_as_pylist::<[T; 26]>(py, handle),
+        27 => read_items_as_pylist::<[T; 27]>(py, handle),
+        28 => read_items_as_pylist::<[T; 28]>(py, handle),
+        29 => read_items_as_pylist::<[T; 29]>(py, handle),
+        30 => read_items_as_pylist::<[T; 30]>(py, handle),
+        31 => read_items_as_pylist::<[T; 31]>(py, handle),
+        32 => read_items_as_pylist::<[T; 32]>(py, handle),
+        n => Err(pyo3::exceptions::PyRuntimeError::new_err(format!(
+            "unsupported aggregate size {n} (item_size={}, scalar_size={scalar_size})",
+            handle.item_size
+        ))),
+    }
+}
+
 #[pyfunction]
 fn read_deck(py: Python<'_>, handle: &Handle) -> PyResult<PyObject> {
     let handle = &handle.inner;
-    macro_rules! read_typed {
-        ($T:ty) => {{
-            let items: &[$T] = handle.items::<$T>();
-            let py_items: Vec<PyObject> = items
-                .iter()
-                .map(|v| Ok(v.into_pyobject(py)?.into_any().unbind()))
-                .collect::<PyResult<_>>()?;
-            deck_to_nested_py_list(py, py_items, handle.marks())
-        }};
-    }
     match handle.type_id {
-        ORC_TYPE_U8 => read_typed!(u8),
-        ORC_TYPE_U16 => read_typed!(u16),
-        ORC_TYPE_U32 => read_typed!(u32),
-        ORC_TYPE_U64 => read_typed!(u64),
-        ORC_TYPE_I8 => read_typed!(i8),
-        ORC_TYPE_I16 => read_typed!(i16),
-        ORC_TYPE_I32 => read_typed!(i32),
-        ORC_TYPE_I64 => read_typed!(i64),
-        ORC_TYPE_F32 => read_typed!(f32),
-        ORC_TYPE_F64 => read_typed!(f64),
+        ORC_TYPE_U8 => read_typed::<u8>(py, handle),
+        ORC_TYPE_U16 => read_typed::<u16>(py, handle),
+        ORC_TYPE_U32 => read_typed::<u32>(py, handle),
+        ORC_TYPE_U64 => read_typed::<u64>(py, handle),
+        ORC_TYPE_I8 => read_typed::<i8>(py, handle),
+        ORC_TYPE_I16 => read_typed::<i16>(py, handle),
+        ORC_TYPE_I32 => read_typed::<i32>(py, handle),
+        ORC_TYPE_I64 => read_typed::<i64>(py, handle),
+        ORC_TYPE_F32 => read_typed::<f32>(py, handle),
+        ORC_TYPE_F64 => read_typed::<f64>(py, handle),
         _ => Err(pyo3::exceptions::PyValueError::new_err(format!(
             "Unknown type_id: {:#x}",
             handle.type_id
@@ -183,44 +269,41 @@ fn create_orc_handle(
     data: &Bound<'_, PyAny>,
     type_id: Option<u64>,
 ) -> PyResult<OrcHandle> {
-    // Flatten nested lists into leaf values and their nesting depths.
-    let mut leaf_values: Vec<Bound<'_, PyAny>> = Vec::new();
+    // Flatten nested lists into a flat run of component values plus per-item nesting depths.
+    // Every item contributes exactly `n_components` consecutive entries to `components` --  1 for
+    // a plain scalar, N for an aggregate (a tuple leaf) -- so item `i`'s components live at
+    // `components[i * n_components .. (i + 1) * n_components]`. `py_to_deck` validates that
+    // `n_components` is consistent (and in 1..=32) as it goes, so there's no separate leaf-Vec
+    // per item and no post-hoc validation pass over the whole tree.
+    let mut components: Vec<Bound<'_, PyAny>> = Vec::new();
     let mut depths: Vec<u8> = Vec::new();
-    py_to_deck(data, 0, &mut leaf_values, &mut depths)?;
-    // Detect or use the provided type.
+    let mut n_components: Option<usize> = None;
+    py_to_deck(data, 0, &mut components, &mut depths, &mut n_components)?;
+    let n_components = n_components.unwrap_or(1);
+
+    // Detect or use the provided type, based on the flattened scalar values.
     let type_id = match type_id {
         Some(id) => id,
-        None if leaf_values.is_empty() => ORC_TYPE_F64,
-        None => detect_type(&leaf_values)?,
+        None if components.is_empty() => ORC_TYPE_F64,
+        None => detect_type(&components)?,
     };
+
     // Build a typed Deck and allocate in the host registry.
     let mut handle = OrcHandle {
         handle: HANDLE_COUNTER.fetch_add(1, Ordering::Relaxed),
         ..Default::default()
     };
-    macro_rules! build_deck {
-        ($T:ty) => {{
-            let mut deck = Deck::<$T>::default();
-            for (val, &depth) in leaf_values.iter().zip(depths.iter()) {
-                let v: $T = val.extract()?;
-                deck.push(v, depth);
-            }
-            REGISTRY
-                .alloc_with_value(Some(deck), &mut handle)
-                .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("{}", e)))?;
-        }};
-    }
     match type_id {
-        ORC_TYPE_U8 => build_deck!(u8),
-        ORC_TYPE_U16 => build_deck!(u16),
-        ORC_TYPE_U32 => build_deck!(u32),
-        ORC_TYPE_U64 => build_deck!(u64),
-        ORC_TYPE_I8 => build_deck!(i8),
-        ORC_TYPE_I16 => build_deck!(i16),
-        ORC_TYPE_I32 => build_deck!(i32),
-        ORC_TYPE_I64 => build_deck!(i64),
-        ORC_TYPE_F32 => build_deck!(f32),
-        ORC_TYPE_F64 => build_deck!(f64),
+        ORC_TYPE_U8 => build_deck::<u8>(n_components, &components, &depths, &mut handle)?,
+        ORC_TYPE_U16 => build_deck::<u16>(n_components, &components, &depths, &mut handle)?,
+        ORC_TYPE_U32 => build_deck::<u32>(n_components, &components, &depths, &mut handle)?,
+        ORC_TYPE_U64 => build_deck::<u64>(n_components, &components, &depths, &mut handle)?,
+        ORC_TYPE_I8 => build_deck::<i8>(n_components, &components, &depths, &mut handle)?,
+        ORC_TYPE_I16 => build_deck::<i16>(n_components, &components, &depths, &mut handle)?,
+        ORC_TYPE_I32 => build_deck::<i32>(n_components, &components, &depths, &mut handle)?,
+        ORC_TYPE_I64 => build_deck::<i64>(n_components, &components, &depths, &mut handle)?,
+        ORC_TYPE_F32 => build_deck::<f32>(n_components, &components, &depths, &mut handle)?,
+        ORC_TYPE_F64 => build_deck::<f64>(n_components, &components, &depths, &mut handle)?,
         _ => {
             return Err(pyo3::exceptions::PyValueError::new_err(format!(
                 "Unsupported type_id: {:#x}",
@@ -229,6 +312,88 @@ fn create_orc_handle(
         }
     }
     Ok(handle)
+}
+
+fn build_deck_scalar<'py, T: orc_sdk::TOrcData + pyo3::FromPyObject<'py>>(
+    components: &[Bound<'py, PyAny>],
+    depths: &[u8],
+    handle: &mut OrcHandle,
+) -> PyResult<()> {
+    let mut deck = Deck::<T>::default();
+    for (v, &depth) in components.iter().zip(depths.iter()) {
+        deck.push(v.extract::<T>()?, depth);
+    }
+    REGISTRY
+        .alloc_with_value(Some(deck), handle)
+        .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("{}", e)))
+}
+
+fn build_deck_arr<'py, T: orc_sdk::TOrcData + pyo3::FromPyObject<'py>, const N: usize>(
+    components: &[Bound<'py, PyAny>],
+    depths: &[u8],
+    handle: &mut OrcHandle,
+) -> PyResult<()>
+where
+    [T; N]: orc_sdk::TOrcData,
+{
+    let mut deck = Deck::<[T; N]>::default();
+    for (i, &depth) in depths.iter().enumerate() {
+        let base = i * N;
+        let mut arr: [T; N] = std::array::from_fn(|_| T::default());
+        for (j, slot) in arr.iter_mut().enumerate() {
+            *slot = components[base + j].extract()?;
+        }
+        deck.push(arr, depth);
+    }
+    REGISTRY
+        .alloc_with_value(Some(deck), handle)
+        .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("{}", e)))
+}
+
+/// Dispatches to `build_deck_scalar::<T>` for a plain scalar (n_components == 1), or
+/// `build_deck_arr::<T, N>` for an aggregate, covering N = 2..=32.
+fn build_deck<'py, T: orc_sdk::TOrcData + pyo3::FromPyObject<'py>>(
+    n_components: usize,
+    components: &[Bound<'py, PyAny>],
+    depths: &[u8],
+    handle: &mut OrcHandle,
+) -> PyResult<()> {
+    match n_components {
+        1 => build_deck_scalar::<T>(components, depths, handle),
+        2 => build_deck_arr::<T, 2>(components, depths, handle),
+        3 => build_deck_arr::<T, 3>(components, depths, handle),
+        4 => build_deck_arr::<T, 4>(components, depths, handle),
+        5 => build_deck_arr::<T, 5>(components, depths, handle),
+        6 => build_deck_arr::<T, 6>(components, depths, handle),
+        7 => build_deck_arr::<T, 7>(components, depths, handle),
+        8 => build_deck_arr::<T, 8>(components, depths, handle),
+        9 => build_deck_arr::<T, 9>(components, depths, handle),
+        10 => build_deck_arr::<T, 10>(components, depths, handle),
+        11 => build_deck_arr::<T, 11>(components, depths, handle),
+        12 => build_deck_arr::<T, 12>(components, depths, handle),
+        13 => build_deck_arr::<T, 13>(components, depths, handle),
+        14 => build_deck_arr::<T, 14>(components, depths, handle),
+        15 => build_deck_arr::<T, 15>(components, depths, handle),
+        16 => build_deck_arr::<T, 16>(components, depths, handle),
+        17 => build_deck_arr::<T, 17>(components, depths, handle),
+        18 => build_deck_arr::<T, 18>(components, depths, handle),
+        19 => build_deck_arr::<T, 19>(components, depths, handle),
+        20 => build_deck_arr::<T, 20>(components, depths, handle),
+        21 => build_deck_arr::<T, 21>(components, depths, handle),
+        22 => build_deck_arr::<T, 22>(components, depths, handle),
+        23 => build_deck_arr::<T, 23>(components, depths, handle),
+        24 => build_deck_arr::<T, 24>(components, depths, handle),
+        25 => build_deck_arr::<T, 25>(components, depths, handle),
+        26 => build_deck_arr::<T, 26>(components, depths, handle),
+        27 => build_deck_arr::<T, 27>(components, depths, handle),
+        28 => build_deck_arr::<T, 28>(components, depths, handle),
+        29 => build_deck_arr::<T, 29>(components, depths, handle),
+        30 => build_deck_arr::<T, 30>(components, depths, handle),
+        31 => build_deck_arr::<T, 31>(components, depths, handle),
+        32 => build_deck_arr::<T, 32>(components, depths, handle),
+        // `n_components` is always produced by `py_to_deck`, which already validates 1..=32.
+        _ => unreachable!(),
+    }
 }
 
 fn make_deck_deferred(
@@ -262,23 +427,96 @@ fn make_deck_deferred(
 // Bidirectional conversion: Python lists <-> Deck (items + depths)
 // =====================================================================
 
-/// Recursively flatten a Python value (scalar or nested list) into leaf values
-/// and per-value nesting depths. First element of each list inherits depth + 1;
-/// subsequent elements get depth 0 (continuation).
+/// Recursively flatten a Python value (scalar, tuple, or nested list) into a flat run of
+/// component values (`components`) and per-item nesting depths (`depths`). First element of each
+/// list inherits depth + 1; subsequent elements get depth 0 (continuation).
+///
+/// Lists provide *structural* nesting (marks); tuples do not -- a tuple is a single leaf item
+/// whose own elements become that item's aggregate components (mapped to `[T; N]` on the Rust
+/// side), not further nested structure. So `[(1, 2), (3, 4)]` is a flat 2-item deck of
+/// 2-component aggregates, not a depth-2 list of scalars. Every leaf item (scalar or tuple) must
+/// contribute the same number of components -- `n_components` records that count and is
+/// validated here as each leaf is pushed, rather than in a separate pass afterwards.
 fn py_to_deck<'py>(
     data: &Bound<'py, PyAny>,
     depth: u8,
-    items: &mut Vec<Bound<'py, PyAny>>,
+    components: &mut Vec<Bound<'py, PyAny>>,
     depths: &mut Vec<u8>,
+    n_components: &mut Option<usize>,
 ) -> PyResult<()> {
-    if data.is_instance_of::<PyList>() || data.is_instance_of::<PyTuple>() {
-        for (i, elem) in data.try_iter()?.enumerate() {
-            py_to_deck(&elem?, if i == 0 { depth + 1 } else { 0 }, items, depths)?;
+    if data.is_instance_of::<PyTuple>() {
+        let tuple = data.downcast::<PyTuple>()?;
+        for elem in tuple.iter() {
+            if elem.is_instance_of::<PyTuple>() || elem.is_instance_of::<PyList>() {
+                return Err(pyo3::exceptions::PyValueError::new_err(
+                    "Nested tuples or lists are not supported inside an aggregate item (tuple).",
+                ));
+            }
         }
+        push_leaf(
+            tuple.iter(),
+            tuple.len(),
+            depth,
+            components,
+            depths,
+            n_components,
+        )
+    } else if data.is_instance_of::<PyList>() {
+        for (i, elem) in data.try_iter()?.enumerate() {
+            py_to_deck(
+                &elem?,
+                if i == 0 { depth + 1 } else { 0 },
+                components,
+                depths,
+                n_components,
+            )?;
+        }
+        Ok(())
     } else {
-        items.push(data.clone());
-        depths.push(depth);
+        push_leaf(
+            std::iter::once(data.clone()),
+            1,
+            depth,
+            components,
+            depths,
+            n_components,
+        )
     }
+}
+
+/// Validates that a leaf item's component count (`n`) matches every other leaf item's, is
+/// nonzero, and is at most 32, then appends its component values and depth.
+fn push_leaf<'py>(
+    values: impl Iterator<Item = Bound<'py, PyAny>>,
+    n: usize,
+    depth: u8,
+    components: &mut Vec<Bound<'py, PyAny>>,
+    depths: &mut Vec<u8>,
+    n_components: &mut Option<usize>,
+) -> PyResult<()> {
+    match *n_components {
+        None => {
+            if n == 0 {
+                return Err(pyo3::exceptions::PyValueError::new_err(
+                    "Aggregate items (tuples) must not be empty.",
+                ));
+            }
+            if n > 32 {
+                return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                    "Aggregate items with more than 32 components are not supported (got {n})."
+                )));
+            }
+            *n_components = Some(n);
+        }
+        Some(expected) if expected != n => {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "All aggregate items (tuples) in a deck must have the same length.",
+            ));
+        }
+        _ => {}
+    }
+    components.extend(values);
+    depths.push(depth);
     Ok(())
 }
 

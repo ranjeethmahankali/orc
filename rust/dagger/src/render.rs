@@ -118,16 +118,18 @@ fn title_color(info: &NodeInfo) -> Color32 {
 }
 
 /// Picks a node's body/title/outline colors and outline width for this frame, in priority order:
-/// a cycle (a graph-shape problem) outranks a execution fault (a runtime problem), which outranks
-/// mere selection, which outranks the node's own ordinary kind-based color. Factored out of
-/// `draw_nodes` so this precedence is unit-testable without a live `Ui`.
+/// a cycle (a graph-shape problem) outranks a constant the user is editing into an unparseable
+/// state (an editing problem), which outranks an execution fault (a runtime problem), which
+/// outranks mere selection, which outranks the node's own ordinary kind-based color. Factored
+/// out of `draw_nodes` so this precedence is unit-testable without a live `Ui`.
 fn node_style(
     info: &NodeInfo,
     in_cycle: bool,
+    invalid_const: bool,
     has_fault: bool,
     selected: bool,
 ) -> (Color32, Color32, Color32, f32) {
-    if in_cycle {
+    if in_cycle || invalid_const {
         (ERROR_BODY_COLOR, ERROR_TITLE_COLOR, ERROR_STROKE_COLOR, 1.0)
     } else if has_fault {
         (FAULT_BODY_COLOR, FAULT_TITLE_COLOR, FAULT_STROKE_COLOR, 1.0)
@@ -164,6 +166,29 @@ const POPOUT_BUTTON_SIZE: f32 = 16.0;
 const POPOUT_BUTTON_MARGIN: f32 = 6.0;
 /// Canvas-space width of an editable Constant row's value box, before zoom scaling.
 const CONST_EDIT_VALUE_WIDTH: f32 = 80.0;
+/// Canvas-space gap between an editable Constant row's widgets (and between rows), before zoom
+/// scaling -- matches egui's default `item_spacing` exactly, so 100% zoom looks unchanged, but
+/// scales with the text at every other zoom.
+const CONST_EDIT_ITEM_SPACING: Vec2 = Vec2::new(8.0, 3.0);
+/// Canvas-space minimum height of one editable row, before zoom scaling -- matches egui's
+/// default `interact_size.y`. `Ui::horizontal` pre-allocates that as every row's minimum height
+/// ("assume there will be something interactive"), so left unscaled it is a fixed ~18px floor:
+/// zoomed out, the text shrinks but every row stays 18px tall, which is the rows-far-apart look.
+/// Inspect never hits this because its text is one multi-line `Label`, not per-row widgets.
+const CONST_EDIT_ROW_MIN_HEIGHT: f32 = 18.0;
+
+/// The zoom-scaled row metrics `draw_editable_const_content` applies to its child `Ui`'s
+/// spacing. Split out so a unit test can drive the exact same numbers through a real egui
+/// layout pass (see `t_const_edit_row_pitch_scales_with_zoom`).
+fn const_edit_row_spacing(zoom: f32) -> (Vec2, f32) {
+    (
+        Vec2::new(
+            CONST_EDIT_ITEM_SPACING.x * zoom,
+            CONST_EDIT_ITEM_SPACING.y * zoom,
+        ),
+        CONST_EDIT_ROW_MIN_HEIGHT * zoom,
+    )
+}
 
 /// The smallest an Inspect node can be dragged down to — matches the same numbers a freshly
 /// created Inspect node gets from `measure_nodes`, so a manual shrink and a later re-measure
@@ -624,6 +649,22 @@ fn draw_nodes(
     let inspect_cache = state.inspect_cache.try_borrow().ok();
     let inspect_font = FontId::new(view.scale(INSPECT_TEXT_FONT_SIZE), FontFamily::Monospace);
 
+    // Snapshot each Constant node's parse-error flag up front (the per-frame refresh may not
+    // have run yet, but the flag is written by commits, which is what we're painting). The
+    // borrow guard is consumed inside the `map` below, so nothing is held across the node loop,
+    // where editing a row takes `&mut` on the same cache.
+    let invalid_const_cache: std::collections::HashMap<NH, bool> = state
+        .const_edit_cache
+        .try_borrow()
+        .map(|cache| {
+            cache
+                .iter()
+                .enumerate()
+                .map(|(i, entry)| (orc_sdk::NH::from(i), entry.invalid))
+                .collect()
+        })
+        .unwrap_or_default();
+
     for nh in state.workflow.node_iter() {
         let rect = node_rect(positions[nh], sizes[nh]);
         if !rect.intersects(visible) {
@@ -634,6 +675,7 @@ fn draw_nodes(
         let (body_fill, title_fill, outline, outline_width) = node_style(
             info,
             in_cycle[nh],
+            invalid_const_cache.get(&nh).copied().unwrap_or(false),
             execution_error[nh].is_some(),
             selected[nh],
         );
@@ -849,6 +891,14 @@ fn draw_editable_const_content(
             .layout(egui::Layout::top_down(egui::Align::LEFT)),
     );
     child.set_clip_rect(content_rect);
+    // egui sizes each `ui.horizontal` row at least `interact_size.y` tall and pads `item_spacing`
+    // between rows -- both fixed screen-space sizes by default. Scale both with the zoom (like
+    // the font and value box already are), or zoomed-out rows keep a fixed floor height while
+    // their text shrinks, and the rows read as spread far apart.
+    let (item_spacing, min_row_height) = const_edit_row_spacing(view.zoom);
+    let style = child.style_mut();
+    style.spacing.item_spacing = item_spacing;
+    style.spacing.interact_size.y = min_row_height;
     egui::ScrollArea::both()
         .id_salt(("dagger-const-edit-scroll", nh))
         .auto_shrink([false, false])
@@ -1058,36 +1108,99 @@ mod test {
         assert_eq!(rect.max, Pos2::new(45.0, 37.0));
     }
 
-    /// A reversed condition here (returning `declared` whenever it exists, regardless of
-    /// `explicit`) would silently discard every user-set pin label; nothing else in the crate
-    /// would catch it since labels are just cosmetic text.
+    /// Regression test for the zoomed-out rows-far-apart bug: `Ui::horizontal` pre-allocates
+    /// `interact_size.y` as every row's minimum height and pads `item_spacing` between rows,
+    /// both fixed screen-space sizes by default -- so pitch stopped tracking the font once the
+    /// text shrank below that floor. Drives `const_edit_row_spacing`'s numbers (the same ones
+    /// `draw_editable_const_content` applies) through a real egui layout pass and checks the
+    /// row pitch actually shrinks with the zoom.
     #[test]
-    fn t_node_style_precedence_cycle_beats_fault_beats_selection() {
+    fn t_const_edit_row_pitch_scales_with_zoom() {
+        fn row_pitch(zoom: f32) -> f32 {
+            let mut pitch = 0.0;
+            egui::__run_test_ui(|ui| {
+                let font_size = 11.0 * zoom;
+                let (item_spacing, min_row_height) = const_edit_row_spacing(zoom);
+                let mut child = ui.new_child(
+                    egui::UiBuilder::new()
+                        .max_rect(egui::Rect::from_min_size(
+                            egui::Pos2::ZERO,
+                            egui::vec2(300.0, 400.0),
+                        ))
+                        .layout(egui::Layout::top_down(egui::Align::LEFT)),
+                );
+                let style = child.style_mut();
+                style.spacing.item_spacing = item_spacing;
+                style.spacing.interact_size.y = min_row_height;
+                let font = egui::FontId::new(font_size, egui::FontFamily::Monospace);
+                let mut tops = Vec::new();
+                for i in 0..2 {
+                    let top = child
+                        .horizontal(|ui| {
+                            ui.label(egui::RichText::new("  3   ┝").monospace().size(font_size));
+                            let mut buf = format!("value{i}");
+                            ui.add(
+                                egui::TextEdit::singleline(&mut buf)
+                                    .frame(egui::Frame::NONE)
+                                    .font(font.clone())
+                                    .desired_width(80.0 * zoom),
+                            )
+                            .rect
+                            .top()
+                        })
+                        .inner;
+                    tops.push(top);
+                }
+                pitch = tops[1] - tops[0];
+            });
+            pitch
+        }
+        let at_100 = row_pitch(1.0);
+        let at_min = row_pitch(MIN_TEXT_ZOOM);
+        assert!(at_100 > 0.0);
+        assert!(
+            at_min < 0.6 * at_100,
+            "row pitch must shrink with zoom (100%: {at_100}px, {}%: {at_min}px)",
+            MIN_TEXT_ZOOM * 100.0
+        );
+    }
+
+    /// Reversed conditions here (e.g. returning `declared` whenever it exists) would silently
+    /// discard every user-set pin label; nothing else in the crate would catch it since labels
+    /// are just cosmetic text. Likewise the style precedence: cycle > invalid-const > fault >
+    /// selection.
+    #[test]
+    fn t_node_style_precedence_cycle_beats_invalid_const_beats_fault_beats_selection() {
         let info = NodeInfo::Function(orc_sdk::FuncInfo::default());
-        let (cycle_body, ..) = node_style(&info, true, true, true);
+        let (cycle_body, ..) = node_style(&info, true, true, true, true);
         assert_eq!(
             cycle_body, ERROR_BODY_COLOR,
             "a cycle outranks everything else"
         );
 
-        let (fault_body, ..) = node_style(&info, false, true, true);
+        let (invalid_body, ..) = node_style(&info, false, true, true, true);
+        assert_eq!(
+            invalid_body, ERROR_BODY_COLOR,
+            "an unparseable constant outranks a fault"
+        );
+        let (fault_body, ..) = node_style(&info, false, false, true, true);
         assert_eq!(
             fault_body, FAULT_BODY_COLOR,
             "a fault outranks mere selection"
         );
         assert_ne!(
             fault_body, ERROR_BODY_COLOR,
-            "a fault must not read as a cycle"
+            "a fault must not read as a cycle or an invalid constant"
         );
 
         let (selected_body, _, selected_outline, selected_width) =
-            node_style(&info, false, false, true);
+            node_style(&info, false, false, false, true);
         assert_eq!(selected_body, node_color(&info));
         assert_eq!(selected_outline, SELECTION_COLOR);
         assert_eq!(selected_width, 2.0);
 
         let (plain_body, plain_title, plain_outline, plain_width) =
-            node_style(&info, false, false, false);
+            node_style(&info, false, false, false, false);
         assert_eq!(plain_body, node_color(&info));
         assert_eq!(plain_title, title_color(&info));
         assert_eq!(plain_outline, NODE_STROKE_COLOR);
