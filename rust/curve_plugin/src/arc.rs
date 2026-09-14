@@ -29,8 +29,13 @@ impl TOrcData for Arc2d {
 impl Display for Arc2d {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let c = self.inner.center();
-        // write!(f, "Arc2d {{ center: {{{}, {}, {}}}, radius: {} }}", c)
-        todo!()
+        write!(
+            f,
+            "Arc2d {{ center: ({}, {}), radius: {} }}",
+            c[0],
+            c[1],
+            self.inner.radius()
+        )
     }
 }
 
