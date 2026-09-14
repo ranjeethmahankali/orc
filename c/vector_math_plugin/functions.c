@@ -3,6 +3,25 @@
 #include <stdint.h>
 #include <string.h>
 
+static bool is_primitive_type(OrcTypeId const type_id)
+{
+  switch (type_id) {
+  case ORC_TYPE_U8:   // Fall through.
+  case ORC_TYPE_U16:  // Fall through.
+  case ORC_TYPE_U32:  // Fall through.
+  case ORC_TYPE_U64:  // Fall through.
+  case ORC_TYPE_F32:  // Fall through.
+  case ORC_TYPE_F64:  // Fall through.
+  case ORC_TYPE_I8:   // Fall through.
+  case ORC_TYPE_I16:  // Fall through.
+  case ORC_TYPE_I32:  // Fall through.
+  case ORC_TYPE_I64:  // Fall through.
+    return true;
+  default:
+    return false;
+  }
+}
+
 static OrcError make_vec(uint64_t         ctx,
                          OrcHandle const *input,
                          uint64_t         n_inputs,
@@ -19,15 +38,20 @@ static OrcError make_vec(uint64_t         ctx,
     orc_sdk_report_message(ctx, ORC_MSG_LEVEL_ERROR, "Expected 1 output.");
     return ORC_ERROR_INVALID_ARGUMENTS;
   }
+  OrcTypeId const first_type_id = input[0].type_id;
+  if (!is_primitive_type(first_type_id)) {
+    orc_sdk_report_message(
+      ctx, ORC_MSG_LEVEL_ERROR, "Vector components must be primitive scalar types");
+    return ORC_ERROR_TYPE_MISMATCH;
+  }
   OrcError          err           = ORC_ERROR_NONE;
   size_t           *input_arities = NULL;
   void             *combinations  = NULL;
   OrcHandle const **input_ptrs    = NULL;
   uint8_t          *input_depths  = NULL;
   // Stuff above need to be cleaned up in all exit paths.
-  size_t          output_arity  = 0;
-  OrcTypeId const first_type_id = input[0].type_id;
-  size_t          scalar_size   = 0;
+  size_t output_arity = 0;
+  size_t scalar_size  = 0;
   {  // Make sure all the inputs (components) are the same type. And compute the output
      // arity at the same time.
     for (size_t i = 0; i < n_inputs; ++i) {
@@ -127,13 +151,30 @@ cleanup:
 OrcFuncInfo const MAKE_VEC_INFO = {
   .name = "make_vec",
   .desc =
-    "Create a vector from it's components. The arity of the vector will be the same as "
-    "the number of input components provided. Supports any scalar type.",
+    "Create a vector from its components. The arity of the output will be the sum of "
+    "arities of inputs. Supports any scalar type.",
   .n_inputs    = ORC_ARGS_VARIADIC,
   .n_outputs   = 1,
   .input_args  = NULL,
   .output_args = NULL,
   .func        = make_vec};
+
+#define DEFINE_SCALAR_ADDITION(type, suffix)            \
+  type _add_scalar_##suffix(type const a, type const b) \
+  {                                                     \
+    return a + b;                                       \
+  }
+
+DEFINE_SCALAR_ADDITION(uint8_t, u8)
+DEFINE_SCALAR_ADDITION(uint8_t, u16)
+DEFINE_SCALAR_ADDITION(uint8_t, u32)
+DEFINE_SCALAR_ADDITION(uint8_t, u64)
+DEFINE_SCALAR_ADDITION(float, f32)
+DEFINE_SCALAR_ADDITION(double, f64)
+DEFINE_SCALAR_ADDITION(int8_t, i8)
+DEFINE_SCALAR_ADDITION(int8_t, i16)
+DEFINE_SCALAR_ADDITION(int8_t, i32)
+DEFINE_SCALAR_ADDITION(int8_t, i64)
 
 static OrcError vec_add(uint64_t         ctx,
                         OrcHandle const *input,
