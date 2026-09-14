@@ -1,4 +1,4 @@
-use orc_sdk::{DeckItemDisplay, Error, OrcTypeId, TOrcData, orc_fn};
+use orc_sdk::{DeckItemDisplay, Error, HostCallbacks, OrcTypeId, TOrcData, orc_fn};
 use std::fmt::Display;
 
 use crate::{host_callbacks, registry};
@@ -63,7 +63,23 @@ fn arc_2d_from_three_points() {
     let host_callbacks = host_callbacks();
     let registry: &DeckRegistry = registry();
 
-    fn run(start: &f64, mid: &f64, end: &f64, arc: &mut Arc2d) -> Result<(), Error> {
-        todo!();
+    fn run(
+        host: &HostCallbacks,
+        start: &[f64; 2],
+        mid: &[f64; 2],
+        end: &[f64; 2],
+        arc: &mut Arc2d,
+    ) -> Result<(), Error> {
+        match loke::Arc2d::from_three_points(loke::DVec(*start), loke::DVec(*mid), loke::DVec(*end))
+        {
+            Ok(curve) => {
+                arc.inner = curve;
+                Ok(())
+            }
+            Err(e) => {
+                host.error(&e.to_string());
+                Err(Error::Unknown)
+            }
+        }
     }
 }
