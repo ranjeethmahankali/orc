@@ -1,4 +1,4 @@
-use orc_sdk::{Error, OrcTypeId, TOrcData, orc_fn};
+use orc_sdk::{DeckItemDisplay, Error, OrcTypeId, TOrcData, orc_fn};
 use std::fmt::Display;
 
 use crate::{host_callbacks, registry};
@@ -31,6 +31,12 @@ impl Display for Arc2d {
         let c = self.inner.center();
         // write!(f, "Arc2d {{ center: {{{}, {}, {}}}, radius: {} }}", c)
         todo!()
+    }
+}
+
+impl DeckItemDisplay for Arc2d {
+    fn item_fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        Display::fmt(self, f)
     }
 }
 
