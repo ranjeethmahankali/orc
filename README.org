@@ -17,7 +17,9 @@
     cmake --build build/release
   #+end_src
 
-  To generate a unified compile_commands.json (covers both C and C++ for Clangd LSP):
+  Use below command to  generate a unified compile_commands.json (covers both C and C++ for Clangd
+  LSP). This only works on Unix systems. On Windows, you have to do it through Visual Studio, at
+  least that is what works for me.
 
   #+begin_src compile
     cmake -S . -B build/debug -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DCMAKE_BUILD_TYPE=Debug
