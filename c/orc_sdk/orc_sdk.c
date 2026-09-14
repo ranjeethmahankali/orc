@@ -1925,36 +1925,12 @@ OrcError _oh_free_fn(OrcHandle *const handle)
   if (handle == NULL) {
     return ORC_ERROR_NONE;
   }
-  OrcSdk_ItemFreeFn item_free_fn = NULL;
-  switch (handle->type_id) {
-  case ORC_TYPE_U8:
-  case ORC_TYPE_U16:
-  case ORC_TYPE_U32:
-  case ORC_TYPE_U64:
-    // Scalars.
-  case ORC_TYPE_F32:
-  case ORC_TYPE_F64:
-    // Signed integers.
-  case ORC_TYPE_I8:
-  case ORC_TYPE_I16:
-  case ORC_TYPE_I32:
-  case ORC_TYPE_I64:
-    // Proxy for an item in a tree.
-  case ORC_TYPE_PROXY:
-    break;
-  default:
-    if (PLUGIN_TYPE_FN) {
-      OrcSdk_TypeInfo info = PLUGIN_TYPE_FN(handle->type_id);
-      if (!_is_type_info_valid(&info)) {
-        return ORC_ERROR_TYPE_MISMATCH;
-      }
-      item_free_fn = info.free_fn;
-    }
-    else {
-      return ORC_ERROR_TYPE_MISMATCH;
-    }
-    break;
+  OrcSdk_TypeInfo info;
+  OrcError const  info_err = orc_sdk_get_type_info(handle->type_id, &info);
+  if (info_err != ORC_ERROR_NONE) {
+    return info_err;
   }
+  OrcSdk_ItemFreeFn const item_free_fn = info.free_fn;
   // Check registry ownership before touching anything.
   // If this handle ID is not in our registry, this plugin doesn't own it — don't free.
   OrcError const err = _orc_sdk_registry_remove(handle->handle);
@@ -2217,57 +2193,12 @@ OrcError orc_sdk_handle_alloc(OrcTypeId const  id,
       }
     }
   }
-  uint64_t single_item_size = 0;
-  switch (id) {
-    // Unsigned integers.
-  case ORC_TYPE_U8:
-    single_item_size = sizeof(uint8_t);
-    break;
-  case ORC_TYPE_U16:
-    single_item_size = sizeof(uint16_t);
-    break;
-  case ORC_TYPE_U32:
-    single_item_size = sizeof(uint32_t);
-    break;
-  case ORC_TYPE_U64:
-    single_item_size = sizeof(uint64_t);
-    break;
-    // Scalars.
-  case ORC_TYPE_F32:
-    single_item_size = sizeof(float);
-    break;
-  case ORC_TYPE_F64:
-    single_item_size = sizeof(double);
-    break;
-    // Signed integers.
-  case ORC_TYPE_I8:
-    single_item_size = sizeof(int8_t);
-    break;
-  case ORC_TYPE_I16:
-    single_item_size = sizeof(int16_t);
-    break;
-  case ORC_TYPE_I32:
-    single_item_size = sizeof(int32_t);
-    break;
-  case ORC_TYPE_I64:
-    single_item_size = sizeof(int64_t);
-    break;
-  case ORC_TYPE_PROXY:
-    single_item_size = sizeof(OrcItemProxy);
-    break;
-  default: {
-    if (PLUGIN_TYPE_FN) {
-      OrcSdk_TypeInfo info = PLUGIN_TYPE_FN(id);
-      if (!_is_type_info_valid(&info)) {
-        return ORC_ERROR_TYPE_MISMATCH;
-      }
-      single_item_size = info.item_size;
-    }
-    else {
-      return ORC_ERROR_TYPE_MISMATCH;
-    }
+  OrcSdk_TypeInfo info;
+  OrcError const  info_err = orc_sdk_get_type_info(id, &info);
+  if (info_err != ORC_ERROR_NONE) {
+    return info_err;
   }
-  }
+  uint64_t const single_item_size = info.item_size;
   ORC_SDK_REQUIRE_WITH_MSG(single_item_size != 0,
                            "Item size cannot be inferred from the type id.");
   if (item_size % single_item_size) {
@@ -2326,57 +2257,12 @@ OrcError _copy_items(OrcTypeId const type_id,
                      void           *dst,
                      size_t const    n_items)
 {
-  OrcSdk_CopyItemsFn copy_fn = NULL;
-  switch (type_id) {
-  case ORC_TYPE_U8:
-    copy_fn = _copy_primitive_items;
-    break;
-  case ORC_TYPE_U16:
-    copy_fn = _copy_primitive_items;
-    break;
-  case ORC_TYPE_U32:
-    copy_fn = _copy_primitive_items;
-    break;
-  case ORC_TYPE_U64:
-    copy_fn = _copy_primitive_items;
-    break;
-    // Scalars.
-  case ORC_TYPE_F32:
-    copy_fn = _copy_primitive_items;
-    break;
-  case ORC_TYPE_F64:
-    copy_fn = _copy_primitive_items;
-    break;
-    // Signed integers.
-  case ORC_TYPE_I8:
-    copy_fn = _copy_primitive_items;
-    break;
-  case ORC_TYPE_I16:
-    copy_fn = _copy_primitive_items;
-    break;
-  case ORC_TYPE_I32:
-    copy_fn = _copy_primitive_items;
-    break;
-  case ORC_TYPE_I64:
-    copy_fn = _copy_primitive_items;
-    break;
-    // Proxy for an item in a tree.
-  case ORC_TYPE_PROXY:
-    copy_fn = _copy_primitive_items;
-    break;
-  default:
-    if (PLUGIN_TYPE_FN) {
-      OrcSdk_TypeInfo info = PLUGIN_TYPE_FN(type_id);
-      if (!_is_type_info_valid(&info)) {
-        return ORC_ERROR_TYPE_MISMATCH;
-      }
-      copy_fn = info.copy_fn;
-    }
-    else {
-      return ORC_ERROR_TYPE_MISMATCH;
-    }
-    break;
+  OrcSdk_TypeInfo info;
+  OrcError const  info_err = orc_sdk_get_type_info(type_id, &info);
+  if (info_err != ORC_ERROR_NONE) {
+    return info_err;
   }
+  OrcSdk_CopyItemsFn const copy_fn = info.copy_fn;
   ORC_SDK_REQUIRE_WITH_MSG(
     copy_fn != NULL, "Should never happen. Either find a copy function, or error out.");
   copy_fn(src, dst, n_items, item_size);
@@ -2660,67 +2546,13 @@ OrcError orc_sdk_handle_to_str(OrcHandle const *input, OrcHandle *out)
   if (item_size == 0) {
     return ORC_ERROR_INVALID_HANDLE;
   }
-  OrcSdk_SNPrintItemFn print_fn         = NULL;
-  size_t               single_item_size = 0;
-  switch (input->type_id) {
-  case ORC_TYPE_U8:
-    print_fn         = _snprint_u8;
-    single_item_size = sizeof(uint8_t);
-    break;
-  case ORC_TYPE_U16:
-    print_fn         = _snprint_u16;
-    single_item_size = sizeof(uint16_t);
-    break;
-  case ORC_TYPE_U32:
-    print_fn         = _snprint_u32;
-    single_item_size = sizeof(uint32_t);
-    break;
-  case ORC_TYPE_U64:
-    print_fn         = _snprint_u64;
-    single_item_size = sizeof(uint64_t);
-    break;
-  case ORC_TYPE_F32:
-    print_fn         = _snprint_f32;
-    single_item_size = sizeof(float);
-    break;
-  case ORC_TYPE_F64:
-    print_fn         = _snprint_f64;
-    single_item_size = sizeof(double);
-    break;
-  case ORC_TYPE_I8:
-    print_fn         = _snprint_i8;
-    single_item_size = sizeof(int8_t);
-    break;
-  case ORC_TYPE_I16:
-    print_fn         = _snprint_i16;
-    single_item_size = sizeof(int16_t);
-    break;
-  case ORC_TYPE_I32:
-    print_fn         = _snprint_i32;
-    single_item_size = sizeof(int32_t);
-    break;
-  case ORC_TYPE_I64:
-    print_fn         = _snprint_i64;
-    single_item_size = sizeof(int64_t);
-    break;
-  case ORC_TYPE_PROXY:
-    print_fn         = _snprint_proxy;
-    single_item_size = sizeof(OrcItemProxy);
-    break;
-  default:
-    if (PLUGIN_TYPE_FN) {
-      OrcSdk_TypeInfo const info = PLUGIN_TYPE_FN(input->type_id);
-      if (!_is_type_info_valid(&info)) {
-        return ORC_ERROR_TYPE_MISMATCH;
-      }
-      print_fn         = info.snprint_fn;
-      single_item_size = info.item_size;
-    }
-    else {
-      return ORC_ERROR_TYPE_MISMATCH;
-    }
-    break;
+  OrcSdk_TypeInfo info;
+  OrcError const  info_err = orc_sdk_get_type_info(input->type_id, &info);
+  if (info_err != ORC_ERROR_NONE) {
+    return info_err;
   }
+  OrcSdk_SNPrintItemFn print_fn         = info.snprint_fn;
+  size_t const         single_item_size = info.item_size;
   if (single_item_size == 0 || (item_size % single_item_size) != 0) {
     return ORC_ERROR_TYPE_MISMATCH;
   }
@@ -2865,7 +2697,11 @@ OrcError orc_sdk_get_type_info(OrcTypeId const type_id, OrcSdk_TypeInfo *out)
     return ORC_ERROR_NONE;
   default:
     if (PLUGIN_TYPE_FN) {
-      *out = PLUGIN_TYPE_FN(type_id);
+      OrcSdk_TypeInfo info = PLUGIN_TYPE_FN(type_id);
+      if (!_is_type_info_valid(&info)) {
+        return ORC_ERROR_TYPE_MISMATCH;
+      }
+      *out = info;
       return ORC_ERROR_NONE;
     }
     else {
