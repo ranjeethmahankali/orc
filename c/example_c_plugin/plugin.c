@@ -20,8 +20,9 @@ OrcError orc_plugin_init(OrcHost const *host, OrcPlugin *plugin_data_out)
   }
   orc_sdk_init(host, NULL);
   plugin_data_out->abi_version = ORC_ABI_VERSION;
-  plugin_data_out->name        = "deck_ops";
-  plugin_data_out->desc        = "Deck/Container operations.";
+  plugin_data_out->name        = "example_c_plugin";
+  plugin_data_out->desc =
+    "Example plugin written in C that contains basic deck operations.";
   // Register custom types - none at the moment.
   plugin_data_out->types   = NULL;
   plugin_data_out->n_types = 0;

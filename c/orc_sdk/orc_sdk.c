@@ -2789,3 +2789,87 @@ OrcError orc_sdk_handle_to_str(OrcHandle const *input, OrcHandle *out)
   orc_sdk_oh_update(out);
   return status;
 }
+
+OrcError orc_sdk_get_type_info(OrcTypeId const type_id, OrcSdk_TypeInfo *out)
+{
+  memset(out, 0, sizeof(OrcSdk_TypeInfo));
+  switch (type_id) {
+    // Unsigned integers.
+  case ORC_TYPE_U8:
+    out->item_size  = sizeof(uint8_t);
+    out->copy_fn    = _copy_primitive_items;
+    out->free_fn    = NULL;
+    out->snprint_fn = _snprint_u8;
+    return ORC_ERROR_NONE;
+  case ORC_TYPE_U16:
+    out->item_size  = sizeof(uint16_t);
+    out->copy_fn    = _copy_primitive_items;
+    out->free_fn    = NULL;
+    out->snprint_fn = _snprint_u16;
+    return ORC_ERROR_NONE;
+  case ORC_TYPE_U32:
+    out->item_size  = sizeof(uint32_t);
+    out->copy_fn    = _copy_primitive_items;
+    out->free_fn    = NULL;
+    out->snprint_fn = _snprint_u32;
+    return ORC_ERROR_NONE;
+  case ORC_TYPE_U64:
+    out->item_size  = sizeof(uint64_t);
+    out->copy_fn    = _copy_primitive_items;
+    out->free_fn    = NULL;
+    out->snprint_fn = _snprint_u64;
+    return ORC_ERROR_NONE;
+    // Scalars.
+  case ORC_TYPE_F32:
+    out->item_size  = sizeof(float);
+    out->copy_fn    = _copy_primitive_items;
+    out->free_fn    = NULL;
+    out->snprint_fn = _snprint_f32;
+    return ORC_ERROR_NONE;
+  case ORC_TYPE_F64:
+    out->item_size  = sizeof(double);
+    out->copy_fn    = _copy_primitive_items;
+    out->free_fn    = NULL;
+    out->snprint_fn = _snprint_f64;
+    return ORC_ERROR_NONE;
+    // Signed integers.
+  case ORC_TYPE_I8:
+    out->item_size  = sizeof(int8_t);
+    out->copy_fn    = _copy_primitive_items;
+    out->free_fn    = NULL;
+    out->snprint_fn = _snprint_i8;
+    return ORC_ERROR_NONE;
+  case ORC_TYPE_I16:
+    out->item_size  = sizeof(int16_t);
+    out->copy_fn    = _copy_primitive_items;
+    out->free_fn    = NULL;
+    out->snprint_fn = _snprint_i16;
+    return ORC_ERROR_NONE;
+  case ORC_TYPE_I32:
+    out->item_size  = sizeof(int32_t);
+    out->copy_fn    = _copy_primitive_items;
+    out->free_fn    = NULL;
+    out->snprint_fn = _snprint_i32;
+    return ORC_ERROR_NONE;
+  case ORC_TYPE_I64:
+    out->item_size  = sizeof(int64_t);
+    out->copy_fn    = _copy_primitive_items;
+    out->free_fn    = NULL;
+    out->snprint_fn = _snprint_i64;
+    return ORC_ERROR_NONE;
+  case ORC_TYPE_PROXY:
+    out->item_size  = sizeof(OrcItemProxy);
+    out->copy_fn    = _copy_primitive_items;
+    out->free_fn    = NULL;
+    out->snprint_fn = _snprint_proxy;
+    return ORC_ERROR_NONE;
+  default:
+    if (PLUGIN_TYPE_FN) {
+      *out = PLUGIN_TYPE_FN(type_id);
+      return ORC_ERROR_NONE;
+    }
+    else {
+      return ORC_ERROR_TYPE_MISMATCH;
+    }
+  }
+}

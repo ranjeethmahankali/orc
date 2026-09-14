@@ -5,8 +5,11 @@
 // Functions
 // ==============================
 
-extern OrcFuncInfo const FLATTEN_DECK_INFO;
-extern OrcFuncInfo const LIST_LENGTH_INFO;
+extern OrcFuncInfo const MAKE_VEC_INFO;
+extern OrcFuncInfo const VEC_ADD_INFO;
+extern OrcFuncInfo const VEC_SUBTRACT_INFO;
+extern OrcFuncInfo const VEC_DOT_PRODUCT_INFO;
+extern OrcFuncInfo const VEC_CROSS_PRODUCT_INFO;
 
 // ==============================
 // Required ABI exports
@@ -20,15 +23,18 @@ OrcError orc_plugin_init(OrcHost const *host, OrcPlugin *plugin_data_out)
   }
   orc_sdk_init(host, NULL);
   plugin_data_out->abi_version = ORC_ABI_VERSION;
-  plugin_data_out->name        = "deck_ops";
-  plugin_data_out->desc        = "Deck/Container operations.";
+  plugin_data_out->name        = "vector_math";
+  plugin_data_out->desc        = "Plugin providing basic vector math.";
   // Register custom types - none at the moment.
   plugin_data_out->types   = NULL;
   plugin_data_out->n_types = 0;
   // Register functions.
   static OrcFuncInfo *FUNCTIONS = NULL;
-  orc_sdk_arr_push(FUNCTIONS, FLATTEN_DECK_INFO);
-  orc_sdk_arr_push(FUNCTIONS, LIST_LENGTH_INFO);
+  orc_sdk_arr_push(FUNCTIONS, MAKE_VEC_INFO);
+  orc_sdk_arr_push(FUNCTIONS, VEC_ADD_INFO);
+  orc_sdk_arr_push(FUNCTIONS, VEC_SUBTRACT_INFO);
+  orc_sdk_arr_push(FUNCTIONS, VEC_DOT_PRODUCT_INFO);
+  orc_sdk_arr_push(FUNCTIONS, VEC_CROSS_PRODUCT_INFO);
   plugin_data_out->functions   = FUNCTIONS;
   plugin_data_out->n_functions = orc_sdk_arr_len(FUNCTIONS);
   return ORC_ERROR_NONE;
