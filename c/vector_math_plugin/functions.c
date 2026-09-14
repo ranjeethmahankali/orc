@@ -19,8 +19,13 @@ static OrcError make_vec(uint64_t         ctx,
     orc_sdk_report_message(ctx, ORC_MSG_LEVEL_ERROR, "Expected 1 output.");
     return ORC_ERROR_INVALID_ARGUMENTS;
   }
+  OrcError          err           = ORC_ERROR_NONE;
+  size_t           *input_arities = NULL;
+  void             *combinations  = NULL;
+  OrcHandle const **input_ptrs    = NULL;
+  uint8_t          *input_depths  = NULL;
+  // Stuff above need to be cleaned up in all exit paths.
   size_t          output_arity  = 0;
-  size_t         *input_arities = NULL;
   OrcTypeId const first_type_id = input[0].type_id;
   size_t          scalar_size   = 0;
   {  // Make sure all the inputs (components) are the same type. And compute the output
@@ -30,15 +35,13 @@ static OrcError make_vec(uint64_t         ctx,
         orc_sdk_report_message(ctx,
                                ORC_MSG_LEVEL_ERROR,
                                "All components of the vector must of of the same type.");
-        orc_sdk_arr_free(input_arities);
-        return ORC_ERROR_INVALID_ARGUMENTS;
+        err = ORC_ERROR_INVALID_ARGUMENTS;
+        goto cleanup;
       }
       OrcSdk_TypeInfo type_info = {0};
-      OrcError        err       = orc_sdk_get_type_info(input[i].type_id, &type_info);
-      if (err != ORC_ERROR_NONE) {
-        orc_sdk_arr_free(input_arities);
-        return err;
-      }
+      err                       = orc_sdk_get_type_info(input[i].type_id, &type_info);
+      if (err)
+        goto cleanup;
       if (scalar_size == 0) {
         scalar_size = type_info.item_size;
       }
@@ -50,47 +53,39 @@ static OrcError make_vec(uint64_t         ctx,
       }
       if (input[i].item_size == 0) {
         orc_sdk_report_message(ctx, ORC_MSG_LEVEL_ERROR, "Invalid handle.");
-        orc_sdk_arr_free(input_arities);
-        return ORC_ERROR_INVALID_HANDLE;
+        err = ORC_ERROR_INVALID_HANDLE;
+        goto cleanup;
       }
       if (input[i].item_size % scalar_size) {
         // The size of the aggregate type must be a multiple of the scalar size.
         orc_sdk_report_message(ctx, ORC_MSG_LEVEL_ERROR, "Invalid aggregate type.");
-        orc_sdk_arr_free(input_arities);
-        return ORC_ERROR_INVALID_ARGUMENTS;
+        err = ORC_ERROR_INVALID_ARGUMENTS;
+        goto cleanup;
       }
       size_t const arity = input[i].item_size / scalar_size;
       err                = orc_sdk_arr_push(input_arities, arity);
-      if (err != ORC_ERROR_NONE) {
-        orc_sdk_arr_free(input_arities);
-        return err;
-      }
+      if (err)
+        goto cleanup;
       output_arity += arity;
     }
   }
   // Allocate output.
-  OrcError const out_alloc_err =
-    orc_sdk_handle_alloc(first_type_id, scalar_size * output_arity, output);
-  if (out_alloc_err) {
-    orc_sdk_arr_free(input_arities);
-    return out_alloc_err;
-  }
+  err = orc_sdk_handle_alloc(first_type_id, scalar_size * output_arity, output);
+  if (err)
+    goto cleanup;
   // Stride over inputs with list combinations, and assign the output.
-  void *combinations = NULL;
   {
     // Input depths array.
-    uint8_t *input_depths = NULL;
     orc_sdk_arr_resize(input_depths, n_inputs);
     uint8_t const zero_depth = 0;
     orc_sdk_arr_fill(input_depths, zero_depth);
     // Pack input handle pointers into an array.
-    OrcHandle const **input_ptrs = NULL;
+    orc_sdk_arr_clear(input_ptrs);
     orc_sdk_arr_reserve(input_ptrs, n_inputs);
     for (size_t i = 0; i < n_inputs; ++i) {
-      OrcError const err = orc_sdk_arr_push(input_ptrs, input + i);
-      if (err != ORC_ERROR_NONE) {
-        return err;
-      }
+      err = orc_sdk_arr_push(input_ptrs, input + i);
+      if (err)
+        goto cleanup;
     }
     // Check the outputs and initialize the combinations.
     ORC_SDK_REQUIRE_WITH_MSG(
@@ -98,20 +93,18 @@ static OrcError make_vec(uint64_t         ctx,
       "We already checked before. This is just to make sure we don't go out of sync.");
     combinations = orc_sdk_comb_init(
       input_ptrs, input_depths, n_inputs, &output, (uint8_t const[]) {0}, 1);
-    orc_sdk_arr_free(input_depths);
-    orc_sdk_arr_free(input_ptrs);
   }
   if (combinations == NULL) {
-    orc_sdk_arr_free(input_arities);
-    return ORC_ERROR_INVALID_COMBINATIONS;
+    err = ORC_ERROR_INVALID_COMBINATIONS;
+    goto cleanup;
   }
   while (combinations) {
     OrcSdk_DeckWriter *out_writer = orc_sdk_comb_get_output(combinations, 0);
     // Casting to char* so that I can increment by byte.
     char *out_vec = (char *)orc_sdk_dw_push_empty(out_writer);
     if (out_vec == NULL) {
-      orc_sdk_arr_free(input_arities);
-      return ORC_ERROR_NULL_PTR;
+      err = ORC_ERROR_ALLOC_FAILED;
+      goto cleanup;
     }
     for (size_t i = 0; i < n_inputs; ++i) {
       OrcSdk_DeckView in_view    = orc_sdk_comb_get_input(combinations, i);
@@ -123,9 +116,12 @@ static OrcError make_vec(uint64_t         ctx,
     combinations = orc_sdk_comb_advance(combinations);
   }
   orc_sdk_oh_update(output);
+cleanup:
   orc_sdk_comb_free(combinations);
   orc_sdk_arr_free(input_arities);
-  return ORC_ERROR_NONE;
+  orc_sdk_arr_free(input_ptrs);
+  orc_sdk_arr_free(input_depths);
+  return err;
 }
 
 OrcFuncInfo const MAKE_VEC_INFO = {
