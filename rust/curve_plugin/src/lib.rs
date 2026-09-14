@@ -2,9 +2,9 @@ use arc::Arc2d;
 use orc_sdk::{
     Deck, DeckRegistry, Error, HostCallbacks, ORC_ABI_VERSION, ORC_TYPE_F32, ORC_TYPE_F64,
     ORC_TYPE_I8, ORC_TYPE_I16, ORC_TYPE_I32, ORC_TYPE_I64, ORC_TYPE_U8, ORC_TYPE_U16, ORC_TYPE_U32,
-    ORC_TYPE_U64, OrcFuncInfo, OrcHandle, OrcHost, OrcHostCallbackAPI, OrcPlugin, OrcTypeId,
-    OrcTypeInfo, ProxyType, TOrcData, TOrcPluginAdaptor, deck_from_proxy, orc_fn_info, orc_plugin,
-    reset_handle, to_str_deck,
+    ORC_TYPE_U64, OrcFuncInfo, OrcHandle, OrcHost, OrcHostCallbackAPI, OrcPlugin, OrcTypeInfo,
+    ProxyType, TOrcData, TOrcPluginAdaptor, deck_from_proxy, orc_fn_info, orc_plugin, reset_handle,
+    to_str_deck,
 };
 use std::sync::{LazyLock, OnceLock};
 
@@ -174,6 +174,6 @@ impl TOrcPluginAdaptor for PluginAdaptor {
 
 orc_plugin!(PluginAdaptor);
 
-const ORC_EXPORTED_FUNCTIONS: &[OrcFuncInfo] = &[];
+const ORC_EXPORTED_FUNCTIONS: &[OrcFuncInfo] = &[orc_fn_info!(arc::arc_2d_from_three_points)];
 
 const ORC_EXPORTED_TYPES: &[OrcTypeInfo] = &[Arc2d::TYPE_INFO];
