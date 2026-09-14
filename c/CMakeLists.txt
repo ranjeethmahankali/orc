@@ -86,9 +86,9 @@ endif()
 
 # vector_math_plugin_tests — executable
 add_executable(vector_math_plugin_tests
-    example_c_plugin/test.c
-    example_c_plugin/plugin.c
-    example_c_plugin/functions.c
+    vector_math_plugin/test.c
+    vector_math_plugin/plugin.c
+    vector_math_plugin/functions.c
     $<TARGET_OBJECTS:orc_sdk_obj>
 )
 target_include_directories(vector_math_plugin_tests PRIVATE .)
