@@ -59,31 +59,60 @@ static OrcError make_vec(uint64_t         ctx,
         orc_sdk_arr_free(input_arities);
         return ORC_ERROR_INVALID_ARGUMENTS;
       }
-      size_t const arity = input[0].item_size / scalar_size;
+      size_t const arity = input[i].item_size / scalar_size;
       err                = orc_sdk_arr_push(input_arities, arity);
+      if (err != ORC_ERROR_NONE) {
+        orc_sdk_arr_free(input_arities);
+        return err;
+      }
       output_arity += arity;
     }
   }
   // Allocate output.
-  orc_sdk_handle_alloc(first_type_id, scalar_size * output_arity, output);
+  OrcError const out_alloc_err =
+    orc_sdk_handle_alloc(first_type_id, scalar_size * output_arity, output);
+  if (out_alloc_err) {
+    orc_sdk_arr_free(input_arities);
+    return out_alloc_err;
+  }
   // Stride over inputs with list combinations, and assign the output.
   void *combinations = NULL;
   {
+    // Input depths array.
     uint8_t *input_depths = NULL;
     orc_sdk_arr_resize(input_depths, n_inputs);
     uint8_t const zero_depth = 0;
     orc_sdk_arr_fill(input_depths, zero_depth);
+    // Pack input handle pointers into an array.
+    OrcHandle const **input_ptrs = NULL;
+    orc_sdk_arr_reserve(input_ptrs, n_inputs);
+    for (size_t i = 0; i < n_inputs; ++i) {
+      OrcError const err = orc_sdk_arr_push(input_ptrs, input + i);
+      if (err != ORC_ERROR_NONE) {
+        return err;
+      }
+    }
+    // Check the outputs and initialize the combinations.
     ORC_SDK_REQUIRE_WITH_MSG(
       n_outputs == 1,
       "We already checked before. This is just to make sure we don't go out of sync.");
     combinations = orc_sdk_comb_init(
-      &input, input_depths, n_inputs, &output, (uint8_t const[]) {0}, 1);
+      input_ptrs, input_depths, n_inputs, &output, (uint8_t const[]) {0}, 1);
     orc_sdk_arr_free(input_depths);
+    orc_sdk_arr_free(input_ptrs);
+  }
+  if (combinations == NULL) {
+    orc_sdk_arr_free(input_arities);
+    return ORC_ERROR_INVALID_COMBINATIONS;
   }
   while (combinations) {
     OrcSdk_DeckWriter *out_writer = orc_sdk_comb_get_output(combinations, 0);
     // Casting to char* so that I can increment by byte.
     char *out_vec = (char *)orc_sdk_dw_push_empty(out_writer);
+    if (out_vec == NULL) {
+      orc_sdk_arr_free(input_arities);
+      return ORC_ERROR_NULL_PTR;
+    }
     for (size_t i = 0; i < n_inputs; ++i) {
       OrcSdk_DeckView in_view    = orc_sdk_comb_get_input(combinations, i);
       void const     *in_vec     = orc_sdk_dv_item_ptr(&in_view);
@@ -93,6 +122,7 @@ static OrcError make_vec(uint64_t         ctx,
     }
     combinations = orc_sdk_comb_advance(combinations);
   }
+  orc_sdk_oh_update(output);
   orc_sdk_comb_free(combinations);
   orc_sdk_arr_free(input_arities);
   return ORC_ERROR_NONE;
@@ -206,9 +236,8 @@ static OrcError vec_cross_product(uint64_t         ctx,
 OrcFuncInfo const VEC_CROSS_PRODUCT_INFO = {
   .name = "vec_cross_product",
   .desc =
-    "Cross product of two vectors. Supports vectors of any arity, and scalar type, "
-    "as "
-    "long as the scalar type supports multiplication and addition.",
+    "Cross product of two vectors. Supports vectors of floating point scalar types, of "
+    "arity 3.",
   .n_inputs    = 2,
   .n_outputs   = 1,
   .input_args  = NULL,
