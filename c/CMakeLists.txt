@@ -44,6 +44,15 @@ add_library(example_c_plugin SHARED
 )
 target_include_directories(example_c_plugin PRIVATE .)
 
+# vector_math_plugin — shared library
+add_library(vector_math_plugin SHARED
+    vector_math_plugin/plugin.c
+    vector_math_plugin/functions.c
+    $<TARGET_OBJECTS:orc_sdk_obj>
+)
+target_include_directories(vector_math_plugin PRIVATE .)
+
+
 # orc_sdk_tests — executable
 add_executable(orc_sdk_tests
     orc_sdk/test.c
@@ -73,6 +82,22 @@ if(NOT MSVC)
 endif()
 if(NOT WIN32)
     target_link_libraries(example_c_plugin_tests PRIVATE pthread)
+endif()
+
+# vector_math_plugin_tests — executable
+add_executable(vector_math_plugin_tests
+    example_c_plugin/test.c
+    example_c_plugin/plugin.c
+    example_c_plugin/functions.c
+    $<TARGET_OBJECTS:orc_sdk_obj>
+)
+target_include_directories(vector_math_plugin_tests PRIVATE .)
+target_link_libraries(vector_math_plugin_tests PRIVATE unity)
+if(NOT MSVC)
+    target_link_libraries(vector_math_plugin_tests PRIVATE m)
+endif()
+if(NOT WIN32)
+    target_link_libraries(vector_math_plugin_tests PRIVATE pthread)
 endif()
 
 # cli_client — executable
