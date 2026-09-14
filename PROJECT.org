@@ -152,18 +152,6 @@
   serialization story of the workflows throws a bit of a wrench into this. I've given this some
   thought in [[*tkwogf - Overhaul of workflow property serialization][this task]], but I don't yet know what the solution is. This requires more thought.
 
-* TODO Fix the strings in dagger UI
-  :PROPERTIES:
-  :CREATED:  2026-09-12 Sat 18:51
-  :END:
-
-  A few things were very poorly implemented by the LLM, and I didn't catch them in time. I left some
-  comments indicating the areas that need to be rewritten:
-
-  - [[file:rust/dagger/src/const_edit.rs::// TODO: this whole function is questionable. I am not sure why we're manually formatting each][We should not manually format individual items. Just use the ABI machinery to convert to strings.]]
-  - [[file:rust/dagger/src/const_edit.rs::// TODO: I am temporarily tolerating some unwraps in below code. We should get rid of them][Maintain a separte string representation coupled with the UI, and convert when changes are commited.]]
-  - [[file:rust/dagger/src/const_edit.rs::// TODO: I am temporarily tolerating some unwraps in below code. We should get rid of them][Same as above]]
-
 * TODO Mesh plugin functions
   :PROPERTIES:
   :CREATED:  2026-09-11 Fri 21:50
@@ -176,6 +164,32 @@
   :LOGBOOK:
   - State "NEXT"       from "TODO"       [2026-09-11 Fri 21:50]
   :END:
+
+* DONE tlbvfz - Fix the strings in dagger UI
+  CLOSED: [2026-09-13 Sun 21:19]
+  :PROPERTIES:
+  :CREATED:  2026-09-12 Sat 18:51
+  :END:
+  :LOGBOOK:
+  - State "DONE"       from "NEXT"       [2026-09-13 Sun 21:19]
+  - State "NEXT"       from "TODO"       [2026-09-13 Sun 20:16]
+  :END:
+
+  A few things were very poorly implemented by the LLM, and I didn't catch them in time. I left some
+  comments indicating the areas that need to be rewritten:
+
+  - [X] [[file:rust/dagger/src/const_edit.rs::// TODO: this whole function is questionable. I am not sure why we're manually formatting each][We should not manually format individual items. Just use the ABI machinery to convert to strings.]]
+  - [X] [[file:rust/dagger/src/const_edit.rs::// TODO: I am temporarily tolerating some unwraps in below code. We should get rid of them][Maintain a separte string representation coupled with the UI, and convert when changes are commited.]]
+  - [X] [[file:rust/dagger/src/const_edit.rs::// TODO: I am temporarily tolerating some unwraps in below code. We should get rid of them][Same as above]]
+
+  <2026-09-13 Sun 20:32> Started addressing these. Found some other issues while testing the UI app.
+
+  - [X] When I zoom in and out of the canvas, the linespacing of the constant nodes doesn't
+    scale. This makes the rows appear far apart and terrible when zoomed out. This works properly in
+    the inspect node. I get that inspect node is displaying a string vs an editable text box, but I
+    want them to appear the same.
+
+  <2026-09-13 Sun 21:19> Ready to merge.
 
 * DONE tl9jwh - Support aggregate slices of the same datatype in OrcHandle
   CLOSED: [2026-09-13 Sun 19:55]
