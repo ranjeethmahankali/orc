@@ -34,9 +34,11 @@ OrcError orc_plugin_init(OrcHost const *host, OrcPlugin *plugin_data_out)
   return ORC_ERROR_NONE;
 }
 
-OrcError orc_deck_alloc(OrcTypeId const id, OrcHandle *const out)
+OrcError orc_deck_alloc(OrcTypeId const  type_id,
+                        uint64_t const   item_size,
+                        OrcHandle *const out)
 {
-  return orc_sdk_handle_alloc(id, out);
+  return orc_sdk_handle_alloc(type_id, item_size, out);
 }
 
 OrcError orc_deck_free(OrcHandle *const handle)
@@ -87,7 +89,7 @@ OrcError orc_deck_deserialize(uint64_t const ctx,
      // won't be in the registry.
     OrcHandle temp_handle = {0};
     temp_handle.handle    = out->handle;
-    err                   = orc_sdk_handle_alloc(out->type_id, &temp_handle);
+    err = orc_sdk_handle_alloc(out->type_id, out->item_size, &temp_handle);
     if (err != ORC_ERROR_NONE) {
       orc_sdk_arr_free(marks);
       return err;

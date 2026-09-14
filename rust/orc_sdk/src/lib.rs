@@ -1,9 +1,9 @@
 mod deck;
-pub use deck::{Combinations, Deck, DeckView, DeckWriter};
+pub use deck::{Combinations, Deck, DeckItemDisplay, DeckItemDisplayAdapter, DeckView, DeckWriter};
 
 mod ffi;
 pub use ffi::{
-    DeckAllocFn, DeckDeserializeFn, DeckFreeFn, DeckFromProxyFn, DeckSerializeFn, DeckToStringFn,
+    DeckDeserializeFn, DeckFreeFn, DeckFromProxyFn, DeckSerializeFn, DeckToStringFn,
     OrcHandleBorrowed, PluginInitFn, ProxyType, TOrcData, TOrcPluginAdaptor, dims_divide,
     dims_multiply, dims_pow,
 };

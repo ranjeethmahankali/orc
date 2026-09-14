@@ -740,6 +740,141 @@ def t_complex_flatten():
 
 
 # ============================================================
+# Aggregate types (e.g. [f64;3]) -- mapped to Python tuples
+# ============================================================
+#
+# A tuple leaf maps to one aggregate deck item (item_size = N * sizeof(scalar)); a list leaf
+# still means structural nesting (marks), same as before. `[(1, 2), (3, 4)]` is a flat 2-item
+# deck of 2-component aggregates -- not a depth-2 list of scalars.
+
+
+def t_make_deck_single_aggregate():
+    """A bare tuple is one aggregate item, not a 3-item list."""
+    h = orc.make_deck((1.0, 2.0, 3.0))
+    assert h.n_items == 1
+    assert h.item_size == 24  # 3 * sizeof(f64)
+    assert orc.read_deck(h) == [(1.0, 2.0, 3.0)]
+
+
+def t_make_deck_list_of_aggregates():
+    """A flat list of tuples is a flat list of aggregate items."""
+    h = orc.make_deck([(1.0, 2.0, 3.0), (4.0, 5.0, 6.0)])
+    assert h.n_items == 2
+    assert orc.read_deck(h) == [(1.0, 2.0, 3.0), (4.0, 5.0, 6.0)]
+
+
+def t_make_deck_nested_list_of_aggregates():
+    """Tuples as leaves of a structurally nested list preserve both the nesting and the
+    tuple-ness of each leaf."""
+    data = [[(1.0, 2.0), (3.0, 4.0)], [(5.0, 6.0)]]
+    h = orc.make_deck(data)
+    assert orc.read_deck(h) == data
+
+
+def t_make_deck_aggregate_integer_dtype():
+    """Aggregates work with an explicit integer dtype too."""
+    h = orc.make_deck([(1, 2, 3), (4, 5, 6)], dtype="i32")
+    assert h.type_id == orc.ORC_TYPE_I32
+    assert h.item_size == 12  # 3 * sizeof(i32)
+    assert orc.read_deck(h) == [(1, 2, 3), (4, 5, 6)]
+
+
+def t_make_deck_aggregate_max_size():
+    """32 components is the largest supported aggregate size."""
+    data = tuple(float(i) for i in range(32))
+    h = orc.make_deck(data)
+    assert h.item_size == 32 * 8
+    assert orc.read_deck(h) == [data]
+
+
+def t_make_deck_aggregate_too_large_raises():
+    """More than 32 components is rejected, not silently truncated."""
+    try:
+        orc.make_deck(tuple(float(i) for i in range(33)))
+        assert False, "Should have raised ValueError"
+    except ValueError:
+        pass
+
+
+def t_make_deck_empty_tuple_raises():
+    """An empty tuple leaf (zero components) is rejected."""
+    try:
+        orc.make_deck(())
+        assert False, "Should have raised ValueError"
+    except ValueError:
+        pass
+    try:
+        orc.make_deck([(), ()])
+        assert False, "Should have raised ValueError"
+    except ValueError:
+        pass
+
+
+def t_make_deck_varying_tuple_lengths_raises():
+    """Tuples of different lengths at the same list level can't be represented as one
+    aggregate deck, even though it's valid Python."""
+    try:
+        orc.make_deck([(1.0, 2.0), (3.0, 4.0, 5.0)])
+        assert False, "Should have raised ValueError"
+    except ValueError:
+        pass
+
+
+def t_make_deck_mixed_tuple_and_scalar_raises():
+    """A tuple mixed with a plain scalar at the same list level is rejected the same way as
+    varying tuple lengths -- a scalar leaf is effectively a 1-component item."""
+    try:
+        orc.make_deck([(1.0, 2.0), 3.0])
+        assert False, "Should have raised ValueError"
+    except ValueError:
+        pass
+
+
+def t_make_deck_nested_tuple_raises():
+    """A tuple/list nested inside an aggregate tuple item raises a clear ValueError instead of
+    an opaque extraction TypeError."""
+    try:
+        orc.make_deck((1.0, (2.0, 3.0)))
+        assert False, "Should have raised ValueError"
+    except ValueError:
+        pass
+    try:
+        orc.make_deck((1.0, [2.0, 3.0]))
+        assert False, "Should have raised ValueError"
+    except ValueError:
+        pass
+
+
+def t_vec3_length_accepts_tuple_input():
+    """vec3_length expects a single [f64;3] item per input -- a tuple built via make_deck now
+    round-trips through a real plugin function end to end."""
+    v = orc.make_deck((3.0, 4.0, 0.0))
+    out = orc.vec3_length(v)
+    assert orc.read_deck(out) == [5.0]
+
+
+def t_vec3_length_accepts_list_of_tuples():
+    """Multiple aggregate items striding through Combinations, driven from Python tuples."""
+    v = orc.make_deck([(3.0, 4.0, 0.0), (0.0, 0.0, 1.0)])
+    out = orc.vec3_length(v)
+    assert orc.read_deck(out) == [5.0, 1.0]
+
+
+def t_vec3_length_rejects_non_aggregate_deck():
+    """vec3_length expects a single [f64;3] item per input. A deck built by make_deck([1,2,3])
+    is 3 separate f64 items (item_size=8), not one aggregate item (item_size=24) -- a plain list
+    leaf is still a list of scalars, only a tuple leaf becomes an aggregate. The type_id matches
+    (both are F64) but the item_size doesn't, and dispatch must reject it instead of
+    reinterpreting the buffer as a vec3."""
+    a = orc.make_deck([1.0, 2.0, 3.0])
+    try:
+        orc.vec3_length(a)
+        assert False, "Should have raised (item_size mismatch: scalar deck, not aggregate)"
+    except (RuntimeError, TypeError):
+        pass
+
+
+# ============================================================
 # Serialization round-trip (workflow-level)
 # ============================================================
 
@@ -786,6 +921,40 @@ def t_serial_every_plugin_handles_builtin_types():
             assert out.n_items == len(values)
         finally:
             os.unlink(path)
+
+
+# _make_builtin_samples() keys on (type_id, dtype), which can't distinguish a flat f64 sample
+# from an aggregate f64 sample (same type_id/dtype, different item_size) -- so the aggregate
+# case is a separate, dedicated sample/tests instead of folded into that dict.
+def _make_aggregate_sample():
+    return (orc.ORC_TYPE_F64, "f64"), [
+        (1.0, 2.0, 3.0), (4.0, 5.0, 6.0), (-7.5, 0.0, 100.0)
+    ]
+
+
+def t_serial_aggregate_survives_workflow_round_trip():
+    """Same round trip as t_serial_every_plugin_handles_builtin_types, but for an aggregate
+    (tuple-leaf) sample."""
+    (type_id, dtype), values = _make_aggregate_sample()
+
+    def fn():
+        # Use flatten_deck as a type-preserving identity operation, same as the builtin-type
+        # version of this test.
+        return orc.flatten_deck(orc.make_deck(values, dtype=dtype))
+
+    graph = orc.make_workflow(fn)
+    with tempfile.NamedTemporaryFile(suffix=".orcflow", delete=False) as f:
+        path = f.name
+    try:
+        orc.save_workflow(graph, path)
+        restored = orc.load_workflow(path)
+        out = restored.run()
+        assert out.type_id == type_id
+        assert out.item_size == 24
+        assert out.n_items == len(values)
+        assert orc.read_deck(out) == values
+    finally:
+        os.unlink(path)
 
 
 def t_serial_every_plugin_handles_nested_builtin():
@@ -1809,6 +1978,16 @@ def t_deck_to_str_every_builtin_type():
         assert len(groups) == len(values), (
             f"dtype={dtype}: expected {len(values)} strings, got {len(groups)}"
         )
+
+
+def t_deck_to_str_aggregate_sample():
+    """Same as t_deck_to_str_every_builtin_type, but for an aggregate (tuple-leaf) sample --
+    each item's string is comma-joined and wrapped in parens."""
+    (_type_id, dtype), values = _make_aggregate_sample()
+    h = orc.make_deck(values, dtype=dtype)
+    out = orc.deck_to_str(h)
+    groups = _to_str_groups(out)
+    assert groups == ["(1, 2, 3)", "(4, 5, 6)", "(-7.5, 0, 100)"]
 
 
 # ============================================================

@@ -1,5 +1,5 @@
 use crate::{host_callbacks, registry};
-use orc_sdk::{OrcTypeId, TOrcData, orc_fn};
+use orc_sdk::{DeckItemDisplay, OrcTypeId, TOrcData, orc_fn};
 use std::fmt::Display;
 
 #[derive(Default, Clone, Debug, PartialEq)]
@@ -47,6 +47,12 @@ impl Complex {
 impl Display for Complex {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{} + {}i", self.real, self.imag)
+    }
+}
+
+impl DeckItemDisplay for Complex {
+    fn item_fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        Display::fmt(self, f)
     }
 }
 
@@ -160,7 +166,7 @@ mod tests {
         let inputs = [lhs, rhs];
         unsafe { add_complex(0, inputs.as_ptr(), 2, &mut out, 1) };
         assert_eq!(
-            out.items::<Complex>(),
+            out.items::<Complex>().unwrap(),
             &[
                 Complex {
                     real: 11.0,
@@ -183,7 +189,7 @@ mod tests {
         let inputs = [lhs, rhs];
         unsafe { add_complex(0, inputs.as_ptr(), 2, &mut out, 1) };
         assert_eq!(
-            out.items::<Complex>(),
+            out.items::<Complex>().unwrap(),
             &[
                 Complex {
                     real: 5.0,
@@ -211,7 +217,7 @@ mod tests {
         let inputs = [lhs, rhs];
         unsafe { add_complex(0, inputs.as_ptr(), 2, &mut out, 1) };
         assert_eq!(
-            out.items::<Complex>(),
+            out.items::<Complex>().unwrap(),
             &[
                 Complex {
                     real: 1.0,
@@ -267,7 +273,7 @@ mod tests {
         let inputs = [lhs, rhs];
         unsafe { mul_complex(0, inputs.as_ptr(), 2, &mut out, 1) };
         assert_eq!(
-            out.items::<Complex>(),
+            out.items::<Complex>().unwrap(),
             &[
                 Complex {
                     real: -5.0,
@@ -290,7 +296,7 @@ mod tests {
         let inputs = [lhs, rhs];
         unsafe { mul_complex(0, inputs.as_ptr(), 2, &mut out, 1) };
         assert_eq!(
-            out.items::<Complex>(),
+            out.items::<Complex>().unwrap(),
             &[
                 Complex {
                     real: 5.0,
@@ -318,7 +324,7 @@ mod tests {
         let inputs = [lhs, rhs];
         unsafe { mul_complex(0, inputs.as_ptr(), 2, &mut out, 1) };
         assert_eq!(
-            out.items::<Complex>(),
+            out.items::<Complex>().unwrap(),
             &[
                 Complex {
                     real: -1.0,
@@ -345,7 +351,7 @@ mod tests {
         let inputs = [lhs, rhs];
         unsafe { mul_complex(0, inputs.as_ptr(), 2, &mut out, 1) };
         assert_eq!(
-            out.items::<Complex>(),
+            out.items::<Complex>().unwrap(),
             &[
                 Complex {
                     real: 0.0,

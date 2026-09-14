@@ -875,7 +875,11 @@ mod test {
         let computed = state.computed_outputs.try_borrow().unwrap();
         let result = &computed[outs[0]];
         assert!(result.free_fn.is_some(), "a real value should be committed");
-        assert_eq!(result.items::<f64>(), [7.0].as_slice());
+        assert!(
+            result.item_size as usize == size_of::<f64>(),
+            "Not expecting aggregate types."
+        );
+        assert_eq!(result.items::<f64>().unwrap(), [7.0].as_slice());
     }
 
     /// A `Failed` job's downstream must still get re-queued and eventually re-settle -- this was
@@ -979,7 +983,13 @@ mod test {
             std::thread::sleep(Duration::from_millis(1));
         }
         let computed = state.computed_outputs.try_borrow().unwrap();
-        assert_eq!(computed[a_outs[0]].items::<f64>(), [3.0].as_slice());
-        assert_eq!(computed[b_outs[0]].items::<f64>(), [30.0].as_slice());
+        assert_eq!(
+            computed[a_outs[0]].items::<f64>().unwrap(),
+            [3.0].as_slice()
+        );
+        assert_eq!(
+            computed[b_outs[0]].items::<f64>().unwrap(),
+            [30.0].as_slice()
+        );
     }
 }

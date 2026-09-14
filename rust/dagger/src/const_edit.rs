@@ -6,9 +6,10 @@
 
 use crate::state::EditorState;
 use orc_sdk::{
-    NH, NodeInfo, ORC_TYPE_F64, ORC_TYPE_I64, OrcHandle, OrcMark, TypeOwner,
+    NH, NodeInfo, ORC_TYPE_F64, ORC_TYPE_I64, OrcHandle, OrcMark, TOrcData, TypeOwner,
     update_handle_from_deck,
 };
+use std::mem::size_of;
 
 const TAB_WIDTH: usize = 3;
 
@@ -141,11 +142,23 @@ pub(crate) fn deck_rows(n_items: usize, marks: &[OrcMark]) -> Vec<Row> {
 /// how to parse/format (`f64` or `i64` today). A plugin-owned type's storage lives entirely on
 /// the other side of the FFI boundary -- possibly not even Rust -- so there is no `with_mut` to
 /// borrow it through at all; those constants stay read-only, same as before this feature existed.
+///
+/// `item_size` must match the scalar exactly, not just be a multiple of it: an aggregate (e.g. an
+/// F64x3 handle, which shares F64's type_id) would otherwise be treated as if it were a plain list
+/// of scalars, and this editor would show one text box per aggregate item holding only that
+/// item's first component, silently discarding the rest.
 pub(crate) fn is_editable(handle: &OrcHandle) -> bool {
-    matches!(
+    if !matches!(
         crate::PLUGIN_SET.get_type_owner(handle.type_id),
         Some(TypeOwner::BuiltIn(_))
-    ) && matches!(handle.type_id, ORC_TYPE_F64 | ORC_TYPE_I64)
+    ) {
+        return false;
+    }
+    match handle.type_id {
+        ORC_TYPE_F64 => handle.item_size as usize == size_of::<f64>(),
+        ORC_TYPE_I64 => handle.item_size as usize == size_of::<i64>(),
+        _ => false,
+    }
 }
 
 /// The same collapsed-ruler text `Inspect` shows for arbitrary connected data, used for a
@@ -172,11 +185,39 @@ pub(crate) struct ConstEditCache {
     pub(crate) buffers: Vec<String>,
 }
 
-fn format_item(handle: &OrcHandle, index: usize) -> String {
-    match handle.type_id {
-        ORC_TYPE_I64 => handle.items::<i64>()[index].to_string(),
-        _ => handle.items::<f64>()[index].to_string(),
+// TODO: this whole function is questionable. I am not sure why we're manually formatting each
+// item here, instead of making use of the ABI provided deck_to_str. Intending to get rid of this,
+// and generally rewrite this part of the code to just use the ABI for string conversion instead
+// of doing its own.
+//
+// Requires item_size to match `T` exactly, not just be a multiple of it, so an aggregate sharing
+// a scalar's type_id (e.g. F64x3) is rejected instead of having its first component read out and
+// displayed as if it were the whole item.
+fn try_format_item<T: TOrcData + std::fmt::Display>(
+    handle: &OrcHandle,
+    index: usize,
+) -> Option<String> {
+    if handle.type_id != T::TYPE_INFO.type_id || handle.item_size as usize != size_of::<T>() {
+        return None;
     }
+    handle
+        .items::<T>()
+        .ok()
+        .map(|items| items[index].to_string())
+}
+
+fn format_item(handle: &OrcHandle, index: usize) -> String {
+    try_format_item::<u8>(handle, index)
+        .or_else(|| try_format_item::<u16>(handle, index))
+        .or_else(|| try_format_item::<u32>(handle, index))
+        .or_else(|| try_format_item::<u64>(handle, index))
+        .or_else(|| try_format_item::<f32>(handle, index))
+        .or_else(|| try_format_item::<f64>(handle, index))
+        .or_else(|| try_format_item::<i8>(handle, index))
+        .or_else(|| try_format_item::<i16>(handle, index))
+        .or_else(|| try_format_item::<i32>(handle, index))
+        .or_else(|| try_format_item::<i64>(handle, index))
+        .unwrap_or_else(|| "<item>".to_string())
 }
 
 /// Resyncs every Constant node's edit-buffer cache. Called once per frame, same as
@@ -329,15 +370,22 @@ pub fn insert_after(state: &mut EditorState, nh: NH, after_index: usize) {
         return;
     }
     let type_id = handle.type_id;
+
+    // TODO: I am temporarily tolerating some unwraps in below code. We should get rid of them
+    // later. We should rewrite this part of the code a little differently. We're doing things in
+    // strange and manual ways. We should just maintain a list of strings and marks, editable and
+    // coupled with the UI, and convert all that to a deck when the changes are commited. The LLM
+    // generated all this overcomplicated nonsense instead. We should get rid of this.
+
     // Copied out (constants are small) rather than borrowed, since `alloc_with_value` below
     // needs `&mut handle` while these would otherwise still be borrowing from it.
     let marks = handle.marks().to_vec();
     let alloc_result = if type_id == ORC_TYPE_I64 {
-        let items = handle.items::<i64>().to_vec();
+        let items = handle.items::<i64>().unwrap().to_vec();
         let new_deck = rebuild_with_insertion(&items, &marks, after_index, 0i64);
         crate::REGISTRY.alloc_with_value(Some(new_deck), handle)
     } else {
-        let items = handle.items::<f64>().to_vec();
+        let items = handle.items::<f64>().unwrap().to_vec();
         let new_deck = rebuild_with_insertion(&items, &marks, after_index, 0.0f64);
         crate::REGISTRY.alloc_with_value(Some(new_deck), handle)
     };
@@ -400,12 +448,19 @@ pub fn delete_row(state: &mut EditorState, nh: NH, delete_index: usize) {
     }
     let type_id = handle.type_id;
     let marks = handle.marks().to_vec();
+
+    // TODO: I am temporarily tolerating some unwraps in below code. We should get rid of them
+    // later. We should rewrite this part of the code a little differently. We're doing things in
+    // strange and manual ways. We should just maintain a list of strings and marks, editable and
+    // coupled with the UI, and convert all that to a deck when the changes are commited. The LLM
+    // generated all this overcomplicated nonsense instead. We should get rid of this.
+
     let alloc_result = if type_id == ORC_TYPE_I64 {
-        let items = handle.items::<i64>().to_vec();
+        let items = handle.items::<i64>().unwrap().to_vec();
         let new_deck = rebuild_with_deletion(&items, &marks, delete_index);
         crate::REGISTRY.alloc_with_value(Some(new_deck), handle)
     } else {
-        let items = handle.items::<f64>().to_vec();
+        let items = handle.items::<f64>().unwrap().to_vec();
         let new_deck = rebuild_with_deletion(&items, &marks, delete_index);
         crate::REGISTRY.alloc_with_value(Some(new_deck), handle)
     };
@@ -587,6 +642,27 @@ mod test {
         assert!(!is_editable(&handle));
     }
 
+    /// An aggregate handle (item_size a multiple of, but not equal to, the scalar size) shares
+    /// F64's type_id but must not be treated as an editable list of plain f64 scalars -- that
+    /// would silently show one text box per item holding only its first component. This pins
+    /// down the exact bug `is_editable`'s `item_size == size_of::<T>()` guard exists to prevent
+    /// (see its doc comment); a future simplification back to a bare `type_id`-only check would
+    /// silently reintroduce it without this test catching it.
+    #[test]
+    fn t_is_editable_false_for_an_aggregate_f64_handle() {
+        let mut deck = Deck::<[f64; 3]>::default();
+        deck.push([1.0, 2.0, 3.0], 1);
+        let mut handle = OrcHandle {
+            handle: crate::HANDLE_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
+            ..Default::default()
+        };
+        crate::REGISTRY
+            .alloc_with_value(Some(deck), &mut handle)
+            .unwrap();
+        assert_eq!(handle.item_size as usize, size_of::<[f64; 3]>());
+        assert!(!is_editable(&handle));
+    }
+
     #[test]
     fn t_commit_row_parses_and_writes_a_new_value() {
         let mut deck = Deck::<f64>::default();
@@ -603,7 +679,7 @@ mod test {
         let NodeInfo::Constant(handle) = &node_infos[nh] else {
             panic!("expected a constant node")
         };
-        assert_eq!(handle.items::<f64>(), &[1.0, 42.5]);
+        assert_eq!(handle.items::<f64>().unwrap(), &[1.0, 42.5]);
         assert!(
             state.dirty,
             "committing a value must mark the workflow dirty"
@@ -626,7 +702,11 @@ mod test {
         let NodeInfo::Constant(handle) = &node_infos[nh] else {
             panic!("expected a constant node")
         };
-        assert_eq!(handle.items::<f64>(), &[7.0], "the deck must be unchanged");
+        assert_eq!(
+            handle.items::<f64>().unwrap(),
+            &[7.0],
+            "the deck must be unchanged"
+        );
         assert_eq!(
             state.const_edit_cache.try_borrow().unwrap()[nh].buffers[0],
             "7"
@@ -652,7 +732,7 @@ mod test {
         let NodeInfo::Constant(handle) = &node_infos[nh] else {
             panic!("expected a constant node")
         };
-        handle.items::<i64>().to_vec()
+        handle.items::<i64>().unwrap().to_vec()
     }
 
     /// The `ORC_TYPE_I64` branch is a distinct code path in `commit_row`/`insert_after`/
@@ -722,7 +802,7 @@ mod test {
         let NodeInfo::Constant(handle) = &node_infos[nh] else {
             panic!("expected a constant node")
         };
-        handle.items::<f64>().to_vec()
+        handle.items::<f64>().unwrap().to_vec()
     }
 
     fn n_marks_of(state: &EditorState, nh: NH) -> u64 {
@@ -872,7 +952,7 @@ mod test {
         commit_row(&mut state, nh, 0);
 
         let computed = state.computed_outputs.try_borrow().unwrap();
-        assert_eq!(computed[oh].items::<f64>(), &[99.0]);
+        assert_eq!(computed[oh].items::<f64>().unwrap(), &[99.0]);
         assert!(state.dirty_version.try_borrow().unwrap()[nh] > version_before);
     }
 }

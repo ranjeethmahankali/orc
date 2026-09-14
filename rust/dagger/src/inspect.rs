@@ -8,7 +8,7 @@
 
 use crate::state::EditorState;
 use eframe::egui;
-use orc_sdk::{NH, NodeInfo, OrcHandle, OrcMark};
+use orc_sdk::{NH, NodeInfo, OrcHandle, OrcMark, TOrcData};
 use std::fmt::Write as _;
 
 const TAB_WIDTH: usize = 3;
@@ -308,7 +308,8 @@ fn render_str_deck_raw(items: &[u8], marks: &[OrcMark], out: &mut String) {
 /// Renders a `deck_to_str()` result handle -- reads `items`/`marks` straight off the raw
 /// pointers, same as `HandleDisplayWrapper` does for the plain `Display` case.
 pub fn render_str_deck(handle: &OrcHandle, out: &mut String) {
-    let items: &[u8] = handle.items::<u8>();
+    debug_assert_eq!(handle.type_id, u8::TYPE_INFO.type_id);
+    let items: &[u8] = handle.items_as_bytes();
     let marks: &[OrcMark] =
         unsafe { orc_sdk::slice_from_ptr(handle.marks, handle.n_marks as usize) };
     render_str_deck_raw(items, marks, out);
@@ -389,6 +390,27 @@ mod test {
         assert!(collapsed.contains("1.5"), "got: {collapsed}");
         assert!(collapsed.contains("-20"), "got: {collapsed}");
         // Exactly one ruler line per original scalar -- no byte ever gets its own line.
+        assert_eq!(collapsed.lines().count(), 2);
+    }
+
+    #[test]
+    fn t_collapsed_display_aggregate_vec3() {
+        // An aggregate (item_size=24, [f64;3]) to_str_deck result must decode the same way as
+        // any other -- one comma-joined string per original item, no special-casing needed here.
+        let mut original = Deck::<[f64; 3]>::default();
+        original.push([1.0, 2.0, 3.0], 1);
+        original.push([4.0, 5.0, 6.0], 0);
+
+        let handle = handle_for(original);
+        let mut str_deck = Deck::<u8>::default();
+        orc_sdk::to_str_deck::<f64>(&handle, &mut str_deck).unwrap();
+
+        let mut collapsed = String::new();
+        render_str_deck_raw(str_deck.items(), str_deck.marks(), &mut collapsed);
+        assert!(collapsed.contains("(1, 2, 3)"), "got: {collapsed}");
+        assert!(collapsed.contains("(4, 5, 6)"), "got: {collapsed}");
+        // Exactly one ruler line per original item -- the comma inside "(1, 2, 3)" must not be
+        // mistaken for a line/item boundary.
         assert_eq!(collapsed.lines().count(), 2);
     }
 

@@ -1,6 +1,6 @@
 use crate::{
-    ContextArena, DeckAllocFn, DeckDeserializeFn, DeckFreeFn, DeckFromProxyFn, DeckSerializeFn,
-    DeckToStringFn, Error, FuncInfo, HostCallbacks, ORC_ABI_VERSION, ORC_DECK_PROXY_COPY_ALL,
+    ContextArena, DeckDeserializeFn, DeckFreeFn, DeckFromProxyFn, DeckSerializeFn, DeckToStringFn,
+    Error, FuncInfo, HostCallbacks, ORC_ABI_VERSION, ORC_DECK_PROXY_COPY_ALL,
     ORC_DECK_PROXY_COPY_ITEMS, ORC_DECK_PROXY_SHUFFLE, OrcHandle, OrcHost, OrcPlugin, OrcTypeId,
     PRIMITIVE_TYPES, PluginInitFn, ProxyType, TypeInfo, ptr_from_slice, slice_from_ptr,
     util::string_from_ffi,
@@ -16,7 +16,6 @@ pub struct Plugin {
     desc: String,
     types: Box<[TypeInfo]>,
     functions: Box<[FuncInfo]>,
-    deck_alloc: DeckAllocFn,
     deck_free: DeckFreeFn,
     deck_from_proxy: DeckFromProxyFn,
     deck_serialize: DeckSerializeFn,
@@ -26,7 +25,6 @@ pub struct Plugin {
 
 impl Plugin {
     const PLUGIN_INIT_FN_NAME: &str = "orc_plugin_init";
-    const DECK_ALLOC_FN_NAME: &str = "orc_deck_alloc";
     const DECK_FREE_FN_NAME: &str = "orc_deck_free";
     const DECK_FROM_PROXY_FN_NAME: &str = "orc_deck_from_proxy";
     const DECK_SERIALIZE_FN_NAME: &str = "orc_deck_serialize";
@@ -35,17 +33,8 @@ impl Plugin {
 
     pub fn load(path: &Path, host: &OrcHost) -> Result<Self, String> {
         let lib = unsafe { Library::new(path) }.map_err(|e| format!("cannot load library: {e}"))?;
-        let (
-            init,
-            deck_alloc,
-            deck_free,
-            deck_from_proxy,
-            deck_serialize,
-            deck_deserialize,
-            deck_to_str,
-        ): (
+        let (init, deck_free, deck_from_proxy, deck_serialize, deck_deserialize, deck_to_str): (
             PluginInitFn,
-            DeckAllocFn,
             DeckFreeFn,
             DeckFromProxyFn,
             DeckSerializeFn,
@@ -56,9 +45,6 @@ impl Plugin {
                 lib.get(Self::PLUGIN_INIT_FN_NAME.as_bytes())
                     .map(|s| *s)
                     .map_err(|_| format!("missing symbol '{}'", Self::PLUGIN_INIT_FN_NAME))?,
-                lib.get(Self::DECK_ALLOC_FN_NAME.as_bytes())
-                    .map(|s| *s)
-                    .map_err(|_| format!("missing symbol '{}'", Self::DECK_ALLOC_FN_NAME))?,
                 lib.get(Self::DECK_FREE_FN_NAME.as_bytes())
                     .map(|s| *s)
                     .map_err(|_| format!("missing symbol '{}'", Self::DECK_FREE_FN_NAME))?,
@@ -101,18 +87,12 @@ impl Plugin {
                     .map(FuncInfo::from)
                     .collect()
             },
-            deck_alloc,
             deck_free,
             deck_from_proxy,
             deck_serialize,
             deck_deserialize,
             deck_to_str,
         })
-    }
-
-    pub fn alloc_deck(&self, type_id: OrcTypeId, handle: &mut OrcHandle) -> Result<(), Error> {
-        let err = unsafe { (self.deck_alloc)(type_id, handle) };
-        Error::from_raw(err)
     }
 
     pub fn free_deck(&self, handle: &mut OrcHandle) -> Result<(), Error> {
@@ -377,41 +357,5 @@ pub(crate) mod test_harness {
             let mut next_id = || self.handle_counter.fetch_add(1, Ordering::Relaxed);
             Workflow::read_from_msgpack(&mut cursor, &PLUGINS, &self.registry, 0, &mut next_id)
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::test_harness::PLUGINS;
-    use crate::{ORC_TYPE_F64, OrcHandle};
-
-    #[test]
-    fn alloc_deck_populates_handle() {
-        let plugin = &PLUGINS.plugins()[0];
-        let mut handle = OrcHandle {
-            handle: 5000,
-            ..Default::default()
-        };
-        let err = unsafe { (plugin.deck_alloc)(ORC_TYPE_F64, &mut handle) };
-        assert_eq!(err, crate::ORC_ERROR_NONE);
-        assert!(handle.free_fn.is_some());
-        assert_eq!(handle.type_id, ORC_TYPE_F64);
-        assert_eq!(handle.handle, 5000);
-        handle.free();
-    }
-
-    #[test]
-    fn free_deck_resets_handle() {
-        let plugin = &PLUGINS.plugins()[0];
-        let mut handle = OrcHandle {
-            handle: 5001,
-            ..Default::default()
-        };
-        unsafe { (plugin.deck_alloc)(ORC_TYPE_F64, &mut handle) };
-        assert!(handle.free_fn.is_some());
-        plugin.free_deck(&mut handle).unwrap();
-        assert!(handle.free_fn.is_none());
-        assert!(handle.items.is_null());
-        assert_eq!(handle.handle, 5001);
     }
 }
