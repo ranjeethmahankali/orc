@@ -1222,6 +1222,33 @@ static void test_vec_subtract_uint32_type(void)
   orc_sdk_handle_free(&out);
 }
 
+static void test_vec_subtract_float32_type(void)
+{
+  /* Works for f32, not just f64. (5.5) - (2.5) -> (3.0). */
+  orc_sdk_init(NULL, NULL);
+  OrcHandle in[2] = {{0}, {0}}, out = {0};
+  in[0].handle = 1;
+  in[1].handle = 2;
+  out.handle   = 3;
+  orc_sdk_handle_alloc(ORC_TYPE_F32, sizeof(float), &in[0]);
+  ORC_SDK_DECK_INIT(in[0].items, float, (5.5f));
+  orc_sdk_oh_update(&in[0]);
+  orc_sdk_handle_alloc(ORC_TYPE_F32, sizeof(float), &in[1]);
+  ORC_SDK_DECK_INIT(in[1].items, float, (2.5f));
+  orc_sdk_oh_update(&in[1]);
+
+  OrcError err = VEC_SUBTRACT_INFO.func(0, in, 2, &out, 1);
+
+  TEST_ASSERT_EQUAL_UINT64(ORC_ERROR_NONE, err);
+  TEST_ASSERT_EQUAL_UINT64(ORC_TYPE_F32, out.type_id);
+  TEST_ASSERT_EQUAL_UINT64(sizeof(float), out.item_size);
+  float const *result = (float const *)out.items;
+  TEST_ASSERT_EQUAL_FLOAT(3.0f, result[0]);
+  orc_sdk_handle_free(&in[0]);
+  orc_sdk_handle_free(&in[1]);
+  orc_sdk_handle_free(&out);
+}
+
 /* ============================================================
    vec_subtract — Error / validation
    ============================================================ */
@@ -2031,6 +2058,7 @@ int main(void)
   RUN_TEST(test_make_vec_mixed_arity_components);
   RUN_TEST(test_make_vec_multi_row_broadcast);
   RUN_TEST(test_make_vec_integer_type);
+  RUN_TEST(test_make_vec_float32_type);
   RUN_TEST(test_make_vec_too_few_inputs);
   RUN_TEST(test_make_vec_wrong_n_outputs);
   RUN_TEST(test_make_vec_rejects_non_primitive_type);
@@ -2048,6 +2076,7 @@ int main(void)
   RUN_TEST(test_vec_add_integer_type);
   RUN_TEST(test_vec_add_uint8_type);
   RUN_TEST(test_vec_add_uint32_type);
+  RUN_TEST(test_vec_add_float32_type);
   RUN_TEST(test_vec_add_too_few_inputs);
   RUN_TEST(test_vec_add_wrong_n_outputs);
   RUN_TEST(test_vec_add_rejects_non_primitive_type);
@@ -2065,6 +2094,7 @@ int main(void)
   RUN_TEST(test_vec_subtract_integer_type);
   RUN_TEST(test_vec_subtract_uint8_type);
   RUN_TEST(test_vec_subtract_uint32_type);
+  RUN_TEST(test_vec_subtract_float32_type);
   RUN_TEST(test_vec_subtract_wrong_n_inputs);
   RUN_TEST(test_vec_subtract_wrong_n_outputs);
   RUN_TEST(test_vec_subtract_rejects_non_primitive_type);
