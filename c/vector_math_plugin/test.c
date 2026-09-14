@@ -6,6 +6,7 @@ extern OrcFuncInfo const MAKE_VEC_INFO;
 extern OrcFuncInfo const VEC_ADD_INFO;
 extern OrcFuncInfo const VEC_SUBTRACT_INFO;
 extern OrcFuncInfo const VEC_DOT_PRODUCT_INFO;
+extern OrcFuncInfo const VEC_CROSS_PRODUCT_INFO;
 
 void _orc_sdk_registry_clear(void);  // Forward decl for a function defined in orc_sdk.c
 
@@ -29,6 +30,11 @@ typedef struct
 {
   float x, y, z;
 } _FVec3;
+
+typedef struct
+{
+  float x, y;
+} _FVec2;
 
 /* ============================================================
    make_vec — Correctness
@@ -2048,6 +2054,592 @@ static void test_vec_dot_product_output_type_change(void)
   orc_sdk_handle_free(&out);
 }
 
+/* ============================================================
+   vec_cross_product — Correctness
+   ============================================================ */
+
+static void test_vec_cross_product_arity2_area_f64(void)
+{
+  /* Arity 2 -> a single scalar: the signed area of the parallelogram.
+     (2,3) x (4,5) -> 2*5 - 3*4 = 10 - 12 = -2. */
+  orc_sdk_init(NULL, NULL);
+  OrcHandle in[2] = {{0}, {0}}, out = {0};
+  in[0].handle = 1;
+  in[1].handle = 2;
+  out.handle   = 3;
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(_Vec2), &in[0]);
+  _Vec2 *v0 = (_Vec2 *)in[0].items;
+  orc_sdk_deck_push(v0, ((_Vec2) {2.0, 3.0}), 0);
+  in[0].items = v0;
+  orc_sdk_oh_update(&in[0]);
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(_Vec2), &in[1]);
+  _Vec2 *v1 = (_Vec2 *)in[1].items;
+  orc_sdk_deck_push(v1, ((_Vec2) {4.0, 5.0}), 0);
+  in[1].items = v1;
+  orc_sdk_oh_update(&in[1]);
+
+  OrcError err = VEC_CROSS_PRODUCT_INFO.func(0, in, 2, &out, 1);
+
+  TEST_ASSERT_EQUAL_UINT64(ORC_ERROR_NONE, err);
+  TEST_ASSERT_EQUAL_UINT64(ORC_TYPE_F64, out.type_id);
+  TEST_ASSERT_EQUAL_UINT64(sizeof(double), out.item_size);
+  TEST_ASSERT_EQUAL_UINT64(1, out.n_items);
+  double const *result = (double const *)out.items;
+  TEST_ASSERT_EQUAL_DOUBLE(-2.0, result[0]);
+  orc_sdk_handle_free(&in[0]);
+  orc_sdk_handle_free(&in[1]);
+  orc_sdk_handle_free(&out);
+}
+
+static void test_vec_cross_product_arity2_area_f32(void)
+{
+  /* Same as the f64 case, but float -- confirms f32 works too. */
+  orc_sdk_init(NULL, NULL);
+  OrcHandle in[2] = {{0}, {0}}, out = {0};
+  in[0].handle = 1;
+  in[1].handle = 2;
+  out.handle   = 3;
+  orc_sdk_handle_alloc(ORC_TYPE_F32, sizeof(_FVec2), &in[0]);
+  _FVec2 *v0 = (_FVec2 *)in[0].items;
+  orc_sdk_deck_push(v0, ((_FVec2) {2.0f, 3.0f}), 0);
+  in[0].items = v0;
+  orc_sdk_oh_update(&in[0]);
+  orc_sdk_handle_alloc(ORC_TYPE_F32, sizeof(_FVec2), &in[1]);
+  _FVec2 *v1 = (_FVec2 *)in[1].items;
+  orc_sdk_deck_push(v1, ((_FVec2) {4.0f, 5.0f}), 0);
+  in[1].items = v1;
+  orc_sdk_oh_update(&in[1]);
+
+  OrcError err = VEC_CROSS_PRODUCT_INFO.func(0, in, 2, &out, 1);
+
+  TEST_ASSERT_EQUAL_UINT64(ORC_ERROR_NONE, err);
+  TEST_ASSERT_EQUAL_UINT64(ORC_TYPE_F32, out.type_id);
+  TEST_ASSERT_EQUAL_UINT64(sizeof(float), out.item_size);
+  float const *result = (float const *)out.items;
+  TEST_ASSERT_EQUAL_FLOAT(-2.0f, result[0]);
+  orc_sdk_handle_free(&in[0]);
+  orc_sdk_handle_free(&in[1]);
+  orc_sdk_handle_free(&out);
+}
+
+static void test_vec_cross_product_arity3_vec3_f64(void)
+{
+  /* Arity 3 -> the usual cross product, a vec3.
+     (1,2,3) x (4,5,6) -> (2*6-3*5, 3*4-1*6, 1*5-2*4) = (-3, 6, -3). */
+  orc_sdk_init(NULL, NULL);
+  OrcHandle in[2] = {{0}, {0}}, out = {0};
+  in[0].handle = 1;
+  in[1].handle = 2;
+  out.handle   = 3;
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(_Vec3), &in[0]);
+  _Vec3 *v0 = (_Vec3 *)in[0].items;
+  orc_sdk_deck_push(v0, ((_Vec3) {1.0, 2.0, 3.0}), 0);
+  in[0].items = v0;
+  orc_sdk_oh_update(&in[0]);
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(_Vec3), &in[1]);
+  _Vec3 *v1 = (_Vec3 *)in[1].items;
+  orc_sdk_deck_push(v1, ((_Vec3) {4.0, 5.0, 6.0}), 0);
+  in[1].items = v1;
+  orc_sdk_oh_update(&in[1]);
+
+  OrcError err = VEC_CROSS_PRODUCT_INFO.func(0, in, 2, &out, 1);
+
+  TEST_ASSERT_EQUAL_UINT64(ORC_ERROR_NONE, err);
+  TEST_ASSERT_EQUAL_UINT64(ORC_TYPE_F64, out.type_id);
+  TEST_ASSERT_EQUAL_UINT64(sizeof(_Vec3), out.item_size);
+  TEST_ASSERT_EQUAL_UINT64(1, out.n_items);
+  double const *result = (double const *)out.items;
+  TEST_ASSERT_EQUAL_DOUBLE(-3.0, result[0]);
+  TEST_ASSERT_EQUAL_DOUBLE(6.0, result[1]);
+  TEST_ASSERT_EQUAL_DOUBLE(-3.0, result[2]);
+  orc_sdk_handle_free(&in[0]);
+  orc_sdk_handle_free(&in[1]);
+  orc_sdk_handle_free(&out);
+}
+
+static void test_vec_cross_product_arity3_vec3_f32(void)
+{
+  /* Same as the f64 case, but float -- confirms f32 works too. */
+  orc_sdk_init(NULL, NULL);
+  OrcHandle in[2] = {{0}, {0}}, out = {0};
+  in[0].handle = 1;
+  in[1].handle = 2;
+  out.handle   = 3;
+  orc_sdk_handle_alloc(ORC_TYPE_F32, sizeof(_FVec3), &in[0]);
+  _FVec3 *v0 = (_FVec3 *)in[0].items;
+  orc_sdk_deck_push(v0, ((_FVec3) {1.0f, 2.0f, 3.0f}), 0);
+  in[0].items = v0;
+  orc_sdk_oh_update(&in[0]);
+  orc_sdk_handle_alloc(ORC_TYPE_F32, sizeof(_FVec3), &in[1]);
+  _FVec3 *v1 = (_FVec3 *)in[1].items;
+  orc_sdk_deck_push(v1, ((_FVec3) {4.0f, 5.0f, 6.0f}), 0);
+  in[1].items = v1;
+  orc_sdk_oh_update(&in[1]);
+
+  OrcError err = VEC_CROSS_PRODUCT_INFO.func(0, in, 2, &out, 1);
+
+  TEST_ASSERT_EQUAL_UINT64(ORC_ERROR_NONE, err);
+  TEST_ASSERT_EQUAL_UINT64(ORC_TYPE_F32, out.type_id);
+  TEST_ASSERT_EQUAL_UINT64(sizeof(_FVec3), out.item_size);
+  TEST_ASSERT_EQUAL_UINT64(1, out.n_items);
+  float const *result = (float const *)out.items;
+  TEST_ASSERT_EQUAL_FLOAT(-3.0f, result[0]);
+  TEST_ASSERT_EQUAL_FLOAT(6.0f, result[1]);
+  TEST_ASSERT_EQUAL_FLOAT(-3.0f, result[2]);
+  orc_sdk_handle_free(&in[0]);
+  orc_sdk_handle_free(&in[1]);
+  orc_sdk_handle_free(&out);
+}
+
+static void test_vec_cross_product_multi_row_broadcast(void)
+{
+  /* Two decks of 2 dvec3 rows each -> 2 cross products, one per row. Standard basis
+     vectors: i x j = k; j x k = i. */
+  orc_sdk_init(NULL, NULL);
+  OrcHandle in[2] = {{0}, {0}}, out = {0};
+  in[0].handle = 1;
+  in[1].handle = 2;
+  out.handle   = 3;
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(_Vec3), &in[0]);
+  _Vec3 *v0 = (_Vec3 *)in[0].items;
+  orc_sdk_deck_push(v0, ((_Vec3) {1.0, 0.0, 0.0}), 0); /* i */
+  orc_sdk_deck_push(v0, ((_Vec3) {0.0, 1.0, 0.0}), 0); /* j */
+  in[0].items = v0;
+  orc_sdk_oh_update(&in[0]);
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(_Vec3), &in[1]);
+  _Vec3 *v1 = (_Vec3 *)in[1].items;
+  orc_sdk_deck_push(v1, ((_Vec3) {0.0, 1.0, 0.0}), 0); /* j */
+  orc_sdk_deck_push(v1, ((_Vec3) {0.0, 0.0, 1.0}), 0); /* k */
+  in[1].items = v1;
+  orc_sdk_oh_update(&in[1]);
+
+  OrcError err = VEC_CROSS_PRODUCT_INFO.func(0, in, 2, &out, 1);
+
+  TEST_ASSERT_EQUAL_UINT64(ORC_ERROR_NONE, err);
+  TEST_ASSERT_EQUAL_UINT64(2, out.n_items);
+  _Vec3 const *result = (_Vec3 const *)out.items;
+  TEST_ASSERT_EQUAL_DOUBLE(0.0, result[0].x); /* i x j = k */
+  TEST_ASSERT_EQUAL_DOUBLE(0.0, result[0].y);
+  TEST_ASSERT_EQUAL_DOUBLE(1.0, result[0].z);
+  TEST_ASSERT_EQUAL_DOUBLE(1.0, result[1].x); /* j x k = i */
+  TEST_ASSERT_EQUAL_DOUBLE(0.0, result[1].y);
+  TEST_ASSERT_EQUAL_DOUBLE(0.0, result[1].z);
+  orc_sdk_handle_free(&in[0]);
+  orc_sdk_handle_free(&in[1]);
+  orc_sdk_handle_free(&out);
+}
+
+/* ============================================================
+   vec_cross_product — Error / validation
+   ============================================================ */
+
+static void test_vec_cross_product_wrong_n_inputs(void)
+{
+  /* n_inputs != 2 -> early return, output untouched. */
+  orc_sdk_init(NULL, NULL);
+  OrcHandle in = {0}, out = {0};
+  in.handle  = 1;
+  out.handle = 2;
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(_Vec3), &in);
+  _Vec3 *v0 = (_Vec3 *)in.items;
+  orc_sdk_deck_push(v0, ((_Vec3) {1.0, 0.0, 0.0}), 0);
+  in.items = v0;
+  orc_sdk_oh_update(&in);
+
+  OrcError err = VEC_CROSS_PRODUCT_INFO.func(0, &in, 1, &out, 1);
+
+  TEST_ASSERT_EQUAL_UINT64(ORC_ERROR_INVALID_ARGUMENTS, err);
+  TEST_ASSERT_NULL(out.items);
+  TEST_ASSERT_NULL(out.free_fn);
+  orc_sdk_handle_free(&in);
+}
+
+static void test_vec_cross_product_wrong_n_outputs(void)
+{
+  /* n_outputs != 1 -> early return, output untouched. */
+  orc_sdk_init(NULL, NULL);
+  OrcHandle in[2] = {{0}, {0}}, out = {0};
+  in[0].handle = 1;
+  in[1].handle = 2;
+  out.handle   = 3;
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(_Vec3), &in[0]);
+  _Vec3 *v0 = (_Vec3 *)in[0].items;
+  orc_sdk_deck_push(v0, ((_Vec3) {1.0, 0.0, 0.0}), 0);
+  in[0].items = v0;
+  orc_sdk_oh_update(&in[0]);
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(_Vec3), &in[1]);
+  _Vec3 *v1 = (_Vec3 *)in[1].items;
+  orc_sdk_deck_push(v1, ((_Vec3) {0.0, 1.0, 0.0}), 0);
+  in[1].items = v1;
+  orc_sdk_oh_update(&in[1]);
+
+  OrcError err = VEC_CROSS_PRODUCT_INFO.func(0, in, 2, &out, 2);
+
+  TEST_ASSERT_EQUAL_UINT64(ORC_ERROR_INVALID_ARGUMENTS, err);
+  TEST_ASSERT_NULL(out.items);
+  TEST_ASSERT_NULL(out.free_fn);
+  orc_sdk_handle_free(&in[0]);
+  orc_sdk_handle_free(&in[1]);
+}
+
+static void test_vec_cross_product_rejects_integer_type(void)
+{
+  /* i32 is a valid primitive type, but cross_product only supports float and double. */
+  orc_sdk_init(NULL, NULL);
+  OrcHandle in[2] = {{0}, {0}}, out = {0};
+  in[0].handle = 1;
+  in[1].handle = 2;
+  out.handle   = 3;
+  orc_sdk_handle_alloc(ORC_TYPE_I32, sizeof(int32_t), &in[0]);
+  ORC_SDK_DECK_INIT(in[0].items, int32_t, (1));
+  orc_sdk_oh_update(&in[0]);
+  orc_sdk_handle_alloc(ORC_TYPE_I32, sizeof(int32_t), &in[1]);
+  ORC_SDK_DECK_INIT(in[1].items, int32_t, (2));
+  orc_sdk_oh_update(&in[1]);
+
+  OrcError err = VEC_CROSS_PRODUCT_INFO.func(0, in, 2, &out, 1);
+
+  TEST_ASSERT_EQUAL_UINT64(ORC_ERROR_TYPE_MISMATCH, err);
+  TEST_ASSERT_NULL(out.items);
+  TEST_ASSERT_NULL(out.free_fn);
+  orc_sdk_handle_free(&in[0]);
+  orc_sdk_handle_free(&in[1]);
+}
+
+static void test_vec_cross_product_rejects_non_primitive_type(void)
+{
+  /* Proxies are rejected too, same as any other non-float type. */
+  orc_sdk_init(NULL, NULL);
+  OrcHandle in[2] = {{0}, {0}}, out = {0};
+  in[0].handle = 1;
+  in[1].handle = 2;
+  out.handle   = 3;
+  orc_sdk_handle_alloc(ORC_TYPE_PROXY, sizeof(OrcItemProxy), &in[0]);
+  orc_sdk_handle_alloc(ORC_TYPE_PROXY, sizeof(OrcItemProxy), &in[1]);
+
+  OrcError err = VEC_CROSS_PRODUCT_INFO.func(0, in, 2, &out, 1);
+
+  TEST_ASSERT_EQUAL_UINT64(ORC_ERROR_TYPE_MISMATCH, err);
+  TEST_ASSERT_NULL(out.items);
+  TEST_ASSERT_NULL(out.free_fn);
+  orc_sdk_handle_free(&in[0]);
+  orc_sdk_handle_free(&in[1]);
+}
+
+static void test_vec_cross_product_rejects_mismatched_types(void)
+{
+  /* Both individually valid float types, but must match each other: f32 vs f64. */
+  orc_sdk_init(NULL, NULL);
+  OrcHandle in[2] = {{0}, {0}}, out = {0};
+  in[0].handle = 1;
+  in[1].handle = 2;
+  out.handle   = 3;
+  orc_sdk_handle_alloc(ORC_TYPE_F32, sizeof(_FVec3), &in[0]);
+  _FVec3 *v0 = (_FVec3 *)in[0].items;
+  orc_sdk_deck_push(v0, ((_FVec3) {1.0f, 0.0f, 0.0f}), 0);
+  in[0].items = v0;
+  orc_sdk_oh_update(&in[0]);
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(_Vec3), &in[1]);
+  _Vec3 *v1 = (_Vec3 *)in[1].items;
+  orc_sdk_deck_push(v1, ((_Vec3) {0.0, 1.0, 0.0}), 0);
+  in[1].items = v1;
+  orc_sdk_oh_update(&in[1]);
+
+  OrcError err = VEC_CROSS_PRODUCT_INFO.func(0, in, 2, &out, 1);
+
+  TEST_ASSERT_EQUAL_UINT64(ORC_ERROR_INVALID_ARGUMENTS, err);
+  TEST_ASSERT_NULL(out.items);
+  TEST_ASSERT_NULL(out.free_fn);
+  orc_sdk_handle_free(&in[0]);
+  orc_sdk_handle_free(&in[1]);
+}
+
+static void test_vec_cross_product_rejects_mismatched_arity(void)
+{
+  /* dvec2 x dvec3 -- same type_id, but different item_size (arity). */
+  orc_sdk_init(NULL, NULL);
+  OrcHandle in[2] = {{0}, {0}}, out = {0};
+  in[0].handle = 1;
+  in[1].handle = 2;
+  out.handle   = 3;
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(_Vec2), &in[0]);
+  _Vec2 *v0 = (_Vec2 *)in[0].items;
+  orc_sdk_deck_push(v0, ((_Vec2) {1.0, 2.0}), 0);
+  in[0].items = v0;
+  orc_sdk_oh_update(&in[0]);
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(_Vec3), &in[1]);
+  _Vec3 *v1 = (_Vec3 *)in[1].items;
+  orc_sdk_deck_push(v1, ((_Vec3) {1.0, 2.0, 3.0}), 0);
+  in[1].items = v1;
+  orc_sdk_oh_update(&in[1]);
+
+  OrcError err = VEC_CROSS_PRODUCT_INFO.func(0, in, 2, &out, 1);
+
+  TEST_ASSERT_EQUAL_UINT64(ORC_ERROR_INVALID_ARGUMENTS, err);
+  TEST_ASSERT_NULL(out.items);
+  TEST_ASSERT_NULL(out.free_fn);
+  orc_sdk_handle_free(&in[0]);
+  orc_sdk_handle_free(&in[1]);
+}
+
+static void test_vec_cross_product_rejects_unsupported_arity(void)
+{
+  /* Arity 4 is a perfectly valid aggregate (item_size % scalar_size == 0), but
+     cross_product only supports arity 2 or 3. Constructed via direct field assignment
+     since no real data needs to be read before this check rejects the call. */
+  orc_sdk_init(NULL, NULL);
+  OrcHandle in[2] = {{0}, {0}}, out = {0};
+  in[0].handle    = 1;
+  in[1].handle    = 2;
+  out.handle      = 3;
+  in[0].type_id   = ORC_TYPE_F64;
+  in[0].item_size = 4 * sizeof(double);
+  in[1].type_id   = ORC_TYPE_F64;
+  in[1].item_size = 4 * sizeof(double);
+
+  OrcError err = VEC_CROSS_PRODUCT_INFO.func(0, in, 2, &out, 1);
+
+  TEST_ASSERT_EQUAL_UINT64(ORC_ERROR_INVALID_ARGUMENTS, err);
+  TEST_ASSERT_NULL(out.items);
+  TEST_ASSERT_NULL(out.free_fn);
+}
+
+static void test_vec_cross_product_rejects_zero_item_size(void)
+{
+  /* The first component has item_size == 0 -- invalid handle. */
+  orc_sdk_init(NULL, NULL);
+  OrcHandle in[2] = {{0}, {0}}, out = {0};
+  in[0].handle  = 1;
+  in[1].handle  = 2;
+  out.handle    = 3;
+  in[0].type_id = ORC_TYPE_F64; /* item_size left at 0 -- never allocated. */
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(_Vec3), &in[1]);
+  _Vec3 *v1 = (_Vec3 *)in[1].items;
+  orc_sdk_deck_push(v1, ((_Vec3) {1.0, 2.0, 3.0}), 0);
+  in[1].items = v1;
+  orc_sdk_oh_update(&in[1]);
+
+  OrcError err = VEC_CROSS_PRODUCT_INFO.func(0, in, 2, &out, 1);
+
+  TEST_ASSERT_EQUAL_UINT64(ORC_ERROR_INVALID_HANDLE, err);
+  TEST_ASSERT_NULL(out.items);
+  TEST_ASSERT_NULL(out.free_fn);
+  orc_sdk_handle_free(&in[1]);
+}
+
+static void test_vec_cross_product_rejects_invalid_aggregate_item_size(void)
+{
+  /* item_size == 12 is not a multiple of sizeof(double) == 8. Both inputs share this
+     item_size so the arity-match check passes and the aggregate check is what fires,
+     before the arity is even computed. */
+  orc_sdk_init(NULL, NULL);
+  OrcHandle in[2] = {{0}, {0}}, out = {0};
+  in[0].handle    = 1;
+  in[1].handle    = 2;
+  out.handle      = 3;
+  in[0].type_id   = ORC_TYPE_F64;
+  in[0].item_size = 12;
+  in[1].type_id   = ORC_TYPE_F64;
+  in[1].item_size = 12;
+
+  OrcError err = VEC_CROSS_PRODUCT_INFO.func(0, in, 2, &out, 1);
+
+  TEST_ASSERT_EQUAL_UINT64(ORC_ERROR_INVALID_ARGUMENTS, err);
+  TEST_ASSERT_NULL(out.items);
+  TEST_ASSERT_NULL(out.free_fn);
+}
+
+/* ============================================================
+   vec_cross_product — Ownership and lifetime invariants
+   ============================================================ */
+
+static void test_vec_cross_product_output_free_fn_set(void)
+{
+  /* After a successful call, out.free_fn must be set (plugin owns the deck). */
+  orc_sdk_init(NULL, NULL);
+  OrcHandle in[2] = {{0}, {0}}, out = {0};
+  in[0].handle = 1;
+  in[1].handle = 2;
+  out.handle   = 3;
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(_Vec3), &in[0]);
+  _Vec3 *v0 = (_Vec3 *)in[0].items;
+  orc_sdk_deck_push(v0, ((_Vec3) {1.0, 0.0, 0.0}), 0);
+  in[0].items = v0;
+  orc_sdk_oh_update(&in[0]);
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(_Vec3), &in[1]);
+  _Vec3 *v1 = (_Vec3 *)in[1].items;
+  orc_sdk_deck_push(v1, ((_Vec3) {0.0, 1.0, 0.0}), 0);
+  in[1].items = v1;
+  orc_sdk_oh_update(&in[1]);
+
+  VEC_CROSS_PRODUCT_INFO.func(0, in, 2, &out, 1);
+
+  TEST_ASSERT_NOT_NULL(out.free_fn);
+  orc_sdk_handle_free(&in[0]);
+  orc_sdk_handle_free(&in[1]);
+  orc_sdk_handle_free(&out);
+}
+
+static void test_vec_cross_product_output_handle_preserved(void)
+{
+  /* out.handle must be unchanged before and after the call. */
+  orc_sdk_init(NULL, NULL);
+  OrcHandle in[2] = {{0}, {0}}, out = {0};
+  in[0].handle = 1;
+  in[1].handle = 2;
+  out.handle   = 99;
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(_Vec3), &in[0]);
+  _Vec3 *v0 = (_Vec3 *)in[0].items;
+  orc_sdk_deck_push(v0, ((_Vec3) {1.0, 0.0, 0.0}), 0);
+  in[0].items = v0;
+  orc_sdk_oh_update(&in[0]);
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(_Vec3), &in[1]);
+  _Vec3 *v1 = (_Vec3 *)in[1].items;
+  orc_sdk_deck_push(v1, ((_Vec3) {0.0, 1.0, 0.0}), 0);
+  in[1].items = v1;
+  orc_sdk_oh_update(&in[1]);
+
+  VEC_CROSS_PRODUCT_INFO.func(0, in, 2, &out, 1);
+
+  TEST_ASSERT_EQUAL_UINT64(99, out.handle);
+  orc_sdk_handle_free(&in[0]);
+  orc_sdk_handle_free(&in[1]);
+  orc_sdk_handle_free(&out);
+}
+
+static void test_vec_cross_product_input_handles_unaffected(void)
+{
+  /* The input handles' items pointers and n_items must not change. */
+  orc_sdk_init(NULL, NULL);
+  OrcHandle in[2] = {{0}, {0}}, out = {0};
+  in[0].handle = 1;
+  in[1].handle = 2;
+  out.handle   = 3;
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(_Vec3), &in[0]);
+  _Vec3 *v0 = (_Vec3 *)in[0].items;
+  orc_sdk_deck_push(v0, ((_Vec3) {1.0, 0.0, 0.0}), 0);
+  in[0].items = v0;
+  orc_sdk_oh_update(&in[0]);
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(_Vec3), &in[1]);
+  _Vec3 *v1 = (_Vec3 *)in[1].items;
+  orc_sdk_deck_push(v1, ((_Vec3) {0.0, 1.0, 0.0}), 0);
+  in[1].items = v1;
+  orc_sdk_oh_update(&in[1]);
+  void const *items0_before   = in[0].items;
+  uint64_t    n_items0_before = in[0].n_items;
+  void const *items1_before   = in[1].items;
+  uint64_t    n_items1_before = in[1].n_items;
+
+  VEC_CROSS_PRODUCT_INFO.func(0, in, 2, &out, 1);
+
+  TEST_ASSERT_EQUAL_PTR(items0_before, in[0].items);
+  TEST_ASSERT_EQUAL_UINT64(n_items0_before, in[0].n_items);
+  TEST_ASSERT_EQUAL_PTR(items1_before, in[1].items);
+  TEST_ASSERT_EQUAL_UINT64(n_items1_before, in[1].n_items);
+  orc_sdk_handle_free(&in[0]);
+  orc_sdk_handle_free(&in[1]);
+  orc_sdk_handle_free(&out);
+}
+
+static void test_vec_cross_product_reuse_output_same_type(void)
+{
+  /* Calling vec_cross_product twice with the same input arity/type reuses the output
+   * deck instead of reallocating -- the output item_size only depends on arity and
+   * type, both unchanged here, so the initial capacity always suffices. */
+  orc_sdk_init(NULL, NULL);
+  OrcHandle in[2] = {{0}, {0}}, out = {0};
+  in[0].handle = 1;
+  in[1].handle = 2;
+  out.handle   = 3;
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(_Vec3), &in[0]);
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(_Vec3), &in[1]);
+
+  _Vec3 *v0 = (_Vec3 *)in[0].items;
+  orc_sdk_deck_push(v0, ((_Vec3) {1.0, 0.0, 0.0}), 0);
+  in[0].items = v0;
+  orc_sdk_oh_update(&in[0]);
+  _Vec3 *v1 = (_Vec3 *)in[1].items;
+  orc_sdk_deck_push(v1, ((_Vec3) {0.0, 1.0, 0.0}), 0);
+  in[1].items = v1;
+  orc_sdk_oh_update(&in[1]);
+  VEC_CROSS_PRODUCT_INFO.func(0, in, 2, &out, 1);
+  void const *ptr_after_first = out.items;
+
+  orc_sdk_deck_clear(in[0].items);
+  v0 = (_Vec3 *)in[0].items;
+  orc_sdk_deck_push(v0, ((_Vec3) {0.0, 1.0, 0.0}), 0);
+  in[0].items = v0;
+  orc_sdk_oh_update(&in[0]);
+  orc_sdk_deck_clear(in[1].items);
+  v1 = (_Vec3 *)in[1].items;
+  orc_sdk_deck_push(v1, ((_Vec3) {0.0, 0.0, 1.0}), 0);
+  in[1].items = v1;
+  orc_sdk_oh_update(&in[1]);
+  VEC_CROSS_PRODUCT_INFO.func(0, in, 2, &out, 1);
+
+  TEST_ASSERT_EQUAL_UINT64(1, out.n_items);
+  _Vec3 const *result = (_Vec3 const *)out.items;
+  TEST_ASSERT_EQUAL_DOUBLE(1.0, result[0].x); /* j x k = i */
+  TEST_ASSERT_EQUAL_DOUBLE(0.0, result[0].y);
+  TEST_ASSERT_EQUAL_DOUBLE(0.0, result[0].z);
+  TEST_ASSERT_EQUAL_PTR(ptr_after_first, out.items);
+
+  orc_sdk_handle_free(&in[0]);
+  orc_sdk_handle_free(&in[1]);
+  orc_sdk_handle_free(&out);
+}
+
+static void test_vec_cross_product_output_type_change(void)
+{
+  /* If out was previously allocated for a different scalar type, vec_cross_product
+   * reallocates it instead of reusing the stale deck. First call is f64 arity 3, second
+   * is f32 arity 2 -- both the type and the output shape (vec3 vs scalar) change. */
+  orc_sdk_init(NULL, NULL);
+  OrcHandle in[2] = {{0}, {0}}, out = {0};
+  in[0].handle = 1;
+  in[1].handle = 2;
+  out.handle   = 3;
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(_Vec3), &in[0]);
+  _Vec3 *v0 = (_Vec3 *)in[0].items;
+  orc_sdk_deck_push(v0, ((_Vec3) {1.0, 0.0, 0.0}), 0);
+  in[0].items = v0;
+  orc_sdk_oh_update(&in[0]);
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(_Vec3), &in[1]);
+  _Vec3 *v1 = (_Vec3 *)in[1].items;
+  orc_sdk_deck_push(v1, ((_Vec3) {0.0, 1.0, 0.0}), 0);
+  in[1].items = v1;
+  orc_sdk_oh_update(&in[1]);
+  VEC_CROSS_PRODUCT_INFO.func(0, in, 2, &out, 1);
+  TEST_ASSERT_EQUAL_UINT64(ORC_TYPE_F64, out.type_id);
+  TEST_ASSERT_EQUAL_UINT64(sizeof(_Vec3), out.item_size);
+  orc_sdk_handle_free(&in[0]);
+  orc_sdk_handle_free(&in[1]);
+
+  OrcHandle in2[2] = {{0}, {0}};
+  in2[0].handle = 4;
+  in2[1].handle = 5;
+  orc_sdk_handle_alloc(ORC_TYPE_F32, sizeof(_FVec2), &in2[0]);
+  _FVec2 *w0 = (_FVec2 *)in2[0].items;
+  orc_sdk_deck_push(w0, ((_FVec2) {2.0f, 3.0f}), 0);
+  in2[0].items = w0;
+  orc_sdk_oh_update(&in2[0]);
+  orc_sdk_handle_alloc(ORC_TYPE_F32, sizeof(_FVec2), &in2[1]);
+  _FVec2 *w1 = (_FVec2 *)in2[1].items;
+  orc_sdk_deck_push(w1, ((_FVec2) {4.0f, 5.0f}), 0);
+  in2[1].items = w1;
+  orc_sdk_oh_update(&in2[1]);
+
+  VEC_CROSS_PRODUCT_INFO.func(0, in2, 2, &out, 1);
+
+  TEST_ASSERT_EQUAL_UINT64(ORC_TYPE_F32, out.type_id);
+  TEST_ASSERT_EQUAL_UINT64(sizeof(float), out.item_size);
+  float const *result = (float const *)out.items;
+  TEST_ASSERT_EQUAL_FLOAT(-2.0f, result[0]);
+  orc_sdk_handle_free(&in2[0]);
+  orc_sdk_handle_free(&in2[1]);
+  orc_sdk_handle_free(&out);
+}
+
 /* ============================================================ */
 
 int main(void)
@@ -2124,5 +2716,24 @@ int main(void)
   RUN_TEST(test_vec_dot_product_input_handles_unaffected);
   RUN_TEST(test_vec_dot_product_reuse_output_same_type);
   RUN_TEST(test_vec_dot_product_output_type_change);
+  RUN_TEST(test_vec_cross_product_arity2_area_f64);
+  RUN_TEST(test_vec_cross_product_arity2_area_f32);
+  RUN_TEST(test_vec_cross_product_arity3_vec3_f64);
+  RUN_TEST(test_vec_cross_product_arity3_vec3_f32);
+  RUN_TEST(test_vec_cross_product_multi_row_broadcast);
+  RUN_TEST(test_vec_cross_product_wrong_n_inputs);
+  RUN_TEST(test_vec_cross_product_wrong_n_outputs);
+  RUN_TEST(test_vec_cross_product_rejects_integer_type);
+  RUN_TEST(test_vec_cross_product_rejects_non_primitive_type);
+  RUN_TEST(test_vec_cross_product_rejects_mismatched_types);
+  RUN_TEST(test_vec_cross_product_rejects_mismatched_arity);
+  RUN_TEST(test_vec_cross_product_rejects_unsupported_arity);
+  RUN_TEST(test_vec_cross_product_rejects_zero_item_size);
+  RUN_TEST(test_vec_cross_product_rejects_invalid_aggregate_item_size);
+  RUN_TEST(test_vec_cross_product_output_free_fn_set);
+  RUN_TEST(test_vec_cross_product_output_handle_preserved);
+  RUN_TEST(test_vec_cross_product_input_handles_unaffected);
+  RUN_TEST(test_vec_cross_product_reuse_output_same_type);
+  RUN_TEST(test_vec_cross_product_output_type_change);
   return UNITY_END();
 }
