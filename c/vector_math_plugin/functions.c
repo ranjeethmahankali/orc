@@ -159,23 +159,6 @@ OrcFuncInfo const MAKE_VEC_INFO = {
   .output_args = NULL,
   .func        = make_vec};
 
-#define DEFINE_SCALAR_ADDITION(type, suffix)            \
-  type _add_scalar_##suffix(type const a, type const b) \
-  {                                                     \
-    return a + b;                                       \
-  }
-
-DEFINE_SCALAR_ADDITION(uint8_t, u8)
-DEFINE_SCALAR_ADDITION(uint16_t, u16)
-DEFINE_SCALAR_ADDITION(uint32_t, u32)
-DEFINE_SCALAR_ADDITION(uint64_t, u64)
-DEFINE_SCALAR_ADDITION(float, f32)
-DEFINE_SCALAR_ADDITION(double, f64)
-DEFINE_SCALAR_ADDITION(int8_t, i8)
-DEFINE_SCALAR_ADDITION(int16_t, i16)
-DEFINE_SCALAR_ADDITION(int32_t, i32)
-DEFINE_SCALAR_ADDITION(int64_t, i64)
-
 static OrcError vec_add(uint64_t         ctx,
                         OrcHandle const *input,
                         uint64_t         n_inputs,
