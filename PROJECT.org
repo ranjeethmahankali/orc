@@ -170,6 +170,9 @@
   <2026-09-14 Mon 16:54> Added some helpers to the SDK. Writing the first block by hand to hash out
   the details, before letting the LLM rip through the rest while following the same pattern.
 
+  <2026-09-14 Mon 19:04> Finished implementing basic vector ops. Will add a few more, make sure
+  there is test coverage, then ready to merge.
+
 * NEXT tl8agd - Curve plugin functions
   :PROPERTIES:
   :CREATED:  2026-09-11 Fri 11:44
