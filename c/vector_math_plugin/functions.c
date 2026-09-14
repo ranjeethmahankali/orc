@@ -1,5 +1,6 @@
 #include <orc_abi.h>
 #include <orc_sdk/orc_sdk.h>
+#include <stdint.h>
 
 static OrcError make_vec(uint64_t         ctx,
                          OrcHandle const *input,
@@ -21,6 +22,8 @@ static OrcError make_vec(uint64_t         ctx,
      // aggregate types.
     for (size_t i = 1; i < n_inputs; ++i) {}
   }
+  (void)input;
+  (void)output;
   ORC_SDK_TODO("Not implemented...");
 }
 
@@ -41,6 +44,12 @@ static OrcError vec_add(uint64_t         ctx,
                         OrcHandle       *output,
                         uint64_t         n_outputs)
 {
+  (void)ctx;
+  (void)input;
+  (void)n_inputs;
+  (void)output;
+  (void)n_outputs;
+
   ORC_SDK_TODO("Not implemented...");
 }
 
@@ -62,6 +71,12 @@ static OrcError vec_subtract(uint64_t         ctx,
                              OrcHandle       *output,
                              uint64_t         n_outputs)
 {
+  (void)ctx;
+  (void)input;
+  (void)n_inputs;
+  (void)output;
+  (void)n_outputs;
+
   ORC_SDK_TODO("Not implemented...");
 }
 
@@ -82,6 +97,12 @@ static OrcError vec_dot_product(uint64_t         ctx,
                                 OrcHandle       *output,
                                 uint64_t         n_outputs)
 {
+  (void)ctx;
+  (void)input;
+  (void)n_inputs;
+  (void)output;
+  (void)n_outputs;
+
   ORC_SDK_TODO("Not implemented...");
 }
 
@@ -102,13 +123,20 @@ static OrcError vec_cross_product(uint64_t         ctx,
                                   OrcHandle       *output,
                                   uint64_t         n_outputs)
 {
+  (void)ctx;
+  (void)input;
+  (void)n_inputs;
+  (void)output;
+  (void)n_outputs;
+
   ORC_SDK_TODO("Not implemented...");
 }
 
 OrcFuncInfo const VEC_CROSS_PRODUCT_INFO = {
   .name = "vec_cross_product",
   .desc =
-    "Cross product of two vectors. Supports vectors of any arity, and scalar type, as "
+    "Cross product of two vectors. Supports vectors of any arity, and scalar type, "
+    "as "
     "long as the scalar type supports multiplication and addition.",
   .n_inputs    = 2,
   .n_outputs   = 1,
