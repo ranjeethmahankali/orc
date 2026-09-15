@@ -7,6 +7,9 @@ extern OrcFuncInfo const VEC_ADD_INFO;
 extern OrcFuncInfo const VEC_SUBTRACT_INFO;
 extern OrcFuncInfo const VEC_DOT_PRODUCT_INFO;
 extern OrcFuncInfo const VEC_CROSS_PRODUCT_INFO;
+extern OrcFuncInfo const VEC_LENGTH_INFO;
+extern OrcFuncInfo const VEC_LENGTH_SQ_INFO;
+extern OrcFuncInfo const VEC_NORMALIZE_INFO;
 
 void _orc_sdk_registry_clear(void);  // Forward decl for a function defined in orc_sdk.c
 
@@ -2640,6 +2643,1070 @@ static void test_vec_cross_product_output_type_change(void)
   orc_sdk_handle_free(&out);
 }
 
+/* ============================================================
+   vec_length_sq — Correctness
+   ============================================================ */
+
+static void test_vec_length_sq_dvec2_f64(void)
+{
+  /* (3,4) -> 3*3 + 4*4 = 25. */
+  orc_sdk_init(NULL, NULL);
+  OrcHandle in = {0}, out = {0};
+  in.handle  = 1;
+  out.handle = 2;
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(_Vec2), &in);
+  _Vec2 *v = (_Vec2 *)in.items;
+  orc_sdk_deck_push(v, ((_Vec2) {3.0, 4.0}), 0);
+  in.items = v;
+  orc_sdk_oh_update(&in);
+
+  OrcError err = VEC_LENGTH_SQ_INFO.func(0, &in, 1, &out, 1);
+
+  TEST_ASSERT_EQUAL_UINT64(ORC_ERROR_NONE, err);
+  TEST_ASSERT_EQUAL_UINT64(ORC_TYPE_F64, out.type_id);
+  TEST_ASSERT_EQUAL_UINT64(sizeof(double), out.item_size);
+  TEST_ASSERT_EQUAL_UINT64(1, out.n_items);
+  double const *result = (double const *)out.items;
+  TEST_ASSERT_EQUAL_DOUBLE(25.0, result[0]);
+  orc_sdk_handle_free(&in);
+  orc_sdk_handle_free(&out);
+}
+
+static void test_vec_length_sq_vec3_f32(void)
+{
+  /* (3,4,12) -> 9 + 16 + 144 = 169. Confirms f32 works too. */
+  orc_sdk_init(NULL, NULL);
+  OrcHandle in = {0}, out = {0};
+  in.handle  = 1;
+  out.handle = 2;
+  orc_sdk_handle_alloc(ORC_TYPE_F32, sizeof(_FVec3), &in);
+  _FVec3 *v = (_FVec3 *)in.items;
+  orc_sdk_deck_push(v, ((_FVec3) {3.0f, 4.0f, 12.0f}), 0);
+  in.items = v;
+  orc_sdk_oh_update(&in);
+
+  OrcError err = VEC_LENGTH_SQ_INFO.func(0, &in, 1, &out, 1);
+
+  TEST_ASSERT_EQUAL_UINT64(ORC_ERROR_NONE, err);
+  TEST_ASSERT_EQUAL_UINT64(ORC_TYPE_F32, out.type_id);
+  TEST_ASSERT_EQUAL_UINT64(sizeof(float), out.item_size);
+  float const *result = (float const *)out.items;
+  TEST_ASSERT_EQUAL_FLOAT(169.0f, result[0]);
+  orc_sdk_handle_free(&in);
+  orc_sdk_handle_free(&out);
+}
+
+static void test_vec_length_sq_multi_row_broadcast(void)
+{
+  /* A deck of 2 dvec2 rows -> 2 scalar outputs, one per row. */
+  orc_sdk_init(NULL, NULL);
+  OrcHandle in = {0}, out = {0};
+  in.handle  = 1;
+  out.handle = 2;
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(_Vec2), &in);
+  _Vec2 *v = (_Vec2 *)in.items;
+  orc_sdk_deck_push(v, ((_Vec2) {3.0, 4.0}), 0);
+  orc_sdk_deck_push(v, ((_Vec2) {1.0, 0.0}), 0);
+  in.items = v;
+  orc_sdk_oh_update(&in);
+
+  OrcError err = VEC_LENGTH_SQ_INFO.func(0, &in, 1, &out, 1);
+
+  TEST_ASSERT_EQUAL_UINT64(ORC_ERROR_NONE, err);
+  TEST_ASSERT_EQUAL_UINT64(2, out.n_items);
+  double const *result = (double const *)out.items;
+  TEST_ASSERT_EQUAL_DOUBLE(25.0, result[0]);
+  TEST_ASSERT_EQUAL_DOUBLE(1.0, result[1]);
+  orc_sdk_handle_free(&in);
+  orc_sdk_handle_free(&out);
+}
+
+/* ============================================================
+   vec_length_sq — Error / validation
+   ============================================================ */
+
+static void test_vec_length_sq_wrong_n_inputs(void)
+{
+  /* n_inputs != 1 -> early return, output untouched. */
+  orc_sdk_init(NULL, NULL);
+  OrcHandle in[2] = {{0}, {0}}, out = {0};
+  in[0].handle = 1;
+  in[1].handle = 2;
+  out.handle   = 3;
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(_Vec2), &in[0]);
+  _Vec2 *v0 = (_Vec2 *)in[0].items;
+  orc_sdk_deck_push(v0, ((_Vec2) {3.0, 4.0}), 0);
+  in[0].items = v0;
+  orc_sdk_oh_update(&in[0]);
+
+  OrcError err = VEC_LENGTH_SQ_INFO.func(0, in, 2, &out, 1);
+
+  TEST_ASSERT_EQUAL_UINT64(ORC_ERROR_INVALID_ARGUMENTS, err);
+  TEST_ASSERT_NULL(out.items);
+  TEST_ASSERT_NULL(out.free_fn);
+  orc_sdk_handle_free(&in[0]);
+}
+
+static void test_vec_length_sq_wrong_n_outputs(void)
+{
+  /* n_outputs != 1 -> early return, output untouched. */
+  orc_sdk_init(NULL, NULL);
+  OrcHandle in = {0}, out = {0};
+  in.handle  = 1;
+  out.handle = 2;
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(_Vec2), &in);
+  _Vec2 *v = (_Vec2 *)in.items;
+  orc_sdk_deck_push(v, ((_Vec2) {3.0, 4.0}), 0);
+  in.items = v;
+  orc_sdk_oh_update(&in);
+
+  OrcError err = VEC_LENGTH_SQ_INFO.func(0, &in, 1, &out, 2);
+
+  TEST_ASSERT_EQUAL_UINT64(ORC_ERROR_INVALID_ARGUMENTS, err);
+  TEST_ASSERT_NULL(out.items);
+  TEST_ASSERT_NULL(out.free_fn);
+  orc_sdk_handle_free(&in);
+}
+
+static void test_vec_length_sq_rejects_integer_type(void)
+{
+  /* i32 is a valid primitive type, but only float and double are supported. */
+  orc_sdk_init(NULL, NULL);
+  OrcHandle in = {0}, out = {0};
+  in.handle  = 1;
+  out.handle = 2;
+  orc_sdk_handle_alloc(ORC_TYPE_I32, sizeof(int32_t), &in);
+  ORC_SDK_DECK_INIT(in.items, int32_t, (3));
+  orc_sdk_oh_update(&in);
+
+  OrcError err = VEC_LENGTH_SQ_INFO.func(0, &in, 1, &out, 1);
+
+  TEST_ASSERT_EQUAL_UINT64(ORC_ERROR_TYPE_MISMATCH, err);
+  TEST_ASSERT_NULL(out.items);
+  TEST_ASSERT_NULL(out.free_fn);
+  orc_sdk_handle_free(&in);
+}
+
+static void test_vec_length_sq_rejects_non_primitive_type(void)
+{
+  /* Proxies are rejected too, same as any other non-float type. */
+  orc_sdk_init(NULL, NULL);
+  OrcHandle in = {0}, out = {0};
+  in.handle  = 1;
+  out.handle = 2;
+  orc_sdk_handle_alloc(ORC_TYPE_PROXY, sizeof(OrcItemProxy), &in);
+
+  OrcError err = VEC_LENGTH_SQ_INFO.func(0, &in, 1, &out, 1);
+
+  TEST_ASSERT_EQUAL_UINT64(ORC_ERROR_TYPE_MISMATCH, err);
+  TEST_ASSERT_NULL(out.items);
+  TEST_ASSERT_NULL(out.free_fn);
+  orc_sdk_handle_free(&in);
+}
+
+static void test_vec_length_sq_rejects_arity_one(void)
+{
+  /* A plain scalar (arity 1) doesn't qualify as a vector here. */
+  orc_sdk_init(NULL, NULL);
+  OrcHandle in = {0}, out = {0};
+  in.handle  = 1;
+  out.handle = 2;
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(double), &in);
+  ORC_SDK_DECK_INIT(in.items, double, (3.0));
+  orc_sdk_oh_update(&in);
+
+  OrcError err = VEC_LENGTH_SQ_INFO.func(0, &in, 1, &out, 1);
+
+  TEST_ASSERT_EQUAL_UINT64(ORC_ERROR_INVALID_ARGUMENTS, err);
+  TEST_ASSERT_NULL(out.items);
+  TEST_ASSERT_NULL(out.free_fn);
+  orc_sdk_handle_free(&in);
+}
+
+static void test_vec_length_sq_rejects_zero_item_size(void)
+{
+  /* item_size == 0 -- invalid handle. */
+  orc_sdk_init(NULL, NULL);
+  OrcHandle in = {0}, out = {0};
+  in.handle    = 1;
+  out.handle   = 2;
+  in.type_id   = ORC_TYPE_F64; /* item_size left at 0 -- never allocated. */
+
+  OrcError err = VEC_LENGTH_SQ_INFO.func(0, &in, 1, &out, 1);
+
+  TEST_ASSERT_EQUAL_UINT64(ORC_ERROR_INVALID_HANDLE, err);
+  TEST_ASSERT_NULL(out.items);
+  TEST_ASSERT_NULL(out.free_fn);
+}
+
+static void test_vec_length_sq_rejects_invalid_aggregate_item_size(void)
+{
+  /* item_size == 12 is not a multiple of sizeof(double) == 8. Constructed via direct
+     field assignment: orc_sdk_handle_alloc itself already rejects item_size %
+     scalar_size != 0, so it can't be used to create this handle. */
+  orc_sdk_init(NULL, NULL);
+  OrcHandle in = {0}, out = {0};
+  in.handle    = 1;
+  out.handle   = 2;
+  in.type_id   = ORC_TYPE_F64;
+  in.item_size = 12;
+
+  OrcError err = VEC_LENGTH_SQ_INFO.func(0, &in, 1, &out, 1);
+
+  TEST_ASSERT_EQUAL_UINT64(ORC_ERROR_INVALID_ARGUMENTS, err);
+  TEST_ASSERT_NULL(out.items);
+  TEST_ASSERT_NULL(out.free_fn);
+}
+
+/* ============================================================
+   vec_length_sq — Ownership and lifetime invariants
+   ============================================================ */
+
+static void test_vec_length_sq_output_free_fn_set(void)
+{
+  /* After a successful call, out.free_fn must be set (plugin owns the deck). */
+  orc_sdk_init(NULL, NULL);
+  OrcHandle in = {0}, out = {0};
+  in.handle  = 1;
+  out.handle = 2;
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(_Vec2), &in);
+  _Vec2 *v = (_Vec2 *)in.items;
+  orc_sdk_deck_push(v, ((_Vec2) {3.0, 4.0}), 0);
+  in.items = v;
+  orc_sdk_oh_update(&in);
+
+  VEC_LENGTH_SQ_INFO.func(0, &in, 1, &out, 1);
+
+  TEST_ASSERT_NOT_NULL(out.free_fn);
+  orc_sdk_handle_free(&in);
+  orc_sdk_handle_free(&out);
+}
+
+static void test_vec_length_sq_output_handle_preserved(void)
+{
+  /* out.handle must be unchanged before and after the call. */
+  orc_sdk_init(NULL, NULL);
+  OrcHandle in = {0}, out = {0};
+  in.handle  = 1;
+  out.handle = 99;
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(_Vec2), &in);
+  _Vec2 *v = (_Vec2 *)in.items;
+  orc_sdk_deck_push(v, ((_Vec2) {3.0, 4.0}), 0);
+  in.items = v;
+  orc_sdk_oh_update(&in);
+
+  VEC_LENGTH_SQ_INFO.func(0, &in, 1, &out, 1);
+
+  TEST_ASSERT_EQUAL_UINT64(99, out.handle);
+  orc_sdk_handle_free(&in);
+  orc_sdk_handle_free(&out);
+}
+
+static void test_vec_length_sq_input_handle_unaffected(void)
+{
+  /* The input handle's items pointer and n_items must not change. */
+  orc_sdk_init(NULL, NULL);
+  OrcHandle in = {0}, out = {0};
+  in.handle  = 1;
+  out.handle = 2;
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(_Vec2), &in);
+  _Vec2 *v = (_Vec2 *)in.items;
+  orc_sdk_deck_push(v, ((_Vec2) {3.0, 4.0}), 0);
+  orc_sdk_deck_push(v, ((_Vec2) {1.0, 0.0}), 0);
+  in.items = v;
+  orc_sdk_oh_update(&in);
+  void const *items_before   = in.items;
+  uint64_t    n_items_before = in.n_items;
+
+  VEC_LENGTH_SQ_INFO.func(0, &in, 1, &out, 1);
+
+  TEST_ASSERT_EQUAL_PTR(items_before, in.items);
+  TEST_ASSERT_EQUAL_UINT64(n_items_before, in.n_items);
+  orc_sdk_handle_free(&in);
+  orc_sdk_handle_free(&out);
+}
+
+static void test_vec_length_sq_reuse_output_same_type(void)
+{
+  /* Calling vec_length_sq twice with the same input type/arity reuses the output deck
+   * instead of reallocating -- the output is always a single scalar regardless of input
+   * arity, so the initial capacity always suffices. */
+  orc_sdk_init(NULL, NULL);
+  OrcHandle in = {0}, out = {0};
+  in.handle  = 1;
+  out.handle = 2;
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(_Vec2), &in);
+  _Vec2 *v = (_Vec2 *)in.items;
+  orc_sdk_deck_push(v, ((_Vec2) {3.0, 4.0}), 0);
+  in.items = v;
+  orc_sdk_oh_update(&in);
+  VEC_LENGTH_SQ_INFO.func(0, &in, 1, &out, 1);
+  void const *ptr_after_first = out.items;
+
+  orc_sdk_deck_clear(in.items);
+  v = (_Vec2 *)in.items;
+  orc_sdk_deck_push(v, ((_Vec2) {6.0, 8.0}), 0);
+  in.items = v;
+  orc_sdk_oh_update(&in);
+  VEC_LENGTH_SQ_INFO.func(0, &in, 1, &out, 1);
+
+  TEST_ASSERT_EQUAL_UINT64(1, out.n_items);
+  double const *result = (double const *)out.items;
+  TEST_ASSERT_EQUAL_DOUBLE(100.0, result[0]);
+  TEST_ASSERT_EQUAL_PTR(ptr_after_first, out.items);
+
+  orc_sdk_handle_free(&in);
+  orc_sdk_handle_free(&out);
+}
+
+static void test_vec_length_sq_output_type_change(void)
+{
+  /* If out was previously allocated for a different scalar type, vec_length_sq
+   * reallocates it instead of reusing the stale deck. First call is f64, second f32. */
+  orc_sdk_init(NULL, NULL);
+  OrcHandle in = {0}, out = {0};
+  in.handle  = 1;
+  out.handle = 2;
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(_Vec2), &in);
+  _Vec2 *v = (_Vec2 *)in.items;
+  orc_sdk_deck_push(v, ((_Vec2) {3.0, 4.0}), 0);
+  in.items = v;
+  orc_sdk_oh_update(&in);
+  VEC_LENGTH_SQ_INFO.func(0, &in, 1, &out, 1);
+  TEST_ASSERT_EQUAL_UINT64(ORC_TYPE_F64, out.type_id);
+  TEST_ASSERT_EQUAL_UINT64(sizeof(double), out.item_size);
+  orc_sdk_handle_free(&in);
+
+  OrcHandle in2 = {0};
+  in2.handle    = 3;
+  orc_sdk_handle_alloc(ORC_TYPE_F32, sizeof(_FVec2), &in2);
+  _FVec2 *w = (_FVec2 *)in2.items;
+  orc_sdk_deck_push(w, ((_FVec2) {3.0f, 4.0f}), 0);
+  in2.items = w;
+  orc_sdk_oh_update(&in2);
+
+  VEC_LENGTH_SQ_INFO.func(0, &in2, 1, &out, 1);
+
+  TEST_ASSERT_EQUAL_UINT64(ORC_TYPE_F32, out.type_id);
+  TEST_ASSERT_EQUAL_UINT64(sizeof(float), out.item_size);
+  float const *result = (float const *)out.items;
+  TEST_ASSERT_EQUAL_FLOAT(25.0f, result[0]);
+  orc_sdk_handle_free(&in2);
+  orc_sdk_handle_free(&out);
+}
+
+/* ============================================================
+   vec_length — Correctness
+   ============================================================ */
+
+static void test_vec_length_dvec2_f64(void)
+{
+  /* (3,4) -> sqrt(9+16) = 5. */
+  orc_sdk_init(NULL, NULL);
+  OrcHandle in = {0}, out = {0};
+  in.handle  = 1;
+  out.handle = 2;
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(_Vec2), &in);
+  _Vec2 *v = (_Vec2 *)in.items;
+  orc_sdk_deck_push(v, ((_Vec2) {3.0, 4.0}), 0);
+  in.items = v;
+  orc_sdk_oh_update(&in);
+
+  OrcError err = VEC_LENGTH_INFO.func(0, &in, 1, &out, 1);
+
+  TEST_ASSERT_EQUAL_UINT64(ORC_ERROR_NONE, err);
+  TEST_ASSERT_EQUAL_UINT64(ORC_TYPE_F64, out.type_id);
+  TEST_ASSERT_EQUAL_UINT64(sizeof(double), out.item_size);
+  TEST_ASSERT_EQUAL_UINT64(1, out.n_items);
+  double const *result = (double const *)out.items;
+  TEST_ASSERT_EQUAL_DOUBLE(5.0, result[0]);
+  orc_sdk_handle_free(&in);
+  orc_sdk_handle_free(&out);
+}
+
+static void test_vec_length_vec3_f32(void)
+{
+  /* (3,4,12) -> sqrt(9+16+144) = 13. Confirms f32 works too. */
+  orc_sdk_init(NULL, NULL);
+  OrcHandle in = {0}, out = {0};
+  in.handle  = 1;
+  out.handle = 2;
+  orc_sdk_handle_alloc(ORC_TYPE_F32, sizeof(_FVec3), &in);
+  _FVec3 *v = (_FVec3 *)in.items;
+  orc_sdk_deck_push(v, ((_FVec3) {3.0f, 4.0f, 12.0f}), 0);
+  in.items = v;
+  orc_sdk_oh_update(&in);
+
+  OrcError err = VEC_LENGTH_INFO.func(0, &in, 1, &out, 1);
+
+  TEST_ASSERT_EQUAL_UINT64(ORC_ERROR_NONE, err);
+  TEST_ASSERT_EQUAL_UINT64(ORC_TYPE_F32, out.type_id);
+  TEST_ASSERT_EQUAL_UINT64(sizeof(float), out.item_size);
+  float const *result = (float const *)out.items;
+  TEST_ASSERT_EQUAL_FLOAT(13.0f, result[0]);
+  orc_sdk_handle_free(&in);
+  orc_sdk_handle_free(&out);
+}
+
+static void test_vec_length_multi_row_broadcast(void)
+{
+  /* A deck of 2 dvec2 rows -> 2 scalar outputs, one per row. */
+  orc_sdk_init(NULL, NULL);
+  OrcHandle in = {0}, out = {0};
+  in.handle  = 1;
+  out.handle = 2;
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(_Vec2), &in);
+  _Vec2 *v = (_Vec2 *)in.items;
+  orc_sdk_deck_push(v, ((_Vec2) {3.0, 4.0}), 0);
+  orc_sdk_deck_push(v, ((_Vec2) {6.0, 8.0}), 0);
+  in.items = v;
+  orc_sdk_oh_update(&in);
+
+  OrcError err = VEC_LENGTH_INFO.func(0, &in, 1, &out, 1);
+
+  TEST_ASSERT_EQUAL_UINT64(ORC_ERROR_NONE, err);
+  TEST_ASSERT_EQUAL_UINT64(2, out.n_items);
+  double const *result = (double const *)out.items;
+  TEST_ASSERT_EQUAL_DOUBLE(5.0, result[0]);
+  TEST_ASSERT_EQUAL_DOUBLE(10.0, result[1]);
+  orc_sdk_handle_free(&in);
+  orc_sdk_handle_free(&out);
+}
+
+/* ============================================================
+   vec_length — Error / validation
+   ============================================================ */
+
+static void test_vec_length_wrong_n_inputs(void)
+{
+  /* n_inputs != 1 -> early return, output untouched. */
+  orc_sdk_init(NULL, NULL);
+  OrcHandle in[2] = {{0}, {0}}, out = {0};
+  in[0].handle = 1;
+  in[1].handle = 2;
+  out.handle   = 3;
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(_Vec2), &in[0]);
+  _Vec2 *v0 = (_Vec2 *)in[0].items;
+  orc_sdk_deck_push(v0, ((_Vec2) {3.0, 4.0}), 0);
+  in[0].items = v0;
+  orc_sdk_oh_update(&in[0]);
+
+  OrcError err = VEC_LENGTH_INFO.func(0, in, 2, &out, 1);
+
+  TEST_ASSERT_EQUAL_UINT64(ORC_ERROR_INVALID_ARGUMENTS, err);
+  TEST_ASSERT_NULL(out.items);
+  TEST_ASSERT_NULL(out.free_fn);
+  orc_sdk_handle_free(&in[0]);
+}
+
+static void test_vec_length_wrong_n_outputs(void)
+{
+  /* n_outputs != 1 -> early return, output untouched. */
+  orc_sdk_init(NULL, NULL);
+  OrcHandle in = {0}, out = {0};
+  in.handle  = 1;
+  out.handle = 2;
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(_Vec2), &in);
+  _Vec2 *v = (_Vec2 *)in.items;
+  orc_sdk_deck_push(v, ((_Vec2) {3.0, 4.0}), 0);
+  in.items = v;
+  orc_sdk_oh_update(&in);
+
+  OrcError err = VEC_LENGTH_INFO.func(0, &in, 1, &out, 2);
+
+  TEST_ASSERT_EQUAL_UINT64(ORC_ERROR_INVALID_ARGUMENTS, err);
+  TEST_ASSERT_NULL(out.items);
+  TEST_ASSERT_NULL(out.free_fn);
+  orc_sdk_handle_free(&in);
+}
+
+static void test_vec_length_rejects_integer_type(void)
+{
+  /* i32 is a valid primitive type, but only float and double are supported. */
+  orc_sdk_init(NULL, NULL);
+  OrcHandle in = {0}, out = {0};
+  in.handle  = 1;
+  out.handle = 2;
+  orc_sdk_handle_alloc(ORC_TYPE_I32, sizeof(int32_t), &in);
+  ORC_SDK_DECK_INIT(in.items, int32_t, (3));
+  orc_sdk_oh_update(&in);
+
+  OrcError err = VEC_LENGTH_INFO.func(0, &in, 1, &out, 1);
+
+  TEST_ASSERT_EQUAL_UINT64(ORC_ERROR_TYPE_MISMATCH, err);
+  TEST_ASSERT_NULL(out.items);
+  TEST_ASSERT_NULL(out.free_fn);
+  orc_sdk_handle_free(&in);
+}
+
+static void test_vec_length_rejects_non_primitive_type(void)
+{
+  /* Proxies are rejected too, same as any other non-float type. */
+  orc_sdk_init(NULL, NULL);
+  OrcHandle in = {0}, out = {0};
+  in.handle  = 1;
+  out.handle = 2;
+  orc_sdk_handle_alloc(ORC_TYPE_PROXY, sizeof(OrcItemProxy), &in);
+
+  OrcError err = VEC_LENGTH_INFO.func(0, &in, 1, &out, 1);
+
+  TEST_ASSERT_EQUAL_UINT64(ORC_ERROR_TYPE_MISMATCH, err);
+  TEST_ASSERT_NULL(out.items);
+  TEST_ASSERT_NULL(out.free_fn);
+  orc_sdk_handle_free(&in);
+}
+
+static void test_vec_length_rejects_arity_one(void)
+{
+  /* A plain scalar (arity 1) doesn't qualify as a vector here. */
+  orc_sdk_init(NULL, NULL);
+  OrcHandle in = {0}, out = {0};
+  in.handle  = 1;
+  out.handle = 2;
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(double), &in);
+  ORC_SDK_DECK_INIT(in.items, double, (3.0));
+  orc_sdk_oh_update(&in);
+
+  OrcError err = VEC_LENGTH_INFO.func(0, &in, 1, &out, 1);
+
+  TEST_ASSERT_EQUAL_UINT64(ORC_ERROR_INVALID_ARGUMENTS, err);
+  TEST_ASSERT_NULL(out.items);
+  TEST_ASSERT_NULL(out.free_fn);
+  orc_sdk_handle_free(&in);
+}
+
+static void test_vec_length_rejects_zero_item_size(void)
+{
+  /* item_size == 0 -- invalid handle. */
+  orc_sdk_init(NULL, NULL);
+  OrcHandle in = {0}, out = {0};
+  in.handle  = 1;
+  out.handle = 2;
+  in.type_id = ORC_TYPE_F64; /* item_size left at 0 -- never allocated. */
+
+  OrcError err = VEC_LENGTH_INFO.func(0, &in, 1, &out, 1);
+
+  TEST_ASSERT_EQUAL_UINT64(ORC_ERROR_INVALID_HANDLE, err);
+  TEST_ASSERT_NULL(out.items);
+  TEST_ASSERT_NULL(out.free_fn);
+}
+
+static void test_vec_length_rejects_invalid_aggregate_item_size(void)
+{
+  /* item_size == 12 is not a multiple of sizeof(double) == 8. Constructed via direct
+     field assignment: orc_sdk_handle_alloc itself already rejects item_size %
+     scalar_size != 0, so it can't be used to create this handle. */
+  orc_sdk_init(NULL, NULL);
+  OrcHandle in = {0}, out = {0};
+  in.handle    = 1;
+  out.handle   = 2;
+  in.type_id   = ORC_TYPE_F64;
+  in.item_size = 12;
+
+  OrcError err = VEC_LENGTH_INFO.func(0, &in, 1, &out, 1);
+
+  TEST_ASSERT_EQUAL_UINT64(ORC_ERROR_INVALID_ARGUMENTS, err);
+  TEST_ASSERT_NULL(out.items);
+  TEST_ASSERT_NULL(out.free_fn);
+}
+
+/* ============================================================
+   vec_length — Ownership and lifetime invariants
+   ============================================================ */
+
+static void test_vec_length_output_free_fn_set(void)
+{
+  /* After a successful call, out.free_fn must be set (plugin owns the deck). */
+  orc_sdk_init(NULL, NULL);
+  OrcHandle in = {0}, out = {0};
+  in.handle  = 1;
+  out.handle = 2;
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(_Vec2), &in);
+  _Vec2 *v = (_Vec2 *)in.items;
+  orc_sdk_deck_push(v, ((_Vec2) {3.0, 4.0}), 0);
+  in.items = v;
+  orc_sdk_oh_update(&in);
+
+  VEC_LENGTH_INFO.func(0, &in, 1, &out, 1);
+
+  TEST_ASSERT_NOT_NULL(out.free_fn);
+  orc_sdk_handle_free(&in);
+  orc_sdk_handle_free(&out);
+}
+
+static void test_vec_length_output_handle_preserved(void)
+{
+  /* out.handle must be unchanged before and after the call. */
+  orc_sdk_init(NULL, NULL);
+  OrcHandle in = {0}, out = {0};
+  in.handle  = 1;
+  out.handle = 99;
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(_Vec2), &in);
+  _Vec2 *v = (_Vec2 *)in.items;
+  orc_sdk_deck_push(v, ((_Vec2) {3.0, 4.0}), 0);
+  in.items = v;
+  orc_sdk_oh_update(&in);
+
+  VEC_LENGTH_INFO.func(0, &in, 1, &out, 1);
+
+  TEST_ASSERT_EQUAL_UINT64(99, out.handle);
+  orc_sdk_handle_free(&in);
+  orc_sdk_handle_free(&out);
+}
+
+static void test_vec_length_input_handle_unaffected(void)
+{
+  /* The input handle's items pointer and n_items must not change. */
+  orc_sdk_init(NULL, NULL);
+  OrcHandle in = {0}, out = {0};
+  in.handle  = 1;
+  out.handle = 2;
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(_Vec2), &in);
+  _Vec2 *v = (_Vec2 *)in.items;
+  orc_sdk_deck_push(v, ((_Vec2) {3.0, 4.0}), 0);
+  orc_sdk_deck_push(v, ((_Vec2) {6.0, 8.0}), 0);
+  in.items = v;
+  orc_sdk_oh_update(&in);
+  void const *items_before   = in.items;
+  uint64_t    n_items_before = in.n_items;
+
+  VEC_LENGTH_INFO.func(0, &in, 1, &out, 1);
+
+  TEST_ASSERT_EQUAL_PTR(items_before, in.items);
+  TEST_ASSERT_EQUAL_UINT64(n_items_before, in.n_items);
+  orc_sdk_handle_free(&in);
+  orc_sdk_handle_free(&out);
+}
+
+static void test_vec_length_reuse_output_same_type(void)
+{
+  /* Calling vec_length twice with the same input type/arity reuses the output deck
+   * instead of reallocating -- the output is always a single scalar regardless of input
+   * arity, so the initial capacity always suffices. */
+  orc_sdk_init(NULL, NULL);
+  OrcHandle in = {0}, out = {0};
+  in.handle  = 1;
+  out.handle = 2;
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(_Vec2), &in);
+  _Vec2 *v = (_Vec2 *)in.items;
+  orc_sdk_deck_push(v, ((_Vec2) {3.0, 4.0}), 0);
+  in.items = v;
+  orc_sdk_oh_update(&in);
+  VEC_LENGTH_INFO.func(0, &in, 1, &out, 1);
+  void const *ptr_after_first = out.items;
+
+  orc_sdk_deck_clear(in.items);
+  v = (_Vec2 *)in.items;
+  orc_sdk_deck_push(v, ((_Vec2) {6.0, 8.0}), 0);
+  in.items = v;
+  orc_sdk_oh_update(&in);
+  VEC_LENGTH_INFO.func(0, &in, 1, &out, 1);
+
+  TEST_ASSERT_EQUAL_UINT64(1, out.n_items);
+  double const *result = (double const *)out.items;
+  TEST_ASSERT_EQUAL_DOUBLE(10.0, result[0]);
+  TEST_ASSERT_EQUAL_PTR(ptr_after_first, out.items);
+
+  orc_sdk_handle_free(&in);
+  orc_sdk_handle_free(&out);
+}
+
+static void test_vec_length_output_type_change(void)
+{
+  /* If out was previously allocated for a different scalar type, vec_length
+   * reallocates it instead of reusing the stale deck. First call is f64, second f32. */
+  orc_sdk_init(NULL, NULL);
+  OrcHandle in = {0}, out = {0};
+  in.handle  = 1;
+  out.handle = 2;
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(_Vec2), &in);
+  _Vec2 *v = (_Vec2 *)in.items;
+  orc_sdk_deck_push(v, ((_Vec2) {3.0, 4.0}), 0);
+  in.items = v;
+  orc_sdk_oh_update(&in);
+  VEC_LENGTH_INFO.func(0, &in, 1, &out, 1);
+  TEST_ASSERT_EQUAL_UINT64(ORC_TYPE_F64, out.type_id);
+  TEST_ASSERT_EQUAL_UINT64(sizeof(double), out.item_size);
+  orc_sdk_handle_free(&in);
+
+  OrcHandle in2 = {0};
+  in2.handle    = 3;
+  orc_sdk_handle_alloc(ORC_TYPE_F32, sizeof(_FVec2), &in2);
+  _FVec2 *w = (_FVec2 *)in2.items;
+  orc_sdk_deck_push(w, ((_FVec2) {3.0f, 4.0f}), 0);
+  in2.items = w;
+  orc_sdk_oh_update(&in2);
+
+  VEC_LENGTH_INFO.func(0, &in2, 1, &out, 1);
+
+  TEST_ASSERT_EQUAL_UINT64(ORC_TYPE_F32, out.type_id);
+  TEST_ASSERT_EQUAL_UINT64(sizeof(float), out.item_size);
+  float const *result = (float const *)out.items;
+  TEST_ASSERT_EQUAL_FLOAT(5.0f, result[0]);
+  orc_sdk_handle_free(&in2);
+  orc_sdk_handle_free(&out);
+}
+
+/* ============================================================
+   vec_normalize — Correctness
+   ============================================================ */
+
+static void test_vec_normalize_dvec2_f64(void)
+{
+  /* (3,4), length 5 -> (0.6, 0.8). */
+  orc_sdk_init(NULL, NULL);
+  OrcHandle in = {0}, out = {0};
+  in.handle  = 1;
+  out.handle = 2;
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(_Vec2), &in);
+  _Vec2 *v = (_Vec2 *)in.items;
+  orc_sdk_deck_push(v, ((_Vec2) {3.0, 4.0}), 0);
+  in.items = v;
+  orc_sdk_oh_update(&in);
+
+  OrcError err = VEC_NORMALIZE_INFO.func(0, &in, 1, &out, 1);
+
+  TEST_ASSERT_EQUAL_UINT64(ORC_ERROR_NONE, err);
+  TEST_ASSERT_EQUAL_UINT64(ORC_TYPE_F64, out.type_id);
+  TEST_ASSERT_EQUAL_UINT64(sizeof(_Vec2), out.item_size);
+  TEST_ASSERT_EQUAL_UINT64(1, out.n_items);
+  double const *result = (double const *)out.items;
+  TEST_ASSERT_EQUAL_DOUBLE(0.6, result[0]);
+  TEST_ASSERT_EQUAL_DOUBLE(0.8, result[1]);
+  orc_sdk_handle_free(&in);
+  orc_sdk_handle_free(&out);
+}
+
+static void test_vec_normalize_vec3_f32(void)
+{
+  /* (3,4,12), length 13 -> (3/13, 4/13, 12/13). Confirms f32 works too. */
+  orc_sdk_init(NULL, NULL);
+  OrcHandle in = {0}, out = {0};
+  in.handle  = 1;
+  out.handle = 2;
+  orc_sdk_handle_alloc(ORC_TYPE_F32, sizeof(_FVec3), &in);
+  _FVec3 *v = (_FVec3 *)in.items;
+  orc_sdk_deck_push(v, ((_FVec3) {3.0f, 4.0f, 12.0f}), 0);
+  in.items = v;
+  orc_sdk_oh_update(&in);
+
+  OrcError err = VEC_NORMALIZE_INFO.func(0, &in, 1, &out, 1);
+
+  TEST_ASSERT_EQUAL_UINT64(ORC_ERROR_NONE, err);
+  TEST_ASSERT_EQUAL_UINT64(ORC_TYPE_F32, out.type_id);
+  TEST_ASSERT_EQUAL_UINT64(sizeof(_FVec3), out.item_size);
+  TEST_ASSERT_EQUAL_UINT64(1, out.n_items);
+  float const *result = (float const *)out.items;
+  TEST_ASSERT_EQUAL_FLOAT(3.0f / 13.0f, result[0]);
+  TEST_ASSERT_EQUAL_FLOAT(4.0f / 13.0f, result[1]);
+  TEST_ASSERT_EQUAL_FLOAT(12.0f / 13.0f, result[2]);
+  orc_sdk_handle_free(&in);
+  orc_sdk_handle_free(&out);
+}
+
+static void test_vec_normalize_multi_row_broadcast(void)
+{
+  /* A deck of 2 dvec2 rows -> 2 normalized rows. */
+  orc_sdk_init(NULL, NULL);
+  OrcHandle in = {0}, out = {0};
+  in.handle  = 1;
+  out.handle = 2;
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(_Vec2), &in);
+  _Vec2 *v = (_Vec2 *)in.items;
+  orc_sdk_deck_push(v, ((_Vec2) {3.0, 4.0}), 0);
+  orc_sdk_deck_push(v, ((_Vec2) {0.0, 5.0}), 0);
+  in.items = v;
+  orc_sdk_oh_update(&in);
+
+  OrcError err = VEC_NORMALIZE_INFO.func(0, &in, 1, &out, 1);
+
+  TEST_ASSERT_EQUAL_UINT64(ORC_ERROR_NONE, err);
+  TEST_ASSERT_EQUAL_UINT64(2, out.n_items);
+  _Vec2 const *result = (_Vec2 const *)out.items;
+  TEST_ASSERT_EQUAL_DOUBLE(0.6, result[0].x);
+  TEST_ASSERT_EQUAL_DOUBLE(0.8, result[0].y);
+  TEST_ASSERT_EQUAL_DOUBLE(0.0, result[1].x);
+  TEST_ASSERT_EQUAL_DOUBLE(1.0, result[1].y);
+  orc_sdk_handle_free(&in);
+  orc_sdk_handle_free(&out);
+}
+
+/* ============================================================
+   vec_normalize — Error / validation
+   ============================================================ */
+
+static void test_vec_normalize_wrong_n_inputs(void)
+{
+  /* n_inputs != 1 -> early return, output untouched. */
+  orc_sdk_init(NULL, NULL);
+  OrcHandle in[2] = {{0}, {0}}, out = {0};
+  in[0].handle = 1;
+  in[1].handle = 2;
+  out.handle   = 3;
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(_Vec2), &in[0]);
+  _Vec2 *v0 = (_Vec2 *)in[0].items;
+  orc_sdk_deck_push(v0, ((_Vec2) {3.0, 4.0}), 0);
+  in[0].items = v0;
+  orc_sdk_oh_update(&in[0]);
+
+  OrcError err = VEC_NORMALIZE_INFO.func(0, in, 2, &out, 1);
+
+  TEST_ASSERT_EQUAL_UINT64(ORC_ERROR_INVALID_ARGUMENTS, err);
+  TEST_ASSERT_NULL(out.items);
+  TEST_ASSERT_NULL(out.free_fn);
+  orc_sdk_handle_free(&in[0]);
+}
+
+static void test_vec_normalize_wrong_n_outputs(void)
+{
+  /* n_outputs != 1 -> early return, output untouched. */
+  orc_sdk_init(NULL, NULL);
+  OrcHandle in = {0}, out = {0};
+  in.handle  = 1;
+  out.handle = 2;
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(_Vec2), &in);
+  _Vec2 *v = (_Vec2 *)in.items;
+  orc_sdk_deck_push(v, ((_Vec2) {3.0, 4.0}), 0);
+  in.items = v;
+  orc_sdk_oh_update(&in);
+
+  OrcError err = VEC_NORMALIZE_INFO.func(0, &in, 1, &out, 2);
+
+  TEST_ASSERT_EQUAL_UINT64(ORC_ERROR_INVALID_ARGUMENTS, err);
+  TEST_ASSERT_NULL(out.items);
+  TEST_ASSERT_NULL(out.free_fn);
+  orc_sdk_handle_free(&in);
+}
+
+static void test_vec_normalize_rejects_integer_type(void)
+{
+  /* i32 is a valid primitive type, but only float and double are supported. */
+  orc_sdk_init(NULL, NULL);
+  OrcHandle in = {0}, out = {0};
+  in.handle  = 1;
+  out.handle = 2;
+  orc_sdk_handle_alloc(ORC_TYPE_I32, sizeof(int32_t), &in);
+  ORC_SDK_DECK_INIT(in.items, int32_t, (3));
+  orc_sdk_oh_update(&in);
+
+  OrcError err = VEC_NORMALIZE_INFO.func(0, &in, 1, &out, 1);
+
+  TEST_ASSERT_EQUAL_UINT64(ORC_ERROR_TYPE_MISMATCH, err);
+  TEST_ASSERT_NULL(out.items);
+  TEST_ASSERT_NULL(out.free_fn);
+  orc_sdk_handle_free(&in);
+}
+
+static void test_vec_normalize_rejects_non_primitive_type(void)
+{
+  /* Proxies are rejected too, same as any other non-float type. */
+  orc_sdk_init(NULL, NULL);
+  OrcHandle in = {0}, out = {0};
+  in.handle  = 1;
+  out.handle = 2;
+  orc_sdk_handle_alloc(ORC_TYPE_PROXY, sizeof(OrcItemProxy), &in);
+
+  OrcError err = VEC_NORMALIZE_INFO.func(0, &in, 1, &out, 1);
+
+  TEST_ASSERT_EQUAL_UINT64(ORC_ERROR_TYPE_MISMATCH, err);
+  TEST_ASSERT_NULL(out.items);
+  TEST_ASSERT_NULL(out.free_fn);
+  orc_sdk_handle_free(&in);
+}
+
+static void test_vec_normalize_rejects_arity_one(void)
+{
+  /* A plain scalar (arity 1) doesn't qualify as a vector here. */
+  orc_sdk_init(NULL, NULL);
+  OrcHandle in = {0}, out = {0};
+  in.handle  = 1;
+  out.handle = 2;
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(double), &in);
+  ORC_SDK_DECK_INIT(in.items, double, (3.0));
+  orc_sdk_oh_update(&in);
+
+  OrcError err = VEC_NORMALIZE_INFO.func(0, &in, 1, &out, 1);
+
+  TEST_ASSERT_EQUAL_UINT64(ORC_ERROR_INVALID_ARGUMENTS, err);
+  TEST_ASSERT_NULL(out.items);
+  TEST_ASSERT_NULL(out.free_fn);
+  orc_sdk_handle_free(&in);
+}
+
+static void test_vec_normalize_rejects_zero_item_size(void)
+{
+  /* item_size == 0 -- invalid handle. */
+  orc_sdk_init(NULL, NULL);
+  OrcHandle in = {0}, out = {0};
+  in.handle  = 1;
+  out.handle = 2;
+  in.type_id = ORC_TYPE_F64; /* item_size left at 0 -- never allocated. */
+
+  OrcError err = VEC_NORMALIZE_INFO.func(0, &in, 1, &out, 1);
+
+  TEST_ASSERT_EQUAL_UINT64(ORC_ERROR_INVALID_HANDLE, err);
+  TEST_ASSERT_NULL(out.items);
+  TEST_ASSERT_NULL(out.free_fn);
+}
+
+static void test_vec_normalize_rejects_invalid_aggregate_item_size(void)
+{
+  /* item_size == 12 is not a multiple of sizeof(double) == 8. Constructed via direct
+     field assignment: orc_sdk_handle_alloc itself already rejects item_size %
+     scalar_size != 0, so it can't be used to create this handle. */
+  orc_sdk_init(NULL, NULL);
+  OrcHandle in = {0}, out = {0};
+  in.handle    = 1;
+  out.handle   = 2;
+  in.type_id   = ORC_TYPE_F64;
+  in.item_size = 12;
+
+  OrcError err = VEC_NORMALIZE_INFO.func(0, &in, 1, &out, 1);
+
+  TEST_ASSERT_EQUAL_UINT64(ORC_ERROR_INVALID_ARGUMENTS, err);
+  TEST_ASSERT_NULL(out.items);
+  TEST_ASSERT_NULL(out.free_fn);
+}
+
+/* ============================================================
+   vec_normalize — Ownership and lifetime invariants
+   ============================================================ */
+
+static void test_vec_normalize_output_free_fn_set(void)
+{
+  /* After a successful call, out.free_fn must be set (plugin owns the deck). */
+  orc_sdk_init(NULL, NULL);
+  OrcHandle in = {0}, out = {0};
+  in.handle  = 1;
+  out.handle = 2;
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(_Vec2), &in);
+  _Vec2 *v = (_Vec2 *)in.items;
+  orc_sdk_deck_push(v, ((_Vec2) {3.0, 4.0}), 0);
+  in.items = v;
+  orc_sdk_oh_update(&in);
+
+  VEC_NORMALIZE_INFO.func(0, &in, 1, &out, 1);
+
+  TEST_ASSERT_NOT_NULL(out.free_fn);
+  orc_sdk_handle_free(&in);
+  orc_sdk_handle_free(&out);
+}
+
+static void test_vec_normalize_output_handle_preserved(void)
+{
+  /* out.handle must be unchanged before and after the call. */
+  orc_sdk_init(NULL, NULL);
+  OrcHandle in = {0}, out = {0};
+  in.handle  = 1;
+  out.handle = 99;
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(_Vec2), &in);
+  _Vec2 *v = (_Vec2 *)in.items;
+  orc_sdk_deck_push(v, ((_Vec2) {3.0, 4.0}), 0);
+  in.items = v;
+  orc_sdk_oh_update(&in);
+
+  VEC_NORMALIZE_INFO.func(0, &in, 1, &out, 1);
+
+  TEST_ASSERT_EQUAL_UINT64(99, out.handle);
+  orc_sdk_handle_free(&in);
+  orc_sdk_handle_free(&out);
+}
+
+static void test_vec_normalize_input_handle_unaffected(void)
+{
+  /* The input handle's items pointer and n_items must not change. */
+  orc_sdk_init(NULL, NULL);
+  OrcHandle in = {0}, out = {0};
+  in.handle  = 1;
+  out.handle = 2;
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(_Vec2), &in);
+  _Vec2 *v = (_Vec2 *)in.items;
+  orc_sdk_deck_push(v, ((_Vec2) {3.0, 4.0}), 0);
+  orc_sdk_deck_push(v, ((_Vec2) {0.0, 5.0}), 0);
+  in.items = v;
+  orc_sdk_oh_update(&in);
+  void const *items_before   = in.items;
+  uint64_t    n_items_before = in.n_items;
+
+  VEC_NORMALIZE_INFO.func(0, &in, 1, &out, 1);
+
+  TEST_ASSERT_EQUAL_PTR(items_before, in.items);
+  TEST_ASSERT_EQUAL_UINT64(n_items_before, in.n_items);
+  orc_sdk_handle_free(&in);
+  orc_sdk_handle_free(&out);
+}
+
+static void test_vec_normalize_reuse_output_same_type(void)
+{
+  /* Calling vec_normalize twice with the same input type/arity reuses the output deck
+   * instead of reallocating -- same item count and item_size both times, so the initial
+   * capacity suffices. */
+  orc_sdk_init(NULL, NULL);
+  OrcHandle in = {0}, out = {0};
+  in.handle  = 1;
+  out.handle = 2;
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(_Vec2), &in);
+  _Vec2 *v = (_Vec2 *)in.items;
+  orc_sdk_deck_push(v, ((_Vec2) {3.0, 4.0}), 0);
+  in.items = v;
+  orc_sdk_oh_update(&in);
+  VEC_NORMALIZE_INFO.func(0, &in, 1, &out, 1);
+  void const *ptr_after_first = out.items;
+
+  orc_sdk_deck_clear(in.items);
+  v = (_Vec2 *)in.items;
+  orc_sdk_deck_push(v, ((_Vec2) {0.0, 5.0}), 0);
+  in.items = v;
+  orc_sdk_oh_update(&in);
+  VEC_NORMALIZE_INFO.func(0, &in, 1, &out, 1);
+
+  TEST_ASSERT_EQUAL_UINT64(1, out.n_items);
+  double const *result = (double const *)out.items;
+  TEST_ASSERT_EQUAL_DOUBLE(0.0, result[0]);
+  TEST_ASSERT_EQUAL_DOUBLE(1.0, result[1]);
+  TEST_ASSERT_EQUAL_PTR(ptr_after_first, out.items);
+
+  orc_sdk_handle_free(&in);
+  orc_sdk_handle_free(&out);
+}
+
+static void test_vec_normalize_output_type_change(void)
+{
+  /* If out was previously allocated for a different scalar type, vec_normalize
+   * reallocates it instead of reusing the stale deck. First call is f64, second f32. */
+  orc_sdk_init(NULL, NULL);
+  OrcHandle in = {0}, out = {0};
+  in.handle  = 1;
+  out.handle = 2;
+  orc_sdk_handle_alloc(ORC_TYPE_F64, sizeof(_Vec2), &in);
+  _Vec2 *v = (_Vec2 *)in.items;
+  orc_sdk_deck_push(v, ((_Vec2) {3.0, 4.0}), 0);
+  in.items = v;
+  orc_sdk_oh_update(&in);
+  VEC_NORMALIZE_INFO.func(0, &in, 1, &out, 1);
+  TEST_ASSERT_EQUAL_UINT64(ORC_TYPE_F64, out.type_id);
+  TEST_ASSERT_EQUAL_UINT64(sizeof(_Vec2), out.item_size);
+  orc_sdk_handle_free(&in);
+
+  OrcHandle in2 = {0};
+  in2.handle    = 3;
+  orc_sdk_handle_alloc(ORC_TYPE_F32, sizeof(_FVec2), &in2);
+  _FVec2 *w = (_FVec2 *)in2.items;
+  orc_sdk_deck_push(w, ((_FVec2) {3.0f, 4.0f}), 0);
+  in2.items = w;
+  orc_sdk_oh_update(&in2);
+
+  VEC_NORMALIZE_INFO.func(0, &in2, 1, &out, 1);
+
+  TEST_ASSERT_EQUAL_UINT64(ORC_TYPE_F32, out.type_id);
+  TEST_ASSERT_EQUAL_UINT64(sizeof(_FVec2), out.item_size);
+  float const *result = (float const *)out.items;
+  TEST_ASSERT_EQUAL_FLOAT(0.6f, result[0]);
+  TEST_ASSERT_EQUAL_FLOAT(0.8f, result[1]);
+  orc_sdk_handle_free(&in2);
+  orc_sdk_handle_free(&out);
+}
+
 /* ============================================================ */
 
 int main(void)
@@ -2735,5 +3802,50 @@ int main(void)
   RUN_TEST(test_vec_cross_product_input_handles_unaffected);
   RUN_TEST(test_vec_cross_product_reuse_output_same_type);
   RUN_TEST(test_vec_cross_product_output_type_change);
+  RUN_TEST(test_vec_length_sq_dvec2_f64);
+  RUN_TEST(test_vec_length_sq_vec3_f32);
+  RUN_TEST(test_vec_length_sq_multi_row_broadcast);
+  RUN_TEST(test_vec_length_sq_wrong_n_inputs);
+  RUN_TEST(test_vec_length_sq_wrong_n_outputs);
+  RUN_TEST(test_vec_length_sq_rejects_integer_type);
+  RUN_TEST(test_vec_length_sq_rejects_non_primitive_type);
+  RUN_TEST(test_vec_length_sq_rejects_arity_one);
+  RUN_TEST(test_vec_length_sq_rejects_zero_item_size);
+  RUN_TEST(test_vec_length_sq_rejects_invalid_aggregate_item_size);
+  RUN_TEST(test_vec_length_sq_output_free_fn_set);
+  RUN_TEST(test_vec_length_sq_output_handle_preserved);
+  RUN_TEST(test_vec_length_sq_input_handle_unaffected);
+  RUN_TEST(test_vec_length_sq_reuse_output_same_type);
+  RUN_TEST(test_vec_length_sq_output_type_change);
+  RUN_TEST(test_vec_length_dvec2_f64);
+  RUN_TEST(test_vec_length_vec3_f32);
+  RUN_TEST(test_vec_length_multi_row_broadcast);
+  RUN_TEST(test_vec_length_wrong_n_inputs);
+  RUN_TEST(test_vec_length_wrong_n_outputs);
+  RUN_TEST(test_vec_length_rejects_integer_type);
+  RUN_TEST(test_vec_length_rejects_non_primitive_type);
+  RUN_TEST(test_vec_length_rejects_arity_one);
+  RUN_TEST(test_vec_length_rejects_zero_item_size);
+  RUN_TEST(test_vec_length_rejects_invalid_aggregate_item_size);
+  RUN_TEST(test_vec_length_output_free_fn_set);
+  RUN_TEST(test_vec_length_output_handle_preserved);
+  RUN_TEST(test_vec_length_input_handle_unaffected);
+  RUN_TEST(test_vec_length_reuse_output_same_type);
+  RUN_TEST(test_vec_length_output_type_change);
+  RUN_TEST(test_vec_normalize_dvec2_f64);
+  RUN_TEST(test_vec_normalize_vec3_f32);
+  RUN_TEST(test_vec_normalize_multi_row_broadcast);
+  RUN_TEST(test_vec_normalize_wrong_n_inputs);
+  RUN_TEST(test_vec_normalize_wrong_n_outputs);
+  RUN_TEST(test_vec_normalize_rejects_integer_type);
+  RUN_TEST(test_vec_normalize_rejects_non_primitive_type);
+  RUN_TEST(test_vec_normalize_rejects_arity_one);
+  RUN_TEST(test_vec_normalize_rejects_zero_item_size);
+  RUN_TEST(test_vec_normalize_rejects_invalid_aggregate_item_size);
+  RUN_TEST(test_vec_normalize_output_free_fn_set);
+  RUN_TEST(test_vec_normalize_output_handle_preserved);
+  RUN_TEST(test_vec_normalize_input_handle_unaffected);
+  RUN_TEST(test_vec_normalize_reuse_output_same_type);
+  RUN_TEST(test_vec_normalize_output_type_change);
   return UNITY_END();
 }

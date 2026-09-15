@@ -1,5 +1,6 @@
 #include <orc_abi.h>
 #include <orc_sdk/orc_sdk.h>
+#include <math.h>
 #include <stdint.h>
 #include <string.h>
 
@@ -885,3 +886,430 @@ OrcFuncInfo const VEC_CROSS_PRODUCT_INFO = {
   .input_args  = NULL,
   .output_args = NULL,
   .func        = vec_cross_product};
+
+// One type-specific implementation per supported scalar type -- only float and double.
+// Each owns the whole combinations loop, with pointers already cast to `type`, so
+// vec_length_sq only needs to pick one of these once instead of switching on the type
+// for every item. The output here is a single scalar (arity 1), not a vector of the
+// same arity as the input -- it's a reduction, not an elementwise op.
+#define DEFINE_VEC_LENGTH_SQ_DISPATCH(type, suffix)                               \
+  static OrcError _vec_length_sq_##suffix(void *combinations, size_t const arity) \
+  {                                                                               \
+    while (combinations) {                                                       \
+      OrcSdk_DeckWriter *out_writer = orc_sdk_comb_get_output(combinations, 0);   \
+      type              *out_val    = (type *)orc_sdk_dw_push_empty(out_writer); \
+      if (out_val == NULL) {                                                     \
+        orc_sdk_comb_free(combinations);                                         \
+        return ORC_ERROR_ALLOC_FAILED;                                           \
+      }                                                                          \
+      OrcSdk_DeckView v_view = orc_sdk_comb_get_input(combinations, 0);           \
+      type const     *v      = (type const *)orc_sdk_dv_item_ptr(&v_view);        \
+      type            sum    = 0;                                                \
+      for (size_t j = 0; j < arity; ++j) {                                       \
+        sum = (type)(sum + v[j] * v[j]);                                         \
+      }                                                                          \
+      *out_val     = sum;                                                        \
+      combinations = orc_sdk_comb_advance(combinations);                         \
+    }                                                                            \
+    return ORC_ERROR_NONE;                                                       \
+  }
+
+DEFINE_VEC_LENGTH_SQ_DISPATCH(float, f32)
+DEFINE_VEC_LENGTH_SQ_DISPATCH(double, f64)
+
+// Same as above, but takes the square root -- the usual vector length/magnitude.
+// sqrt_fn is passed in as sqrtf or sqrt so each instantiation calls the correctly
+// typed one, matching the (type) casts everywhere else in this family.
+#define DEFINE_VEC_LENGTH_DISPATCH(type, suffix, sqrt_fn)                         \
+  static OrcError _vec_length_##suffix(void *combinations, size_t const arity)    \
+  {                                                                               \
+    while (combinations) {                                                       \
+      OrcSdk_DeckWriter *out_writer = orc_sdk_comb_get_output(combinations, 0);   \
+      type              *out_val    = (type *)orc_sdk_dw_push_empty(out_writer); \
+      if (out_val == NULL) {                                                     \
+        orc_sdk_comb_free(combinations);                                         \
+        return ORC_ERROR_ALLOC_FAILED;                                           \
+      }                                                                          \
+      OrcSdk_DeckView v_view = orc_sdk_comb_get_input(combinations, 0);           \
+      type const     *v      = (type const *)orc_sdk_dv_item_ptr(&v_view);        \
+      type            sum    = 0;                                                \
+      for (size_t j = 0; j < arity; ++j) {                                       \
+        sum = (type)(sum + v[j] * v[j]);                                         \
+      }                                                                          \
+      *out_val     = sqrt_fn(sum);                                               \
+      combinations = orc_sdk_comb_advance(combinations);                         \
+    }                                                                            \
+    return ORC_ERROR_NONE;                                                       \
+  }
+
+DEFINE_VEC_LENGTH_DISPATCH(float, f32, sqrtf)
+DEFINE_VEC_LENGTH_DISPATCH(double, f64, sqrt)
+
+static OrcError vec_length_sq(uint64_t         ctx,
+                              OrcHandle const *input,
+                              uint64_t         n_inputs,
+                              OrcHandle       *output,
+                              uint64_t         n_outputs)
+{
+  // Validate input counts.
+  if (n_inputs != 1) {
+    orc_sdk_report_message(ctx, ORC_MSG_LEVEL_ERROR, "Need exactly one vector.");
+    return ORC_ERROR_INVALID_ARGUMENTS;
+  }
+  else if (n_outputs != 1) {
+    orc_sdk_report_message(ctx, ORC_MSG_LEVEL_ERROR, "Expected 1 output.");
+    return ORC_ERROR_INVALID_ARGUMENTS;
+  }
+  OrcTypeId const first_type_id = input[0].type_id;
+  if (!is_float_type(first_type_id)) {
+    orc_sdk_report_message(
+      ctx, ORC_MSG_LEVEL_ERROR, "vec_length_sq only supports float or double vectors.");
+    return ORC_ERROR_TYPE_MISMATCH;
+  }
+  uint64_t const first_item_size = input[0].item_size;
+  if (first_item_size == 0) {
+    orc_sdk_report_message(ctx, ORC_MSG_LEVEL_ERROR, "Invalid handle.");
+    return ORC_ERROR_INVALID_HANDLE;
+  }
+  OrcSdk_TypeInfo type_info = {0};
+  OrcError        err       = orc_sdk_get_type_info(first_type_id, &type_info);
+  if (err)
+    return err;
+  size_t const scalar_size = type_info.item_size;
+  if (scalar_size == 0 || (first_item_size % scalar_size) != 0) {
+    // The size of the aggregate type must be a multiple of the scalar size.
+    orc_sdk_report_message(ctx, ORC_MSG_LEVEL_ERROR, "Invalid aggregate type.");
+    return ORC_ERROR_INVALID_ARGUMENTS;
+  }
+  size_t const arity = first_item_size / scalar_size;
+  if (arity < 2) {
+    orc_sdk_report_message(ctx, ORC_MSG_LEVEL_ERROR, "Need a vector of arity 2 or more.");
+    return ORC_ERROR_INVALID_ARGUMENTS;
+  }
+  // Allocate output -- a single scalar, not a vector.
+  err = orc_sdk_handle_alloc(first_type_id, scalar_size, output);
+  if (err)
+    return err;
+  void             *combinations = NULL;
+  OrcHandle const **input_ptrs   = NULL;
+  uint8_t          *input_depths = NULL;
+  // Above three need to be cleaned up in all exit paths.
+  {
+    // Input depths array.
+    orc_sdk_arr_resize(input_depths, n_inputs);
+    uint8_t const zero_depth = 0;
+    orc_sdk_arr_fill(input_depths, zero_depth);
+    // Pack input handle pointers into an array.
+    orc_sdk_arr_reserve(input_ptrs, n_inputs);
+    for (uint64_t i = 0; i < n_inputs; ++i) {
+      err = orc_sdk_arr_push(input_ptrs, input + i);
+      if (err)
+        goto cleanup;
+    }
+    // Check the outputs and initialize the combinations.
+    ORC_SDK_REQUIRE_WITH_MSG(
+      n_outputs == 1,
+      "We already checked before. This is just to make sure we don't go out of sync.");
+    combinations = orc_sdk_comb_init(
+      input_ptrs, input_depths, n_inputs, &output, (uint8_t const[]) {0}, 1);
+  }
+  if (combinations == NULL) {
+    err = ORC_ERROR_INVALID_COMBINATIONS;
+    goto cleanup;
+  }
+  // Dispatch once on the component type here, instead of checking it inside the
+  // combinations loop.
+  switch (first_type_id) {
+  case ORC_TYPE_F32:
+    err = _vec_length_sq_f32(combinations, arity);
+    break;
+  case ORC_TYPE_F64:
+    err = _vec_length_sq_f64(combinations, arity);
+    break;
+  default:
+    ORC_SDK_REQUIRE_WITH_MSG(
+      false, "is_float_type guarantees first_type_id is one of the cases above.");
+    break;
+  }
+  // The dispatch functions above always fully consume `combinations`: either they
+  // exhaust it (which frees it internally, see orc_sdk_comb_advance), or they free it
+  // explicitly on error. Either way it must not be touched or freed again below.
+  combinations = NULL;
+  if (err == ORC_ERROR_NONE) {
+    orc_sdk_oh_update(output);
+  }
+cleanup:
+  orc_sdk_comb_free(combinations);
+  orc_sdk_arr_free(input_ptrs);
+  orc_sdk_arr_free(input_depths);
+  return err;
+}
+
+OrcFuncInfo const VEC_LENGTH_SQ_INFO = {
+  .name = "vec_length_sq",
+  .desc =
+    "Squared length (magnitude) of a vector, of arity 2 or more, and either float or "
+    "double scalar type. Cheaper than vec_length when you don't need the actual length "
+    "(e.g. comparing distances).",
+  .n_inputs    = 1,
+  .n_outputs   = 1,
+  .input_args  = NULL,
+  .output_args = NULL,
+  .func        = vec_length_sq};
+
+static OrcError vec_length(uint64_t         ctx,
+                           OrcHandle const *input,
+                           uint64_t         n_inputs,
+                           OrcHandle       *output,
+                           uint64_t         n_outputs)
+{
+  // Validate input counts.
+  if (n_inputs != 1) {
+    orc_sdk_report_message(ctx, ORC_MSG_LEVEL_ERROR, "Need exactly one vector.");
+    return ORC_ERROR_INVALID_ARGUMENTS;
+  }
+  else if (n_outputs != 1) {
+    orc_sdk_report_message(ctx, ORC_MSG_LEVEL_ERROR, "Expected 1 output.");
+    return ORC_ERROR_INVALID_ARGUMENTS;
+  }
+  OrcTypeId const first_type_id = input[0].type_id;
+  if (!is_float_type(first_type_id)) {
+    orc_sdk_report_message(
+      ctx, ORC_MSG_LEVEL_ERROR, "vec_length only supports float or double vectors.");
+    return ORC_ERROR_TYPE_MISMATCH;
+  }
+  uint64_t const first_item_size = input[0].item_size;
+  if (first_item_size == 0) {
+    orc_sdk_report_message(ctx, ORC_MSG_LEVEL_ERROR, "Invalid handle.");
+    return ORC_ERROR_INVALID_HANDLE;
+  }
+  OrcSdk_TypeInfo type_info = {0};
+  OrcError        err       = orc_sdk_get_type_info(first_type_id, &type_info);
+  if (err)
+    return err;
+  size_t const scalar_size = type_info.item_size;
+  if (scalar_size == 0 || (first_item_size % scalar_size) != 0) {
+    // The size of the aggregate type must be a multiple of the scalar size.
+    orc_sdk_report_message(ctx, ORC_MSG_LEVEL_ERROR, "Invalid aggregate type.");
+    return ORC_ERROR_INVALID_ARGUMENTS;
+  }
+  size_t const arity = first_item_size / scalar_size;
+  if (arity < 2) {
+    orc_sdk_report_message(ctx, ORC_MSG_LEVEL_ERROR, "Need a vector of arity 2 or more.");
+    return ORC_ERROR_INVALID_ARGUMENTS;
+  }
+  // Allocate output -- a single scalar, not a vector.
+  err = orc_sdk_handle_alloc(first_type_id, scalar_size, output);
+  if (err)
+    return err;
+  void             *combinations = NULL;
+  OrcHandle const **input_ptrs   = NULL;
+  uint8_t          *input_depths = NULL;
+  // Above three need to be cleaned up in all exit paths.
+  {
+    // Input depths array.
+    orc_sdk_arr_resize(input_depths, n_inputs);
+    uint8_t const zero_depth = 0;
+    orc_sdk_arr_fill(input_depths, zero_depth);
+    // Pack input handle pointers into an array.
+    orc_sdk_arr_reserve(input_ptrs, n_inputs);
+    for (uint64_t i = 0; i < n_inputs; ++i) {
+      err = orc_sdk_arr_push(input_ptrs, input + i);
+      if (err)
+        goto cleanup;
+    }
+    // Check the outputs and initialize the combinations.
+    ORC_SDK_REQUIRE_WITH_MSG(
+      n_outputs == 1,
+      "We already checked before. This is just to make sure we don't go out of sync.");
+    combinations = orc_sdk_comb_init(
+      input_ptrs, input_depths, n_inputs, &output, (uint8_t const[]) {0}, 1);
+  }
+  if (combinations == NULL) {
+    err = ORC_ERROR_INVALID_COMBINATIONS;
+    goto cleanup;
+  }
+  // Dispatch once on the component type here, instead of checking it inside the
+  // combinations loop.
+  switch (first_type_id) {
+  case ORC_TYPE_F32:
+    err = _vec_length_f32(combinations, arity);
+    break;
+  case ORC_TYPE_F64:
+    err = _vec_length_f64(combinations, arity);
+    break;
+  default:
+    ORC_SDK_REQUIRE_WITH_MSG(
+      false, "is_float_type guarantees first_type_id is one of the cases above.");
+    break;
+  }
+  // The dispatch functions above always fully consume `combinations`: either they
+  // exhaust it (which frees it internally, see orc_sdk_comb_advance), or they free it
+  // explicitly on error. Either way it must not be touched or freed again below.
+  combinations = NULL;
+  if (err == ORC_ERROR_NONE) {
+    orc_sdk_oh_update(output);
+  }
+cleanup:
+  orc_sdk_comb_free(combinations);
+  orc_sdk_arr_free(input_ptrs);
+  orc_sdk_arr_free(input_depths);
+  return err;
+}
+
+OrcFuncInfo const VEC_LENGTH_INFO = {
+  .name = "vec_length",
+  .desc =
+    "Length (magnitude) of a vector, of arity 2 or more, and either float or double "
+    "scalar type.",
+  .n_inputs    = 1,
+  .n_outputs   = 1,
+  .input_args  = NULL,
+  .output_args = NULL,
+  .func        = vec_length};
+
+// One type-specific implementation per supported scalar type -- only float and double.
+// Unlike vec_length/vec_length_sq, the output here is a vector of the same arity as
+// the input, not a scalar: this is an elementwise scale, not a reduction.
+#define DEFINE_VEC_NORMALIZE_DISPATCH(type, suffix, sqrt_fn)                       \
+  static OrcError _vec_normalize_##suffix(void *combinations, size_t const arity) \
+  {                                                                                \
+    while (combinations) {                                                        \
+      OrcSdk_DeckWriter *out_writer = orc_sdk_comb_get_output(combinations, 0);    \
+      type              *out_vec    = (type *)orc_sdk_dw_push_empty(out_writer);  \
+      if (out_vec == NULL) {                                                      \
+        orc_sdk_comb_free(combinations);                                          \
+        return ORC_ERROR_ALLOC_FAILED;                                            \
+      }                                                                           \
+      OrcSdk_DeckView v_view = orc_sdk_comb_get_input(combinations, 0);            \
+      type const     *v      = (type const *)orc_sdk_dv_item_ptr(&v_view);         \
+      type            sum    = 0;                                                 \
+      for (size_t j = 0; j < arity; ++j) {                                        \
+        sum = (type)(sum + v[j] * v[j]);                                          \
+      }                                                                           \
+      type const length = sqrt_fn(sum);                                           \
+      /* A zero-length input normalizes to inf/nan components -- standard IEEE-754 \
+         division-by-zero behavior for floating point, not treated as an error       \
+         here. */                                                                  \
+      for (size_t j = 0; j < arity; ++j) {                                        \
+        out_vec[j] = (type)(v[j] / length);                                       \
+      }                                                                           \
+      combinations = orc_sdk_comb_advance(combinations);                          \
+    }                                                                             \
+    return ORC_ERROR_NONE;                                                        \
+  }
+
+DEFINE_VEC_NORMALIZE_DISPATCH(float, f32, sqrtf)
+DEFINE_VEC_NORMALIZE_DISPATCH(double, f64, sqrt)
+
+static OrcError vec_normalize(uint64_t         ctx,
+                              OrcHandle const *input,
+                              uint64_t         n_inputs,
+                              OrcHandle       *output,
+                              uint64_t         n_outputs)
+{
+  // Validate input counts.
+  if (n_inputs != 1) {
+    orc_sdk_report_message(ctx, ORC_MSG_LEVEL_ERROR, "Need exactly one vector.");
+    return ORC_ERROR_INVALID_ARGUMENTS;
+  }
+  else if (n_outputs != 1) {
+    orc_sdk_report_message(ctx, ORC_MSG_LEVEL_ERROR, "Expected 1 output.");
+    return ORC_ERROR_INVALID_ARGUMENTS;
+  }
+  OrcTypeId const first_type_id = input[0].type_id;
+  if (!is_float_type(first_type_id)) {
+    orc_sdk_report_message(
+      ctx, ORC_MSG_LEVEL_ERROR, "vec_normalize only supports float or double vectors.");
+    return ORC_ERROR_TYPE_MISMATCH;
+  }
+  uint64_t const first_item_size = input[0].item_size;
+  if (first_item_size == 0) {
+    orc_sdk_report_message(ctx, ORC_MSG_LEVEL_ERROR, "Invalid handle.");
+    return ORC_ERROR_INVALID_HANDLE;
+  }
+  OrcSdk_TypeInfo type_info = {0};
+  OrcError        err       = orc_sdk_get_type_info(first_type_id, &type_info);
+  if (err)
+    return err;
+  size_t const scalar_size = type_info.item_size;
+  if (scalar_size == 0 || (first_item_size % scalar_size) != 0) {
+    // The size of the aggregate type must be a multiple of the scalar size.
+    orc_sdk_report_message(ctx, ORC_MSG_LEVEL_ERROR, "Invalid aggregate type.");
+    return ORC_ERROR_INVALID_ARGUMENTS;
+  }
+  size_t const arity = first_item_size / scalar_size;
+  if (arity < 2) {
+    orc_sdk_report_message(ctx, ORC_MSG_LEVEL_ERROR, "Need a vector of arity 2 or more.");
+    return ORC_ERROR_INVALID_ARGUMENTS;
+  }
+  // Allocate output -- a vector of the same arity as the input, unlike
+  // vec_length/vec_length_sq which reduce to a single scalar.
+  err = orc_sdk_handle_alloc(first_type_id, first_item_size, output);
+  if (err)
+    return err;
+  void             *combinations = NULL;
+  OrcHandle const **input_ptrs   = NULL;
+  uint8_t          *input_depths = NULL;
+  // Above three need to be cleaned up in all exit paths.
+  {
+    // Input depths array.
+    orc_sdk_arr_resize(input_depths, n_inputs);
+    uint8_t const zero_depth = 0;
+    orc_sdk_arr_fill(input_depths, zero_depth);
+    // Pack input handle pointers into an array.
+    orc_sdk_arr_reserve(input_ptrs, n_inputs);
+    for (uint64_t i = 0; i < n_inputs; ++i) {
+      err = orc_sdk_arr_push(input_ptrs, input + i);
+      if (err)
+        goto cleanup;
+    }
+    // Check the outputs and initialize the combinations.
+    ORC_SDK_REQUIRE_WITH_MSG(
+      n_outputs == 1,
+      "We already checked before. This is just to make sure we don't go out of sync.");
+    combinations = orc_sdk_comb_init(
+      input_ptrs, input_depths, n_inputs, &output, (uint8_t const[]) {0}, 1);
+  }
+  if (combinations == NULL) {
+    err = ORC_ERROR_INVALID_COMBINATIONS;
+    goto cleanup;
+  }
+  // Dispatch once on the component type here, instead of checking it inside the
+  // combinations loop.
+  switch (first_type_id) {
+  case ORC_TYPE_F32:
+    err = _vec_normalize_f32(combinations, arity);
+    break;
+  case ORC_TYPE_F64:
+    err = _vec_normalize_f64(combinations, arity);
+    break;
+  default:
+    ORC_SDK_REQUIRE_WITH_MSG(
+      false, "is_float_type guarantees first_type_id is one of the cases above.");
+    break;
+  }
+  // The dispatch functions above always fully consume `combinations`: either they
+  // exhaust it (which frees it internally, see orc_sdk_comb_advance), or they free it
+  // explicitly on error. Either way it must not be touched or freed again below.
+  combinations = NULL;
+  if (err == ORC_ERROR_NONE) {
+    orc_sdk_oh_update(output);
+  }
+cleanup:
+  orc_sdk_comb_free(combinations);
+  orc_sdk_arr_free(input_ptrs);
+  orc_sdk_arr_free(input_depths);
+  return err;
+}
+
+OrcFuncInfo const VEC_NORMALIZE_INFO = {
+  .name = "vec_normalize",
+  .desc =
+    "Normalize a vector (scale it to unit length), of arity 2 or more, and either "
+    "float or double scalar type. The output vector has the same arity as the input.",
+  .n_inputs    = 1,
+  .n_outputs   = 1,
+  .input_args  = NULL,
+  .output_args = NULL,
+  .func        = vec_normalize};

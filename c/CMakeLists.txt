@@ -51,6 +51,10 @@ add_library(vector_math_plugin SHARED
     $<TARGET_OBJECTS:orc_sdk_obj>
 )
 target_include_directories(vector_math_plugin PRIVATE .)
+if(NOT MSVC)
+    # Needed for sqrt/sqrtf, used by vec_length/vec_normalize.
+    target_link_libraries(vector_math_plugin PRIVATE m)
+endif()
 
 
 # orc_sdk_tests — executable
