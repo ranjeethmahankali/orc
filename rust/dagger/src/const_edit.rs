@@ -190,6 +190,12 @@ pub(crate) struct ConstEditCache {
     /// left untouched, and the offending text is kept so the user can fix it; cleared again once
     /// a commit parses cleanly.
     pub(crate) invalid: bool,
+    /// Set whenever an edit rebuilds the registry-backed handle, but downstream propagation
+    /// (`after_edit`: refreshing `computed_outputs` and marking dependents dirty) is deliberately
+    /// deferred rather than fired on every keystroke -- see `render::draw_editable_const_content`
+    /// and `apply_events`'s handling of `ConstEditEvents::blurred`. Cleared once that deferred
+    /// flush actually runs, once every row of this node has lost focus.
+    pub(crate) needs_downstream_flush: bool,
 }
 
 /// Decodes one string per item straight from the ABI's own `to_str_deck` conversion -- the same
@@ -262,6 +268,7 @@ fn refresh(state: &mut EditorState, nh: NH) {
             buffers: Vec::new(),
             marks,
             invalid: true,
+            needs_downstream_flush: false,
         };
         return;
     };
@@ -271,6 +278,7 @@ fn refresh(state: &mut EditorState, nh: NH) {
         buffers,
         marks,
         invalid: false,
+        needs_downstream_flush: false,
     };
 }
 
@@ -526,7 +534,13 @@ fn rebuild_and_apply(
         cache[nh].invalid = true;
         return None;
     };
-    let canonical = built.canonical_strings();
+    let mut canonical = built.canonical_strings();
+    if let Some(idx) = built.inserted_at {
+        // A freshly inserted row starts blank, not showing the placeholder default value that
+        // was actually written into the deck -- typing nothing and committing then discards it
+        // (see "empty rows mean nothing" in `rebuild_buffers`), instead of leaving a stray 0.
+        canonical[idx] = String::new();
+    }
     let new_marks = built.marks();
     let alloc_result = match built.deck {
         BuiltDeckEnum::F64(deck) => crate::REGISTRY.alloc_with_value(Some(deck), handle),
@@ -540,6 +554,12 @@ fn rebuild_and_apply(
     cache[nh].buffers = canonical;
     cache[nh].marks = new_marks;
     cache[nh].invalid = false;
+    // Downstream propagation is deliberately deferred, not fired here -- see
+    // `ConstEditCache::needs_downstream_flush` and `apply_events`'s handling of
+    // `ConstEditEvents::blurred`. Otherwise every single keystroke (or, worse, the mere act of
+    // pressing Enter to add a row) would immediately recompute everything downstream, before the
+    // user is even done editing.
+    cache[nh].needs_downstream_flush = true;
     let focus_after_delete = match edit {
         // Deleting a row moves focus to the closest remaining row above it (spreadsheet-style
         // merge-back), matching how deleting an empty line merges you back into the one above.
@@ -549,9 +569,6 @@ fn rebuild_and_apply(
             .filter(|idx| *idx > 0),
         _ => None,
     };
-    drop(cache);
-    drop(node_infos);
-    after_edit(state, nh);
     Some((built.inserted_at, focus_after_delete))
 }
 
@@ -595,6 +612,11 @@ pub(crate) struct ConstEditEvents {
     /// `(node, index)`: delete this row outright, requested by pressing Backspace while it was
     /// already empty.
     pub(crate) deleted_rows: Vec<(NH, usize)>,
+    /// Nodes whose row editor had zero focused rows this frame, checked (via
+    /// `ConstEditCache::needs_downstream_flush`) at the end of `apply_events`, after every commit/
+    /// insert/delete above has already landed -- so a final keystroke committed by the very same
+    /// blur that triggers the flush is included, not left pending for one extra frame.
+    pub(crate) blurred: Vec<NH>,
 }
 
 pub(crate) fn apply_events(state: &mut EditorState, events: ConstEditEvents) {
@@ -618,12 +640,34 @@ pub(crate) fn apply_events(state: &mut EditorState, events: ConstEditEvents) {
     for (nh, after_index) in events.inserted_after {
         insert_after(state, nh, after_index);
     }
+    for nh in events.blurred {
+        flush_if_pending(state, nh);
+    }
+}
+
+/// Runs the deferred downstream propagation for `nh` (see `ConstEditCache::needs_downstream_flush`)
+/// if there actually is one pending -- a node can appear in `ConstEditEvents::blurred` just
+/// because it had no focused row this frame, whether or not anything was ever edited, so this is
+/// a no-op (not even a borrow) for the common case of a node the user looked at but never typed
+/// into.
+fn flush_if_pending(state: &mut EditorState, nh: NH) {
+    {
+        let Ok(mut cache) = state.const_edit_cache.try_borrow_mut() else {
+            return;
+        };
+        if !cache[nh].needs_downstream_flush {
+            return;
+        }
+        cache[nh].needs_downstream_flush = false;
+    }
+    after_edit(state, nh);
 }
 
 /// Common tail for any edit that changed a constant's value: `computed_outputs` is the only
 /// place anything else (Inspect, a downstream dispatch's constant-input clone) ever reads a
 /// constant's *current* value from, so it must be refreshed immediately, same as node creation
-/// already does. Downstream nodes are marked dirty so they actually recompute.
+/// already does. Downstream nodes are marked dirty so they actually recompute. Deliberately not
+/// called directly from `rebuild_and_apply` -- see `flush_if_pending`.
 fn after_edit(state: &mut EditorState, nh: NH) {
     let node_info_prop = state.workflow.node_info_prop();
     let (cloned, oh) = {
@@ -1040,6 +1084,36 @@ mod test {
             &[OrcMark { depth: 0, pos: 0 }],
             "growing past one item must add the flat-list mark, not stay markless"
         );
+    }
+
+    /// A freshly inserted row must not show the placeholder default value (0) that was actually
+    /// written into the deck -- only the buffer text is blanked, so the row reads as empty and
+    /// ready to type into, matching what an "add a row" gesture should feel like.
+    #[test]
+    fn t_insert_after_starts_with_an_empty_buffer_not_a_zero() {
+        let (mut state, nh) = constant_node(Deck::from_value(1.0));
+
+        insert_after(&mut state, nh, 0);
+
+        assert_eq!(
+            state.const_edit_cache.try_borrow().unwrap()[nh].buffers,
+            vec!["1".to_string(), String::new()],
+        );
+    }
+
+    /// "Empty rows mean nothing" applies to a freshly inserted row too: leaving it untouched and
+    /// committing must discard it outright, leaving the deck exactly as it was before the row was
+    /// inserted -- not silently keep the placeholder 0 that was written into the deck underneath
+    /// the blanked-out buffer.
+    #[test]
+    fn t_committing_an_untouched_inserted_row_discards_it() {
+        let (mut state, nh) = constant_node(Deck::from_value(1.0));
+        insert_after(&mut state, nh, 0);
+
+        commit_row(&mut state, nh, 1);
+
+        assert_eq!(items_of(&state, nh), vec![1.0]);
+        assert_eq!(n_marks_of(&state, nh), 0);
     }
 
     /// The mirror direction: deleting a flat list back down to one item must drop the now-trivial

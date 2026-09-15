@@ -166,10 +166,10 @@ const POPOUT_BUTTON_SIZE: f32 = 16.0;
 const POPOUT_BUTTON_MARGIN: f32 = 6.0;
 /// Canvas-space width of an editable Constant row's value box, before zoom scaling.
 const CONST_EDIT_VALUE_WIDTH: f32 = 80.0;
-/// Canvas-space gap between an editable Constant row's widgets (and between rows), before zoom
-/// scaling -- matches egui's default `item_spacing` exactly, so 100% zoom looks unchanged, but
-/// scales with the text at every other zoom.
-const CONST_EDIT_ITEM_SPACING: Vec2 = Vec2::new(8.0, 3.0);
+/// Canvas-space gap between an editable Constant row's widgets (ruler label to value box),
+/// before zoom scaling. The vertical component is 0 -- rows sit flush against each other, no gap
+/// between them -- while the horizontal one still separates the ruler text from its value box.
+const CONST_EDIT_ITEM_SPACING: Vec2 = Vec2::new(8.0, 0.0);
 /// Canvas-space minimum height of one editable row, before zoom scaling -- matches egui's
 /// default `interact_size.y`. `Ui::horizontal` pre-allocates that as every row's minimum height
 /// ("assume there will be something interactive"), so left unscaled it is a fixed ~18px floor:
