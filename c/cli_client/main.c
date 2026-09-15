@@ -2,6 +2,7 @@
  * cli_client — CLI client for the orc server.
  *
  * Usage: cli_client <host> <port> <command> [args...]
+ *    or: cli_client connect <host> <port>
  *
  * Commands:
  *   session start                              -> prints session_id
@@ -12,7 +13,6 @@
  *   download <session_id> <handle_id>          -> prints type and values
  *   download_workflow <sid> <path> [output_ids...] -> writes .orc file
  *   download_python_script <sid> <path> [output_ids...] -> writes .py file
- *   connect <host> <port>                      -> starts an interactive REPL session
  *
  * 'connect' starts a session automatically and drops into a REPL where every command
  * above (other than 'session') is available without the host/port/session_id prefix --
@@ -584,6 +584,7 @@ static void usage(void)
   fprintf(
     stderr,
     "Usage: cli_client <host> <port> <command> [args...]\n"
+    "   or: cli_client connect <host> <port>\n"
     "\n"
     "Commands:\n"
     "  session start                              Print session_id\n"
@@ -594,7 +595,6 @@ static void usage(void)
     "  download <session_id> <handle_id>          Print type and values\n"
     "  download_workflow <sid> <path> [ids...]     Write workflow to file\n"
     "  download_python_script <sid> <path> [ids...] Write generated Python to file\n"
-    "  connect <host> <port>                      Start an interactive REPL session\n"
     "\n"
     "Inside the REPL started by 'connect', drop the host/port/session_id and type e.g.\n"
     "'constant <type> <val>...' or 'download <handle_id>'. Type 'exit' to quit.\n"
@@ -688,8 +688,8 @@ static int cmd_functions(char const *host, uint16_t port)
  */
 /* Parses one number starting at `s`, requiring the *entire* string (aside from trailing
    whitespace) to be consumed by strtod. Returns 1 on success (with *out set), 0 on any
-   malformed/partial/empty input -- unlike bare strtod, which silently returns 0.0 and leaves
-   the caller unable to distinguish "parsed zero" from "failed to parse". */
+   malformed/partial/empty input -- unlike bare strtod, which silently returns 0.0 and
+   leaves the caller unable to distinguish "parsed zero" from "failed to parse". */
 static int parse_strict_double(char const *s, double *out)
 {
   char  *endptr;
@@ -717,7 +717,7 @@ static size_t parse_value_arg(char const *s, double *out)
   if (!buf)
     return 0; /* Treated the same as any other malformed/unparseable value. */
   memcpy(buf, s + 1, len - 2);
-  buf[len - 2] = '\0';
+  buf[len - 2]  = '\0';
   size_t count  = 0;
   char  *cursor = buf;
   for (;;) {
@@ -726,7 +726,8 @@ static size_t parse_value_arg(char const *s, double *out)
       *comma = '\0';
     }
     /* Explicit field scanning (not strtok) so an empty field between two commas -- e.g.
-       "(1.0,,3.0)" -- is rejected instead of silently collapsing into fewer components. */
+       "(1.0,,3.0)" -- is rejected instead of silently collapsing into fewer components.
+     */
     if (count >= MAX_AGGREGATE_COMPONENTS || !parse_strict_double(cursor, &out[count])) {
       free(buf);
       return 0;
@@ -813,11 +814,11 @@ static int cmd_constant(char const *host,
     return -1;
   }
   for (int i = 0; i < n_values; i++) {
-    /* value_strs[0] was already parsed above (to determine n_components) -- reuse `parsed`
-       instead of parsing it again. */
+    /* value_strs[0] was already parsed above (to determine n_components) -- reuse
+       `parsed` instead of parsing it again. */
     double       vals_buf[MAX_AGGREGATE_COMPONENTS];
     double      *vals = (i == 0) ? parsed : vals_buf;
-    size_t const n    = (i == 0) ? n_components : parse_value_arg(value_strs[i], vals_buf);
+    size_t const n = (i == 0) ? n_components : parse_value_arg(value_strs[i], vals_buf);
     if (n != n_components) {
       free(items);
       fprintf(stderr,
@@ -1081,9 +1082,9 @@ static int cmd_download_python_script(char const *host,
 
 #define MAX_REPL_TOKENS 128
 
-/* Reads one line from stdin into `out` (caller must buf_free it on success), stripping the
-   trailing newline (and a preceding '\r', for CRLF input). Grows to fit lines of any length.
-   Returns 0 on success, -1 on EOF/error before any data was read. */
+/* Reads one line from stdin into `out` (caller must buf_free it on success), stripping
+   the trailing newline (and a preceding '\r', for CRLF input). Grows to fit lines of any
+   length. Returns 0 on success, -1 on EOF/error before any data was read. */
 static int read_line(Buf *out)
 {
   buf_init(out);
@@ -1097,8 +1098,8 @@ static int read_line(Buf *out)
       }
       break;
     }
-    got_any     = true;
-    size_t n    = strlen(chunk);
+    got_any  = true;
+    size_t n = strlen(chunk);
     if (buf_append(out, chunk, n) != 0) {
       buf_free(out);
       return -1;
@@ -1106,7 +1107,8 @@ static int read_line(Buf *out)
     if (n > 0 && chunk[n - 1] == '\n')
       break;
   }
-  while (out->len > 0 && (out->data[out->len - 1] == '\n' || out->data[out->len - 1] == '\r'))
+  while (out->len > 0 &&
+         (out->data[out->len - 1] == '\n' || out->data[out->len - 1] == '\r'))
     out->len--;
   if (buf_append(out, "\0", 1) != 0) {
     buf_free(out);
@@ -1115,8 +1117,9 @@ static int read_line(Buf *out)
   return 0;
 }
 
-/* Splits `line` in place on whitespace into `argv` (capacity `max`). Returns the number of
-   tokens found, capped at `max` -- any tokens beyond that are left unparsed in `line`. */
+/* Splits `line` in place on whitespace into `argv` (capacity `max`). Returns the number
+   of tokens found, capped at `max` -- any tokens beyond that are left unparsed in `line`.
+ */
 static int tokenize_line(char *line, char **argv, int max)
 {
   int   argc = 0;
@@ -1139,12 +1142,17 @@ static int tokenize_line(char *line, char **argv, int max)
 
 /* Dispatches one REPL line to the matching cmd_* function, with host/port/session already
    supplied -- the REPL's whole reason to exist is that the user doesn't retype those. */
-static int repl_dispatch(char const *host, uint16_t port, char const *sid_str, int argc, char **argv)
+static int repl_dispatch(char const *host,
+                         uint16_t    port,
+                         char const *sid_str,
+                         int         argc,
+                         char      **argv)
 {
   char const *cmd = argv[0];
   if (strcmp(cmd, "session") == 0) {
     report_error(
-      "'session' is managed automatically inside a REPL ('connect' opened it, 'exit' will "
+      "'session' is managed automatically inside a REPL ('connect' opened it, 'exit' "
+      "will "
       "close it)");
     return -1;
   }
@@ -1227,6 +1235,22 @@ static int cmd_connect(char const *host, uint16_t port)
 
 int main(int argc, char **argv)
 {
+  /* 'connect' has its own invocation shape -- 'cli_client connect <host> <port>' -- since
+     it doesn't fit the '<host> <port> <command> [args...]' pattern every other command
+     uses. */
+  if (argc >= 2 && strcmp(argv[1], "connect") == 0) {
+    if (argc < 4)
+      usage(); /* connect <host> <port> */
+    sdk_init_once();
+    if (sock_init() != 0)
+      die("Failed to initialize sockets");
+    char const *host = argv[2];
+    uint16_t    port = (uint16_t)atoi(argv[3]);
+    int         rc   = cmd_connect(host, port);
+    sock_cleanup();
+    return rc == 0 ? 0 : 1;
+  }
+
   if (argc < 4)
     usage();
   char const *host = argv[1];
@@ -1281,9 +1305,6 @@ int main(int argc, char **argv)
     if (argc < 6)
       usage(); /* host port download_python_script sid outpath [output_ids...] */
     rc = cmd_download_python_script(host, port, argv[4], argv[5], argc - 6, &argv[6]);
-  }
-  else if (strcmp(cmd, "connect") == 0) {
-    rc = cmd_connect(host, port);
   }
   else {
     usage();
