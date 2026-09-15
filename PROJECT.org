@@ -174,7 +174,7 @@
   mark at the start.
 
   - [ ] We have to append a marks as soon as a const node has more than one row, and remove it when
-    we remove all rows but one.
+    we remove all rows but one. This will fix the bug.
 
   Some other improvements:
   - [ ] If the space between the rows of const nodes is removed, it would look much nicer.
