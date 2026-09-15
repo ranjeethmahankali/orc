@@ -173,6 +173,22 @@
   have any marks when created from the UI. The UI needs to check if it is a list and add a depth 1
   mark at the start.
 
+* NEXT tlfbas - Improve usability of cli_client
+  :PROPERTIES:
+  :CREATED:  2026-09-15 Tue 16:07
+  :END:
+  :LOGBOOK:
+  - State "NEXT"       from "TODO"       [2026-09-15 Tue 16:52]
+  :END:
+
+  Add a ~connect~ command that takes an address and port, and starts a REPL session. The REPL
+  session should support all the exact same commands as the original CLI, except I don't have to
+  type the name of the executable, address, port, and session id every time. I just need to supply
+  the other arguments. ~connect~ should store the address and port in memory, and immediately start
+  a session and store that too. ~functions~ command should still work the same way.
+
+  - [ ] Maybe format the functions json client side before printing?
+
 * NEXT tl8agd - Curve plugin functions
   :PROPERTIES:
   :CREATED:  2026-09-11 Fri 11:44
