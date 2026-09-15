@@ -925,9 +925,11 @@ typedef struct
   OrcSdk_SNPrintItemFn snprint_fn;  // NULL for types that cannot be printed.
 } OrcSdk_TypeInfo;
 
-typedef OrcSdk_TypeInfo (*OrcSdk_TypeCallbacksGetterFn)(OrcTypeId const id);
+typedef OrcSdk_TypeInfo (*OrcSdk_TypeCallbacksGetterFn)(OrcTypeId const type_id);
 
 void orc_sdk_init(OrcHost const *host, OrcSdk_TypeCallbacksGetterFn type_fn);
+
+OrcError orc_sdk_get_type_info(OrcTypeId const type_id, OrcSdk_TypeInfo *out);
 
 OrcError orc_sdk_handle_alloc(OrcTypeId const  type_id,
                               uint64_t const   item_size,

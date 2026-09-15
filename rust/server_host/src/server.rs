@@ -283,6 +283,7 @@ impl OrcServer {
 
 enum ApiResponse {
     Json(String),
+    Text(String),
     Bytes(Vec<u8>),
 }
 
@@ -303,7 +304,7 @@ impl ServerInner {
                 .create_constant(&mut request, query)
                 .map(ApiResponse::Json),
             (Method::Post, "/call") => self.call_function(&mut request).map(ApiResponse::Json),
-            (Method::Get, "/functions") => self.list_functions().map(ApiResponse::Json),
+            (Method::Get, "/functions") => self.list_functions().map(ApiResponse::Text),
             (Method::Post, "/download") => self.download_handle(query).map(ApiResponse::Bytes),
             (Method::Post, "/download_workflow") => self
                 .download_workflow(&mut request, query)
@@ -320,6 +321,18 @@ impl ServerInner {
                         tiny_http::Header::from_bytes(
                             b"Content-Type" as &[u8],
                             b"application/json" as &[u8],
+                        )
+                        .unwrap(),
+                    )
+                    .with_status_code(StatusCode(200));
+                let _ = request.respond(response);
+            }
+            Ok(ApiResponse::Text(body)) => {
+                let response = Response::from_string(&body)
+                    .with_header(
+                        tiny_http::Header::from_bytes(
+                            b"Content-Type" as &[u8],
+                            b"text/plain" as &[u8],
                         )
                         .unwrap(),
                     )
@@ -517,27 +530,26 @@ impl ServerInner {
         Ok(format!(r#"{{"output_ids": [{}]}}"#, ids_str.join(", ")))
     }
 
-    // GET /functions -> list of available functions
+    // GET /functions -> human-readable list of available functions
     fn list_functions(&self) -> Result<String, (i32, String)> {
-        let mut entries = Vec::new();
+        let mut out = String::new();
         for plugin in PLUGIN_SET.plugins() {
             for func in plugin.functions() {
-                let name = func.name.replace('"', r#"\""#);
-                let desc = func.desc.replace('"', r#"\""#);
                 let n_in = match func.n_inputs {
                     Some(n) => n.to_string(),
-                    None => "null".to_string(),
+                    None => "variadic".to_string(),
                 };
                 let n_out = match func.n_outputs {
                     Some(n) => n.to_string(),
-                    None => "null".to_string(),
+                    None => "variadic".to_string(),
                 };
-                entries.push(format!(
-                    r#"{{"name": "{name}", "desc": "{desc}", "n_inputs": {n_in}, "n_outputs": {n_out}}}"#
+                out.push_str(&format!(
+                    "{}\n  desc: {}\n  inputs: {}, outputs: {}\n\n",
+                    func.name, func.desc, n_in, n_out
                 ));
             }
         }
-        Ok(format!(r#"{{"functions": [{}]}}"#, entries.join(", ")))
+        Ok(out)
     }
 
     // POST /download?session_id=N&handle_id=M -> raw serialized bytes

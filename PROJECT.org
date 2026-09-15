@@ -157,6 +157,13 @@
   :CREATED:  2026-09-11 Fri 21:50
   :END:
 
+* TODO Variadic Input/Output support in Dagger
+  :PROPERTIES:
+  :CREATED:  2026-09-14 Mon 20:50
+  :END:
+
+  Should be able to add variadic inputs and outputs for the nodes that support them, via the UI.
+
 * NEXT tl8agd - Curve plugin functions
   :PROPERTIES:
   :CREATED:  2026-09-11 Fri 11:44
@@ -164,6 +171,73 @@
   :LOGBOOK:
   - State "NEXT"       from "TODO"       [2026-09-11 Fri 21:50]
   :END:
+
+* DONE tlfcbv - Bug - Python code exported from dagger doesn't export lists properly
+  CLOSED: [2026-09-15 Tue 19:38]
+  :PROPERTIES:
+  :CREATED:  2026-09-14 Mon 20:24
+  :END:
+  :LOGBOOK:
+  - State "DONE"       from "NEXT"       [2026-09-15 Tue 19:38]
+  - State "NEXT"       from "TODO"       [2026-09-15 Tue 18:49]
+  :END:
+
+  For lists, only the first item is exported. This is likely because const nodes with lists don't
+  have any marks when created from the UI. The UI needs to check if it is a list and add a depth 1
+  mark at the start.
+
+  - [X] We have to append a marks as soon as a const node has more than one row, and remove it when
+    we remove all rows but one. This will fix the bug.
+
+  Some other improvements:
+  - [X] If the space between the rows of const nodes is removed, it would look much nicer. Currently
+    there are gaps.
+  - [X] It's annoying that every new row inserted into the const node starts with a zero. It should
+    start empty, and if I don't type anything in, and commit, empty rows are discarded.
+
+  <2026-09-15 Tue 19:37> Ended up simplifying the UI design and the logic massively, by just using
+  one multiline editable text box, and a text block of marks rendered to it's left. Works well now.
+
+* DONE tlfbas - Improve usability of cli_client
+  CLOSED: [2026-09-15 Tue 18:50]
+  :PROPERTIES:
+  :CREATED:  2026-09-15 Tue 16:07
+  :END:
+  :LOGBOOK:
+  - State "DONE"       from "NEXT"       [2026-09-15 Tue 18:50]
+  - State "NEXT"       from "TODO"       [2026-09-15 Tue 16:52]
+  :END:
+
+  Add a ~connect~ command that takes an address and port, and starts a REPL session. The REPL
+  session should support all the exact same commands as the original CLI, except I don't have to
+  type the name of the executable, address, port, and session id every time. I just need to supply
+  the other arguments. ~connect~ should store the address and port in memory, and immediately start
+  a session and store that too. ~functions~ command should still work the same way.
+
+  - [X] Add an exit command that exits out of the REPL and program.
+  - [X] Remove exit(1) from cmd_* functions, and leave that to the outside caller. REPL should not
+    exit. It should just print the error and await next input.
+  - [X] Exiting stops the session. The lifetime of the server session is the same as the lifetime of
+    the REPL session.
+  - [X] Update the server to return formatted list of functions instead of JSON.
+
+* DONE tld9in - Vector Math Plugin in C
+  CLOSED: [2026-09-14 Mon 21:35]
+  :PROPERTIES:
+  :CREATED:  2026-09-14 Mon 14:18
+  :END:
+  :LOGBOOK:
+  - State "DONE"       from "NEXT"       [2026-09-14 Mon 21:35]
+  - State "NEXT"       from "TODO"       [2026-09-14 Mon 14:19]
+  :END:
+
+  Write a vector math plugin in C, that builds on top of the aggregate type support we just added.
+
+  <2026-09-14 Mon 16:54> Added some helpers to the SDK. Writing the first block by hand to hash out
+  the details, before letting the LLM rip through the rest while following the same pattern.
+
+  <2026-09-14 Mon 19:04> Finished implementing basic vector ops. Will add a few more, make sure
+  there is test coverage, then ready to merge.
 
 * DONE tlbvfz - Fix the strings in dagger UI
   CLOSED: [2026-09-13 Sun 21:19]
