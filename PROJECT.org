@@ -157,6 +157,22 @@
   :CREATED:  2026-09-11 Fri 21:50
   :END:
 
+* TODO Variadic Input/Output support in Dagger
+  :PROPERTIES:
+  :CREATED:  2026-09-14 Mon 20:50
+  :END:
+
+  Should be able to add variadic inputs and outputs for the nodes that support them, via the UI.
+
+* TODO Bug - Python code exported from dagger doesn't export lists properly
+  :PROPERTIES:
+  :CREATED:  2026-09-14 Mon 20:24
+  :END:
+
+  For lists, only the first item is exported. This is likely because const nodes with lists don't
+  have any marks when created from the UI. The UI needs to check if it is a list and add a depth 1
+  mark at the start.
+
 * NEXT tl8agd - Curve plugin functions
   :PROPERTIES:
   :CREATED:  2026-09-11 Fri 11:44
@@ -164,6 +180,24 @@
   :LOGBOOK:
   - State "NEXT"       from "TODO"       [2026-09-11 Fri 21:50]
   :END:
+
+* DONE tld9in - Vector Math Plugin in C
+  CLOSED: [2026-09-14 Mon 21:35]
+  :PROPERTIES:
+  :CREATED:  2026-09-14 Mon 14:18
+  :END:
+  :LOGBOOK:
+  - State "DONE"       from "NEXT"       [2026-09-14 Mon 21:35]
+  - State "NEXT"       from "TODO"       [2026-09-14 Mon 14:19]
+  :END:
+
+  Write a vector math plugin in C, that builds on top of the aggregate type support we just added.
+
+  <2026-09-14 Mon 16:54> Added some helpers to the SDK. Writing the first block by hand to hash out
+  the details, before letting the LLM rip through the rest while following the same pattern.
+
+  <2026-09-14 Mon 19:04> Finished implementing basic vector ops. Will add a few more, make sure
+  there is test coverage, then ready to merge.
 
 * DONE tlbvfz - Fix the strings in dagger UI
   CLOSED: [2026-09-13 Sun 21:19]
