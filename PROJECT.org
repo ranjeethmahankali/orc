@@ -173,6 +173,14 @@
   have any marks when created from the UI. The UI needs to check if it is a list and add a depth 1
   mark at the start.
 
+* NEXT tl8agd - Curve plugin functions
+  :PROPERTIES:
+  :CREATED:  2026-09-11 Fri 11:44
+  :END:
+  :LOGBOOK:
+  - State "NEXT"       from "TODO"       [2026-09-11 Fri 21:50]
+  :END:
+
 * DONE tld9in - Vector Math Plugin in C
   CLOSED: [2026-09-14 Mon 21:35]
   :PROPERTIES:
@@ -190,14 +198,6 @@
 
   <2026-09-14 Mon 19:04> Finished implementing basic vector ops. Will add a few more, make sure
   there is test coverage, then ready to merge.
-
-* NEXT tl8agd - Curve plugin functions
-  :PROPERTIES:
-  :CREATED:  2026-09-11 Fri 11:44
-  :END:
-  :LOGBOOK:
-  - State "NEXT"       from "TODO"       [2026-09-11 Fri 21:50]
-  :END:
 
 * DONE tlbvfz - Fix the strings in dagger UI
   CLOSED: [2026-09-13 Sun 21:19]
