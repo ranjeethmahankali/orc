@@ -173,11 +173,13 @@
   have any marks when created from the UI. The UI needs to check if it is a list and add a depth 1
   mark at the start.
 
-* NEXT tld9in - Vector Math Plugin in C
+* DONE tld9in - Vector Math Plugin in C
+  CLOSED: [2026-09-14 Mon 21:35]
   :PROPERTIES:
   :CREATED:  2026-09-14 Mon 14:18
   :END:
   :LOGBOOK:
+  - State "DONE"       from "NEXT"       [2026-09-14 Mon 21:35]
   - State "NEXT"       from "TODO"       [2026-09-14 Mon 14:19]
   :END:
 
