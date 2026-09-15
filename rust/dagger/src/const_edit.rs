@@ -840,9 +840,16 @@ mod test {
             panic!("expected a constant node")
         };
         assert_eq!(handle.items::<f64>().unwrap(), &[1.0, 42.5]);
+        drop(node_infos);
+        assert!(
+            !state.dirty,
+            "downstream propagation (and the dirty flag) must stay deferred until the node loses focus"
+        );
+
+        flush_if_pending(&mut state, nh);
         assert!(
             state.dirty,
-            "committing a value must mark the workflow dirty"
+            "committing a value must mark the workflow dirty, once flushed"
         );
     }
 
@@ -933,6 +940,8 @@ mod test {
         commit_row(&mut state, nh, 1);
 
         assert_eq!(items_of_i64(&state, nh), vec![1, 42]);
+        assert!(!state.dirty, "must stay deferred until the node loses focus");
+        flush_if_pending(&mut state, nh);
         assert!(state.dirty);
     }
 
@@ -1255,8 +1264,40 @@ mod test {
         state.const_edit_cache.try_borrow_mut().unwrap()[nh].buffers[0] = "99".to_string();
         commit_row(&mut state, nh, 0);
 
+        assert_eq!(
+            state.dirty_version.try_borrow().unwrap()[nh],
+            version_before,
+            "downstream propagation must stay deferred until the node loses focus"
+        );
+
+        flush_if_pending(&mut state, nh);
+
         let computed = state.computed_outputs.try_borrow().unwrap();
         assert_eq!(computed[oh].items::<f64>().unwrap(), &[99.0]);
         assert!(state.dirty_version.try_borrow().unwrap()[nh] > version_before);
+    }
+
+    /// The bug this deferral exists to fix: pressing Enter to add a row must not itself trigger
+    /// downstream recomputation (or mark the workflow dirty) -- only actually leaving the node
+    /// (simulated here by `flush_if_pending`, which is what a real blur drives via
+    /// `ConstEditEvents::blurred`) does.
+    #[test]
+    fn t_insert_after_does_not_propagate_downstream_until_the_node_loses_focus() {
+        let (mut state, nh) = constant_node(Deck::from_value(1.0));
+        let version_before = state.dirty_version.try_borrow().unwrap()[nh];
+
+        insert_after(&mut state, nh, 0);
+
+        assert_eq!(
+            state.dirty_version.try_borrow().unwrap()[nh],
+            version_before,
+            "inserting a new row must not trigger downstream recomputation by itself"
+        );
+        assert!(!state.dirty);
+
+        flush_if_pending(&mut state, nh);
+
+        assert!(state.dirty_version.try_borrow().unwrap()[nh] > version_before);
+        assert!(state.dirty);
     }
 }

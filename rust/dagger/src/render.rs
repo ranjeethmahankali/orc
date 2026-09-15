@@ -899,6 +899,11 @@ fn draw_editable_const_content(
     let style = child.style_mut();
     style.spacing.item_spacing = item_spacing;
     style.spacing.interact_size.y = min_row_height;
+    // Whether any row of *this* node's editor is focused after this frame's input is processed --
+    // downstream propagation of an edit is deferred until this goes from true to false (checked
+    // below), i.e. until the user actually stops editing this node, not on every keystroke or row
+    // insertion. See `ConstEditCache::needs_downstream_flush`.
+    let mut any_focused = false;
     egui::ScrollArea::both()
         .id_salt(("dagger-const-edit-scroll", nh))
         .auto_shrink([false, false])
@@ -932,6 +937,7 @@ fn draw_editable_const_content(
                                     .font(font.clone())
                                     .desired_width(value_width),
                             );
+                            any_focused |= response.has_focus();
                             if response.lost_focus() {
                                 events.committed_rows.push((nh, i));
                                 // Enter (not a plain click-away) also means "and start a new
@@ -957,6 +963,9 @@ fn draw_editable_const_content(
                 }
             }
         });
+    if !any_focused {
+        events.blurred.push(nh);
+    }
 }
 
 /// Small diagonal-line resize grip, drawn in an Inspect node's bottom-right corner — the same
