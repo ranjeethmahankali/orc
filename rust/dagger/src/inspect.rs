@@ -257,6 +257,41 @@ fn decode(items: &[u8], range: std::ops::Range<usize>) -> &str {
 /// multiple items under one mark), not as a fresh ruler entry -- only depth `>= 1` marks start a
 /// new one. This is also why the loop can't simply mirror `fmt_raw_deck`'s "advance through a
 /// run of several items" shape: here every mark *is* its own single-item run by construction.
+/// The ruler-prefix text for one line (no value appended), given the deepest depth in the run
+/// (`dmax`, i.e. `marks[0].depth`) and this line's own mark. Shared by `render_str_deck_raw`
+/// (which appends the decoded value after it) and `ruler_prefixes` (used by the Constant node's
+/// editable ruler column, which renders the prefix alone -- the value lives in an adjacent text
+/// box there, not on the same line).
+fn ruler_prefix(dmax: u8, mark: &OrcMark) -> String {
+    if mark.depth == 0 {
+        let continuation_indent = (dmax as usize + 1) * TAB_WIDTH;
+        format!("{:>indent$}   ┤", "", indent = continuation_indent)
+    } else {
+        // `dmax` is meant to be every mark's ceiling (the shallowest, i.e. numerically largest,
+        // depth in the deck), so `mark.depth` should never exceed it -- `saturating_sub` is just
+        // cheap insurance against a hand-built or corrupted deck violating that.
+        let indent = dmax.saturating_sub(mark.depth) as usize * TAB_WIDTH + TAB_WIDTH;
+        let bracket_width = mark.depth as usize * TAB_WIDTH;
+        format!(
+            "{:>indent$}{:>3} {:─>bw$}",
+            "",
+            mark.depth,
+            "┤",
+            indent = indent,
+            bw = bracket_width,
+        )
+    }
+}
+
+/// One ruler-prefix line per item, in the same format `render_str_deck` uses -- for the Constant
+/// node's editable ruler column, which needs the prefix alone (see `ruler_prefix`). `to_str_deck`
+/// always emits one mark per original item (see `render_str_deck_raw`'s doc comment), so this
+/// yields exactly one line per item, ready to align with an adjacent one-value-per-line text box.
+pub(crate) fn ruler_prefixes(marks: &[OrcMark]) -> Vec<String> {
+    let dmax = marks.first().map(|m| m.depth).unwrap_or(0);
+    marks.iter().map(|m| ruler_prefix(dmax, m)).collect()
+}
+
 fn render_str_deck_raw(items: &[u8], marks: &[OrcMark], out: &mut String) {
     if items.is_empty() && marks.is_empty() {
         out.push_str("<empty_deck>\n");
@@ -273,35 +308,10 @@ fn render_str_deck_raw(items: &[u8], marks: &[OrcMark], out: &mut String) {
     // that `+ 1` is exactly the level `to_str_deck` added, so dropping it here recovers the
     // original (pre-string) deck's own depth numbering.
     let dmax = marks[0].depth;
-    let continuation_indent = (dmax as usize + 1) * TAB_WIDTH;
     for (i, m) in marks.iter().enumerate() {
         let next_pos = marks.get(i + 1).map(|n| n.pos).unwrap_or(n_items);
         let s = decode(items, m.pos as usize..next_pos.min(n_items) as usize);
-        if m.depth == 0 {
-            let _ = writeln!(
-                out,
-                "{:>indent$}   ┤ {}",
-                "",
-                s,
-                indent = continuation_indent
-            );
-        } else {
-            // `dmax` is meant to be every mark's ceiling (the shallowest, i.e. numerically
-            // largest, depth in the deck), so `m.depth` should never exceed it -- `saturating_sub`
-            // is just cheap insurance against a hand-built or corrupted deck violating that.
-            let indent = dmax.saturating_sub(m.depth) as usize * TAB_WIDTH + TAB_WIDTH;
-            let bracket_width = m.depth as usize * TAB_WIDTH;
-            let _ = writeln!(
-                out,
-                "{:>indent$}{:>3} {:─>bw$} {}",
-                "",
-                m.depth,
-                "┤",
-                s,
-                indent = indent,
-                bw = bracket_width,
-            );
-        }
+        let _ = writeln!(out, "{} {}", ruler_prefix(dmax, m), s);
     }
 }
 

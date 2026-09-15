@@ -1755,6 +1755,26 @@ mod test {
         );
     }
 
+    /// A flat (unnested) list must render every item, not just the first one -- this is what a
+    /// `Deck` with the single trivial flat-list mark (`OrcMark { depth: 0, pos: 0 }`, i.e. the
+    /// encoding `Deck::flatten()` and the dagger UI's constant editor both normalize a markless
+    /// multi-item deck into) looks like from `deck_view_literal`'s point of view: `depth() == 1`,
+    /// so it recurses one level instead of treating the whole deck as a bare scalar.
+    #[test]
+    fn t_to_python_script_renders_a_flat_list_constant() {
+        let h = TestHarness::new();
+        let mut wf = Workflow::default();
+        let handle = constant_handle(&h, crate::deck![1.0f64, 2.0, 3.0]);
+        let (_, oh) = wf.add_constant(handle).unwrap();
+        wf.set_outputs(&[(oh, String::new())]).unwrap();
+
+        let script = wf.to_python_script(None).unwrap();
+        assert!(
+            script.contains("orc.make_deck([1.0, 2.0, 3.0], dtype=\"f64\")"),
+            "got:\n{script}"
+        );
+    }
+
     #[test]
     fn t_to_python_script_renders_a_nested_list_constant() {
         let h = TestHarness::new();
