@@ -173,6 +173,14 @@
   have any marks when created from the UI. The UI needs to check if it is a list and add a depth 1
   mark at the start.
 
+  - [ ] We have to append a marks as soon as a const node has more than one row, and remove it when
+    we remove all rows but one.
+
+  Some other improvements:
+  - [ ] If the space between the rows of const nodes is removed, it would look much nicer.
+  - [ ] It's annoying that every new row inserted into the const node starts with a zero. It should
+    start empty, and if I don't type anything in, and commit, empty rows are discarded.
+
 * NEXT tlfbas - Improve usability of cli_client
   :PROPERTIES:
   :CREATED:  2026-09-15 Tue 16:07
