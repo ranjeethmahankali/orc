@@ -164,11 +164,21 @@
 
   Should be able to add variadic inputs and outputs for the nodes that support them, via the UI.
 
-* NEXT tlfcbv - Bug - Python code exported from dagger doesn't export lists properly
+* NEXT tl8agd - Curve plugin functions
+  :PROPERTIES:
+  :CREATED:  2026-09-11 Fri 11:44
+  :END:
+  :LOGBOOK:
+  - State "NEXT"       from "TODO"       [2026-09-11 Fri 21:50]
+  :END:
+
+* DONE tlfcbv - Bug - Python code exported from dagger doesn't export lists properly
+  CLOSED: [2026-09-15 Tue 19:38]
   :PROPERTIES:
   :CREATED:  2026-09-14 Mon 20:24
   :END:
   :LOGBOOK:
+  - State "DONE"       from "NEXT"       [2026-09-15 Tue 19:38]
   - State "NEXT"       from "TODO"       [2026-09-15 Tue 18:49]
   :END:
 
@@ -180,18 +190,13 @@
     we remove all rows but one. This will fix the bug.
 
   Some other improvements:
-  - [ ] If the space between the rows of const nodes is removed, it would look much nicer. Currently
+  - [X] If the space between the rows of const nodes is removed, it would look much nicer. Currently
     there are gaps.
   - [X] It's annoying that every new row inserted into the const node starts with a zero. It should
     start empty, and if I don't type anything in, and commit, empty rows are discarded.
 
-* NEXT tl8agd - Curve plugin functions
-  :PROPERTIES:
-  :CREATED:  2026-09-11 Fri 11:44
-  :END:
-  :LOGBOOK:
-  - State "NEXT"       from "TODO"       [2026-09-11 Fri 21:50]
-  :END:
+  <2026-09-15 Tue 19:37> Ended up simplifying the UI design and the logic massively, by just using
+  one multiline editable text box, and a text block of marks rendered to it's left. Works well now.
 
 * DONE tlfbas - Improve usability of cli_client
   CLOSED: [2026-09-15 Tue 18:50]

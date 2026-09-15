@@ -825,14 +825,6 @@ fn draw_static_text_content(
         });
 }
 
-/// One editable text box per value, each preceded by the same ruler-prefix label `Deck`'s own
-/// `Display` prints (see `const_edit::deck_rows`). Pressing Enter in any row both commits its
-/// text and inserts a new depth-0 row right after it -- there is no separate "add value" control.
-/// A `lost_focus`/Enter is recorded into `events` rather than acted on immediately -- the
-/// outstanding `node_infos`/etc. borrows this whole function is called under would make an
-/// immediate commit's own borrow of `node_info_prop` fail silently.
-#[allow(clippy::too_many_arguments)] // Every argument here is genuinely distinct context; a
-// grouping struct would just be these same 8 fields with an extra layer of indirection.
 /// One multiline text box (one value per line) with a read-only ruler column to its left,
 /// aligned line-for-line with it -- both are given the same font and neither has any per-line
 /// spacing of its own, so they share the same line pitch naturally, the same way `Inspect`'s own
