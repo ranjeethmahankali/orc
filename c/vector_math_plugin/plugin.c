@@ -13,6 +13,10 @@ extern OrcFuncInfo const VEC_CROSS_PRODUCT_INFO;
 extern OrcFuncInfo const VEC_LENGTH_INFO;
 extern OrcFuncInfo const VEC_LENGTH_SQ_INFO;
 extern OrcFuncInfo const VEC_NORMALIZE_INFO;
+extern OrcFuncInfo const VEC_NEGATIVE_INFO;
+extern OrcFuncInfo const VEC_SCALE_TO_LENGTH_INFO;
+extern OrcFuncInfo const VEC_COMPONENTS_INFO;
+extern OrcFuncInfo const LERP_INFO;
 
 // ==============================
 // Required ABI exports
@@ -41,6 +45,10 @@ OrcError orc_plugin_init(OrcHost const *host, OrcPlugin *plugin_data_out)
   orc_sdk_arr_push(FUNCTIONS, VEC_LENGTH_INFO);
   orc_sdk_arr_push(FUNCTIONS, VEC_LENGTH_SQ_INFO);
   orc_sdk_arr_push(FUNCTIONS, VEC_NORMALIZE_INFO);
+  orc_sdk_arr_push(FUNCTIONS, VEC_NEGATIVE_INFO);
+  orc_sdk_arr_push(FUNCTIONS, VEC_SCALE_TO_LENGTH_INFO);
+  orc_sdk_arr_push(FUNCTIONS, VEC_COMPONENTS_INFO);
+  orc_sdk_arr_push(FUNCTIONS, LERP_INFO);
   plugin_data_out->functions   = FUNCTIONS;
   plugin_data_out->n_functions = orc_sdk_arr_len(FUNCTIONS);
   return ORC_ERROR_NONE;
