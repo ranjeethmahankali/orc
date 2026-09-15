@@ -48,17 +48,6 @@ fn post_bytes_json(url: &str, body: &[u8]) -> (u16, JsonValue) {
     (code, json)
 }
 
-fn get_json(url: &str) -> (u16, JsonValue) {
-    let resp = minreq::get(url).send().expect("HTTP request failed");
-    let code = resp.status_code as u16;
-    let json: JsonValue = resp
-        .as_str()
-        .expect("Response not UTF-8")
-        .parse()
-        .expect("Response not valid JSON");
-    (code, json)
-}
-
 fn get_text(url: &str) -> (u16, String) {
     let resp = minreq::get(url).send().expect("HTTP request failed");
     let code = resp.status_code as u16;
