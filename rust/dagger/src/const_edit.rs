@@ -637,11 +637,20 @@ pub(crate) fn apply_events(state: &mut EditorState, events: ConstEditEvents) {
     for (nh, delete_index) in events.deleted_rows {
         delete_row(state, nh, delete_index);
     }
+    let inserted_nodes: Vec<NH> = events.inserted_after.iter().map(|(n, _)| *n).collect();
     for (nh, after_index) in events.inserted_after {
         insert_after(state, nh, after_index);
     }
     for nh in events.blurred {
-        flush_if_pending(state, nh);
+        // `blurred` was computed from *this same frame's* draw, before the loop above ran --
+        // so a node that just had a new row inserted (via Enter) already shows up here too:
+        // pressing Enter makes egui report the old row as having lost focus on this exact frame,
+        // before the new row it's about to be replaced by even exists. That's a continuing edit,
+        // not the user leaving the node, so it must not flush -- the new row's own eventual blur
+        // will, once nothing further gets inserted after it.
+        if !inserted_nodes.contains(&nh) {
+            flush_if_pending(state, nh);
+        }
     }
 }
 
@@ -1297,6 +1306,46 @@ mod test {
 
         flush_if_pending(&mut state, nh);
 
+        assert!(state.dirty_version.try_borrow().unwrap()[nh] > version_before);
+        assert!(state.dirty);
+    }
+
+    /// Reproduces the exact race that made the previous fix a no-op in practice: pressing Enter
+    /// makes egui report the old row as having lost focus on the *same* frame the new row is
+    /// requested (before that new row even exists yet), so `render.rs` reports this node as
+    /// `blurred` in the very same `ConstEditEvents` batch that also carries the `inserted_after`
+    /// which creates it. `apply_events` must not flush in that case -- only a blur with no
+    /// accompanying insertion is the user actually leaving the node.
+    #[test]
+    fn t_apply_events_defers_flush_when_blur_coincides_with_an_insertion() {
+        let (mut state, nh) = constant_node(Deck::from_value(1.0));
+        let version_before = state.dirty_version.try_borrow().unwrap()[nh];
+
+        let events = ConstEditEvents {
+            committed_rows: vec![(nh, 0)],
+            inserted_after: vec![(nh, 0)],
+            deleted_rows: Vec::new(),
+            blurred: vec![nh],
+        };
+        apply_events(&mut state, events);
+
+        assert_eq!(items_of(&state, nh), vec![1.0, 0.0]);
+        assert_eq!(
+            state.dirty_version.try_borrow().unwrap()[nh],
+            version_before,
+            "a blur reported the same frame as a fresh insertion must not flush -- the new row \
+             is about to take focus, this isn't the user leaving the node"
+        );
+        assert!(!state.dirty);
+
+        // The new row's own eventual, unaccompanied blur must still flush normally.
+        apply_events(
+            &mut state,
+            ConstEditEvents {
+                blurred: vec![nh],
+                ..Default::default()
+            },
+        );
         assert!(state.dirty_version.try_borrow().unwrap()[nh] > version_before);
         assert!(state.dirty);
     }
