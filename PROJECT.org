@@ -157,6 +157,15 @@
   :CREATED:  2026-09-11 Fri 21:50
   :END:
 
+* TODO Bug - Python code exported from dagger doesn't export lists properly
+  :PROPERTIES:
+  :CREATED:  2026-09-14 Mon 20:24
+  :END:
+
+  For lists, only the first item is exported. This is likely because const nodes with lists don't
+  have any marks when created from the UI. The UI needs to check if it is a list and add a depth 1
+  mark at the start.
+
 * NEXT tld9in - Vector Math Plugin in C
   :PROPERTIES:
   :CREATED:  2026-09-14 Mon 14:18
