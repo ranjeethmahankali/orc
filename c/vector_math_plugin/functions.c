@@ -1,6 +1,6 @@
+#include <math.h>
 #include <orc_abi.h>
 #include <orc_sdk/orc_sdk.h>
-#include <math.h>
 #include <stdint.h>
 #include <string.h>
 
@@ -895,23 +895,23 @@ OrcFuncInfo const VEC_CROSS_PRODUCT_INFO = {
 #define DEFINE_VEC_LENGTH_SQ_DISPATCH(type, suffix)                               \
   static OrcError _vec_length_sq_##suffix(void *combinations, size_t const arity) \
   {                                                                               \
-    while (combinations) {                                                       \
+    while (combinations) {                                                        \
       OrcSdk_DeckWriter *out_writer = orc_sdk_comb_get_output(combinations, 0);   \
-      type              *out_val    = (type *)orc_sdk_dw_push_empty(out_writer); \
-      if (out_val == NULL) {                                                     \
-        orc_sdk_comb_free(combinations);                                         \
-        return ORC_ERROR_ALLOC_FAILED;                                           \
-      }                                                                          \
+      type              *out_val    = (type *)orc_sdk_dw_push_empty(out_writer);  \
+      if (out_val == NULL) {                                                      \
+        orc_sdk_comb_free(combinations);                                          \
+        return ORC_ERROR_ALLOC_FAILED;                                            \
+      }                                                                           \
       OrcSdk_DeckView v_view = orc_sdk_comb_get_input(combinations, 0);           \
       type const     *v      = (type const *)orc_sdk_dv_item_ptr(&v_view);        \
-      type            sum    = 0;                                                \
-      for (size_t j = 0; j < arity; ++j) {                                       \
-        sum = (type)(sum + v[j] * v[j]);                                         \
-      }                                                                          \
-      *out_val     = sum;                                                        \
-      combinations = orc_sdk_comb_advance(combinations);                         \
-    }                                                                            \
-    return ORC_ERROR_NONE;                                                       \
+      type            sum    = 0;                                                 \
+      for (size_t j = 0; j < arity; ++j) {                                        \
+        sum = (type)(sum + v[j] * v[j]);                                          \
+      }                                                                           \
+      *out_val     = sum;                                                         \
+      combinations = orc_sdk_comb_advance(combinations);                          \
+    }                                                                             \
+    return ORC_ERROR_NONE;                                                        \
   }
 
 DEFINE_VEC_LENGTH_SQ_DISPATCH(float, f32)
@@ -920,18 +920,18 @@ DEFINE_VEC_LENGTH_SQ_DISPATCH(double, f64)
 // Same as above, but takes the square root -- the usual vector length/magnitude.
 // sqrt_fn is passed in as sqrtf or sqrt so each instantiation calls the correctly
 // typed one, matching the (type) casts everywhere else in this family.
-#define DEFINE_VEC_LENGTH_DISPATCH(type, suffix, sqrt_fn)                         \
-  static OrcError _vec_length_##suffix(void *combinations, size_t const arity)    \
-  {                                                                               \
+#define DEFINE_VEC_LENGTH_DISPATCH(type, suffix, sqrt_fn)                        \
+  static OrcError _vec_length_##suffix(void *combinations, size_t const arity)   \
+  {                                                                              \
     while (combinations) {                                                       \
-      OrcSdk_DeckWriter *out_writer = orc_sdk_comb_get_output(combinations, 0);   \
+      OrcSdk_DeckWriter *out_writer = orc_sdk_comb_get_output(combinations, 0);  \
       type              *out_val    = (type *)orc_sdk_dw_push_empty(out_writer); \
       if (out_val == NULL) {                                                     \
         orc_sdk_comb_free(combinations);                                         \
         return ORC_ERROR_ALLOC_FAILED;                                           \
       }                                                                          \
-      OrcSdk_DeckView v_view = orc_sdk_comb_get_input(combinations, 0);           \
-      type const     *v      = (type const *)orc_sdk_dv_item_ptr(&v_view);        \
+      OrcSdk_DeckView v_view = orc_sdk_comb_get_input(combinations, 0);          \
+      type const     *v      = (type const *)orc_sdk_dv_item_ptr(&v_view);       \
       type            sum    = 0;                                                \
       for (size_t j = 0; j < arity; ++j) {                                       \
         sum = (type)(sum + v[j] * v[j]);                                         \
@@ -1172,31 +1172,31 @@ OrcFuncInfo const VEC_LENGTH_INFO = {
 // Unlike vec_length/vec_length_sq, the output here is a vector of the same arity as
 // the input, not a scalar: this is an elementwise scale, not a reduction.
 #define DEFINE_VEC_NORMALIZE_DISPATCH(type, suffix, sqrt_fn)                       \
-  static OrcError _vec_normalize_##suffix(void *combinations, size_t const arity) \
+  static OrcError _vec_normalize_##suffix(void *combinations, size_t const arity)  \
   {                                                                                \
-    while (combinations) {                                                        \
+    while (combinations) {                                                         \
       OrcSdk_DeckWriter *out_writer = orc_sdk_comb_get_output(combinations, 0);    \
-      type              *out_vec    = (type *)orc_sdk_dw_push_empty(out_writer);  \
-      if (out_vec == NULL) {                                                      \
-        orc_sdk_comb_free(combinations);                                          \
-        return ORC_ERROR_ALLOC_FAILED;                                            \
-      }                                                                           \
+      type              *out_vec    = (type *)orc_sdk_dw_push_empty(out_writer);   \
+      if (out_vec == NULL) {                                                       \
+        orc_sdk_comb_free(combinations);                                           \
+        return ORC_ERROR_ALLOC_FAILED;                                             \
+      }                                                                            \
       OrcSdk_DeckView v_view = orc_sdk_comb_get_input(combinations, 0);            \
       type const     *v      = (type const *)orc_sdk_dv_item_ptr(&v_view);         \
-      type            sum    = 0;                                                 \
-      for (size_t j = 0; j < arity; ++j) {                                        \
-        sum = (type)(sum + v[j] * v[j]);                                          \
-      }                                                                           \
-      type const length = sqrt_fn(sum);                                           \
+      type            sum    = 0;                                                  \
+      for (size_t j = 0; j < arity; ++j) {                                         \
+        sum = (type)(sum + v[j] * v[j]);                                           \
+      }                                                                            \
+      type const length = sqrt_fn(sum);                                            \
       /* A zero-length input normalizes to inf/nan components -- standard IEEE-754 \
-         division-by-zero behavior for floating point, not treated as an error       \
+         division-by-zero behavior for floating point, not treated as an error     \
          here. */                                                                  \
-      for (size_t j = 0; j < arity; ++j) {                                        \
-        out_vec[j] = (type)(v[j] / length);                                       \
-      }                                                                           \
-      combinations = orc_sdk_comb_advance(combinations);                          \
-    }                                                                             \
-    return ORC_ERROR_NONE;                                                        \
+      for (size_t j = 0; j < arity; ++j) {                                         \
+        out_vec[j] = (type)(v[j] / length);                                        \
+      }                                                                            \
+      combinations = orc_sdk_comb_advance(combinations);                           \
+    }                                                                              \
+    return ORC_ERROR_NONE;                                                         \
   }
 
 DEFINE_VEC_NORMALIZE_DISPATCH(float, f32, sqrtf)
@@ -1317,18 +1317,18 @@ OrcFuncInfo const VEC_NORMALIZE_INFO = {
 // One type-specific implementation per supported scalar type -- only float and double.
 // Elementwise negate: the output here is a vector of the same arity as the input, not
 // a scalar reduction.
-#define DEFINE_VEC_NEGATIVE_DISPATCH(type, suffix)                                \
-  static OrcError _vec_negative_##suffix(void *combinations, size_t const arity)  \
-  {                                                                               \
+#define DEFINE_VEC_NEGATIVE_DISPATCH(type, suffix)                               \
+  static OrcError _vec_negative_##suffix(void *combinations, size_t const arity) \
+  {                                                                              \
     while (combinations) {                                                       \
-      OrcSdk_DeckWriter *out_writer = orc_sdk_comb_get_output(combinations, 0);   \
+      OrcSdk_DeckWriter *out_writer = orc_sdk_comb_get_output(combinations, 0);  \
       type              *out_vec    = (type *)orc_sdk_dw_push_empty(out_writer); \
       if (out_vec == NULL) {                                                     \
         orc_sdk_comb_free(combinations);                                         \
         return ORC_ERROR_ALLOC_FAILED;                                           \
       }                                                                          \
-      OrcSdk_DeckView v_view = orc_sdk_comb_get_input(combinations, 0);           \
-      type const     *v      = (type const *)orc_sdk_dv_item_ptr(&v_view);        \
+      OrcSdk_DeckView v_view = orc_sdk_comb_get_input(combinations, 0);          \
+      type const     *v      = (type const *)orc_sdk_dv_item_ptr(&v_view);       \
       for (size_t j = 0; j < arity; ++j) {                                       \
         out_vec[j] = (type)(-v[j]);                                              \
       }                                                                          \
@@ -1455,35 +1455,35 @@ OrcFuncInfo const VEC_NEGATIVE_INFO = {
 // One type-specific implementation per supported scalar type -- only float and double.
 // Scales the input vector so its length matches a separately provided target length.
 // The output here is a vector of the same arity as the input, not a scalar.
-#define DEFINE_VEC_SCALE_TO_LENGTH_DISPATCH(type, suffix, sqrt_fn)                  \
+#define DEFINE_VEC_SCALE_TO_LENGTH_DISPATCH(type, suffix, sqrt_fn)                      \
   static OrcError _vec_scale_to_length_##suffix(void *combinations, size_t const arity) \
-  {                                                                                 \
-    while (combinations) {                                                         \
-      OrcSdk_DeckWriter *out_writer = orc_sdk_comb_get_output(combinations, 0);     \
-      type              *out_vec    = (type *)orc_sdk_dw_push_empty(out_writer);   \
-      if (out_vec == NULL) {                                                       \
-        orc_sdk_comb_free(combinations);                                           \
-        return ORC_ERROR_ALLOC_FAILED;                                             \
-      }                                                                            \
-      OrcSdk_DeckView v_view     = orc_sdk_comb_get_input(combinations, 0);         \
-      OrcSdk_DeckView len_view   = orc_sdk_comb_get_input(combinations, 1);         \
-      type const     *v          = (type const *)orc_sdk_dv_item_ptr(&v_view);      \
-      type const     *target_len = (type const *)orc_sdk_dv_item_ptr(&len_view);    \
-      type            sum        = 0;                                              \
-      for (size_t j = 0; j < arity; ++j) {                                         \
-        sum = (type)(sum + v[j] * v[j]);                                           \
-      }                                                                            \
-      type const current_len = sqrt_fn(sum);                                       \
-      type const scale       = (type)(*target_len / current_len);                  \
-      /* A zero-length input scales to inf/nan components -- standard IEEE-754     \
-         division-by-zero behavior for floating point, not treated as an error       \
-         here. */                                                                  \
-      for (size_t j = 0; j < arity; ++j) {                                         \
-        out_vec[j] = (type)(v[j] * scale);                                         \
-      }                                                                            \
-      combinations = orc_sdk_comb_advance(combinations);                           \
-    }                                                                              \
-    return ORC_ERROR_NONE;                                                         \
+  {                                                                                     \
+    while (combinations) {                                                              \
+      OrcSdk_DeckWriter *out_writer = orc_sdk_comb_get_output(combinations, 0);         \
+      type              *out_vec    = (type *)orc_sdk_dw_push_empty(out_writer);        \
+      if (out_vec == NULL) {                                                            \
+        orc_sdk_comb_free(combinations);                                                \
+        return ORC_ERROR_ALLOC_FAILED;                                                  \
+      }                                                                                 \
+      OrcSdk_DeckView v_view     = orc_sdk_comb_get_input(combinations, 0);             \
+      OrcSdk_DeckView len_view   = orc_sdk_comb_get_input(combinations, 1);             \
+      type const     *v          = (type const *)orc_sdk_dv_item_ptr(&v_view);          \
+      type const     *target_len = (type const *)orc_sdk_dv_item_ptr(&len_view);        \
+      type            sum        = 0;                                                   \
+      for (size_t j = 0; j < arity; ++j) {                                              \
+        sum = (type)(sum + v[j] * v[j]);                                                \
+      }                                                                                 \
+      type const current_len = sqrt_fn(sum);                                            \
+      type const scale       = (type)(*target_len / current_len);                       \
+      /* A zero-length input scales to inf/nan components -- standard IEEE-754          \
+         division-by-zero behavior for floating point, not treated as an error          \
+         here. */                                                                       \
+      for (size_t j = 0; j < arity; ++j) {                                              \
+        out_vec[j] = (type)(v[j] * scale);                                              \
+      }                                                                                 \
+      combinations = orc_sdk_comb_advance(combinations);                                \
+    }                                                                                   \
+    return ORC_ERROR_NONE;                                                              \
   }
 
 DEFINE_VEC_SCALE_TO_LENGTH_DISPATCH(float, f32, sqrtf)
@@ -1507,10 +1507,9 @@ static OrcError vec_scale_to_length(uint64_t         ctx,
   }
   OrcTypeId const first_type_id = input[0].type_id;
   if (!is_float_type(first_type_id)) {
-    orc_sdk_report_message(
-      ctx,
-      ORC_MSG_LEVEL_ERROR,
-      "vec_scale_to_length only supports float or double vectors.");
+    orc_sdk_report_message(ctx,
+                           ORC_MSG_LEVEL_ERROR,
+                           "vec_scale_to_length only supports float or double vectors.");
     return ORC_ERROR_TYPE_MISMATCH;
   }
   uint64_t const first_item_size = input[0].item_size;
@@ -1713,7 +1712,7 @@ static OrcError vec_components(uint64_t         ctx,
       char const     *v       = (char const *)orc_sdk_dv_item_ptr(&in_view);
       for (uint64_t k = 0; k < n_outputs; ++k) {
         OrcSdk_DeckWriter *out_writer = orc_sdk_comb_get_output(combinations, k);
-        char              *out_ptr   = (char *)orc_sdk_dw_push_empty(out_writer);
+        char              *out_ptr    = (char *)orc_sdk_dw_push_empty(out_writer);
         if (out_ptr == NULL) {
           status = ORC_ERROR_ALLOC_FAILED;
           break;
@@ -1765,27 +1764,27 @@ OrcFuncInfo const VEC_COMPONENTS_INFO = {
 // Elementwise linear interpolation: a + t * (b - a). The output here is a vector of
 // the same arity as a and b, not a scalar.
 #define DEFINE_LERP_DISPATCH(type, suffix)                                       \
-  static OrcError _lerp_##suffix(void *combinations, size_t const arity)        \
-  {                                                                             \
-    while (combinations) {                                                     \
-      OrcSdk_DeckWriter *out_writer = orc_sdk_comb_get_output(combinations, 0); \
+  static OrcError _lerp_##suffix(void *combinations, size_t const arity)         \
+  {                                                                              \
+    while (combinations) {                                                       \
+      OrcSdk_DeckWriter *out_writer = orc_sdk_comb_get_output(combinations, 0);  \
       type              *out_vec    = (type *)orc_sdk_dw_push_empty(out_writer); \
-      if (out_vec == NULL) {                                                   \
-        orc_sdk_comb_free(combinations);                                       \
-        return ORC_ERROR_ALLOC_FAILED;                                         \
-      }                                                                        \
-      OrcSdk_DeckView a_view = orc_sdk_comb_get_input(combinations, 0);         \
-      OrcSdk_DeckView b_view = orc_sdk_comb_get_input(combinations, 1);         \
-      OrcSdk_DeckView t_view = orc_sdk_comb_get_input(combinations, 2);         \
-      type const     *a      = (type const *)orc_sdk_dv_item_ptr(&a_view);      \
-      type const     *b      = (type const *)orc_sdk_dv_item_ptr(&b_view);      \
-      type const     *t      = (type const *)orc_sdk_dv_item_ptr(&t_view);      \
-      for (size_t j = 0; j < arity; ++j) {                                     \
-        out_vec[j] = (type)(a[j] + *t * (b[j] - a[j]));                        \
-      }                                                                        \
-      combinations = orc_sdk_comb_advance(combinations);                       \
-    }                                                                          \
-    return ORC_ERROR_NONE;                                                      \
+      if (out_vec == NULL) {                                                     \
+        orc_sdk_comb_free(combinations);                                         \
+        return ORC_ERROR_ALLOC_FAILED;                                           \
+      }                                                                          \
+      OrcSdk_DeckView a_view = orc_sdk_comb_get_input(combinations, 0);          \
+      OrcSdk_DeckView b_view = orc_sdk_comb_get_input(combinations, 1);          \
+      OrcSdk_DeckView t_view = orc_sdk_comb_get_input(combinations, 2);          \
+      type const     *a      = (type const *)orc_sdk_dv_item_ptr(&a_view);       \
+      type const     *b      = (type const *)orc_sdk_dv_item_ptr(&b_view);       \
+      type const     *t      = (type const *)orc_sdk_dv_item_ptr(&t_view);       \
+      for (size_t j = 0; j < arity; ++j) {                                       \
+        out_vec[j] = (type)(a[j] + *t * (b[j] - a[j]));                          \
+      }                                                                          \
+      combinations = orc_sdk_comb_advance(combinations);                         \
+    }                                                                            \
+    return ORC_ERROR_NONE;                                                       \
   }
 
 DEFINE_LERP_DISPATCH(float, f32)
@@ -1860,8 +1859,9 @@ static OrcError lerp(uint64_t         ctx,
     return ORC_ERROR_INVALID_HANDLE;
   }
   if (input[2].item_size != scalar_size) {
-    orc_sdk_report_message(
-      ctx, ORC_MSG_LEVEL_ERROR, "The interpolation parameter must be a single scalar value.");
+    orc_sdk_report_message(ctx,
+                           ORC_MSG_LEVEL_ERROR,
+                           "The interpolation parameter must be a single scalar value.");
     return ORC_ERROR_INVALID_ARGUMENTS;
   }
   // Allocate output -- a vector of the same arity as a and b.
