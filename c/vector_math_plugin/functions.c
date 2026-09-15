@@ -445,32 +445,19 @@ static OrcError vec_subtract(uint64_t         ctx,
   err = orc_sdk_handle_alloc(first_type_id, first_item_size, output);
   if (err)
     return err;
-  void             *combinations = NULL;
-  OrcHandle const **input_ptrs   = NULL;
-  uint8_t          *input_depths = NULL;
-  // Above three need to be cleaned up in all exit paths.
-  {
-    // Input depths array.
-    orc_sdk_arr_resize(input_depths, n_inputs);
-    uint8_t const zero_depth = 0;
-    orc_sdk_arr_fill(input_depths, zero_depth);
-    // Pack input handle pointers into an array.
-    orc_sdk_arr_reserve(input_ptrs, n_inputs);
-    for (uint64_t i = 0; i < n_inputs; ++i) {
-      err = orc_sdk_arr_push(input_ptrs, input + i);
-      if (err)
-        goto cleanup;
-    }
-    // Check the outputs and initialize the combinations.
-    ORC_SDK_REQUIRE_WITH_MSG(
-      n_outputs == 1,
-      "We already checked before. This is just to make sure we don't go out of sync.");
-    combinations = orc_sdk_comb_init(
-      input_ptrs, input_depths, n_inputs, &output, (uint8_t const[]) {0}, 1);
-  }
+  // n_inputs is fixed at 2, so the input pointers/depths can just live on the stack --
+  // no heap allocation needed for a size known at compile time.
+  ORC_SDK_REQUIRE_WITH_MSG(
+    n_outputs == 1,
+    "We already checked before. This is just to make sure we don't go out of sync.");
+  void *combinations = orc_sdk_comb_init((OrcHandle const *[]) {input + 0, input + 1},
+                                         (uint8_t const[]) {0, 0},
+                                         2,
+                                         &output,
+                                         (uint8_t const[]) {0},
+                                         1);
   if (combinations == NULL) {
-    err = ORC_ERROR_INVALID_COMBINATIONS;
-    goto cleanup;
+    return ORC_ERROR_INVALID_COMBINATIONS;
   }
   // Dispatch once on the component type here, instead of switching on it for every item
   // inside the combinations loop.
@@ -512,15 +499,10 @@ static OrcError vec_subtract(uint64_t         ctx,
   }
   // The dispatch functions above always fully consume `combinations`: either they
   // exhaust it (which frees it internally, see orc_sdk_comb_advance), or they free it
-  // explicitly on error. Either way it must not be touched or freed again below.
-  combinations = NULL;
+  // explicitly on error.
   if (err == ORC_ERROR_NONE) {
     orc_sdk_oh_update(output);
   }
-cleanup:
-  orc_sdk_comb_free(combinations);
-  orc_sdk_arr_free(input_ptrs);
-  orc_sdk_arr_free(input_depths);
   return err;
 }
 
@@ -623,32 +605,19 @@ static OrcError vec_dot_product(uint64_t         ctx,
   err = orc_sdk_handle_alloc(first_type_id, scalar_size, output);
   if (err)
     return err;
-  void             *combinations = NULL;
-  OrcHandle const **input_ptrs   = NULL;
-  uint8_t          *input_depths = NULL;
-  // Above three need to be cleaned up in all exit paths.
-  {
-    // Input depths array.
-    orc_sdk_arr_resize(input_depths, n_inputs);
-    uint8_t const zero_depth = 0;
-    orc_sdk_arr_fill(input_depths, zero_depth);
-    // Pack input handle pointers into an array.
-    orc_sdk_arr_reserve(input_ptrs, n_inputs);
-    for (uint64_t i = 0; i < n_inputs; ++i) {
-      err = orc_sdk_arr_push(input_ptrs, input + i);
-      if (err)
-        goto cleanup;
-    }
-    // Check the outputs and initialize the combinations.
-    ORC_SDK_REQUIRE_WITH_MSG(
-      n_outputs == 1,
-      "We already checked before. This is just to make sure we don't go out of sync.");
-    combinations = orc_sdk_comb_init(
-      input_ptrs, input_depths, n_inputs, &output, (uint8_t const[]) {0}, 1);
-  }
+  // n_inputs is fixed at 2, so the input pointers/depths can just live on the stack --
+  // no heap allocation needed for a size known at compile time.
+  ORC_SDK_REQUIRE_WITH_MSG(
+    n_outputs == 1,
+    "We already checked before. This is just to make sure we don't go out of sync.");
+  void *combinations = orc_sdk_comb_init((OrcHandle const *[]) {input + 0, input + 1},
+                                         (uint8_t const[]) {0, 0},
+                                         2,
+                                         &output,
+                                         (uint8_t const[]) {0},
+                                         1);
   if (combinations == NULL) {
-    err = ORC_ERROR_INVALID_COMBINATIONS;
-    goto cleanup;
+    return ORC_ERROR_INVALID_COMBINATIONS;
   }
   // Dispatch once on the component type here, instead of switching on it for every item
   // inside the combinations loop. Only float and double are supported.
@@ -666,15 +635,10 @@ static OrcError vec_dot_product(uint64_t         ctx,
   }
   // The dispatch functions above always fully consume `combinations`: either they
   // exhaust it (which frees it internally, see orc_sdk_comb_advance), or they free it
-  // explicitly on error. Either way it must not be touched or freed again below.
-  combinations = NULL;
+  // explicitly on error.
   if (err == ORC_ERROR_NONE) {
     orc_sdk_oh_update(output);
   }
-cleanup:
-  orc_sdk_comb_free(combinations);
-  orc_sdk_arr_free(input_ptrs);
-  orc_sdk_arr_free(input_depths);
   return err;
 }
 
@@ -803,32 +767,19 @@ static OrcError vec_cross_product(uint64_t         ctx,
   err = orc_sdk_handle_alloc(first_type_id, output_item_size, output);
   if (err)
     return err;
-  void             *combinations = NULL;
-  OrcHandle const **input_ptrs   = NULL;
-  uint8_t          *input_depths = NULL;
-  // Above three need to be cleaned up in all exit paths.
-  {
-    // Input depths array.
-    orc_sdk_arr_resize(input_depths, n_inputs);
-    uint8_t const zero_depth = 0;
-    orc_sdk_arr_fill(input_depths, zero_depth);
-    // Pack input handle pointers into an array.
-    orc_sdk_arr_reserve(input_ptrs, n_inputs);
-    for (uint64_t i = 0; i < n_inputs; ++i) {
-      err = orc_sdk_arr_push(input_ptrs, input + i);
-      if (err)
-        goto cleanup;
-    }
-    // Check the outputs and initialize the combinations.
-    ORC_SDK_REQUIRE_WITH_MSG(
-      n_outputs == 1,
-      "We already checked before. This is just to make sure we don't go out of sync.");
-    combinations = orc_sdk_comb_init(
-      input_ptrs, input_depths, n_inputs, &output, (uint8_t const[]) {0}, 1);
-  }
+  // n_inputs is fixed at 2, so the input pointers/depths can just live on the stack --
+  // no heap allocation needed for a size known at compile time.
+  ORC_SDK_REQUIRE_WITH_MSG(
+    n_outputs == 1,
+    "We already checked before. This is just to make sure we don't go out of sync.");
+  void *combinations = orc_sdk_comb_init((OrcHandle const *[]) {input + 0, input + 1},
+                                         (uint8_t const[]) {0, 0},
+                                         2,
+                                         &output,
+                                         (uint8_t const[]) {0},
+                                         1);
   if (combinations == NULL) {
-    err = ORC_ERROR_INVALID_COMBINATIONS;
-    goto cleanup;
+    return ORC_ERROR_INVALID_COMBINATIONS;
   }
   // Dispatch once on (arity, type) here, instead of checking either one inside the
   // combinations loop. Each of the four functions below is fully specialized to one
@@ -863,15 +814,10 @@ static OrcError vec_cross_product(uint64_t         ctx,
   }
   // The dispatch functions above always fully consume `combinations`: either they
   // exhaust it (which frees it internally, see orc_sdk_comb_advance), or they free it
-  // explicitly on error. Either way it must not be touched or freed again below.
-  combinations = NULL;
+  // explicitly on error.
   if (err == ORC_ERROR_NONE) {
     orc_sdk_oh_update(output);
   }
-cleanup:
-  orc_sdk_comb_free(combinations);
-  orc_sdk_arr_free(input_ptrs);
-  orc_sdk_arr_free(input_depths);
   return err;
 }
 
@@ -990,32 +936,15 @@ static OrcError vec_length_sq(uint64_t         ctx,
   err = orc_sdk_handle_alloc(first_type_id, scalar_size, output);
   if (err)
     return err;
-  void             *combinations = NULL;
-  OrcHandle const **input_ptrs   = NULL;
-  uint8_t          *input_depths = NULL;
-  // Above three need to be cleaned up in all exit paths.
-  {
-    // Input depths array.
-    orc_sdk_arr_resize(input_depths, n_inputs);
-    uint8_t const zero_depth = 0;
-    orc_sdk_arr_fill(input_depths, zero_depth);
-    // Pack input handle pointers into an array.
-    orc_sdk_arr_reserve(input_ptrs, n_inputs);
-    for (uint64_t i = 0; i < n_inputs; ++i) {
-      err = orc_sdk_arr_push(input_ptrs, input + i);
-      if (err)
-        goto cleanup;
-    }
-    // Check the outputs and initialize the combinations.
-    ORC_SDK_REQUIRE_WITH_MSG(
-      n_outputs == 1,
-      "We already checked before. This is just to make sure we don't go out of sync.");
-    combinations = orc_sdk_comb_init(
-      input_ptrs, input_depths, n_inputs, &output, (uint8_t const[]) {0}, 1);
-  }
+  // n_inputs is fixed at 1, so we can pass the address of the `input` parameter
+  // directly -- no heap allocation needed for a size known at compile time.
+  ORC_SDK_REQUIRE_WITH_MSG(
+    n_outputs == 1,
+    "We already checked before. This is just to make sure we don't go out of sync.");
+  void *combinations = orc_sdk_comb_init(
+    &input, (uint8_t const[]) {0}, 1, &output, (uint8_t const[]) {0}, 1);
   if (combinations == NULL) {
-    err = ORC_ERROR_INVALID_COMBINATIONS;
-    goto cleanup;
+    return ORC_ERROR_INVALID_COMBINATIONS;
   }
   // Dispatch once on the component type here, instead of checking it inside the
   // combinations loop.
@@ -1033,15 +962,10 @@ static OrcError vec_length_sq(uint64_t         ctx,
   }
   // The dispatch functions above always fully consume `combinations`: either they
   // exhaust it (which frees it internally, see orc_sdk_comb_advance), or they free it
-  // explicitly on error. Either way it must not be touched or freed again below.
-  combinations = NULL;
+  // explicitly on error.
   if (err == ORC_ERROR_NONE) {
     orc_sdk_oh_update(output);
   }
-cleanup:
-  orc_sdk_comb_free(combinations);
-  orc_sdk_arr_free(input_ptrs);
-  orc_sdk_arr_free(input_depths);
   return err;
 }
 
@@ -1102,32 +1026,15 @@ static OrcError vec_length(uint64_t         ctx,
   err = orc_sdk_handle_alloc(first_type_id, scalar_size, output);
   if (err)
     return err;
-  void             *combinations = NULL;
-  OrcHandle const **input_ptrs   = NULL;
-  uint8_t          *input_depths = NULL;
-  // Above three need to be cleaned up in all exit paths.
-  {
-    // Input depths array.
-    orc_sdk_arr_resize(input_depths, n_inputs);
-    uint8_t const zero_depth = 0;
-    orc_sdk_arr_fill(input_depths, zero_depth);
-    // Pack input handle pointers into an array.
-    orc_sdk_arr_reserve(input_ptrs, n_inputs);
-    for (uint64_t i = 0; i < n_inputs; ++i) {
-      err = orc_sdk_arr_push(input_ptrs, input + i);
-      if (err)
-        goto cleanup;
-    }
-    // Check the outputs and initialize the combinations.
-    ORC_SDK_REQUIRE_WITH_MSG(
-      n_outputs == 1,
-      "We already checked before. This is just to make sure we don't go out of sync.");
-    combinations = orc_sdk_comb_init(
-      input_ptrs, input_depths, n_inputs, &output, (uint8_t const[]) {0}, 1);
-  }
+  // n_inputs is fixed at 1, so we can pass the address of the `input` parameter
+  // directly -- no heap allocation needed for a size known at compile time.
+  ORC_SDK_REQUIRE_WITH_MSG(
+    n_outputs == 1,
+    "We already checked before. This is just to make sure we don't go out of sync.");
+  void *combinations = orc_sdk_comb_init(
+    &input, (uint8_t const[]) {0}, 1, &output, (uint8_t const[]) {0}, 1);
   if (combinations == NULL) {
-    err = ORC_ERROR_INVALID_COMBINATIONS;
-    goto cleanup;
+    return ORC_ERROR_INVALID_COMBINATIONS;
   }
   // Dispatch once on the component type here, instead of checking it inside the
   // combinations loop.
@@ -1145,15 +1052,10 @@ static OrcError vec_length(uint64_t         ctx,
   }
   // The dispatch functions above always fully consume `combinations`: either they
   // exhaust it (which frees it internally, see orc_sdk_comb_advance), or they free it
-  // explicitly on error. Either way it must not be touched or freed again below.
-  combinations = NULL;
+  // explicitly on error.
   if (err == ORC_ERROR_NONE) {
     orc_sdk_oh_update(output);
   }
-cleanup:
-  orc_sdk_comb_free(combinations);
-  orc_sdk_arr_free(input_ptrs);
-  orc_sdk_arr_free(input_depths);
   return err;
 }
 
@@ -1248,32 +1150,15 @@ static OrcError vec_normalize(uint64_t         ctx,
   err = orc_sdk_handle_alloc(first_type_id, first_item_size, output);
   if (err)
     return err;
-  void             *combinations = NULL;
-  OrcHandle const **input_ptrs   = NULL;
-  uint8_t          *input_depths = NULL;
-  // Above three need to be cleaned up in all exit paths.
-  {
-    // Input depths array.
-    orc_sdk_arr_resize(input_depths, n_inputs);
-    uint8_t const zero_depth = 0;
-    orc_sdk_arr_fill(input_depths, zero_depth);
-    // Pack input handle pointers into an array.
-    orc_sdk_arr_reserve(input_ptrs, n_inputs);
-    for (uint64_t i = 0; i < n_inputs; ++i) {
-      err = orc_sdk_arr_push(input_ptrs, input + i);
-      if (err)
-        goto cleanup;
-    }
-    // Check the outputs and initialize the combinations.
-    ORC_SDK_REQUIRE_WITH_MSG(
-      n_outputs == 1,
-      "We already checked before. This is just to make sure we don't go out of sync.");
-    combinations = orc_sdk_comb_init(
-      input_ptrs, input_depths, n_inputs, &output, (uint8_t const[]) {0}, 1);
-  }
+  // n_inputs is fixed at 1, so we can pass the address of the `input` parameter
+  // directly -- no heap allocation needed for a size known at compile time.
+  ORC_SDK_REQUIRE_WITH_MSG(
+    n_outputs == 1,
+    "We already checked before. This is just to make sure we don't go out of sync.");
+  void *combinations = orc_sdk_comb_init(
+    &input, (uint8_t const[]) {0}, 1, &output, (uint8_t const[]) {0}, 1);
   if (combinations == NULL) {
-    err = ORC_ERROR_INVALID_COMBINATIONS;
-    goto cleanup;
+    return ORC_ERROR_INVALID_COMBINATIONS;
   }
   // Dispatch once on the component type here, instead of checking it inside the
   // combinations loop.
@@ -1291,15 +1176,10 @@ static OrcError vec_normalize(uint64_t         ctx,
   }
   // The dispatch functions above always fully consume `combinations`: either they
   // exhaust it (which frees it internally, see orc_sdk_comb_advance), or they free it
-  // explicitly on error. Either way it must not be touched or freed again below.
-  combinations = NULL;
+  // explicitly on error.
   if (err == ORC_ERROR_NONE) {
     orc_sdk_oh_update(output);
   }
-cleanup:
-  orc_sdk_comb_free(combinations);
-  orc_sdk_arr_free(input_ptrs);
-  orc_sdk_arr_free(input_depths);
   return err;
 }
 
@@ -1385,32 +1265,15 @@ static OrcError vec_negative(uint64_t         ctx,
   err = orc_sdk_handle_alloc(first_type_id, first_item_size, output);
   if (err)
     return err;
-  void             *combinations = NULL;
-  OrcHandle const **input_ptrs   = NULL;
-  uint8_t          *input_depths = NULL;
-  // Above three need to be cleaned up in all exit paths.
-  {
-    // Input depths array.
-    orc_sdk_arr_resize(input_depths, n_inputs);
-    uint8_t const zero_depth = 0;
-    orc_sdk_arr_fill(input_depths, zero_depth);
-    // Pack input handle pointers into an array.
-    orc_sdk_arr_reserve(input_ptrs, n_inputs);
-    for (uint64_t i = 0; i < n_inputs; ++i) {
-      err = orc_sdk_arr_push(input_ptrs, input + i);
-      if (err)
-        goto cleanup;
-    }
-    // Check the outputs and initialize the combinations.
-    ORC_SDK_REQUIRE_WITH_MSG(
-      n_outputs == 1,
-      "We already checked before. This is just to make sure we don't go out of sync.");
-    combinations = orc_sdk_comb_init(
-      input_ptrs, input_depths, n_inputs, &output, (uint8_t const[]) {0}, 1);
-  }
+  // n_inputs is fixed at 1, so we can pass the address of the `input` parameter
+  // directly -- no heap allocation needed for a size known at compile time.
+  ORC_SDK_REQUIRE_WITH_MSG(
+    n_outputs == 1,
+    "We already checked before. This is just to make sure we don't go out of sync.");
+  void *combinations = orc_sdk_comb_init(
+    &input, (uint8_t const[]) {0}, 1, &output, (uint8_t const[]) {0}, 1);
   if (combinations == NULL) {
-    err = ORC_ERROR_INVALID_COMBINATIONS;
-    goto cleanup;
+    return ORC_ERROR_INVALID_COMBINATIONS;
   }
   // Dispatch once on the component type here, instead of checking it inside the
   // combinations loop.
@@ -1428,15 +1291,10 @@ static OrcError vec_negative(uint64_t         ctx,
   }
   // The dispatch functions above always fully consume `combinations`: either they
   // exhaust it (which frees it internally, see orc_sdk_comb_advance), or they free it
-  // explicitly on error. Either way it must not be touched or freed again below.
-  combinations = NULL;
+  // explicitly on error.
   if (err == ORC_ERROR_NONE) {
     orc_sdk_oh_update(output);
   }
-cleanup:
-  orc_sdk_comb_free(combinations);
-  orc_sdk_arr_free(input_ptrs);
-  orc_sdk_arr_free(input_depths);
   return err;
 }
 
@@ -1553,32 +1411,19 @@ static OrcError vec_scale_to_length(uint64_t         ctx,
   err = orc_sdk_handle_alloc(first_type_id, first_item_size, output);
   if (err)
     return err;
-  void             *combinations = NULL;
-  OrcHandle const **input_ptrs   = NULL;
-  uint8_t          *input_depths = NULL;
-  // Above three need to be cleaned up in all exit paths.
-  {
-    // Input depths array.
-    orc_sdk_arr_resize(input_depths, n_inputs);
-    uint8_t const zero_depth = 0;
-    orc_sdk_arr_fill(input_depths, zero_depth);
-    // Pack input handle pointers into an array.
-    orc_sdk_arr_reserve(input_ptrs, n_inputs);
-    for (uint64_t i = 0; i < n_inputs; ++i) {
-      err = orc_sdk_arr_push(input_ptrs, input + i);
-      if (err)
-        goto cleanup;
-    }
-    // Check the outputs and initialize the combinations.
-    ORC_SDK_REQUIRE_WITH_MSG(
-      n_outputs == 1,
-      "We already checked before. This is just to make sure we don't go out of sync.");
-    combinations = orc_sdk_comb_init(
-      input_ptrs, input_depths, n_inputs, &output, (uint8_t const[]) {0}, 1);
-  }
+  // n_inputs is fixed at 2, so the input pointers/depths can just live on the stack --
+  // no heap allocation needed for a size known at compile time.
+  ORC_SDK_REQUIRE_WITH_MSG(
+    n_outputs == 1,
+    "We already checked before. This is just to make sure we don't go out of sync.");
+  void *combinations = orc_sdk_comb_init((OrcHandle const *[]) {input + 0, input + 1},
+                                         (uint8_t const[]) {0, 0},
+                                         2,
+                                         &output,
+                                         (uint8_t const[]) {0},
+                                         1);
   if (combinations == NULL) {
-    err = ORC_ERROR_INVALID_COMBINATIONS;
-    goto cleanup;
+    return ORC_ERROR_INVALID_COMBINATIONS;
   }
   // Dispatch once on the component type here, instead of checking it inside the
   // combinations loop.
@@ -1596,15 +1441,10 @@ static OrcError vec_scale_to_length(uint64_t         ctx,
   }
   // The dispatch functions above always fully consume `combinations`: either they
   // exhaust it (which frees it internally, see orc_sdk_comb_advance), or they free it
-  // explicitly on error. Either way it must not be touched or freed again below.
-  combinations = NULL;
+  // explicitly on error.
   if (err == ORC_ERROR_NONE) {
     orc_sdk_oh_update(output);
   }
-cleanup:
-  orc_sdk_comb_free(combinations);
-  orc_sdk_arr_free(input_ptrs);
-  orc_sdk_arr_free(input_depths);
   return err;
 }
 
@@ -1669,26 +1509,18 @@ static OrcError vec_components(uint64_t         ctx,
     if (err)
       return err;
   }
+  // n_inputs is fixed at 1, so the input pointer/depth can just live on the stack --
+  // only the output side needs a heap-growing array, since n_outputs is variadic.
   void             *combinations  = NULL;
-  OrcHandle const **input_ptrs    = NULL;
   OrcHandle       **output_ptrs   = NULL;
-  uint8_t          *input_depths  = NULL;
   uint8_t          *output_depths = NULL;
-  // Above four need to be cleaned up in all exit paths.
+  // Above three need to be cleaned up in all exit paths.
   {
-    // Depths arrays -- everything at depth 0.
-    orc_sdk_arr_resize(input_depths, n_inputs);
+    // Depths array -- everything at depth 0.
     uint8_t const zero_depth = 0;
-    orc_sdk_arr_fill(input_depths, zero_depth);
     orc_sdk_arr_resize(output_depths, n_outputs);
     orc_sdk_arr_fill(output_depths, zero_depth);
-    // Pack input/output handle pointers into arrays.
-    orc_sdk_arr_reserve(input_ptrs, n_inputs);
-    for (uint64_t i = 0; i < n_inputs; ++i) {
-      err = orc_sdk_arr_push(input_ptrs, input + i);
-      if (err)
-        goto cleanup;
-    }
+    // Pack output handle pointers into an array.
     orc_sdk_arr_reserve(output_ptrs, n_outputs);
     for (uint64_t k = 0; k < n_outputs; ++k) {
       err = orc_sdk_arr_push(output_ptrs, output + k);
@@ -1696,7 +1528,7 @@ static OrcError vec_components(uint64_t         ctx,
         goto cleanup;
     }
     combinations = orc_sdk_comb_init(
-      input_ptrs, input_depths, n_inputs, output_ptrs, output_depths, n_outputs);
+      &input, (uint8_t const[]) {0}, 1, output_ptrs, output_depths, n_outputs);
   }
   if (combinations == NULL) {
     err = ORC_ERROR_INVALID_COMBINATIONS;
@@ -1739,9 +1571,7 @@ static OrcError vec_components(uint64_t         ctx,
   }
 cleanup:
   orc_sdk_comb_free(combinations);
-  orc_sdk_arr_free(input_ptrs);
   orc_sdk_arr_free(output_ptrs);
-  orc_sdk_arr_free(input_depths);
   orc_sdk_arr_free(output_depths);
   return err;
 }
@@ -1868,32 +1698,20 @@ static OrcError lerp(uint64_t         ctx,
   err = orc_sdk_handle_alloc(first_type_id, first_item_size, output);
   if (err)
     return err;
-  void             *combinations = NULL;
-  OrcHandle const **input_ptrs   = NULL;
-  uint8_t          *input_depths = NULL;
-  // Above three need to be cleaned up in all exit paths.
-  {
-    // Input depths array.
-    orc_sdk_arr_resize(input_depths, n_inputs);
-    uint8_t const zero_depth = 0;
-    orc_sdk_arr_fill(input_depths, zero_depth);
-    // Pack input handle pointers into an array.
-    orc_sdk_arr_reserve(input_ptrs, n_inputs);
-    for (uint64_t i = 0; i < n_inputs; ++i) {
-      err = orc_sdk_arr_push(input_ptrs, input + i);
-      if (err)
-        goto cleanup;
-    }
-    // Check the outputs and initialize the combinations.
-    ORC_SDK_REQUIRE_WITH_MSG(
-      n_outputs == 1,
-      "We already checked before. This is just to make sure we don't go out of sync.");
-    combinations = orc_sdk_comb_init(
-      input_ptrs, input_depths, n_inputs, &output, (uint8_t const[]) {0}, 1);
-  }
+  // n_inputs is fixed at 3, so the input pointers/depths can just live on the stack --
+  // no heap allocation needed for a size known at compile time.
+  ORC_SDK_REQUIRE_WITH_MSG(
+    n_outputs == 1,
+    "We already checked before. This is just to make sure we don't go out of sync.");
+  void *combinations =
+    orc_sdk_comb_init((OrcHandle const *[]) {input + 0, input + 1, input + 2},
+                      (uint8_t const[]) {0, 0, 0},
+                      3,
+                      &output,
+                      (uint8_t const[]) {0},
+                      1);
   if (combinations == NULL) {
-    err = ORC_ERROR_INVALID_COMBINATIONS;
-    goto cleanup;
+    return ORC_ERROR_INVALID_COMBINATIONS;
   }
   // Dispatch once on the component type here, instead of checking it inside the
   // combinations loop.
@@ -1911,15 +1729,10 @@ static OrcError lerp(uint64_t         ctx,
   }
   // The dispatch functions above always fully consume `combinations`: either they
   // exhaust it (which frees it internally, see orc_sdk_comb_advance), or they free it
-  // explicitly on error. Either way it must not be touched or freed again below.
-  combinations = NULL;
+  // explicitly on error.
   if (err == ORC_ERROR_NONE) {
     orc_sdk_oh_update(output);
   }
-cleanup:
-  orc_sdk_comb_free(combinations);
-  orc_sdk_arr_free(input_ptrs);
-  orc_sdk_arr_free(input_depths);
   return err;
 }
 
