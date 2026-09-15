@@ -499,10 +499,12 @@ static OrcError vec_subtract(uint64_t         ctx,
   }
   // The dispatch functions above always fully consume `combinations`: either they
   // exhaust it (which frees it internally, see orc_sdk_comb_advance), or they free it
-  // explicitly on error.
+  // explicitly on error. Either way it must not be touched or freed again below.
+  combinations = NULL;
   if (err == ORC_ERROR_NONE) {
     orc_sdk_oh_update(output);
   }
+  orc_sdk_comb_free(combinations);
   return err;
 }
 
@@ -635,10 +637,12 @@ static OrcError vec_dot_product(uint64_t         ctx,
   }
   // The dispatch functions above always fully consume `combinations`: either they
   // exhaust it (which frees it internally, see orc_sdk_comb_advance), or they free it
-  // explicitly on error.
+  // explicitly on error. Either way it must not be touched or freed again below.
+  combinations = NULL;
   if (err == ORC_ERROR_NONE) {
     orc_sdk_oh_update(output);
   }
+  orc_sdk_comb_free(combinations);
   return err;
 }
 
@@ -814,10 +818,12 @@ static OrcError vec_cross_product(uint64_t         ctx,
   }
   // The dispatch functions above always fully consume `combinations`: either they
   // exhaust it (which frees it internally, see orc_sdk_comb_advance), or they free it
-  // explicitly on error.
+  // explicitly on error. Either way it must not be touched or freed again below.
+  combinations = NULL;
   if (err == ORC_ERROR_NONE) {
     orc_sdk_oh_update(output);
   }
+  orc_sdk_comb_free(combinations);
   return err;
 }
 
@@ -962,10 +968,12 @@ static OrcError vec_length_sq(uint64_t         ctx,
   }
   // The dispatch functions above always fully consume `combinations`: either they
   // exhaust it (which frees it internally, see orc_sdk_comb_advance), or they free it
-  // explicitly on error.
+  // explicitly on error. Either way it must not be touched or freed again below.
+  combinations = NULL;
   if (err == ORC_ERROR_NONE) {
     orc_sdk_oh_update(output);
   }
+  orc_sdk_comb_free(combinations);
   return err;
 }
 
@@ -1052,10 +1060,12 @@ static OrcError vec_length(uint64_t         ctx,
   }
   // The dispatch functions above always fully consume `combinations`: either they
   // exhaust it (which frees it internally, see orc_sdk_comb_advance), or they free it
-  // explicitly on error.
+  // explicitly on error. Either way it must not be touched or freed again below.
+  combinations = NULL;
   if (err == ORC_ERROR_NONE) {
     orc_sdk_oh_update(output);
   }
+  orc_sdk_comb_free(combinations);
   return err;
 }
 
@@ -1176,10 +1186,12 @@ static OrcError vec_normalize(uint64_t         ctx,
   }
   // The dispatch functions above always fully consume `combinations`: either they
   // exhaust it (which frees it internally, see orc_sdk_comb_advance), or they free it
-  // explicitly on error.
+  // explicitly on error. Either way it must not be touched or freed again below.
+  combinations = NULL;
   if (err == ORC_ERROR_NONE) {
     orc_sdk_oh_update(output);
   }
+  orc_sdk_comb_free(combinations);
   return err;
 }
 
@@ -1291,10 +1303,12 @@ static OrcError vec_negative(uint64_t         ctx,
   }
   // The dispatch functions above always fully consume `combinations`: either they
   // exhaust it (which frees it internally, see orc_sdk_comb_advance), or they free it
-  // explicitly on error.
+  // explicitly on error. Either way it must not be touched or freed again below.
+  combinations = NULL;
   if (err == ORC_ERROR_NONE) {
     orc_sdk_oh_update(output);
   }
+  orc_sdk_comb_free(combinations);
   return err;
 }
 
@@ -1441,10 +1455,12 @@ static OrcError vec_scale_to_length(uint64_t         ctx,
   }
   // The dispatch functions above always fully consume `combinations`: either they
   // exhaust it (which frees it internally, see orc_sdk_comb_advance), or they free it
-  // explicitly on error.
+  // explicitly on error. Either way it must not be touched or freed again below.
+  combinations = NULL;
   if (err == ORC_ERROR_NONE) {
     orc_sdk_oh_update(output);
   }
+  orc_sdk_comb_free(combinations);
   return err;
 }
 
@@ -1511,9 +1527,9 @@ static OrcError vec_components(uint64_t         ctx,
   }
   // n_inputs is fixed at 1, so the input pointer/depth can just live on the stack --
   // only the output side needs a heap-growing array, since n_outputs is variadic.
-  void             *combinations  = NULL;
-  OrcHandle       **output_ptrs   = NULL;
-  uint8_t          *output_depths = NULL;
+  void       *combinations  = NULL;
+  OrcHandle **output_ptrs   = NULL;
+  uint8_t    *output_depths = NULL;
   // Above three need to be cleaned up in all exit paths.
   {
     // Depths array -- everything at depth 0.
@@ -1729,10 +1745,12 @@ static OrcError lerp(uint64_t         ctx,
   }
   // The dispatch functions above always fully consume `combinations`: either they
   // exhaust it (which frees it internally, see orc_sdk_comb_advance), or they free it
-  // explicitly on error.
+  // explicitly on error. Either way it must not be touched or freed again below.
+  combinations = NULL;
   if (err == ORC_ERROR_NONE) {
     orc_sdk_oh_update(output);
   }
+  orc_sdk_comb_free(combinations);
   return err;
 }
 
