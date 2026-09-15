@@ -180,7 +180,8 @@
     we remove all rows but one. This will fix the bug.
 
   Some other improvements:
-  - [ ] If the space between the rows of const nodes is removed, it would look much nicer.
+  - [ ] If the space between the rows of const nodes is removed, it would look much nicer. Currently
+    there are gaps.
   - [ ] It's annoying that every new row inserted into the const node starts with a zero. It should
     start empty, and if I don't type anything in, and commit, empty rows are discarded.
 
