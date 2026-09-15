@@ -164,7 +164,7 @@
 
   Should be able to add variadic inputs and outputs for the nodes that support them, via the UI.
 
-* TODO Bug - Python code exported from dagger doesn't export lists properly
+* TODO tlfcbv - Bug - Python code exported from dagger doesn't export lists properly
   :PROPERTIES:
   :CREATED:  2026-09-14 Mon 20:24
   :END:
@@ -187,7 +187,12 @@
   the other arguments. ~connect~ should store the address and port in memory, and immediately start
   a session and store that too. ~functions~ command should still work the same way.
 
-  - [ ] Maybe format the functions json client side before printing?
+  - [ ] Add an exit command that exits out of the REPL and program.
+  - [ ] Remove exit(1) from cmd_* functions, and leave that to the outside caller. REPL should not
+    exit. It should just print the error and await next input.
+  - [ ] Exiting stops the session. The lifetime of the server session is the same as the lifetime of
+    the REPL session.
+  - [ ] Update the server to return formatted list of functions instead of JSON.
 
 * NEXT tl8agd - Curve plugin functions
   :PROPERTIES:
