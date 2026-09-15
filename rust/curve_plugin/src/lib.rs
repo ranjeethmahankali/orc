@@ -2,9 +2,9 @@ use arc::Arc2d;
 use orc_sdk::{
     Deck, DeckRegistry, Error, HostCallbacks, ORC_ABI_VERSION, ORC_TYPE_F32, ORC_TYPE_F64,
     ORC_TYPE_I8, ORC_TYPE_I16, ORC_TYPE_I32, ORC_TYPE_I64, ORC_TYPE_U8, ORC_TYPE_U16, ORC_TYPE_U32,
-    ORC_TYPE_U64, OrcFuncInfo, OrcHandle, OrcHost, OrcHostCallbackAPI, OrcPlugin, OrcTypeId,
-    OrcTypeInfo, ProxyType, TOrcData, TOrcPluginAdaptor, deck_from_proxy, orc_fn_info, orc_plugin,
-    reset_handle, to_str_deck,
+    ORC_TYPE_U64, OrcFuncInfo, OrcHandle, OrcHost, OrcHostCallbackAPI, OrcPlugin, OrcTypeInfo,
+    ProxyType, TOrcData, TOrcPluginAdaptor, deck_from_proxy, orc_fn_info, orc_plugin, reset_handle,
+    to_str_deck,
 };
 use std::sync::{LazyLock, OnceLock};
 
@@ -51,23 +51,6 @@ impl TOrcPluginAdaptor for PluginAdaptor {
         out.n_functions = ORC_EXPORTED_FUNCTIONS.len() as u64;
         out.functions = ORC_EXPORTED_FUNCTIONS.as_ptr();
         Ok(())
-    }
-
-    fn deck_alloc(type_id: OrcTypeId, handle: &mut OrcHandle) -> Result<(), Error> {
-        match type_id {
-            ORC_TYPE_U8 => REGISTRY.alloc::<u8>(handle),
-            ORC_TYPE_U16 => REGISTRY.alloc::<u16>(handle),
-            ORC_TYPE_U32 => REGISTRY.alloc::<u32>(handle),
-            ORC_TYPE_U64 => REGISTRY.alloc::<u64>(handle),
-            ORC_TYPE_I8 => REGISTRY.alloc::<i8>(handle),
-            ORC_TYPE_I16 => REGISTRY.alloc::<i16>(handle),
-            ORC_TYPE_I32 => REGISTRY.alloc::<i32>(handle),
-            ORC_TYPE_I64 => REGISTRY.alloc::<i64>(handle),
-            ORC_TYPE_F32 => REGISTRY.alloc::<f32>(handle),
-            ORC_TYPE_F64 => REGISTRY.alloc::<f64>(handle),
-            arc::ARC_TYPE_ID => REGISTRY.alloc::<Arc2d>(handle),
-            _ => Err(Error::DeckTypeMismatch),
-        }
     }
 
     fn deck_free(handle: &mut OrcHandle) -> Result<(), Error> {
@@ -118,7 +101,7 @@ impl TOrcPluginAdaptor for PluginAdaptor {
         // Header already written by try_serialize_handle. Write custom item data.
         match handle.type_id {
             arc::ARC_TYPE_ID => {
-                let items = handle.items::<Arc2d>();
+                let items = handle.items::<Arc2d>()?;
                 let n_serialized =
                     Arc2d::serialize(items, write).map_err(|_| Error::SerializationError)?;
                 if n_serialized != items.len() {
@@ -191,6 +174,6 @@ impl TOrcPluginAdaptor for PluginAdaptor {
 
 orc_plugin!(PluginAdaptor);
 
-const ORC_EXPORTED_FUNCTIONS: &[OrcFuncInfo] = &[];
+const ORC_EXPORTED_FUNCTIONS: &[OrcFuncInfo] = &[orc_fn_info!(arc::arc_2d_from_three_points)];
 
 const ORC_EXPORTED_TYPES: &[OrcTypeInfo] = &[Arc2d::TYPE_INFO];
