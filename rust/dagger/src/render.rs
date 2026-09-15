@@ -1,5 +1,5 @@
 use crate::canvas::Transform;
-use crate::const_edit::{self, ConstEditEvents, RowValue};
+use crate::const_edit::{self, ConstEditEvents};
 use crate::interaction::SelectBoxKind;
 use crate::state::EditorState;
 use eframe::egui::{
@@ -164,31 +164,9 @@ const RESIZE_HANDLE_SIZE: f32 = 14.0;
 const POPOUT_BUTTON_SIZE: f32 = 16.0;
 /// Gap between the pop-out button and the node's right edge.
 const POPOUT_BUTTON_MARGIN: f32 = 6.0;
-/// Canvas-space width of an editable Constant row's value box, before zoom scaling.
-const CONST_EDIT_VALUE_WIDTH: f32 = 80.0;
-/// Canvas-space gap between an editable Constant row's widgets (ruler label to value box),
-/// before zoom scaling. The vertical component is 0 -- rows sit flush against each other, no gap
-/// between them -- while the horizontal one still separates the ruler text from its value box.
-const CONST_EDIT_ITEM_SPACING: Vec2 = Vec2::new(8.0, 0.0);
-/// Canvas-space minimum height of one editable row, before zoom scaling -- matches egui's
-/// default `interact_size.y`. `Ui::horizontal` pre-allocates that as every row's minimum height
-/// ("assume there will be something interactive"), so left unscaled it is a fixed ~18px floor:
-/// zoomed out, the text shrinks but every row stays 18px tall, which is the rows-far-apart look.
-/// Inspect never hits this because its text is one multi-line `Label`, not per-row widgets.
-const CONST_EDIT_ROW_MIN_HEIGHT: f32 = 18.0;
-
-/// The zoom-scaled row metrics `draw_editable_const_content` applies to its child `Ui`'s
-/// spacing. Split out so a unit test can drive the exact same numbers through a real egui
-/// layout pass (see `t_const_edit_row_pitch_scales_with_zoom`).
-fn const_edit_row_spacing(zoom: f32) -> (Vec2, f32) {
-    (
-        Vec2::new(
-            CONST_EDIT_ITEM_SPACING.x * zoom,
-            CONST_EDIT_ITEM_SPACING.y * zoom,
-        ),
-        CONST_EDIT_ROW_MIN_HEIGHT * zoom,
-    )
-}
+/// Canvas-space gap between an editable Constant node's ruler column and its value text box,
+/// before zoom scaling.
+const CONST_EDIT_COLUMN_GAP: f32 = 8.0;
 
 /// The smallest an Inspect node can be dragged down to — matches the same numbers a freshly
 /// created Inspect node gets from `measure_nodes`, so a manual shrink and a later re-measure
@@ -785,7 +763,6 @@ fn draw_nodes(
                             ui,
                             state,
                             nh,
-                            handle,
                             content_rect,
                             inspect_font.size,
                             view,
@@ -856,11 +833,15 @@ fn draw_static_text_content(
 /// immediate commit's own borrow of `node_info_prop` fail silently.
 #[allow(clippy::too_many_arguments)] // Every argument here is genuinely distinct context; a
 // grouping struct would just be these same 8 fields with an extra layer of indirection.
+/// One multiline text box (one value per line) with a read-only ruler column to its left,
+/// aligned line-for-line with it -- both are given the same font and neither has any per-line
+/// spacing of its own, so they share the same line pitch naturally, the same way `Inspect`'s own
+/// static multi-line text does. Committing (rebuilding the whole deck from the buffer's current
+/// contents) happens once, when the text box loses focus -- see `const_edit::commit`.
 fn draw_editable_const_content(
     ui: &mut egui::Ui,
     state: &EditorState,
     nh: NH,
-    handle: &orc_sdk::OrcHandle,
     content_rect: Rect,
     font_size: f32,
     view: &Transform,
@@ -873,17 +854,14 @@ fn draw_editable_const_content(
     let Ok(mut cache) = const_edit_cache.try_borrow_mut() else {
         return;
     };
-    let n_items = handle.n_items as usize;
-    if cache[nh].buffers.len() != n_items {
+    if !cache[nh].editable {
         // Not yet resynced this frame -- `const_edit::refresh_all` runs before `render::draw`
         // every frame, so in practice this only shows for one frame right after a structural
-        // change (e.g. right after an insertion is applied), not indefinitely.
+        // change, not indefinitely.
         return;
     }
-    let rows = const_edit::deck_rows(n_items, handle.marks());
     let font = egui::FontId::new(font_size, FontFamily::Monospace);
-    let value_width = view.scale(CONST_EDIT_VALUE_WIDTH);
-    let pending_focus = state.pending_focus_row.get();
+    let column_gap = view.scale(CONST_EDIT_COLUMN_GAP);
 
     let mut child = ui.new_child(
         egui::UiBuilder::new()
@@ -891,81 +869,37 @@ fn draw_editable_const_content(
             .layout(egui::Layout::top_down(egui::Align::LEFT)),
     );
     child.set_clip_rect(content_rect);
-    // egui sizes each `ui.horizontal` row at least `interact_size.y` tall and pads `item_spacing`
-    // between rows -- both fixed screen-space sizes by default. Scale both with the zoom (like
-    // the font and value box already are), or zoomed-out rows keep a fixed floor height while
-    // their text shrinks, and the rows read as spread far apart.
-    let (item_spacing, min_row_height) = const_edit_row_spacing(view.zoom);
-    let style = child.style_mut();
-    style.spacing.item_spacing = item_spacing;
-    style.spacing.interact_size.y = min_row_height;
-    // Whether any row of *this* node's editor is focused after this frame's input is processed --
-    // downstream propagation of an edit is deferred until this goes from true to false (checked
-    // below), i.e. until the user actually stops editing this node, not on every keystroke or row
-    // insertion. See `ConstEditCache::needs_downstream_flush`.
-    let mut any_focused = false;
     egui::ScrollArea::both()
         .id_salt(("dagger-const-edit-scroll", nh))
         .auto_shrink([false, false])
         .show(&mut child, |ui| {
-            for row in rows {
-                match row.value {
-                    RowValue::Item(i) => {
-                        ui.horizontal(|ui| {
-                            ui.label(egui::RichText::new(&row.ruler).monospace().size(font_size));
-                            let Some(buf) = cache[nh].buffers.get_mut(i) else {
-                                return;
-                            };
-                            let id = egui::Id::new(("dagger-const-edit-value", nh, i));
-                            if pending_focus == Some((nh, i)) {
-                                ui.memory_mut(|m| m.request_focus(id));
-                                state.pending_focus_row.set(None);
-                            }
-                            // Captured before the widget applies this frame's keystroke, so a
-                            // Backspace that just emptied the buffer (still `false` here) reads
-                            // differently from one pressed while it was *already* empty.
-                            let was_empty_before = buf.is_empty();
-                            let response = ui.add(
-                                egui::TextEdit::singleline(buf)
-                                    .id(id)
-                                    // Frameless and colored to match the surrounding text: this
-                                    // should read as plain ruler-formatted text (like a
-                                    // non-editable Constant or an Inspect node), just one that
-                                    // happens to be clickable, not as a form full of boxes.
-                                    .frame(egui::Frame::NONE)
-                                    .text_color(egui::Color32::from_gray(220))
-                                    .font(font.clone())
-                                    .desired_width(value_width),
-                            );
-                            any_focused |= response.has_focus();
-                            if response.lost_focus() {
-                                events.committed_rows.push((nh, i));
-                                // Enter (not a plain click-away) also means "and start a new
-                                // row right after this one" -- the replacement for a separate
-                                // "+ Add" button.
-                                if ui.input(|input| input.key_pressed(egui::Key::Enter)) {
-                                    events.inserted_after.push((nh, i));
-                                }
-                            } else if response.has_focus()
-                                && was_empty_before
-                                && buf.is_empty()
-                                && ui.input(|input| input.key_pressed(egui::Key::Backspace))
-                            {
-                                // Backspace on an already-empty row: delete it outright, rather
-                                // than committing an empty value back into the deck.
-                                events.deleted_rows.push((nh, i));
-                            }
-                        });
-                    }
-                    RowValue::EmptyGroup => {
-                        ui.label(egui::RichText::new(&row.ruler).monospace().size(font_size));
-                    }
+            ui.horizontal_top(|ui| {
+                ui.spacing_mut().item_spacing.x = column_gap;
+                ui.add(
+                    egui::Label::new(
+                        egui::RichText::new(cache[nh].ruler.clone())
+                            .monospace()
+                            .size(font_size),
+                    )
+                    .selectable(false),
+                );
+                let id = egui::Id::new(("dagger-const-edit-value", nh));
+                let response = ui.add(
+                    egui::TextEdit::multiline(&mut cache[nh].buffer)
+                        .id(id)
+                        // Frameless and colored to match the surrounding text: this should read
+                        // as plain ruler-formatted text (like a non-editable Constant or an
+                        // Inspect node), just one that happens to be clickable, not a form field.
+                        .frame(egui::Frame::NONE)
+                        .text_color(egui::Color32::from_gray(220))
+                        .font(font)
+                        .desired_width(ui.available_width()),
+                );
+                if response.lost_focus() {
+                    events.push(nh);
                 }
-            }
+            });
         });
-    if !any_focused {
-        events.blurred.push(nh);
-    }
 }
 
 /// Small diagonal-line resize grip, drawn in an Inspect node's bottom-right corner — the same
@@ -1115,63 +1049,6 @@ mod test {
         let rect = node_rect([5.0, 7.0], [40.0, 30.0]);
         assert_eq!(rect.min, Pos2::new(5.0, 7.0));
         assert_eq!(rect.max, Pos2::new(45.0, 37.0));
-    }
-
-    /// Regression test for the zoomed-out rows-far-apart bug: `Ui::horizontal` pre-allocates
-    /// `interact_size.y` as every row's minimum height and pads `item_spacing` between rows,
-    /// both fixed screen-space sizes by default -- so pitch stopped tracking the font once the
-    /// text shrank below that floor. Drives `const_edit_row_spacing`'s numbers (the same ones
-    /// `draw_editable_const_content` applies) through a real egui layout pass and checks the
-    /// row pitch actually shrinks with the zoom.
-    #[test]
-    fn t_const_edit_row_pitch_scales_with_zoom() {
-        fn row_pitch(zoom: f32) -> f32 {
-            let mut pitch = 0.0;
-            egui::__run_test_ui(|ui| {
-                let font_size = 11.0 * zoom;
-                let (item_spacing, min_row_height) = const_edit_row_spacing(zoom);
-                let mut child = ui.new_child(
-                    egui::UiBuilder::new()
-                        .max_rect(egui::Rect::from_min_size(
-                            egui::Pos2::ZERO,
-                            egui::vec2(300.0, 400.0),
-                        ))
-                        .layout(egui::Layout::top_down(egui::Align::LEFT)),
-                );
-                let style = child.style_mut();
-                style.spacing.item_spacing = item_spacing;
-                style.spacing.interact_size.y = min_row_height;
-                let font = egui::FontId::new(font_size, egui::FontFamily::Monospace);
-                let mut tops = Vec::new();
-                for i in 0..2 {
-                    let top = child
-                        .horizontal(|ui| {
-                            ui.label(egui::RichText::new("  3   ┝").monospace().size(font_size));
-                            let mut buf = format!("value{i}");
-                            ui.add(
-                                egui::TextEdit::singleline(&mut buf)
-                                    .frame(egui::Frame::NONE)
-                                    .font(font.clone())
-                                    .desired_width(80.0 * zoom),
-                            )
-                            .rect
-                            .top()
-                        })
-                        .inner;
-                    tops.push(top);
-                }
-                pitch = tops[1] - tops[0];
-            });
-            pitch
-        }
-        let at_100 = row_pitch(1.0);
-        let at_min = row_pitch(MIN_TEXT_ZOOM);
-        assert!(at_100 > 0.0);
-        assert!(
-            at_min < 0.6 * at_100,
-            "row pitch must shrink with zoom (100%: {at_100}px, {}%: {at_min}px)",
-            MIN_TEXT_ZOOM * 100.0
-        );
     }
 
     /// Reversed conditions here (e.g. returning `declared` whenever it exists) would silently

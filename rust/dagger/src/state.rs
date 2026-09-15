@@ -8,7 +8,6 @@ use crate::layout;
 use crate::render;
 use eframe::egui::{self, Rect};
 use orc_sdk::{NH, NodeInfo, NodeProperty, OH, OrcHandle, OutputProperty, Workflow};
-use std::cell::Cell;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -84,15 +83,9 @@ pub struct EditorState {
     /// (see `inspect::update_popouts`) — there is no other way back to `false`, so a node whose
     /// window the user just closed still shows `true` for one more frame before the check runs.
     pub(crate) content_popout: NodeProperty<bool>,
-    /// Per-row edit buffers for a Constant node's editable ruler display, and whether its handle
-    /// is actually editable at all (see `const_edit::is_editable`).
+    /// Editable buffer (and read-only ruler text) for a Constant node's editable content, and
+    /// whether its handle is actually editable at all (see `const_edit::is_editable`).
     pub(crate) const_edit_cache: NodeProperty<const_edit::ConstEditCache>,
-    /// Set by `const_edit::insert_after` for the row the new value landed at; read (and cleared)
-    /// by `render::draw_editable_const_content` the next time it draws that row, to steal
-    /// keyboard focus onto it -- matches the "press Enter, keep typing on the new row" feel of a
-    /// spreadsheet. A `Cell`, not a `NodeProperty`, since it's read from `render.rs` through only
-    /// `&EditorState` and needs no per-node storage or garbage collection, just one slot.
-    pub(crate) pending_focus_row: Cell<Option<(NH, usize)>>,
     /// Only ever non-empty for an `EditorState` pushed by `nested::open`: the current values that
     /// were feeding the calling `NestedCall` node's own input pins one level down, positionally
     /// matching `Workflow::workflow_input_position`. `exec`'s dispatch reads this to resolve this
@@ -167,7 +160,6 @@ impl EditorState {
             inspect_cache,
             content_popout,
             const_edit_cache,
-            pending_focus_row: Cell::new(None),
             simulated_inputs: Vec::new(),
         };
         exec::mark_all_dirty(&mut state);
