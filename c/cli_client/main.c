@@ -12,6 +12,12 @@
  *   download <session_id> <handle_id>          -> prints type and values
  *   download_workflow <sid> <path> [output_ids...] -> writes .orc file
  *   download_python_script <sid> <path> [output_ids...] -> writes .py file
+ *   connect                                    -> starts an interactive REPL session
+ *
+ * 'connect' starts a session automatically and drops into a REPL where every command
+ * above (other than 'session') is available without the host/port/session_id prefix --
+ * e.g. 'constant <type> <val>...' or 'download <handle_id>'. Type 'exit' (or send EOF) to
+ * close the session and quit.
  *
  * Supported types for 'constant': u8 u16 u32 u64 i8 i16 i32 i64 f32 f64
  *
@@ -304,10 +310,7 @@ static int http_request(char const   *host,
   return rc;
 }
 
-static int http_get_json(char const   *host,
-                         uint16_t      port,
-                         char const   *path,
-                         HttpResponse *out)
+static int http_get(char const *host, uint16_t port, char const *path, HttpResponse *out)
 {
   return http_request(host, port, "GET", path, NULL, NULL, 0, out);
 }
@@ -591,6 +594,10 @@ static void usage(void)
     "  download <session_id> <handle_id>          Print type and values\n"
     "  download_workflow <sid> <path> [ids...]     Write workflow to file\n"
     "  download_python_script <sid> <path> [ids...] Write generated Python to file\n"
+    "  connect                                    Start an interactive REPL session\n"
+    "\n"
+    "Inside the REPL started by 'connect', drop the host/port/session_id and type e.g.\n"
+    "'constant <type> <val>...' or 'download <handle_id>'. Type 'exit' to quit.\n"
     "\n"
     "Types: u8 u16 u32 u64 i8 i16 i32 i64 f32 f64\n"
     "\n"
@@ -606,47 +613,69 @@ static void die(char const *msg)
   exit(1);
 }
 
+/* Like die(), but returns control to the caller instead of exiting -- used by every cmd_*
+   function so that a failure inside the REPL just gets reported, not treated as fatal. */
+static void report_error(char const *msg)
+{
+  fprintf(stderr, "ERROR: %s\n", msg);
+}
+
 /* ==================== Command implementations ==================== */
 
-static void cmd_session_start(char const *host, uint16_t port)
+static int cmd_session_start(char const *host, uint16_t port, uint64_t *out_session_id)
 {
   HttpResponse resp;
-  if (http_post_json(host, port, "/session/start", "{}", &resp) != 0)
-    die("POST /session/start failed");
+  if (http_post_json(host, port, "/session/start", "{}", &resp) != 0) {
+    report_error("POST /session/start failed");
+    return -1;
+  }
   if (resp.status != 200) {
     fprintf(stderr, "%s\n", resp.body);
     http_response_free(&resp);
-    die("session start failed");
+    report_error("session start failed");
+    return -1;
   }
   uint64_t session_id;
-  if (json_get_u64(resp.body, "session_id", &session_id) != 0)
-    die("Failed to parse session_id");
+  if (json_get_u64(resp.body, "session_id", &session_id) != 0) {
+    http_response_free(&resp);
+    report_error("Failed to parse session_id");
+    return -1;
+  }
   printf("%llu\n", (unsigned long long)session_id);
   http_response_free(&resp);
+  *out_session_id = session_id;
+  return 0;
 }
 
-static void cmd_session_close(char const *host, uint16_t port, char const *sid_str)
+static int cmd_session_close(char const *host, uint16_t port, char const *sid_str)
 {
   char body[128];
   snprintf(body, sizeof(body), "{\"session_id\": %s}", sid_str);
   HttpResponse resp;
-  if (http_post_json(host, port, "/session/close", body, &resp) != 0)
-    die("POST /session/close failed");
+  if (http_post_json(host, port, "/session/close", body, &resp) != 0) {
+    report_error("POST /session/close failed");
+    return -1;
+  }
   if (resp.status != 200) {
     fprintf(stderr, "%s\n", resp.body);
     http_response_free(&resp);
-    die("session close failed");
+    report_error("session close failed");
+    return -1;
   }
   http_response_free(&resp);
+  return 0;
 }
 
-static void cmd_functions(char const *host, uint16_t port)
+static int cmd_functions(char const *host, uint16_t port)
 {
   HttpResponse resp;
-  if (http_get_json(host, port, "/functions", &resp) != 0)
-    die("GET /functions failed");
+  if (http_get(host, port, "/functions", &resp) != 0) {
+    report_error("GET /functions failed");
+    return -1;
+  }
   printf("%s\n", resp.body);
   http_response_free(&resp);
+  return 0;
 }
 
 #define MAX_AGGREGATE_COMPONENTS 32
@@ -686,7 +715,7 @@ static size_t parse_value_arg(char const *s, double *out)
   }
   char *buf = malloc(len - 1); /* (len - 2) inner chars + null terminator. */
   if (!buf)
-    die("alloc failed");
+    return 0; /* Treated the same as any other malformed/unparseable value. */
   memcpy(buf, s + 1, len - 2);
   buf[len - 2] = '\0';
   size_t count  = 0;
@@ -751,35 +780,38 @@ static void write_scalar(TypeEntry const *te, void *dst, double v)
   }
 }
 
-static void cmd_constant(char const *host,
-                         uint16_t    port,
-                         char const *sid_str,
-                         char const *type_name,
-                         int         n_values,
-                         char      **value_strs)
+static int cmd_constant(char const *host,
+                        uint16_t    port,
+                        char const *sid_str,
+                        char const *type_name,
+                        int         n_values,
+                        char      **value_strs)
 {
   TypeEntry const *te = type_by_name(type_name);
   if (!te) {
     fprintf(stderr, "Unknown type: %s\n", type_name);
-    usage();
+    return -1;
   }
   if (n_values <= 0) {
     fprintf(stderr, "constant requires at least one value\n");
-    usage();
+    return -1;
   }
   /* The first value's shape (scalar, or an aggregate with however many components) sets
      the item_size for the whole deck -- every other value must match it exactly. */
   double       parsed[MAX_AGGREGATE_COMPONENTS];
   size_t const n_components = parse_value_arg(value_strs[0], parsed);
   if (n_components == 0) {
-    die("Invalid, empty, or too-large (>32 components) aggregate value");
+    report_error("Invalid, empty, or too-large (>32 components) aggregate value");
+    return -1;
   }
   size_t const item_size = te->item_size * n_components;
 
   /* Parse values into a raw buffer. */
   void *items = malloc(item_size * (size_t)n_values);
-  if (!items)
-    die("alloc failed");
+  if (!items) {
+    report_error("alloc failed");
+    return -1;
+  }
   for (int i = 0; i < n_values; i++) {
     /* value_strs[0] was already parsed above (to determine n_components) -- reuse `parsed`
        instead of parsing it again. */
@@ -794,7 +826,8 @@ static void cmd_constant(char const *host,
               n_components,
               n,
               value_strs[i]);
-      die("Inconsistent aggregate value shapes");
+      report_error("Inconsistent aggregate value shapes");
+      return -1;
     }
     for (size_t c = 0; c < n_components; c++) {
       void *dst = (char *)items + (size_t)i * item_size + c * te->item_size;
@@ -816,7 +849,9 @@ static void cmd_constant(char const *host,
   buf_init(&ser);
   if (serialize_handle(&handle, &ser) != 0) {
     free(items);
-    die("Failed to serialize handle");
+    buf_free(&ser);
+    report_error("Failed to serialize handle");
+    return -1;
   }
   free(items);
   char path[256];
@@ -824,27 +859,33 @@ static void cmd_constant(char const *host,
   HttpResponse resp;
   if (http_post_bytes(host, port, path, ser.data, ser.len, &resp) != 0) {
     buf_free(&ser);
-    die("POST /constant failed");
+    report_error("POST /constant failed");
+    return -1;
   }
   buf_free(&ser);
   if (resp.status != 200) {
     fprintf(stderr, "%s\n", resp.body);
     http_response_free(&resp);
-    die("constant failed");
+    report_error("constant failed");
+    return -1;
   }
   uint64_t handle_id;
-  if (json_get_u64(resp.body, "handle_id", &handle_id) != 0)
-    die("Failed to parse handle_id");
+  if (json_get_u64(resp.body, "handle_id", &handle_id) != 0) {
+    http_response_free(&resp);
+    report_error("Failed to parse handle_id");
+    return -1;
+  }
   printf("%llu\n", (unsigned long long)handle_id);
   http_response_free(&resp);
+  return 0;
 }
 
-static void cmd_call(char const *host,
-                     uint16_t    port,
-                     char const *sid_str,
-                     char const *func_name,
-                     int         n_inputs,
-                     char      **input_strs)
+static int cmd_call(char const *host,
+                    uint16_t    port,
+                    char const *sid_str,
+                    char const *func_name,
+                    int         n_inputs,
+                    char      **input_strs)
 {
   Buf body;
   buf_init(&body);
@@ -864,13 +905,15 @@ static void cmd_call(char const *host,
   HttpResponse resp;
   if (http_post_json(host, port, "/call", body.data, &resp) != 0) {
     buf_free(&body);
-    die("POST /call failed");
+    report_error("POST /call failed");
+    return -1;
   }
   buf_free(&body);
   if (resp.status != 200) {
     fprintf(stderr, "%s\n", resp.body);
     http_response_free(&resp);
-    die("call failed");
+    report_error("call failed");
+    return -1;
   }
   uint64_t output_ids[64];
   int      n_outputs = json_get_u64_arr(resp.body, "output_ids", output_ids, 64);
@@ -881,42 +924,48 @@ static void cmd_call(char const *host,
   }
   printf("\n");
   http_response_free(&resp);
+  return 0;
 }
 
-static void cmd_download(char const *host,
-                         uint16_t    port,
-                         char const *sid_str,
-                         char const *hid_str)
+static int cmd_download(char const *host,
+                        uint16_t    port,
+                        char const *sid_str,
+                        char const *hid_str)
 {
   char path[256];
   snprintf(path, sizeof(path), "/download?session_id=%s&handle_id=%s", sid_str, hid_str);
   HttpResponse resp;
-  if (http_post_bytes(host, port, path, NULL, 0, &resp) != 0)
-    die("POST /download failed");
+  if (http_post_bytes(host, port, path, NULL, 0, &resp) != 0) {
+    report_error("POST /download failed");
+    return -1;
+  }
   if (resp.status != 200) {
     fprintf(stderr, "%s\n", resp.body);
     http_response_free(&resp);
-    die("download failed");
+    report_error("download failed");
+    return -1;
   }
   OrcHandle result;
   memset(&result, 0, sizeof(result));
   if (deserialize_handle(resp.body, resp.body_len, &result) != 0) {
     http_response_free(&resp);
-    die("Failed to deserialize result");
+    report_error("Failed to deserialize result");
+    return -1;
   }
   http_response_free(&resp);
   TypeEntry const *te = type_by_id(result.type_id);
   printf("%s ", te ? te->name : "unknown");
   print_handle_values(&result);
   orc_sdk_handle_free(&result);
+  return 0;
 }
 
-static void cmd_download_workflow(char const *host,
-                                  uint16_t    port,
-                                  char const *sid_str,
-                                  char const *out_path,
-                                  int         n_outputs,
-                                  char      **output_strs)
+static int cmd_download_workflow(char const *host,
+                                 uint16_t    port,
+                                 char const *sid_str,
+                                 char const *out_path,
+                                 int         n_outputs,
+                                 char      **output_strs)
 {
   char path[256];
   snprintf(path, sizeof(path), "/download_workflow?session_id=%s", sid_str);
@@ -933,22 +982,26 @@ static void cmd_download_workflow(char const *host,
   HttpResponse resp;
   if (http_post_json(host, port, path, body.data, &resp) != 0) {
     buf_free(&body);
-    die("POST /download_workflow failed");
+    report_error("POST /download_workflow failed");
+    return -1;
   }
   buf_free(&body);
   if (resp.status != 200) {
     fprintf(stderr, "%s\n", resp.body);
     http_response_free(&resp);
-    die("download_workflow failed");
+    report_error("download_workflow failed");
+    return -1;
   }
   FILE *f = fopen(out_path, "wb");
   if (!f) {
     http_response_free(&resp);
-    die("Failed to open output file");
+    report_error("Failed to open output file");
+    return -1;
   }
   fwrite(resp.body, 1, resp.body_len, f);
   fclose(f);
   http_response_free(&resp);
+  return 0;
 }
 
 /* Extracts the file name without its directory or extension from `path` (e.g.
@@ -975,12 +1028,12 @@ static void path_stem(char const *path, char *out, size_t cap)
   out[len] = '\0';
 }
 
-static void cmd_download_python_script(char const *host,
-                                       uint16_t    port,
-                                       char const *sid_str,
-                                       char const *out_path,
-                                       int         n_outputs,
-                                       char      **output_strs)
+static int cmd_download_python_script(char const *host,
+                                      uint16_t    port,
+                                      char const *sid_str,
+                                      char const *out_path,
+                                      int         n_outputs,
+                                      char      **output_strs)
 {
   char name[256];
   path_stem(out_path, name, sizeof(name));
@@ -1002,22 +1055,172 @@ static void cmd_download_python_script(char const *host,
   HttpResponse resp;
   if (http_post_json(host, port, path, body.data, &resp) != 0) {
     buf_free(&body);
-    die("POST /download_python_script failed");
+    report_error("POST /download_python_script failed");
+    return -1;
   }
   buf_free(&body);
   if (resp.status != 200) {
     fprintf(stderr, "%s\n", resp.body);
     http_response_free(&resp);
-    die("download_python_script failed");
+    report_error("download_python_script failed");
+    return -1;
   }
   FILE *f = fopen(out_path, "wb");
   if (!f) {
     http_response_free(&resp);
-    die("Failed to open output file");
+    report_error("Failed to open output file");
+    return -1;
   }
   fwrite(resp.body, 1, resp.body_len, f);
   fclose(f);
   http_response_free(&resp);
+  return 0;
+}
+
+/* ==================== REPL ('connect' command) ==================== */
+
+#define MAX_REPL_TOKENS 128
+
+/* Reads one line from stdin into `out` (caller must buf_free it on success), stripping the
+   trailing newline (and a preceding '\r', for CRLF input). Grows to fit lines of any length.
+   Returns 0 on success, -1 on EOF/error before any data was read. */
+static int read_line(Buf *out)
+{
+  buf_init(out);
+  char chunk[256];
+  bool got_any = false;
+  for (;;) {
+    if (!fgets(chunk, sizeof(chunk), stdin)) {
+      if (!got_any) {
+        buf_free(out);
+        return -1;
+      }
+      break;
+    }
+    got_any     = true;
+    size_t n    = strlen(chunk);
+    if (buf_append(out, chunk, n) != 0) {
+      buf_free(out);
+      return -1;
+    }
+    if (n > 0 && chunk[n - 1] == '\n')
+      break;
+  }
+  while (out->len > 0 && (out->data[out->len - 1] == '\n' || out->data[out->len - 1] == '\r'))
+    out->len--;
+  if (buf_append(out, "\0", 1) != 0) {
+    buf_free(out);
+    return -1;
+  }
+  return 0;
+}
+
+/* Splits `line` in place on whitespace into `argv` (capacity `max`). Returns the number of
+   tokens found, capped at `max` -- any tokens beyond that are left unparsed in `line`. */
+static int tokenize_line(char *line, char **argv, int max)
+{
+  int   argc = 0;
+  char *p    = line;
+  while (*p) {
+    while (*p == ' ' || *p == '\t')
+      p++;
+    if (!*p || argc >= max)
+      break;
+    argv[argc++] = p;
+    while (*p && *p != ' ' && *p != '\t')
+      p++;
+    if (*p) {
+      *p = '\0';
+      p++;
+    }
+  }
+  return argc;
+}
+
+/* Dispatches one REPL line to the matching cmd_* function, with host/port/session already
+   supplied -- the REPL's whole reason to exist is that the user doesn't retype those. */
+static int repl_dispatch(char const *host, uint16_t port, char const *sid_str, int argc, char **argv)
+{
+  char const *cmd = argv[0];
+  if (strcmp(cmd, "session") == 0) {
+    report_error(
+      "'session' is managed automatically inside a REPL ('connect' opened it, 'exit' will "
+      "close it)");
+    return -1;
+  }
+  if (strcmp(cmd, "functions") == 0) {
+    return cmd_functions(host, port);
+  }
+  if (strcmp(cmd, "constant") == 0) {
+    if (argc < 3) {
+      report_error("usage: constant <type> <val>...");
+      return -1;
+    }
+    return cmd_constant(host, port, sid_str, argv[1], argc - 2, &argv[2]);
+  }
+  if (strcmp(cmd, "call") == 0) {
+    if (argc < 2) {
+      report_error("usage: call <func> [input_id...]");
+      return -1;
+    }
+    return cmd_call(host, port, sid_str, argv[1], argc - 2, &argv[2]);
+  }
+  if (strcmp(cmd, "download") == 0) {
+    if (argc < 2) {
+      report_error("usage: download <handle_id>");
+      return -1;
+    }
+    return cmd_download(host, port, sid_str, argv[1]);
+  }
+  if (strcmp(cmd, "download_workflow") == 0) {
+    if (argc < 2) {
+      report_error("usage: download_workflow <path> [output_id...]");
+      return -1;
+    }
+    return cmd_download_workflow(host, port, sid_str, argv[1], argc - 2, &argv[2]);
+  }
+  if (strcmp(cmd, "download_python_script") == 0) {
+    if (argc < 2) {
+      report_error("usage: download_python_script <path> [output_id...]");
+      return -1;
+    }
+    return cmd_download_python_script(host, port, sid_str, argv[1], argc - 2, &argv[2]);
+  }
+  fprintf(stderr, "ERROR: Unknown command: %s\n", cmd);
+  return -1;
+}
+
+/* 'connect' command: opens one session and keeps it alive for exactly as long as the REPL
+   runs -- 'exit' (or EOF on stdin) closes it and returns. */
+static int cmd_connect(char const *host, uint16_t port)
+{
+  uint64_t session_id;
+  if (cmd_session_start(host, port, &session_id) != 0)
+    return -1;
+  char sid_str[32];
+  snprintf(sid_str, sizeof(sid_str), "%llu", (unsigned long long)session_id);
+
+  for (;;) {
+    printf("orc> ");
+    fflush(stdout);
+    Buf line;
+    if (read_line(&line) != 0)
+      break; /* EOF: behave like 'exit'. */
+    char *tokens[MAX_REPL_TOKENS];
+    int   n_tokens = tokenize_line(line.data, tokens, MAX_REPL_TOKENS);
+    if (n_tokens == 0) {
+      buf_free(&line);
+      continue;
+    }
+    if (strcmp(tokens[0], "exit") == 0) {
+      buf_free(&line);
+      break;
+    }
+    repl_dispatch(host, port, sid_str, n_tokens, tokens);
+    buf_free(&line);
+  }
+  cmd_session_close(host, port, sid_str);
+  return 0;
 }
 
 /* ==================== Main ==================== */
@@ -1034,53 +1237,58 @@ int main(int argc, char **argv)
   if (sock_init() != 0)
     die("Failed to initialize sockets");
 
+  int rc = 0;
   if (strcmp(cmd, "session") == 0) {
     if (argc < 5)
       usage();
     if (strcmp(argv[4], "start") == 0) {
-      cmd_session_start(host, port);
+      uint64_t session_id;
+      rc = cmd_session_start(host, port, &session_id);
     }
     else if (strcmp(argv[4], "close") == 0) {
       if (argc < 6)
         usage();
-      cmd_session_close(host, port, argv[5]);
+      rc = cmd_session_close(host, port, argv[5]);
     }
     else {
       usage();
     }
   }
   else if (strcmp(cmd, "functions") == 0) {
-    cmd_functions(host, port);
+    rc = cmd_functions(host, port);
   }
   else if (strcmp(cmd, "constant") == 0) {
     if (argc < 7)
       usage(); /* host port constant sid type val... */
-    cmd_constant(host, port, argv[4], argv[5], argc - 6, &argv[6]);
+    rc = cmd_constant(host, port, argv[4], argv[5], argc - 6, &argv[6]);
   }
   else if (strcmp(cmd, "call") == 0) {
     if (argc < 6)
       usage(); /* host port call sid func [inputs...] */
-    cmd_call(host, port, argv[4], argv[5], argc - 6, &argv[6]);
+    rc = cmd_call(host, port, argv[4], argv[5], argc - 6, &argv[6]);
   }
   else if (strcmp(cmd, "download") == 0) {
     if (argc < 6)
       usage(); /* host port download sid hid */
-    cmd_download(host, port, argv[4], argv[5]);
+    rc = cmd_download(host, port, argv[4], argv[5]);
   }
   else if (strcmp(cmd, "download_workflow") == 0) {
     if (argc < 6)
       usage(); /* host port download_workflow sid outpath [output_ids...] */
-    cmd_download_workflow(host, port, argv[4], argv[5], argc - 6, &argv[6]);
+    rc = cmd_download_workflow(host, port, argv[4], argv[5], argc - 6, &argv[6]);
   }
   else if (strcmp(cmd, "download_python_script") == 0) {
     if (argc < 6)
       usage(); /* host port download_python_script sid outpath [output_ids...] */
-    cmd_download_python_script(host, port, argv[4], argv[5], argc - 6, &argv[6]);
+    rc = cmd_download_python_script(host, port, argv[4], argv[5], argc - 6, &argv[6]);
+  }
+  else if (strcmp(cmd, "connect") == 0) {
+    rc = cmd_connect(host, port);
   }
   else {
     usage();
   }
 
   sock_cleanup();
-  return 0;
+  return rc == 0 ? 0 : 1;
 }
