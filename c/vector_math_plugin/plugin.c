@@ -88,7 +88,7 @@ OrcError orc_deck_serialize(uint64_t const ctx, OrcHandle const *handle)
     err =
       orc_sdk_host_serial_write(ctx, handle->items, handle->item_size * handle->n_items);
   }
-  return ORC_ERROR_NONE;
+  return err;
 }
 
 OrcError orc_deck_deserialize(uint64_t const ctx,
@@ -121,7 +121,11 @@ OrcError orc_deck_deserialize(uint64_t const ctx,
     }
     deck = _orc_sdk_deck_grow_capacity(
       (void *)temp_handle.items, temp_handle.item_size, out->n_items);
-    ORC_SDK_REQUIRE(deck != NULL);
+    if (deck == NULL) {
+      orc_sdk_arr_free(marks);
+      orc_sdk_handle_free(&temp_handle);
+      return ORC_ERROR_ALLOC_FAILED;
+    }
   }
   _OrcSdk_DeckHeader *header = _orc_sdk_deck_header(deck);
   header->count              = out->n_items;
