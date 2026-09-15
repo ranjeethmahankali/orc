@@ -24,7 +24,7 @@ jobs:
       - name: Build C and C++ (Debug)
         run: cmake -S . -B build/debug -DCMAKE_BUILD_TYPE=Debug && cmake --build build/debug
       - name: Run C tests
-        run: build/debug/orc_sdk_tests && build/debug/example_c_plugin_tests
+        run: build/debug/orc_sdk_tests && build/debug/example_c_plugin_tests && build/debug/vector_math_plugin_tests
       - name: Run C++ tests
         run: build/debug/orc_sdk_cpp_tests
       - name: Run Rust Clippy
@@ -61,7 +61,7 @@ jobs:
       - name: Build C and C++ (Debug)
         run: cmake -S . -B build/debug -DCMAKE_BUILD_TYPE=Debug && cmake --build build/debug --config Debug
       - name: Run C tests
-        run: build/debug/orc_sdk_tests.exe && build/debug/example_c_plugin_tests.exe
+        run: build/debug/orc_sdk_tests.exe && build/debug/example_c_plugin_tests.exe && && build/debug/vector_math_plugin_tests.exe
       - name: Run C++ tests
         run: build/debug/orc_sdk_cpp_tests.exe
       - name: Run Rust Clippy
@@ -98,7 +98,7 @@ jobs:
       - name: Build C and C++ (Debug)
         run: cmake -S . -B build/debug -DCMAKE_BUILD_TYPE=Debug && cmake --build build/debug
       - name: Run C tests
-        run: build/debug/orc_sdk_tests && build/debug/example_c_plugin_tests
+        run: build/debug/orc_sdk_tests && build/debug/example_c_plugin_tests && build/debug/vector_math_plugin_tests
       - name: Run C++ tests
         run: build/debug/orc_sdk_cpp_tests
       - name: Run Rust Clippy
