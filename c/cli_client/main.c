@@ -12,7 +12,7 @@
  *   download <session_id> <handle_id>          -> prints type and values
  *   download_workflow <sid> <path> [output_ids...] -> writes .orc file
  *   download_python_script <sid> <path> [output_ids...] -> writes .py file
- *   connect                                    -> starts an interactive REPL session
+ *   connect <host> <port>                      -> starts an interactive REPL session
  *
  * 'connect' starts a session automatically and drops into a REPL where every command
  * above (other than 'session') is available without the host/port/session_id prefix --
@@ -594,7 +594,7 @@ static void usage(void)
     "  download <session_id> <handle_id>          Print type and values\n"
     "  download_workflow <sid> <path> [ids...]     Write workflow to file\n"
     "  download_python_script <sid> <path> [ids...] Write generated Python to file\n"
-    "  connect                                    Start an interactive REPL session\n"
+    "  connect <host> <port>                      Start an interactive REPL session\n"
     "\n"
     "Inside the REPL started by 'connect', drop the host/port/session_id and type e.g.\n"
     "'constant <type> <val>...' or 'download <handle_id>'. Type 'exit' to quit.\n"
