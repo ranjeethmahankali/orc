@@ -176,7 +176,7 @@
   have any marks when created from the UI. The UI needs to check if it is a list and add a depth 1
   mark at the start.
 
-  - [ ] We have to append a marks as soon as a const node has more than one row, and remove it when
+  - [X] We have to append a marks as soon as a const node has more than one row, and remove it when
     we remove all rows but one. This will fix the bug.
 
   Some other improvements:

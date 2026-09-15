@@ -424,11 +424,32 @@ where
         ),
     });
 
+    normalize_flat_marks(&mut new_deck);
+
     Ok(Rebuilt {
         deck: new_deck,
         new_indices,
         inserted_at,
     })
+}
+
+/// A deck with more than one item must carry at least one mark (`Deck::flatten()`'s own
+/// invariant), or a consumer that reads structure off `marks` alone -- e.g. `DeckView::depth()`
+/// in the Python code generator -- can't tell an unmarked multi-item deck apart from a bare
+/// scalar, and silently renders just its first item. `walk_runs`'s replay only ever carries
+/// forward marks that were already there, so a deck that started as a markless single value
+/// (`Deck::from_value`) and grew past one item via `insert_after` would otherwise stay markless.
+/// Guarded narrowly -- only an empty mark list, or exactly the trivial single flat-list mark --
+/// so a genuinely nested/grouped deck (multiple marks, or a non-zero depth) is never touched.
+fn normalize_flat_marks<T: Default + Clone>(deck: &mut orc_sdk::Deck<T>) {
+    const FLAT_MARK: OrcMark = OrcMark { depth: 0, pos: 0 };
+    if deck.marks().is_empty() {
+        if deck.len() > 1 {
+            deck.flatten();
+        }
+    } else if deck.len() <= 1 && deck.marks() == [FLAT_MARK] {
+        deck.assign_from_raw_data(deck.items().to_vec(), Vec::new());
+    }
 }
 
 /// Dispatch over the two editable scalar types (`f64`/`i64` -- the only reachable ones, since
@@ -994,6 +1015,52 @@ mod test {
             "a depth-0 insertion adds no new mark"
         );
         assert_eq!(state.pending_focus_row.get(), Some((nh, 2)));
+    }
+
+    /// The bug this module exists to fix: a constant that started as a bare scalar (`from_value`,
+    /// no marks at all) must gain the single flat-list mark as soon as a second row makes it a
+    /// real list -- otherwise a consumer that reads structure off `marks` alone (e.g. the Python
+    /// code generator's `DeckView::depth()`) can't tell it apart from a scalar and silently
+    /// exports only the first item.
+    #[test]
+    fn t_insert_after_a_bare_scalar_adds_the_missing_flat_mark() {
+        let (mut state, nh) = constant_node(Deck::from_value(1.0));
+        assert_eq!(n_marks_of(&state, nh), 0, "a bare scalar starts with no marks");
+
+        insert_after(&mut state, nh, 0);
+
+        assert_eq!(items_of(&state, nh), vec![1.0, 0.0]);
+        let node_info_prop = state.workflow.node_info_prop();
+        let node_infos = node_info_prop.try_borrow().unwrap();
+        let NodeInfo::Constant(handle) = &node_infos[nh] else {
+            panic!("expected a constant node")
+        };
+        assert_eq!(
+            handle.marks(),
+            &[OrcMark { depth: 0, pos: 0 }],
+            "growing past one item must add the flat-list mark, not stay markless"
+        );
+    }
+
+    /// The mirror direction: deleting a flat list back down to one item must drop the now-trivial
+    /// flat-list mark, returning to the same markless "bare scalar" encoding a single value
+    /// starts with -- not leave a redundant mark sitting on a single item.
+    #[test]
+    fn t_delete_row_back_to_one_item_removes_the_flat_mark() {
+        let mut deck = Deck::<f64>::default();
+        deck.push(1.0, 1);
+        deck.push(2.0, 0);
+        let (mut state, nh) = constant_node(deck);
+        assert_eq!(n_marks_of(&state, nh), 1);
+
+        delete_row(&mut state, nh, 1);
+
+        assert_eq!(items_of(&state, nh), vec![1.0]);
+        assert_eq!(
+            n_marks_of(&state, nh),
+            0,
+            "shrinking back to one item must drop the now-redundant flat-list mark"
+        );
     }
 
     /// The whole point of replacing the "+ Add" button: Enter can be pressed on *any* row, not
