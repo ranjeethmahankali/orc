@@ -164,7 +164,7 @@
 
   Should be able to add variadic inputs and outputs for the nodes that support them, via the UI.
 
-* TODO Bug - Python code exported from dagger doesn't export lists properly
+* TODO tlfcbv - Bug - Python code exported from dagger doesn't export lists properly
   :PROPERTIES:
   :CREATED:  2026-09-14 Mon 20:24
   :END:
@@ -172,6 +172,35 @@
   For lists, only the first item is exported. This is likely because const nodes with lists don't
   have any marks when created from the UI. The UI needs to check if it is a list and add a depth 1
   mark at the start.
+
+  - [ ] We have to append a marks as soon as a const node has more than one row, and remove it when
+    we remove all rows but one. This will fix the bug.
+
+  Some other improvements:
+  - [ ] If the space between the rows of const nodes is removed, it would look much nicer.
+  - [ ] It's annoying that every new row inserted into the const node starts with a zero. It should
+    start empty, and if I don't type anything in, and commit, empty rows are discarded.
+
+* NEXT tlfbas - Improve usability of cli_client
+  :PROPERTIES:
+  :CREATED:  2026-09-15 Tue 16:07
+  :END:
+  :LOGBOOK:
+  - State "NEXT"       from "TODO"       [2026-09-15 Tue 16:52]
+  :END:
+
+  Add a ~connect~ command that takes an address and port, and starts a REPL session. The REPL
+  session should support all the exact same commands as the original CLI, except I don't have to
+  type the name of the executable, address, port, and session id every time. I just need to supply
+  the other arguments. ~connect~ should store the address and port in memory, and immediately start
+  a session and store that too. ~functions~ command should still work the same way.
+
+  - [ ] Add an exit command that exits out of the REPL and program.
+  - [ ] Remove exit(1) from cmd_* functions, and leave that to the outside caller. REPL should not
+    exit. It should just print the error and await next input.
+  - [ ] Exiting stops the session. The lifetime of the server session is the same as the lifetime of
+    the REPL session.
+  - [ ] Update the server to return formatted list of functions instead of JSON.
 
 * NEXT tl8agd - Curve plugin functions
   :PROPERTIES:
