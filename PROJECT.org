@@ -164,6 +164,287 @@
 
   Should be able to add variadic inputs and outputs for the nodes that support them, via the UI.
 
+* NEXT tlfs7d - Enhance orc_fn and orc_map_fn macros to support arbitrary overloading
+  :PROPERTIES:
+  :CREATED:  2026-09-15 Tue 22:42
+  :END:
+  :LOGBOOK:
+  - State "NEXT"       from "TODO"       [2026-09-15 Tue 22:57]
+  :END:
+
+** LLM Plan
+
+   Today ~#[orc_fn]~/~#[orc_map_fn]~ (in ~rust/orc_sdk/derive_macros/src/lib.rs~) hard-require a
+   single function literally named ~run~ inside the macro body, optionally monomorphized via ~let
+   types = (run::<T1>, run::<T2>, ...)~ (only required when ~run~ is generic). This is too rigid: it
+   forces one arbitrarily-named function, and only supports "the same generic body instantiated with
+   different types," not true overloading (different function bodies contributing to the same
+   exported ABI function). This plan is implementation-ready: it names the exact functions to
+   add/replace/keep and the exact call sites to edit. Read the current ~derive_macros/src/lib.rs~ in
+   full before starting -- every function named below already exists there today unless explicitly
+   marked "(new)".
+
+*** Data model
+
+   Replace the single ~run_fn: ItemFn~ threaded through everything with:
+
+   #+begin_example
+   struct DispatchFn {
+       name: syn::Ident,
+       run_fn: syn::ItemFn,
+       params: ValidatedParams,
+       cases: Vec<Vec<syn::GenericArgument>>, // one entry per `dispatches` tuple element
+                                               // naming this fn; empty vec = non-generic call
+   }
+   #+end_example
+
+   One ~DispatchFn~ per *unique underlying function name* referenced by ~dispatches~ (not per
+   case/monomorphization -- arity/shape is a property of the function, not the instantiation).
+   ~ParamInfo~/~ValidatedParams~ are unchanged.
+
+*** Parsing: ~parse_fn_body~, ~parse_types_expr~ -> ~parse_dispatches_expr~
+
+   - ~parse_dispatches_expr~ (rename of ~parse_types_expr~): same tuple-of-~path~/~path::<args>~
+     shape, but drop the "must literally be ~run~" check. Require single-segment paths (reject a
+     qualified path with a clear error -- ~candidate_fns~, below, are always bare local items, so a
+     qualified path could never resolve). Reject an entry literally named ~dims~ up front (before
+     doing any ~candidate_fns~ lookup, since ~dims_fn~ is pulled out separately and a "not found"
+     error would be misleading) with a message explaining ~dims~ is reserved for computing
+     ~OrcDims~. Returns ~Vec<(syn::Ident, Vec<syn::GenericArgument>)>~ in written order.
+   - ~parse_fn_body~: instead of matching ~fn~ items by literal name ~"run"~/~"dims"~, only
+     special-case ~"dims"~ -> ~dims_fn~ (as today); every *other* ~fn~ item goes into ~candidate_fns:
+     Vec<(String, syn::ItemFn)>~ in original order, doc-stripping deferred until it's known whether
+     the fn becomes a dispatch target. ~let dispatches = ...~ (was ~let types~) parsed the same way
+     as today's ~let types~ local was. *~dispatches~ is now required unconditionally* (today it's
+     only required when ~run~ is generic) -- both ~#[orc_fn]~ and ~#[orc_map_fn]~ must error clearly
+     if it's missing.
+   - New resolution step, ~resolve_dispatch_fns(dispatch_entries, candidate_fns, validate_one)~:
+     group ~dispatch_entries~ by name, preserving first-seen order; for each unique name, look it up
+     in ~candidate_fns~ (error "~dispatches~ references ~foo~, but no ~fn foo~ is defined in this
+     scope" if absent), strip its doc attrs (today only ~run~/~dims~ got this), check every one of
+     its ~dispatches~-supplied generic-arg-count entries matches *that specific function's own*
+     generic-param count (type + const params) -- this replaces today's single global check against
+     the one ~run_fn~ -- then call the injected ~validate_one~ closure to produce its
+     ~ValidatedParams~ and build a ~DispatchFn~. Anything left over in ~candidate_fns~ is inert code,
+     spliced into ~user_items~ unchanged (today's catch-all behavior, just now decided after dispatch
+     resolution instead of inline per-statement).
+
+*** Validation: must be two-phase (per-function, then aggregate)
+
+   Two of today's checks in ~validate_orc_fn~ are *not* per-function and can't be evaluated while
+   validating one ~DispatchFn~ in isolation -- they depend on the whole set:
+
+   - ~validate_dispatch_fn(run_fn, input_depths, output_depths) -> syn::Result<ValidatedParams>~
+     (replaces ~validate_orc_fn~'s per-function logic): host-param detection, input/output
+     classification via ~is_output_param~, ~resolve_depths~ using the shared body-level
+     ~INPUT_DEPTHS~/~OUTPUT_DEPTHS~ consts if present -- *minus* the dims/registry checks and *minus*
+     the generic-arity-vs-dispatches cross-check (moved into ~resolve_dispatch_fns~ above).
+   - ~validate_dispatch_set(dispatch_fns, dims_fn, registry) -> syn::Result<()>~ (new), run once
+     after every ~DispatchFn~ is built:
+     - Compute the set of distinct input arities and distinct output arities across all ~DispatchFn~s
+       (e.g. via ~BTreeSet<usize>~).
+     - registry requirement becomes "*any* ~DispatchFn~ has outputs -> registry required" (today it's
+       tied to the one ~run_fn~; with overloading, different named functions can have different
+       output arities).
+     - If ~dims_fn~ is present: require both arity sets to be singletons (dims has one fixed
+       signature) -- error clearly ("fn dims cannot be used when dispatches entries have varying
+       input/output arity") if either side varies -- then validate ~dims_fn~ against that one ~(n_in,
+       n_out)~ pair via today's unchanged ~validate_dims_fn~.
+   - ~#[orc_map_fn]~ gets the analogous split: ~validate_map_dispatch_fn~ (per-function; same strict
+     shape checks as today's ~validate_orc_map_fn~ minus dims/registry/arity-cross-check) plus
+     ~validate_map_dispatch_set~ (aggregate; degenerates to "registry always required, dims -- if
+     present -- always validated against ~(1, 1)~" since ~validate_map_dispatch_fn~ already forces
+     every function to exactly one input/one output -- share the aggregate-step shape with the
+     ~orc_fn~ version rather than duplicating it where reasonable).
+
+   Document (don't fix) a known limitation: ~INPUT_DEPTHS~/~OUTPUT_DEPTHS~ are still a single shared
+   ~[u8; N]~ body-level const, so they can only apply to ~DispatchFn~s whose arity matches N --
+   ~resolve_depths~ already errors clearly on a length mismatch. This means variable arity can't be
+   combined with an un-inferrable-depth (~DeckView~/~DeckWriter~) parameter across differently-shaped
+   groups. None of the current call sites hit this.
+
+*** Codegen: group by arity, merge the dispatch-body construction into one function
+
+   - ~group_by_arity(dispatch_fns: &[DispatchFn]) -> Vec<ArityGroup>~ (new), where ~ArityGroup {
+     n_inputs: usize, n_outputs: usize, fns: Vec<&DispatchFn> }~ -- groups by ~(n_inputs,
+     n_outputs)~, first-seen order preserved (same idiom as today's ~type_to_consts~/~type_consts~
+     ordered-map pattern).
+   - Replace ~generate_type_dispatch~ with two new functions:
+     1. ~generate_group_type_dispatch(n_inputs, fns: &[&DispatchFn], registry_expr) -> TokenStream~:
+        today's existing flat-match logic (mangled per-type ~type_id~/~item_size~ consts via
+        ~get_or_insert~, ~const _: () = assert!(...)~ collision checks, one arm per ~(DispatchFn,
+        case)~ pair calling ~dispatch_<fn_name>_::<case_args>~), scoped to one group's
+        ~DispatchFn~s. This is the part of today's ~generate_type_dispatch~ that stays essentially
+        unchanged, just parameterized per group instead of operating on the one global function.
+     2. ~generate_dispatch_body(dispatch_fns, registry_expr, dims_call) -> TokenStream~ (new): owns
+        everything from ~inputs_~/~outputs_~ slice construction through the final ~match result_ {
+        Ok(()) => ORC_ERROR_NONE, Err(e) => ... }~. This *must* own both the grouping and the
+        wrapper's arity-dependent slice/null-check code -- they can't stay in separately-called
+        functions, because pushing per-index null/empty checks and slice construction "into" a
+        group's arm requires the same function to own both.  Per axis (inputs, outputs)
+        independently:
+        - Fixed across all groups -> build the check/slice/per-index-null-checks *once*, before any
+          group branching, byte-for-byte identical in shape to today's code (single literal
+          ~orc_check_return!~ arity-equality check, ~slice_from_ptr(ptr, #n)~ with the compile-time
+          literal, per-index checks unrolled over the fixed range). When *neither* axis varies there
+          is exactly one group and the whole function must reproduce today's flat shape unchanged --
+          no gratuitous restructuring of the common case.
+        - Varies -> skip the fixed-side code for that axis; instead branch on the actual axis (~match
+          n_inputs_ {...}~, ~match n_outputs_ {...}~, or ~match (n_inputs_, n_outputs_) {...}~ only
+          when *both* vary -- never blanket-tuple- match when only one side varies, since that would
+          duplicate the fixed side's identical code into every arm). Each arm corresponds to one
+          group and its own ~n_inputs~/~n_outputs~ are themselves compile-time-known literals at that
+          point, so the arm can build its own slice + per-index null/empty checks directly from those
+          literals -- no runtime-length slicing is ever actually needed.
+        - The arity-match's fallback arm must produce the same error code as today's arity mismatch
+          (~ORC_ERROR_INVALID_ARGUMENTS~, not ~ORC_ERROR_TYPE_MISMATCH~ / ~Error::DeckTypeMismatch~,
+          which stays reserved for the *inner* per-position type-mismatch fallback). Implement the
+          fallback arm as:
+          #+begin_example
+          _ => {
+              orc_sdk::orc_check_return!(
+                  host_, orc_sdk::ORC_ERROR_INVALID_ARGUMENTS, false,
+                  "Expected (inputs, outputs) arity to be one of [{}], got ({}, {})",
+                  <valid arities joined as a string>, n_inputs_, n_outputs_
+              );
+              unreachable!()
+          }
+          #+end_example
+          *Important, easy-to-miss gotcha*: ~orc_check_return!~ expands to ~{ if !(cond) { ...;
+          return $err; } }~. An ~if~ with no ~else~ always has static type ~()~ in Rust -- even when
+          the condition is a hardcoded literal ~false~ (so the ~then~-branch, containing the
+          ~return~, is unconditionally taken at runtime) -- Rust does not special-case this for
+          typing. So the macro invocation *by itself* cannot be the tail expression of a match arm
+          that must unify with ~Result<(), Error>~-typed sibling arms; it type-checks as ~()~, which
+          is a mismatch. Always follow it with a statement-terminated ~;~ and then ~unreachable!()~
+          (type ~!~, coerces to anything) as the arm's actual tail expression, exactly as sketched
+          above. This is a genuine compile error waiting to happen if skipped -- call it out
+          explicitly to whoever implements this.
+   - ~generate_dispatch_fn~ (per ~DispatchFn~): unchanged internals, except the generated inner
+     function name becomes ~format_ident!("dispatch_{}_", f.name)~ instead of the hardcoded
+     ~dispatch_~ (to avoid collisions between multiple distinct underlying functions in one group),
+     and the call inside it to the user's function must use ~&f.run_fn.sig.ident~ (dynamic) instead
+     of the hardcoded ~run~ identifier.
+   - ~generate_map_dispatch_fn~ (the ~orc_map_fn~ analog): same rename treatment; the generated
+     function's signature shape (~fn(host_: &HostCallbacks, registry_: &DeckRegistry, inputs_:
+     &[OrcHandle], outputs_: &mut [OrcHandle]) -> Result<(), Error>~) is identical to
+     ~generate_dispatch_fn~'s output, so ~generate_group_type_dispatch~ and ~generate_dispatch_body~
+     above can be *shared verbatim* between ~#[orc_fn]~ and ~#[orc_map_fn]~ -- don't duplicate them
+     for the map macro.
+   - ~generate_orc_fn~/~generate_orc_map_fn~ become thin assemblers: build the ~OrcFuncInfo~
+     ~name~/~desc~ literals, build ~dims_fn_tokens~/~dims_call~ (unchanged shape, just needs the
+     arity pulled from ~dispatch_fns[0].params~ since it's guaranteed uniform whenever ~dims_fn~ is
+     ~Some~), splice every ~DispatchFn::run_fn~ + leftover ~user_items~ + ~dims_fn_tokens~ into the
+     wrapper body, call ~generate_dispatch_body~, then emit the ~OrcFuncInfo~ const using the shared
+     arg-info helper below.
+
+*** ~input_args~/~output_args~ (~OrcArgumentInfo~) construction
+
+   One shared helper, ~build_args_ptr(dispatch_fns: &[DispatchFn], side: Side) -> (n_expr:
+   TokenStream, args_ptr_expr: TokenStream)~ (new; ~enum Side { Inputs, Outputs }~), used by both
+   macros, replacing today's ~fn_arg_info_expr~ plus the hand-duplicated
+   ~input_args_ptr~/~output_args_ptr~ blocks in both ~generate_orc_fn~ and ~generate_orc_map_fn~:
+   1. Arity varies on that side (arities collected across all ~DispatchFn~s have more than one
+      distinct value) -> ~n_expr = orc_sdk::ORC_ARGS_VARIADIC~, ~args_ptr_expr = null~.
+   2. Arity fixed (call it N) but N == 0 -> ~n_expr = 0u64~, ~args_ptr_expr = null~ (matches today's
+      behavior for a function with no inputs/outputs on that side).
+   3. Arity fixed, N > 0, but the parameter name disagrees at some position across ~DispatchFn~s ->
+      ~args_ptr_expr = null~ (even though the count is known).
+   4. Arity fixed, names agree everywhere -> build the array: per position, ~type_id = ORC_TYPE_ANY~
+      if any ~DispatchFn~ has a type mentioning a generic there (see ~type_mentions_generic~ below,
+      checked per ~DispatchFn~ per position) *or* if the concrete resolved types disagree across
+      ~DispatchFn~s at that position (compare via the same textual ~quote!{#ty}.to_string()~ equality
+      already used for mangling in ~get_or_insert~); otherwise the single agreed concrete type's
+      ~TYPE_INFO.type_id~.
+   For ~#[orc_map_fn]~, arity is always ~(1, 1)~ by construction, so branch 1 never triggers there --
+   still share the helper rather than duplicate it.
+
+*** Const generics embedded in compound parameter types (new scope, added mid-discussion)
+
+   Today, ~substitute_type~/~is_generic_type~ only resolve a parameter type that is *itself* a bare
+   generic ident (e.g. ~T~) -- a generic embedded inside a compound shape, e.g.  ~fn run<T, const N:
+   usize>(v: &[T; N], ...)~, is left untouched, so the non-generic outer wrapper's per-case
+   dispatch-key computation (~size_of::<[T; N]>()~, ~<[T; N] as TOrcData>::TYPE_INFO~) would fail to
+   compile (~T~/~N~ unresolved outside the generic scope). Close this gap:
+   - Extend ~substitute_type~ with a ~syn::Type::Array~ branch: recursively substitute the element
+     type (existing bare-ident logic), and if the length expression (~syn::TypeArray::len:
+     syn::Expr~) is a bare ident matching one of the function's const-generic parameters, replace it
+     with the concrete ~syn::Expr~ from the matching ~GenericArgument::Const~ in that dispatch
+     case. Add a small helper, ~substitute_const_expr(expr, generics, case_args) -> syn::Expr~,
+     mirroring ~substitute_type~'s existing bare-ident-match-and-replace logic but for
+     ~GenericParam::Const~/~GenericArgument::Const~ instead of ~GenericParam::Type~/
+     ~GenericArgument::Type~.
+   - Add ~is_generic_const_expr(expr, generics) -> bool~ (mirrors ~is_generic_type~ for consts) and
+     generalize the "is this type generic" check into a recursive ~type_mentions_generic(ty,
+     generics) -> bool~ (true if ~is_generic_type(ty, generics)~, or if ~ty~ is a ~syn::Type::Array~
+     whose element or length recursively mentions a generic) -- use this (not the narrower
+     ~is_generic_type~) wherever the "should this be ~ORC_TYPE_ANY~" decision is made, i.e. inside
+     ~build_args_ptr~.
+   - No other changes needed: once substitution resolves ~[T; N]~ into e.g. ~[f64; 3]~ for a given
+     case, the existing mangling/~size_of~/~TYPE_INFO~/collision-assertion machinery in
+     ~generate_group_type_dispatch~ already handles a concrete aggregate type unchanged -- this is
+     exactly what ~vec3_length~'s ~&[f64; 3]~ (in ~example_rust_plugin/src/basic.rs~) already
+     exercises today, just with the array size fixed instead of monomorphized. This is orthogonal to
+     the arity-variance work above and doesn't touch grouping or the dispatch match's structure.
+   - Aggregate-size disambiguation between dispatches that share a ~type_id~ but differ only in
+     ~item_size~ (e.g. ~[f64; 3]~ vs ~[f64; 4]~, or two altogether distinct overload functions that
+     happen to take differently-sized arrays) needs *no new codegen*: the existing ~(type_id,
+     item_size)~-keyed match and its collision-assert logic already disambiguate this (proven today
+     by ~t_vec3_length_rejects_scalar_f64_sharing_the_same_type_id~ in ~basic.rs~), and that logic is
+     inherited unchanged into ~generate_group_type_dispatch~, already operating across every case
+     from every function in a group, not per-function. What *is* new is that this refactor exercises
+     that logic through two previously-impossible paths (multiple distinct named functions in one
+     ~dispatches~ list; const-generic array lengths) -- both need explicit test coverage (see
+     Verification below), not new design.
+
+*** Error-message audit
+
+   Roughly a dozen hardcoded strings reference ~"run"~/~"fn run"~ literally (e.g. ~"fn run must
+   return Result<(), Error> or nothing"~, ~"fn run is generic; let types = (run::<...>, ...)  must be
+   provided"~). All of these must interpolate the actual function's ident (e.g. via ~format!("fn `{}`
+   must return ...", run_fn.sig.ident)~) now that names are arbitrary. Also rename all remaining
+   ~types~/~let types~ wording in error messages to ~dispatches~/~let dispatches~.
+
+*** Plugin call-site edits (mechanical, do this last, once codegen compiles)
+
+   - ~example_rust_plugin/src/basic.rs~ (11 items): rename ~let types~ -> ~let dispatches~ for ~add~,
+     ~multiply~, ~subtract~, ~divide~, ~repeat_list~ (these already have ~let types~ with
+     monomorphizations); *add* ~let dispatches = (run,);~ to ~pow~, ~sin~, ~cos~, ~tan~,
+     ~collatz_parallel_experiment~, ~vec3_length~ (none of these currently have ~let types~ at all,
+     since ~run~ isn't generic in them).
+   - ~example_rust_plugin/src/complex.rs~ (4 items): *add* ~let dispatches = (run,);~ to
+     ~create_complex~, ~add_complex~, ~mul_complex~, ~complex_get_parts~.
+   - ~curve_plugin/src/arc.rs~: *add* ~let dispatches = (run,);~ to ~arc_2d_from_three_points~.
+   - No other repo usages exist (confirmed by grep across ~rust/~ -- ~orc_fn_info!~ call sites in
+     both plugins' ~lib.rs~ reference functions by name only via a separate proc macro and are
+     unaffected by any of this).
+   - None of the existing ~#[cfg(test)] mod tests~ blocks in these three files need changes -- they
+     call the generated ~extern "C"~ functions directly by name with fixed arities.
+
+*** Verification
+
+   1. ~cargo build --workspace~ -- full rebuild, since ~orc_sdk~/~derive_macros~ changes cascade
+      everywhere.
+   2. ~cargo test --workspace~ -- every existing test in ~basic.rs~/~complex.rs~/~arc.rs~ must keep
+      passing unchanged (none exercise variable arity today, so this is a pure-refactor regression
+      check across all 16 existing call sites).
+   3. Add a small number of new unit tests inside ~derive_macros/src/lib.rs~'s existing ~#[cfg(test)]
+      mod tests~ for logic that doesn't need a full compile: ~group_by_arity~ order/correctness,
+      ~parse_dispatches_expr~ rejecting ~dims~ and rejecting qualified paths, and the cross-function
+      type-agreement logic behind ~build_args_ptr~ (~ORC_TYPE_ANY~ on disagreement vs. a concrete
+      type when all dispatch fns agree).
+   4. Add one new, deliberately variable-arity dispatch function to ~example_rust_plugin~ (e.g.  a
+      small experimental function accepting either 2 or 3 inputs via two distinct named functions in
+      the same ~dispatches~ list) with ~#[test]~s exercising both arities plus the "neither arity"
+      rejection path -- otherwise the new variable-arity capability ships with zero integration
+      coverage.
+   5. Add one function with a ~[T; N]~-shaped parameter dispatched over more than one const-generic
+      case (e.g. ~dispatches = (run::<f64, 3>, run::<f64, 4>)~) to exercise the new compound-generic
+      substitution end to end, plus one test confirming two *distinct* named functions differing only
+      in aggregate ~item_size~ resolve to the correct one at each size.
+   6. ~cargo clippy -p orc_sdk -p orc_sdk-derive_macros -p curve_plugin -p example_rust_plugin
+      --all-targets~ clean.
+
 * NEXT tl8agd - Curve plugin functions
   :PROPERTIES:
   :CREATED:  2026-09-11 Fri 11:44
