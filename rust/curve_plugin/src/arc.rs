@@ -4,18 +4,16 @@ use std::fmt::Display;
 use crate::{host_callbacks, registry};
 
 pub const ARC_2D_TYPE_ID: OrcTypeId = 0xfeaaa707a60f5329;
+pub const ARC_3D_TYPE_ID: OrcTypeId = 0xc4aa56d184210630;
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct Arc2d {
     inner: loke::Arc2d,
 }
 
-impl Default for Arc2d {
-    fn default() -> Self {
-        Self {
-            inner: loke::Arc2d::unit_quadrant_arc(1),
-        }
-    }
+#[derive(Clone, Default)]
+pub struct Arc3d {
+    inner: loke::Arc3d,
 }
 
 impl TOrcData for Arc2d {
