@@ -313,11 +313,11 @@ pub trait TOrcPluginAdaptor {
     fn deck_serialize(
         ctx: u64,
         handle: &OrcHandle,
-        write: &mut impl std::io::Write,
+        write: impl std::io::Write,
     ) -> Result<(), Error>;
     fn deck_deserialize(
         ctx: u64,
-        read: &mut impl std::io::Read,
+        read: impl std::io::Read,
         out: &mut OrcHandle,
     ) -> Result<(), Error>;
     fn deck_to_str(input: &OrcHandle, out: &mut OrcHandle) -> Result<(), Error>;

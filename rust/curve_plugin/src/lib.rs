@@ -92,9 +92,9 @@ impl TOrcPluginAdaptor for PluginAdaptor {
     fn deck_serialize(
         _ctx: u64,
         handle: &OrcHandle,
-        write: &mut impl std::io::Write,
+        mut write: impl std::io::Write,
     ) -> Result<(), Error> {
-        match orc_sdk::try_serialize_handle(handle, write) {
+        match orc_sdk::try_serialize_handle(handle, &mut write) {
             Err(Error::DeckTypeMismatch) => {}
             result => return result,
         }
@@ -115,17 +115,17 @@ impl TOrcPluginAdaptor for PluginAdaptor {
 
     fn deck_deserialize(
         _ctx: u64,
-        read: &mut impl std::io::Read,
+        mut read: impl std::io::Read,
         out: &mut OrcHandle,
     ) -> Result<(), Error> {
-        let marks = match orc_sdk::try_deserialize_handle(read, out, &REGISTRY) {
+        let marks = match orc_sdk::try_deserialize_handle(&mut read, out, &REGISTRY) {
             Ok(()) => return Ok(()),
             Err(marks) => marks,
         };
         // Header and marks already read. Read custom item data.
         match out.type_id {
             arc::ARC_TYPE_ID => {
-                let items = Arc2d::deserialize(read, out.n_items as usize)
+                let items = Arc2d::deserialize(&mut read, out.n_items as usize)
                     .map_err(|_| Error::SerializationError)?;
                 let mut deck = Deck::<Arc2d>::default();
                 deck.assign_from_raw_data(items, marks);

@@ -46,15 +46,21 @@ impl DeckItemDisplay for Arc2d {
 }
 
 impl Arc2d {
-    pub fn serialize(items: &[Self], write: &mut impl std::io::Write) -> std::io::Result<usize> {
-        todo!()
+    pub fn serialize(items: &[Self], mut write: impl std::io::Write) -> std::io::Result<usize> {
+        for item in items {
+            item.inner.serialize(&mut write)?;
+        }
+        Ok(items.len())
     }
 
-    pub fn deserialize(
-        read: &mut impl std::io::Read,
-        n_items: usize,
-    ) -> std::io::Result<Vec<Self>> {
-        todo!()
+    pub fn deserialize(mut read: impl std::io::Read, n_items: usize) -> std::io::Result<Vec<Self>> {
+        let mut out = Vec::with_capacity(n_items);
+        for _ in 0..n_items {
+            out.push(Self {
+                inner: loke::Arc2d::deserialize(&mut read)?,
+            });
+        }
+        Ok(out)
     }
 }
 
