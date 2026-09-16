@@ -169,17 +169,18 @@
   :CREATED:  2026-09-15 Tue 22:42
   :END:
 
-  Today ~#[orc_fn]~/~#[orc_map_fn]~ (in ~rust/orc_sdk/derive_macros/src/lib.rs~) hard-require a
-  single function literally named ~run~ inside the macro body, optionally monomorphized via ~let
-  types = (run::<T1>, run::<T2>, ...)~ (only required when ~run~ is generic). This is too rigid: it
-  forces one arbitrarily-named function, and only supports "the same generic body instantiated with
-  different types," not true overloading (different function bodies contributing to the same
-  exported ABI function). This plan is implementation-ready: it names the exact functions to
-  add/replace/keep and the exact call sites to edit. Read the current ~derive_macros/src/lib.rs~ in
-  full before starting -- every function named below already exists there today unless explicitly
-  marked "(new)".
-
 ** LLM Plan
+
+   Today ~#[orc_fn]~/~#[orc_map_fn]~ (in ~rust/orc_sdk/derive_macros/src/lib.rs~) hard-require a
+   single function literally named ~run~ inside the macro body, optionally monomorphized via ~let
+   types = (run::<T1>, run::<T2>, ...)~ (only required when ~run~ is generic). This is too rigid: it
+   forces one arbitrarily-named function, and only supports "the same generic body instantiated with
+   different types," not true overloading (different function bodies contributing to the same
+   exported ABI function). This plan is implementation-ready: it names the exact functions to
+   add/replace/keep and the exact call sites to edit. Read the current ~derive_macros/src/lib.rs~ in
+   full before starting -- every function named below already exists there today unless explicitly
+   marked "(new)".
+
 *** Data model
 
    Replace the single ~run_fn: ItemFn~ threaded through everything with:
@@ -447,7 +448,7 @@
   :END:
   :LOGBOOK:
   - State "NEXT"       from "TODO"       [2026-09-11 Fri 21:50]
-  :END:  
+  :END:
 
 * DONE tlfcbv - Bug - Python code exported from dagger doesn't export lists properly
   CLOSED: [2026-09-15 Tue 19:38]
