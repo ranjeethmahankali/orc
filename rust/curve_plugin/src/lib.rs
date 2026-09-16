@@ -84,7 +84,9 @@ impl TOrcPluginAdaptor for PluginAdaptor {
             ORC_TYPE_I64 => deck_from_proxy::<i64>(inputs, proxy_type, proxy, out, &REGISTRY),
             ORC_TYPE_F32 => deck_from_proxy::<f32>(inputs, proxy_type, proxy, out, &REGISTRY),
             ORC_TYPE_F64 => deck_from_proxy::<f64>(inputs, proxy_type, proxy, out, &REGISTRY),
-            arc::ARC_TYPE_ID => deck_from_proxy::<Arc2d>(inputs, proxy_type, proxy, out, &REGISTRY),
+            arc::ARC_2D_TYPE_ID => {
+                deck_from_proxy::<Arc2d>(inputs, proxy_type, proxy, out, &REGISTRY)
+            }
             _ => Err(Error::DeckTypeMismatch),
         }
     }
@@ -100,7 +102,7 @@ impl TOrcPluginAdaptor for PluginAdaptor {
         }
         // Header already written by try_serialize_handle. Write custom item data.
         match handle.type_id {
-            arc::ARC_TYPE_ID => {
+            arc::ARC_2D_TYPE_ID => {
                 let items = handle.items::<Arc2d>()?;
                 let n_serialized =
                     Arc2d::serialize(items, write).map_err(|_| Error::SerializationError)?;
@@ -124,7 +126,7 @@ impl TOrcPluginAdaptor for PluginAdaptor {
         };
         // Header and marks already read. Read custom item data.
         match out.type_id {
-            arc::ARC_TYPE_ID => {
+            arc::ARC_2D_TYPE_ID => {
                 let items = Arc2d::deserialize(&mut read, out.n_items as usize)
                     .map_err(|_| Error::SerializationError)?;
                 let mut deck = Deck::<Arc2d>::default();
@@ -160,7 +162,7 @@ impl TOrcPluginAdaptor for PluginAdaptor {
                     ORC_TYPE_I64 => to_str_deck::<i64>(input, deck),
                     ORC_TYPE_F32 => to_str_deck::<f32>(input, deck),
                     ORC_TYPE_F64 => to_str_deck::<f64>(input, deck),
-                    arc::ARC_TYPE_ID => to_str_deck::<Arc2d>(input, deck),
+                    arc::ARC_2D_TYPE_ID => to_str_deck::<Arc2d>(input, deck),
                     _ => Err(Error::DeckTypeMismatch),
                 };
                 if result.is_ok() {

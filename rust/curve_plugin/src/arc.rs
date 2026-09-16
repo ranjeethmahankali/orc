@@ -3,7 +3,7 @@ use std::fmt::Display;
 
 use crate::{host_callbacks, registry};
 
-pub const ARC_TYPE_ID: OrcTypeId = 0xfeaaa707a60f5329;
+pub const ARC_2D_TYPE_ID: OrcTypeId = 0xfeaaa707a60f5329;
 
 #[derive(Clone)]
 pub struct Arc2d {
@@ -20,7 +20,7 @@ impl Default for Arc2d {
 
 impl TOrcData for Arc2d {
     const TYPE_INFO: orc_sdk::OrcTypeInfo = orc_sdk::OrcTypeInfo {
-        type_id: ARC_TYPE_ID,
+        type_id: ARC_2D_TYPE_ID,
         name: c"Arc2d".as_ptr(),
         desc: c"Two dimensional circular arc".as_ptr(),
     };
